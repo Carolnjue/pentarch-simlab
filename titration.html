@@ -1,0 +1,1026 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Titration Lab · Pentarch SimLab</title>
+<meta name="description" content="Run an acid–base titration drop by drop with a burette, indicators and a pH meter; plot the titration curve, find equivalence points and determine an unknown concentration.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .stage.app{height:620px}
+  @media (max-width:980px){.stage.app{height:560px}}
+  @media (max-width:520px){.stage.app{height:470px}}
+  .row2{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:18px;margin-bottom:6px}
+  @media (max-width:980px){.row2{grid-template-columns:minmax(0,1fr)}}
+  .row2>.panel{min-width:0}
+  .chartbox{position:relative;height:330px;background:#050913;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .chartbox canvas{display:block;width:100%;height:100%;cursor:crosshair}
+  .ctip{position:absolute;pointer-events:none;font:500 .74rem var(--mono);background:rgba(5,9,19,.92);border:1px solid var(--line2);padding:4px 8px;border-radius:7px;display:none;white-space:nowrap;z-index:2}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;font-size:.78rem;color:var(--muted);margin-top:8px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{display:inline-block;width:14px;height:3px;border-radius:2px}
+  .opts{display:flex;flex-wrap:wrap;gap:4px 16px}
+  .opts .toggle{gap:8px;justify-content:flex-start}
+  .hold{touch-action:none;-webkit-user-select:none;user-select:none}
+  .hold.active{background:color-mix(in srgb,var(--accent) 30%,var(--panel2));border-color:var(--accent)}
+  .nbwrap{overflow-x:auto}
+  table.data.nb td,table.data.nb th{padding:6px 8px;white-space:nowrap}
+  table.data.nb tr.conc td{color:var(--ok)}
+  table.data.nb tr.rough td{color:var(--muted);font-style:italic}
+  .field{display:flex;gap:8px;align-items:center;margin-top:8px}
+  .field input{flex:1;min-width:0}
+  .lbl{font-size:.82rem;color:var(--muted);margin:10px 0 4px;display:block}
+  .chk-list{list-style:none;padding:0;margin:0}
+  .chk-list li{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
+  .chk-list li .led{margin-top:6px;flex:none}
+  .chk-list li b{display:block}
+  .ind-card{display:flex;gap:10px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg2)}
+  .ind-bar{height:14px;border-radius:7px;flex:1;min-width:120px}
+  .swatch{width:16px;height:16px;border-radius:50%;display:inline-block;border:1px solid var(--line2);vertical-align:middle}
+  .region{font-size:.84rem;color:var(--muted);margin-top:10px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg2)}
+  .region b{color:var(--text)}
+  .mini{font-size:.78rem;color:var(--dim)}
+  table.data th{text-transform:none;letter-spacing:.02em}
+  table.data.nb td.empty{white-space:normal}
+  @media (max-width:520px){
+    .stage-toolbar{top:12px;bottom:auto}
+    .stage-toolbar .tx,#hIndWrap{display:none}
+    .chartbox{height:280px}
+  }
+  svg.diag text{font-family:var(--mono);font-size:11px;fill:#93a1bd}
+  .stat .k{text-transform:none;letter-spacing:.03em}
+</style>
+</head>
+<body data-page="titration">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <!-- 1. THE LAB -->
+  <section class="lab wide-controls">
+    <div class="stage app" id="stage">
+      <canvas id="cv" aria-label="Titration apparatus: burette, conical flask on a magnetic stirrer and pH meter"></canvas>
+      <div class="hud">
+        <span class="readout">pH <b id="hPH">—</b></span>
+        <span class="readout">Added <b id="hV">0.00</b> mL</span>
+        <span class="readout" id="hIndWrap">Indicator <b id="hInd">—</b></span>
+      </div>
+      <div class="stage-toolbar">
+        <button class="btn sm" id="tLabels" aria-pressed="true" title="Show apparatus labels"><i data-lucide="tag"></i><span class="tx"> Labels</span></button>
+        <button class="btn sm" id="tStir" aria-pressed="true" title="Magnetic stirrer"><i data-lucide="refresh-cw"></i><span class="tx"> Stirrer</span></button>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="flask-conical"></i> Set up the titration</h3>
+        <label class="lbl" for="pair">Acid–base pair</label>
+        <select id="pair">
+          <option value="sa-sb">Strong acid – strong base: HCl / NaOH</option>
+          <option value="wa-sb" selected>Weak acid – strong base: CH₃COOH / NaOH</option>
+          <option value="sa-wb">Strong acid – weak base: HCl / NH₃</option>
+          <option value="wa-wb">Weak acid – weak base: CH₃COOH / NH₃</option>
+          <option value="ox">Diprotic acid: H₂C₂O₄ (oxalic) / NaOH</option>
+          <option value="ph">Polyprotic acid: H₃PO₄ / NaOH</option>
+        </select>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px;flex-wrap:wrap">
+          <span class="small muted">In the flask:</span>
+          <div class="seg" id="flaskSeg"><button data-v="acid" class="on">Acid</button><button data-v="base">Base</button></div>
+        </div>
+        <div class="ctl"><label for="ca" id="caLbl">Flask concentration</label><output id="caOut">0.100 M</output><input type="range" id="ca" min="0.01" max="0.5" step="0.005" value="0.1"></div>
+        <div class="ctl"><label for="ct" id="ctLbl">Burette concentration</label><output>0.100 M</output><input type="range" id="ct" min="0.01" max="0.5" step="0.005" value="0.1"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><label class="lbl" for="va">Pipette (aliquot)</label><select id="va"><option value="10">10.00 mL</option><option value="20">20.00 mL</option><option value="25" selected>25.00 mL</option><option value="50">50.00 mL</option></select></div>
+          <div><label class="lbl" for="ind">Indicator</label><select id="ind">
+            <option value="phph" selected>Phenolphthalein</option>
+            <option value="mo">Methyl orange</option>
+            <option value="mr">Methyl red</option>
+            <option value="btb">Bromothymol blue</option>
+            <option value="univ">Universal indicator</option>
+            <option value="none">None (pH meter only)</option>
+          </select></div>
+        </div>
+        <label class="toggle" style="margin-top:8px"><span><i data-lucide="search" style="width:14px;height:14px;vertical-align:-2px"></i> Mystery sample (unknown concentration)</span><input type="checkbox" id="mystery"></label>
+      </div>
+
+      <div class="panel">
+        <h3><i data-lucide="droplets"></i> Burette</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <span class="small muted">Hold mode</span>
+          <div class="seg" id="modeSeg"><button data-v="drop" class="on">Dropwise</button><button data-v="fast">Fast</button></div>
+        </div>
+        <div class="btn-row" style="margin-top:10px">
+          <button class="btn primary hold" id="holdBtn"><i data-lucide="hand"></i> Hold to add</button>
+          <button class="btn" id="oneDrop"><i data-lucide="droplet"></i> 1 drop</button>
+          <button class="btn sm" id="add1">+1.00 mL</button>
+        </div>
+        <div class="ctl"><label for="tap">Stopcock opening</label><output id="tapOut">closed</output><input type="range" id="tap" min="0" max="100" step="1" value="0"></div>
+        <div class="btn-row">
+          <button class="btn sm" id="closeTap"><i data-lucide="circle-stop"></i> Close tap</button>
+          <button class="btn sm" id="newFlask"><i data-lucide="flask-conical"></i> New flask</button>
+          <button class="btn sm" id="refill"><i data-lucide="fuel"></i> Refill burette</button>
+        </div>
+        <p class="mini" style="margin:8px 0 0">Tip: press and hold the stopcock in the picture too. One drop = 0.05 mL.</p>
+      </div>
+
+      <div class="panel">
+        <h3><i data-lucide="gauge"></i> Live readings</h3>
+        <div class="stats">
+          <div class="stat"><div class="k">pH meter</div><div class="v" id="sPH">—</div></div>
+          <div class="stat"><div class="k">Burette reading</div><div class="v" id="sBur">0.00<small>mL</small></div></div>
+          <div class="stat"><div class="k">Titrant added</div><div class="v" id="sV">0.00<small>mL</small></div></div>
+          <div class="stat"><div class="k">[H₃O⁺]</div><div class="v" id="sH">—<small>M</small></div></div>
+        </div>
+        <div class="region" id="region">—</div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="row2">
+    <div class="panel">
+      <h3><i data-lucide="chart-spline"></i> Titration curve</h3>
+      <div class="chartbox"><canvas id="cc"></canvas><div class="ctip" id="ctip"></div></div>
+      <div class="opts" style="margin-top:8px">
+        <label class="toggle"><input type="checkbox" id="oTheory" checked> Predicted curve</label>
+        <label class="toggle"><input type="checkbox" id="oMarks" checked> Equivalence & half-equivalence</label>
+        <label class="toggle"><input type="checkbox" id="oDeriv"> First derivative dpH/dV</label>
+        <label class="toggle"><input type="checkbox" id="oBand" checked> Indicator range</label>
+      </div>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="panel">
+      <h3><i data-lucide="notebook-pen"></i> Results notebook</h3>
+      <div class="btn-row"><button class="btn primary sm" id="record"><i data-lucide="check"></i> Record end point</button><button class="btn sm" id="clearNb"><i data-lucide="trash-2"></i> Clear</button></div>
+      <div class="nbwrap" style="margin-top:10px">
+        <table class="data nb"><thead><tr><th>Run</th><th>Initial / mL</th><th>Final / mL</th><th>Titre / mL</th></tr></thead><tbody id="nbBody"><tr><td colspan="4" class="muted small empty">No runs yet. Titrate to the colour change, then record the end point.</td></tr></tbody></table>
+      </div>
+      <p class="small" id="nbMean" style="margin:10px 0 0"></p>
+      <label class="lbl" for="ans">Concentration of the flask solution (mol L⁻¹)</label>
+      <div class="field"><input type="number" id="ans" step="0.0001" min="0" placeholder="e.g. 0.1050"><button class="btn sm" id="check"><i data-lucide="badge-check"></i> Check</button></div>
+      <p class="mini" id="ansHint" style="margin:8px 0 0">Use the mean of your concordant titres (within 0.10 mL of each other).</p>
+    </div>
+  </section>
+
+  <!-- 2. LEARNING TABS -->
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="palette"></i> Indicators</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Neutralisation and pH</h3>
+      <p>In an acid–base titration a solution of known concentration (the <b>titrant</b>, in the burette) is added to a measured volume of the solution being analysed (the <b>analyte</b>, pipetted into the conical flask) until the reaction is exactly complete. For a strong acid and a strong base the net reaction is simply</p>
+      <div class="eq">$$\mathrm{H_3O^+(aq) + OH^-(aq) \longrightarrow 2\,H_2O(l)}\qquad \Delta H \approx -57\ \mathrm{kJ\,mol^{-1}}$$</div>
+      <p>Acidity is reported on the logarithmic pH scale. Water always self-ionises, which links the hydronium and hydroxide concentrations:</p>
+      <div class="eq">$$\mathrm{pH} = -\log_{10}[\mathrm{H_3O^+}],\qquad K_w=[\mathrm{H_3O^+}][\mathrm{OH^-}] = 1.0\times10^{-14}\ \text{at }25\,^\circ\mathrm{C},\qquad \mathrm{pH+pOH}=14.00$$</div>
+      <h3>Weak acids and bases: $K_a$ and $K_b$</h3>
+      <p>A weak acid is only partly ionised. Its strength is measured by the acid dissociation constant; for a weak base we use $K_b$. A conjugate pair is linked through $K_w$:</p>
+      <div class="eq">$$\mathrm{HA + H_2O \rightleftharpoons H_3O^+ + A^-}\quad K_a=\frac{[\mathrm{H_3O^+}][\mathrm{A^-}]}{[\mathrm{HA}]},\qquad \mathrm{p}K_a=-\log K_a,\qquad K_a\,K_b = K_w$$</div>
+      <p>Ethanoic (acetic) acid has $K_a = 1.8\times10^{-5}$ ($\mathrm{p}K_a = 4.74$); ammonia has $K_b = 1.8\times10^{-5}$, so its conjugate acid NH₄⁺ has $\mathrm{p}K_a = 9.26$.</p>
+      <h3>Equivalence point vs end point</h3>
+      <ul>
+        <li>The <b>equivalence point</b> is where the amount of titrant added is exactly the stoichiometric amount: $n_\text{titrant} = \nu\,n_\text{analyte}$. It is a property of the chemistry.</li>
+        <li>The <b>end point</b> is where you <i>observe</i> the indicator change colour (or the pH meter shows the steepest rise). A good indicator makes the end point fall within one drop of the equivalence point.</li>
+      </ul>
+      <p>At equivalence the pH is <b>not always 7</b>. The salt formed can hydrolyse: CH₃COO⁻ is a weak base (pH &gt; 7 at equivalence); NH₄⁺ is a weak acid (pH &lt; 7).</p>
+      <h3>Buffers and the half-equivalence point</h3>
+      <p>Between the start and the equivalence point of a weak acid titration, the flask contains both HA and A⁻: a <b>buffer</b>. The Henderson–Hasselbalch equation is an excellent approximation here:</p>
+      <div class="eq">$$\mathrm{pH} = \mathrm{p}K_a + \log_{10}\frac{[\mathrm{A^-}]}{[\mathrm{HA}]}\quad\Longrightarrow\quad \text{at half-equivalence }[\mathrm{A^-}]=[\mathrm{HA}]\ \text{so}\ \mathrm{pH}=\mathrm{p}K_a$$</div>
+      <p>That is why the curve is flattest at half-equivalence: buffer capacity is maximum there. It also gives a practical way to <i>measure</i> $\mathrm{p}K_a$ from a titration curve.</p>
+      <h3>How this simulator calculates pH</h3>
+      <p>Rather than stitching together approximations for each region, the lab solves the full equilibrium problem at every drop. For a mixture containing Na⁺, Cl⁻, a weak acid H<sub>n</sub>A (total $C_A$) and a weak base B (total $C_B$), electroneutrality requires</p>
+      <div class="eq">$$[\mathrm{H_3O^+}] + [\mathrm{Na^+}] + C_B\,\frac{[\mathrm{H_3O^+}]}{[\mathrm{H_3O^+}]+K_{a,\mathrm{BH^+}}} = [\mathrm{OH^-}] + [\mathrm{Cl^-}] + C_A\sum_{j=1}^{n} j\,\alpha_j$$</div>
+      <div class="eq">$$\alpha_j=\frac{[\mathrm{H^+}]^{n-j}\prod_{i\le j}K_{a,i}}{\sum_{k=0}^{n}[\mathrm{H^+}]^{n-k}\prod_{i\le k}K_{a,i}},\qquad [\mathrm{OH^-}]=\frac{K_w}{[\mathrm{H_3O^+}]}$$</div>
+      <p>Every term is monotonic in pH, so the equation has exactly one root, found numerically by bisection to better than 10⁻⁶ pH units. Dilution by the added titrant is included. The model uses concentrations rather than activities and assumes 25 °C, which is the usual first-year treatment; real pH readings in concentrated solutions can differ by a few hundredths.</p>
+      <div class="callout"><i data-lucide="lightbulb"></i><div><b>Polyprotic acids.</b> H₃PO₄ has three p$K_a$ values (2.12, 7.21, 12.32). The first two equivalence points are clear, but the third is not, because HPO₄²⁻ is too weak an acid relative to water at 0.1 M. Oxalic acid (p$K_a$ 1.23 and 4.19) shows only a weak first inflection because its two p$K_a$ values are close.</div></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Choosing an indicator</h3>
+      <p>An indicator is itself a weak acid, HIn, whose two forms have different colours. The colour change is seen over roughly $\mathrm{p}K_\text{In}\pm1$:</p>
+      <div class="eq">$$\mathrm{HIn \rightleftharpoons H^+ + In^-},\qquad \mathrm{pH}=\mathrm{p}K_\text{In}+\log\frac{[\mathrm{In^-}]}{[\mathrm{HIn}]}$$</div>
+      <p>Pick an indicator whose colour-change range lies <b>entirely within the vertical part</b> of the titration curve. Turn on <i>Indicator range</i> under the curve to see the band.</p>
+      <div class="grid2" id="indCards" style="margin-top:12px"></div>
+      <table class="data" style="margin-top:16px">
+        <thead><tr><th>Titration</th><th>pH at equivalence (0.1 M)</th><th>Vertical section</th><th>Suitable indicators</th></tr></thead>
+        <tbody>
+          <tr><td>Strong acid – strong base</td><td class="num">7.00</td><td>≈ 3 to 11</td><td>Any of them (phenolphthalein, methyl orange, methyl red, BTB)</td></tr>
+          <tr><td>Weak acid – strong base</td><td class="num">8.72</td><td>≈ 7 to 11</td><td>Phenolphthalein</td></tr>
+          <tr><td>Strong acid – weak base</td><td class="num">5.28</td><td>≈ 3 to 7</td><td>Methyl orange, methyl red</td></tr>
+          <tr><td>Weak acid – weak base</td><td class="num">7.0</td><td>No sharp jump</td><td>None reliable: use a pH meter</td></tr>
+        </tbody>
+      </table>
+      <p class="small muted" style="margin-top:10px">Universal indicator is a blend that changes colour continuously across the whole scale. It is great for estimating pH but useless for a sharp end point.</p>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Example 1: pH along a weak acid titration</h3>
+      <p class="muted">25.00 mL of 0.100 M CH₃COOH titrated with 0.100 M NaOH (the default set-up; check each value in the lab).</p>
+      <div class="worked">
+        <ol class="steps">
+          <li><b>Start (0 mL).</b> $x^2/(0.100-x)=1.8\times10^{-5}$ gives $x=[\mathrm{H_3O^+}]=1.33\times10^{-3}$ M, so pH = <b>2.88</b>.</li>
+          <li><b>Equivalence volume.</b> $n(\mathrm{CH_3COOH}) = 0.100\times0.02500 = 2.50\times10^{-3}$ mol, so $V_\text{eq}=2.50\times10^{-3}/0.100 = $ <b>25.00 mL</b>.</li>
+          <li><b>Half-equivalence (12.50 mL).</b> $[\mathrm{A^-}]\approx[\mathrm{HA}]$ so pH ≈ p$K_a$ = <b>4.74</b>. The exact charge-balance value shown on the curve is 4.75: a little extra acid ionises, so $[\mathrm{A^-}]$ is very slightly larger than $[\mathrm{HA}]$.</li>
+          <li><b>Equivalence (25.00 mL).</b> All acid is now CH₃COO⁻ at $2.50\times10^{-3}/0.0500 = 0.0500$ M. $K_b = K_w/K_a = 5.56\times10^{-10}$; $[\mathrm{OH^-}]=\sqrt{K_b\,c}=5.27\times10^{-6}$ M; pOH = 5.28, so pH = <b>8.72</b>.</li>
+          <li><b>Past equivalence (30.00 mL).</b> Excess OH⁻ $=(3.00-2.50)\times10^{-3}/0.0550 = 9.09\times10^{-3}$ M; pOH = 2.04, pH = <b>11.96</b>.</li>
+        </ol>
+      </div>
+      <h3>Example 2: Finding an unknown concentration</h3>
+      <p class="muted">A student pipettes 25.00 mL of hydrochloric acid and titrates with 0.100 M NaOH. Titres: rough 23.6, then 23.15, 23.20, 23.40 mL.</p>
+      <div class="worked">
+        <ol class="steps">
+          <li><b>Concordant titres</b> agree within 0.10 mL: 23.15 and 23.20 mL. Discard the rough and the 23.40 mL.</li>
+          <li><b>Mean titre</b> = (23.15 + 23.20)/2 = <b>23.18 mL</b> (keep 23.175 in the calculation).</li>
+          <li>$n(\mathrm{NaOH}) = 0.100 \times 0.023175 = 2.3175\times10^{-3}$ mol. The ratio HCl : NaOH is 1 : 1.</li>
+          <li>$c(\mathrm{HCl}) = 2.3175\times10^{-3}/0.02500 = $ <b>0.0927 mol L⁻¹</b>.</li>
+        </ol>
+      </div>
+      <h3>Example 3: A diprotic acid</h3>
+      <p class="muted">20.00 mL of oxalic acid needs 24.80 mL of 0.100 M NaOH to reach the phenolphthalein end point.</p>
+      <div class="worked">
+        <ol class="steps">
+          <li>Phenolphthalein changes at the <b>second</b> equivalence point: $\mathrm{H_2C_2O_4 + 2\,NaOH \to Na_2C_2O_4 + 2\,H_2O}$.</li>
+          <li>$n(\mathrm{NaOH}) = 0.100\times0.02480 = 2.48\times10^{-3}$ mol, so $n(\mathrm{H_2C_2O_4}) = 1.24\times10^{-3}$ mol.</li>
+          <li>$c = 1.24\times10^{-3}/0.02000 = $ <b>0.0620 mol L⁻¹</b>.</li>
+        </ol>
+      </div>
+      <h3>Example 4: Strong acid – weak base at equivalence</h3>
+      <div class="worked">
+        25.00 mL of 0.100 M NH₃ with 0.100 M HCl: at 25.00 mL, $[\mathrm{NH_4^+}] = 0.0500$ M, $K_a = 10^{-14}/1.8\times10^{-5} = 5.56\times10^{-10}$, $[\mathrm{H_3O^+}] = \sqrt{K_a c} = 5.27\times10^{-6}$ M, pH = <b>5.28</b>. So methyl red (4.4–6.2) is the right indicator and phenolphthalein would change far too early.
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Challenges (checked automatically)</h3>
+      <ul class="chk-list" id="chkList"></ul>
+      <h3>Guided experiments</h3>
+      <ol class="steps">
+        <li><b>Rough, then accurate.</b> Use <i>Fast</i> mode for a rough titre, record it, take a new flask, then run fast to about 1 mL before the rough value and finish dropwise. Repeat until two titres agree within 0.10 mL.</li>
+        <li><b>Compare the four curve shapes.</b> Run each monoprotic pair with 0.100 M solutions and note the starting pH, the pH at equivalence and the height of the vertical jump. Why is the weak–weak jump so small?</li>
+        <li><b>Dilution.</b> Set both concentrations to 0.010 M for HCl/NaOH. What happens to the vertical section? Which indicators would now fail?</li>
+        <li><b>Measure p$K_a$.</b> Titrate CH₃COOH and read the pH at exactly half the equivalence volume. Compare with p$K_a$ = 4.74.</li>
+        <li><b>Two steps.</b> Titrate H₃PO₄ with the derivative plot on. Measure both equivalence volumes and confirm $V_2 = 2V_1$. Which indicator detects each one?</li>
+        <li><b>Swap roles.</b> Put NH₃ in the flask and HCl in the burette. The curve now falls. Where is the half-equivalence pH, and what does it tell you?</li>
+      </ol>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = s => document.querySelector(s);
+  const KW = 1e-14, DROP = 0.05, CAP = 50;
+
+  /* ================= Chemistry model ================= */
+  const REAG = {
+    HCl:     { f: 'HCl', name: 'hydrochloric acid', type: 'acid', strong: true },
+    NaOH:    { f: 'NaOH', name: 'sodium hydroxide', type: 'base', strong: true },
+    CH3COOH: { f: 'CH₃COOH', name: 'ethanoic acid', type: 'acid', Ka: [1.8e-5] },
+    NH3:     { f: 'NH₃', name: 'ammonia', type: 'base', Kb: 1.8e-5 },
+    H2C2O4:  { f: 'H₂C₂O₄', name: 'oxalic acid', type: 'acid', Ka: [5.9e-2, 6.4e-5] },
+    H3PO4:   { f: 'H₃PO₄', name: 'phosphoric acid', type: 'acid', Ka: [7.5e-3, 6.2e-8, 4.8e-13] },
+  };
+  const PAIRS = {
+    'sa-sb': { acid: 'HCl', base: 'NaOH', flask: 'acid' },
+    'wa-sb': { acid: 'CH3COOH', base: 'NaOH', flask: 'acid' },
+    'sa-wb': { acid: 'HCl', base: 'NH3', flask: 'base' },
+    'wa-wb': { acid: 'CH3COOH', base: 'NH3', flask: 'acid' },
+    'ox':    { acid: 'H2C2O4', base: 'NaOH', flask: 'acid', poly: true },
+    'ph':    { acid: 'H3PO4', base: 'NaOH', flask: 'acid', poly: true },
+  };
+  // Net charge concentration contributed by a reagent at total concentration C and [H+] = h
+  function charge(r, C, h) {
+    if (C <= 0) return 0;
+    if (r.strong) return r.type === 'acid' ? -C : C;
+    if (r.type === 'acid') {
+      let t = 1, sum = 1, wsum = 0;
+      for (let j = 0; j < r.Ka.length; j++) { t *= r.Ka[j] / h; sum += t; wsum += (j + 1) * t; }
+      return -C * wsum / sum;
+    }
+    const Ka = KW / r.Kb; return C * h / (h + Ka);
+  }
+  function solvePH(mix) {
+    let lo = -2, hi = 16;
+    for (let i = 0; i < 70; i++) {
+      const mid = (lo + hi) / 2, h = Math.pow(10, -mid);
+      let f = h - KW / h;
+      for (const m of mix) f += charge(m.r, m.C, h);
+      if (f > 0) lo = mid; else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+  // pH of flask (analyte Ca, Va mL) after adding V mL of titrant Ct
+  function pHat(an, ti, Ca, Va, Ct, V) {
+    const Vt = Va + V;
+    return solvePH([{ r: an, C: Ca * Va / Vt }, { r: ti, C: Ct * V / Vt }]);
+  }
+  window.SimTitration = { solvePH, pHat, REAG, get S() { return S; } };
+
+  /* ================= Indicators ================= */
+  const IND = {
+    phph: { name: 'Phenolphthalein', lo: 8.2, hi: 10.0, ca: [255, 255, 255, 0], cb: [232, 38, 140, .82], acidC: 'colourless', baseC: 'pink' },
+    mo:   { name: 'Methyl orange', lo: 3.1, hi: 4.4, ca: [214, 38, 42, .8], cb: [246, 196, 48, .75], acidC: 'red', baseC: 'yellow' },
+    mr:   { name: 'Methyl red', lo: 4.4, hi: 6.2, ca: [210, 30, 60, .8], cb: [240, 206, 52, .75], acidC: 'red', baseC: 'yellow' },
+    btb:  { name: 'Bromothymol blue', lo: 6.0, hi: 7.6, ca: [236, 206, 40, .78], cb: [36, 86, 214, .82], acidC: 'yellow', baseC: 'blue' },
+    univ: { name: 'Universal indicator', lo: 1, hi: 13, acidC: 'red', baseC: 'violet' },
+    none: { name: 'None', lo: null, hi: null },
+  };
+  const UNIV = [[1, [210, 30, 40]], [3, [235, 80, 40]], [4, [245, 140, 40]], [5, [245, 200, 45]], [6, [210, 220, 50]], [7, [60, 180, 70]], [8, [40, 160, 140]], [9, [40, 110, 210]], [10, [60, 70, 200]], [11, [100, 50, 180]], [13, [120, 40, 150]]];
+  function indColour(key, pH) {
+    const I = IND[key];
+    if (key === 'none') return [200, 225, 245, .14];
+    if (key === 'univ') {
+      let c = UNIV[0][1];
+      if (pH >= UNIV[UNIV.length - 1][0]) c = UNIV[UNIV.length - 1][1];
+      else for (let i = 0; i < UNIV.length - 1; i++) { const [p0, c0] = UNIV[i], [p1, c1] = UNIV[i + 1]; if (pH >= p0 && pH < p1) { const t = (pH - p0) / (p1 - p0); c = c0.map((v, k) => v + (c1[k] - v) * t); break; } }
+      return [...c, .78];
+    }
+    const mid = (I.lo + I.hi) / 2, k = 2 * Math.log(9) / (I.hi - I.lo);
+    const f = 1 / (1 + Math.exp(-(pH - mid) * k));
+    return I.ca.map((v, i) => v + (I.cb[i] - v) * f);
+  }
+  const rgba = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${(c[3] ?? 1) * a})`;
+  // composite indicator colour over a pale water tint
+  function liquidRGBA(key, pH, a = 1) {
+    const c = indColour(key, pH), w = [190, 220, 245], al = c[3];
+    const mix = [0, 1, 2].map(i => w[i] * (1 - al) + c[i] * al);
+    return [mix[0], mix[1], mix[2], (0.3 + 0.58 * al) * a];
+  }
+
+  /* ================= State ================= */
+  const S = {
+    pair: 'wa-sb', flask: 'acid', Ca: 0.1, Ct: 0.1, Va: 25, ind: 'phph', mystery: false, trueCa: 0.1,
+    Vadd: 0, bur: 0, runStart: 0, runVol: 0, refilledMidRun: false, pending: 0,
+    opening: 0, holding: false, mode: 'drop', holdAcc: 0, stir: true, labels: true,
+    pHtrue: 7, pHshow: 7, pts: [], drops: [], ripples: [], plumes: [], t: 0, stirPhase: 0,
+    runs: [], roughDone: false, chk: {},
+  };
+  const P = () => PAIRS[S.pair];
+  const analyte = () => REAG[S.flask === 'acid' ? P().acid : P().base];
+  const titrant = () => REAG[S.flask === 'acid' ? P().base : P().acid];
+  const CaEff = () => S.mystery ? S.trueCa : S.Ca;
+  function eqInfo() {
+    const an = analyte(), n = an.type === 'acid' && an.Ka ? an.Ka.length : 1;
+    const nShow = P().poly ? 2 : 1;
+    const v1 = CaEff() * S.Va / S.Ct;
+    const eq = [], half = [];
+    for (let k = 1; k <= nShow; k++) {
+      const V = k * v1; eq.push({ V, pH: pHat(an, titrant(), CaEff(), S.Va, S.Ct, V), k });
+      if (!an.strong) {
+        const Vh = (k - .5) * v1;
+        const pKa = an.type === 'acid' ? -Math.log10(an.Ka[k - 1]) : -Math.log10(KW / an.Kb);
+        half.push({ V: Vh, pH: pHat(an, titrant(), CaEff(), S.Va, S.Ct, Vh), pKa });
+      }
+    }
+    return { eq, half, n, v1 };
+  }
+  const flaskPH = V => pHat(analyte(), titrant(), CaEff(), S.Va, S.Ct, V);
+
+  /* ================= Apparatus canvas ================= */
+  const cv = $('#cv');
+  const st = SL.canvas(cv);
+  const BW = 600, BH = 600; // base design size
+  let sc = 1, ox = 0, oy = 0;
+  const bx = 250;                        // burette / flask axis
+  const Y0 = 40, Y50 = 262, PXML = (Y50 - Y0) / 50, SY = 300;
+  const TIP = 342, NECK = 332, SHOULDER = 368, BASEY = 528;
+  // flask interior radius at y
+  function flaskR(y) {
+    if (y <= 356) return 15;
+    if (y < SHOULDER + 4) return 15 + (y - 356) / (SHOULDER + 4 - 356) * 9;
+    if (y > BASEY - 10) return 62 - (y - (BASEY - 10)) * 0.5;
+    return 24 + (y - SHOULDER - 4) / (BASEY - 14 - SHOULDER) * 38;
+  }
+  // volume (mL) below a given y, calibrated so the flask holds 250 mL up to the shoulder
+  const volTable = []; (function () { let v = 0; for (let y = BASEY; y >= NECK; y -= 1) { volTable.push([y, v]); v += Math.PI * flaskR(y - .5) ** 2; } })();
+  const kVol = 100 / volTable.find(e => e[0] === SHOULDER)[1]; // 100 mL conical flask
+  function surfaceY(mL) { for (const [y, v] of volTable) if (v * kVol >= mL) return y; return NECK; }
+
+  function layout() {
+    const w = st.w, h = st.h;
+    const top = 46, CW = 530;
+    sc = Math.min(w / CW, (h - top) / BH);
+    ox = (w - CW * sc) / 2 - 35 * sc; oy = top + ((h - top) - BH * sc) / 2;
+  }
+  const fz = n => n * Math.max(1, 0.8 / sc);
+
+  function drawBackground(ctx, w, h) {
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#0b1426'); g.addColorStop(1, '#070c18'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    // window light
+    const rg = ctx.createRadialGradient(w * .78, -40, 20, w * .78, -40, h * .9); rg.addColorStop(0, 'rgba(163,230,53,.06)'); rg.addColorStop(1, 'transparent'); ctx.fillStyle = rg; ctx.fillRect(0, 0, w, h);
+    // tiles
+    ctx.strokeStyle = 'rgba(255,255,255,.025)'; ctx.lineWidth = 1;
+    const benchY = oy + 560 * sc;
+    for (let y = benchY - 40 * sc; y > 0; y -= 40 * sc) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+    for (let x = (ox % (40 * sc)); x < w; x += 40 * sc) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, benchY); ctx.stroke(); }
+    // bench
+    const bg = ctx.createLinearGradient(0, benchY, 0, h); bg.addColorStop(0, '#2a3346'); bg.addColorStop(.06, '#1a2131'); bg.addColorStop(1, '#0d121d');
+    ctx.fillStyle = bg; ctx.fillRect(0, benchY, w, h - benchY);
+    ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.fillRect(0, benchY, w, 1.5);
+  }
+
+  function glassPath(ctx, pts) { ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); }
+
+  function drawStand(ctx) {
+    // base plate
+    const mg = ctx.createLinearGradient(0, 548, 0, 560); mg.addColorStop(0, '#5b6578'); mg.addColorStop(1, '#2b3243');
+    ctx.fillStyle = mg; roundRect(ctx, 40, 548, 180, 12, 3); ctx.fill();
+    // rod
+    const rg = ctx.createLinearGradient(80, 0, 90, 0); rg.addColorStop(0, '#8a94a8'); rg.addColorStop(.5, '#d8deea'); rg.addColorStop(1, '#5b6578');
+    ctx.fillStyle = rg; ctx.fillRect(80, 18, 9, 532);
+    // boss + clamp arm
+    for (const y of [100, 225]) {
+      ctx.fillStyle = '#3a4357'; roundRect(ctx, 74, y - 9, 22, 18, 3); ctx.fill();
+      ctx.fillStyle = '#6b7488'; ctx.fillRect(96, y - 3, bx - 120, 6);
+      // jaws
+      ctx.fillStyle = '#c0392b'; roundRect(ctx, bx - 26, y - 9, 14, 18, 3); ctx.fill(); roundRect(ctx, bx + 12, y - 9, 10, 18, 3); ctx.fill();
+      ctx.fillStyle = '#6b7488'; ctx.fillRect(bx - 14, y - 11, 34, 3);
+    }
+  }
+  function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+
+  function drawBurette(ctx) {
+    const r = 9, top = 14, bot = 276;
+    const yMen = Y0 + S.bur * PXML;
+    // liquid in tube
+    const titr = titrant();
+    const lc = 'rgba(190,225,250,.30)';
+    ctx.save();
+    ctx.beginPath(); ctx.rect(bx - r + 1.5, yMen, 2 * r - 3, bot - yMen); ctx.fillStyle = lc; ctx.fill();
+    // taper + tip liquid
+    ctx.beginPath(); ctx.moveTo(bx - r + 1.5, bot); ctx.lineTo(bx - 3, 292); ctx.lineTo(bx - 1.5, TIP - 1); ctx.lineTo(bx + 1.5, TIP - 1); ctx.lineTo(bx + 3, 292); ctx.lineTo(bx + r - 1.5, bot); ctx.closePath(); ctx.fill();
+    // meniscus (concave, bottom at reading)
+    ctx.beginPath(); ctx.moveTo(bx - r + 1.5, yMen - 2.4); ctx.quadraticCurveTo(bx, yMen + 2.2, bx + r - 1.5, yMen - 2.4); ctx.lineTo(bx + r - 1.5, yMen + 2); ctx.lineTo(bx - r + 1.5, yMen + 2); ctx.closePath(); ctx.fillStyle = lc; ctx.fill();
+    ctx.strokeStyle = 'rgba(220,240,255,.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(bx - r + 1.5, yMen - 2.4); ctx.quadraticCurveTo(bx, yMen + 2.2, bx + r - 1.5, yMen - 2.4); ctx.stroke();
+    ctx.restore();
+    // glass
+    const gg = ctx.createLinearGradient(bx - r, 0, bx + r, 0);
+    gg.addColorStop(0, 'rgba(255,255,255,.28)'); gg.addColorStop(.25, 'rgba(255,255,255,.05)'); gg.addColorStop(.7, 'rgba(255,255,255,.02)'); gg.addColorStop(1, 'rgba(255,255,255,.2)');
+    ctx.fillStyle = gg; ctx.fillRect(bx - r, top, 2 * r, bot - top);
+    ctx.strokeStyle = 'rgba(210,230,255,.55)'; ctx.lineWidth = 1.2;
+    glassPath(ctx, [[bx - r, top], [bx - r, bot], [bx - 3.5, 292]]); ctx.stroke();
+    glassPath(ctx, [[bx + r, top], [bx + r, bot], [bx + 3.5, 292]]); ctx.stroke();
+    // tip
+    glassPath(ctx, [[bx - 3.5, 306], [bx - 2, TIP]]); ctx.stroke(); glassPath(ctx, [[bx + 3.5, 306], [bx + 2, TIP]]); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(bx, top, r, 2.4, 0, 0, Math.PI * 2); ctx.stroke();
+    // graduations
+    ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.fillStyle = 'rgba(230,240,255,.85)'; ctx.font = `600 ${fz(8.5)}px JetBrains Mono, monospace`; ctx.textAlign = 'right';
+    for (let m = 0; m <= 50; m++) {
+      const y = Y0 + m * PXML, L = m % 5 === 0 ? 8 : 4;
+      ctx.lineWidth = m % 5 === 0 ? 1 : .7; ctx.beginPath(); ctx.moveTo(bx - r + 1, y); ctx.lineTo(bx - r + 1 + L, y); ctx.stroke();
+      if (m % 5 === 0) ctx.fillText(m, bx - r - 3, y + 3);
+    }
+    ctx.textAlign = 'left'; ctx.font = `500 ${fz(7.5)}px JetBrains Mono, monospace`; ctx.fillStyle = 'rgba(200,215,240,.55)'; ctx.fillText('mL', bx - r - 4 - (fz(7.5) * 1.3), Y0 - 10);
+    // stopcock
+    const sy = SY;
+    const sg = ctx.createLinearGradient(0, sy - 7, 0, sy + 7); sg.addColorStop(0, '#e8eef8'); sg.addColorStop(1, '#8c97ab');
+    ctx.fillStyle = sg; roundRect(ctx, bx - 9, sy - 6, 18, 12, 4); ctx.fill();
+    const ang = (1 - S.opening) * 0 + S.opening * Math.PI / 2; // 0 closed (horizontal) → 90° open
+    ctx.save(); ctx.translate(bx, sy); ctx.rotate(ang);
+    const hg = ctx.createLinearGradient(-20, 0, 20, 0); hg.addColorStop(0, '#2e7bd6'); hg.addColorStop(1, '#1d4f91');
+    ctx.fillStyle = hg; roundRect(ctx, -22, -4, 44, 8, 4); ctx.fill();
+    ctx.fillStyle = '#cfe2ff'; ctx.beginPath(); ctx.arc(0, 0, 3.4, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    if (S.holding || S.opening > 0) { ctx.strokeStyle = 'rgba(163,230,53,.6)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx, sy, 26, 0, Math.PI * 2); ctx.stroke(); }
+    return yMen;
+  }
+
+  function flaskOutline(ctx) {
+    ctx.beginPath();
+    ctx.moveTo(bx - 17, NECK - 2); ctx.lineTo(bx - 15, NECK); ctx.lineTo(bx - 15, 356);
+    ctx.quadraticCurveTo(bx - 15, SHOULDER, bx - 24, SHOULDER + 4);
+    ctx.lineTo(bx - 62, BASEY - 12); ctx.quadraticCurveTo(bx - 68, BASEY, bx - 52, BASEY);
+    ctx.lineTo(bx + 52, BASEY); ctx.quadraticCurveTo(bx + 68, BASEY, bx + 62, BASEY - 12);
+    ctx.lineTo(bx + 24, SHOULDER + 4); ctx.quadraticCurveTo(bx + 15, SHOULDER, bx + 15, 356);
+    ctx.lineTo(bx + 15, NECK); ctx.lineTo(bx + 17, NECK - 2);
+  }
+  function drawFlask(ctx, dt) {
+    const vol = S.Va + S.Vadd + 0.1;
+    const ys = surfaceY(vol);
+    const dip = S.stir ? 5 : 0;
+    const R = flaskR(ys);
+    const col = liquidRGBA(S.ind, S.pHshow);
+    ctx.save();
+    flaskOutline(ctx); ctx.clip();
+    // liquid body
+    ctx.beginPath(); ctx.moveTo(bx - R - 6, ys);
+    ctx.quadraticCurveTo(bx - R * .4, ys, bx, ys + dip); ctx.quadraticCurveTo(bx + R * .4, ys, bx + R + 6, ys);
+    ctx.lineTo(bx + 90, BASEY + 2); ctx.lineTo(bx - 90, BASEY + 2); ctx.closePath();
+    const lg = ctx.createLinearGradient(0, ys, 0, BASEY);
+    lg.addColorStop(0, rgba(col, 1.0)); lg.addColorStop(1, rgba([col[0] * .8, col[1] * .8, col[2] * .85, Math.min(1, col[3] * 1.25)]));
+    ctx.fillStyle = lg; ctx.fill();
+    // plumes of incoming titrant (local colour before mixing)
+    for (const p of S.plumes) {
+      const c = liquidRGBA(S.ind, p.pH, p.a);
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r); g.addColorStop(0, rgba(c)); g.addColorStop(1, rgba(c, 0));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+    }
+    // swirl highlights
+    if (S.stir) {
+      ctx.strokeStyle = 'rgba(255,255,255,.13)'; ctx.lineWidth = 1.4;
+      for (let i = 0; i < 4; i++) {
+        const yy = ys + 12 + i * (BASEY - ys - 18) / 4, rr = flaskR(yy) - 8;
+        const ph = S.stirPhase * (1.2 - i * .1) + i * 1.3;
+        ctx.beginPath(); ctx.ellipse(bx, yy, rr, 4, 0, ph % (Math.PI * 2), ph % (Math.PI * 2) + 1.1); ctx.stroke();
+      }
+    }
+    // surface sheen
+    ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(bx - R, ys); ctx.quadraticCurveTo(bx - R * .4, ys, bx, ys + dip); ctx.quadraticCurveTo(bx + R * .4, ys, bx + R, ys); ctx.stroke();
+    // ripples
+    for (const rp of S.ripples) { ctx.strokeStyle = `rgba(255,255,255,${.5 * (1 - rp.age / .6)})`; ctx.beginPath(); ctx.ellipse(bx, ys + dip * .6, 3 + rp.age * 40, 1 + rp.age * 4, 0, 0, Math.PI * 2); ctx.stroke(); }
+    // stir bar
+    const L = 30, c = Math.cos(S.stirPhase * 2.2), half = Math.max(4, Math.abs(c) * L / 2);
+    ctx.fillStyle = '#f2f4f8'; roundRect(ctx, bx - half, BASEY - 9, half * 2, 6, 3); ctx.fill();
+    ctx.restore();
+    // glass
+    const gg = ctx.createLinearGradient(bx - 65, 0, bx + 65, 0);
+    gg.addColorStop(0, 'rgba(255,255,255,.18)'); gg.addColorStop(.2, 'rgba(255,255,255,.04)'); gg.addColorStop(.8, 'rgba(255,255,255,.02)'); gg.addColorStop(1, 'rgba(255,255,255,.14)');
+    flaskOutline(ctx); ctx.fillStyle = gg; ctx.fill();
+    flaskOutline(ctx); ctx.strokeStyle = 'rgba(210,230,255,.6)'; ctx.lineWidth = 1.6; ctx.stroke();
+    // highlight streak
+    ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(bx - 30, SHOULDER + 22); ctx.lineTo(bx - 52, BASEY - 24); ctx.stroke();
+    // volume marks
+    ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.font = `${fz(7)}px JetBrains Mono, monospace`; ctx.textAlign = 'left';
+    for (const m of [25, 50, 75]) { const y = surfaceY(m); const rr = flaskR(y); ctx.fillRect(bx + rr - 16, y, 9, 1); ctx.fillText(m, bx + rr - 34, y + 3); }
+    return ys;
+  }
+
+  function drawStirrer(ctx) {
+    const x = bx - 95, y = 530, w = 190, h = 28;
+    const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, '#e6eaf2'); g.addColorStop(.12, '#c5ccd9'); g.addColorStop(1, '#8590a6');
+    ctx.fillStyle = g; roundRect(ctx, x, y, w, h, 5); ctx.fill();
+    ctx.fillStyle = '#2b3243'; roundRect(ctx, x + 10, y + 8, 64, 14, 3); ctx.fill();
+    ctx.fillStyle = S.stir ? '#a3e635' : '#3b4458'; ctx.beginPath(); ctx.arc(x + 20, y + 15, 3, 0, Math.PI * 2); ctx.fill();
+    if (S.stir) { ctx.shadowColor = '#a3e635'; ctx.shadowBlur = 8; ctx.fill(); ctx.shadowBlur = 0; }
+    ctx.fillStyle = '#93a1bd'; ctx.font = `600 ${fz(7)}px JetBrains Mono, monospace`; ctx.textAlign = 'left'; ctx.fillText('STIR', x + 28, y + 18);
+    // knob
+    ctx.fillStyle = '#39445a'; ctx.beginPath(); ctx.arc(x + w - 24, y + 14, 9, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#e6eaf2'; ctx.lineWidth = 2; const ka = S.stir ? .9 : -2.2; ctx.beginPath(); ctx.moveTo(x + w - 24, y + 14); ctx.lineTo(x + w - 24 + Math.cos(ka) * 7, y + 14 + Math.sin(ka) * 7); ctx.stroke();
+  }
+
+  function drawMeter(ctx) {
+    const x = 400, y = 452, w = 160, h = 104;
+    // holder rod + arm + probe
+    const rg = ctx.createLinearGradient(410, 0, 418, 0); rg.addColorStop(0, '#8a94a8'); rg.addColorStop(.5, '#d8deea'); rg.addColorStop(1, '#5b6578');
+    ctx.fillStyle = rg; ctx.fillRect(410, 256, 7, y - 256);
+    ctx.fillStyle = '#6b7488'; ctx.fillRect(bx + 14, 266, 410 - bx - 14, 6);
+    ctx.fillStyle = '#3a4357'; roundRect(ctx, 404, 260, 19, 18, 3); ctx.fill();
+    // probe
+    const px = bx + 9;
+    const pg = ctx.createLinearGradient(px - 3, 0, px + 4, 0); pg.addColorStop(0, '#1d2433'); pg.addColorStop(.5, '#3b475f'); pg.addColorStop(1, '#141a26');
+    ctx.fillStyle = pg; roundRect(ctx, px - 3.5, 250, 7, 130, 3); ctx.fill();
+    ctx.fillStyle = 'rgba(200,230,255,.35)'; roundRect(ctx, px - 3, 378, 6, 130, 3); ctx.fill();
+    ctx.fillStyle = 'rgba(220,240,255,.6)'; ctx.beginPath(); ctx.arc(px, 506, 3.4, 0, Math.PI * 2); ctx.fill();
+    // cable
+    ctx.strokeStyle = '#1c2230'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(px, 251); ctx.bezierCurveTo(px, 200, 470, 210, 470, y); ctx.stroke();
+    // box
+    const bg = ctx.createLinearGradient(0, y, 0, y + h); bg.addColorStop(0, '#2f3a52'); bg.addColorStop(1, '#1a2132');
+    ctx.fillStyle = bg; roundRect(ctx, x, y, w, h, 8); ctx.fill(); ctx.strokeStyle = '#46526d'; ctx.lineWidth = 1; ctx.stroke();
+    // LCD
+    ctx.fillStyle = '#0d1a10'; roundRect(ctx, x + 10, y + 10, w - 20, 50, 5); ctx.fill();
+    ctx.fillStyle = '#b8f070'; ctx.shadowColor = '#a3e635'; ctx.shadowBlur = 6;
+    ctx.font = `600 ${fz(24)}px JetBrains Mono, monospace`; ctx.textAlign = 'right';
+    ctx.fillText(meterText(), x + w - 18, y + 46); ctx.shadowBlur = 0;
+    ctx.font = `600 ${fz(9)}px JetBrains Mono, monospace`; ctx.textAlign = 'left'; ctx.fillStyle = '#84c046'; ctx.fillText('pH', x + 16, y + 26);
+    ctx.fillStyle = '#5f6d8a'; ctx.fillText('25.0 °C', x + 16, y + 54);
+    // buttons
+    for (let i = 0; i < 3; i++) { ctx.fillStyle = '#3b475f'; roundRect(ctx, x + 14 + i * 46, y + 72, 36, 16, 4); ctx.fill(); }
+    ctx.fillStyle = '#93a1bd'; ctx.font = `600 ${fz(7)}px JetBrains Mono, monospace`; ctx.textAlign = 'center';
+    ['CAL', 'READ', 'HOLD'].forEach((t, i) => ctx.fillText(t, x + 32 + i * 46, y + 83));
+  }
+  const meterText = () => (S.pHshow + noise()).toFixed(2);
+  let nz = 0; const noise = () => nz;
+
+  function drawMagnifier(ctx, yMen) {
+    const cx = 478, cy = 140, R = 80, M = 14; // magnification
+    // leader
+    ctx.strokeStyle = 'rgba(163,230,53,.35)'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(bx + 11, yMen); ctx.lineTo(cx - R * .97, cy + (yMen - cy) * .15); ctx.stroke(); ctx.setLineDash([]);
+    ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+    ctx.fillStyle = '#0a1222'; ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R);
+    // tube wall in magnified view: x range ±(9*M)
+    const tw = 70; // half width of tube shown
+    const yAt = mL => cy + (mL - S.bur) * PXML * M;
+    // liquid below meniscus
+    ctx.fillStyle = 'rgba(170,215,250,.22)'; ctx.fillRect(cx - tw, yAt(S.bur) - 6, 2 * tw, R * 2);
+    // meniscus curve
+    ctx.beginPath(); ctx.moveTo(cx - tw, yAt(S.bur) - 14); ctx.quadraticCurveTo(cx, yAt(S.bur) + 14, cx + tw, yAt(S.bur) - 14); ctx.lineTo(cx + tw, yAt(S.bur) + 4); ctx.lineTo(cx - tw, yAt(S.bur) + 4); ctx.closePath(); ctx.fillStyle = 'rgba(170,215,250,.22)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(220,240,255,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx - tw, yAt(S.bur) - 14); ctx.quadraticCurveTo(cx, yAt(S.bur) + 14, cx + tw, yAt(S.bur) - 14); ctx.stroke();
+    // walls
+    ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fillRect(cx - tw - 6, cy - R, 6, 2 * R); ctx.fillRect(cx + tw, cy - R, 6, 2 * R);
+    // scale
+    ctx.strokeStyle = '#f2f6ff'; ctx.fillStyle = '#f2f6ff'; ctx.textAlign = 'left'; ctx.font = `600 ${fz(12)}px JetBrains Mono, monospace`;
+    const lo = Math.floor((S.bur - 3) * 10), hi = Math.ceil((S.bur + 3) * 10);
+    for (let k = lo; k <= hi; k++) {
+      if (k < 0 || k > 500) continue;
+      const y = yAt(k / 10); const major = k % 10 === 0, mid = k % 5 === 0;
+      ctx.lineWidth = major ? 2 : 1.2; ctx.beginPath(); ctx.moveTo(cx - tw, y); ctx.lineTo(cx - tw + (major ? 46 : mid ? 30 : 18), y); ctx.stroke();
+      if (major) ctx.fillText(k / 10, cx - tw + 52, y + 5);
+    }
+    // eye-level line
+    ctx.strokeStyle = 'rgba(163,230,53,.8)'; ctx.setLineDash([3, 3]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cx - R, yAt(S.bur) + 0); ctx.lineTo(cx + R, yAt(S.bur)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.restore();
+    const ring = ctx.createLinearGradient(cx - R, cy - R, cx + R, cy + R); ring.addColorStop(0, '#d5dbe7'); ring.addColorStop(1, '#5b6578');
+    ctx.strokeStyle = ring; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#93a1bd'; ctx.font = `600 ${fz(9)}px JetBrains Mono, monospace`; ctx.textAlign = 'center';
+    ctx.fillText('READ AT EYE LEVEL', cx, cy + R + 16);
+    ctx.fillStyle = '#e6ecf7'; ctx.font = `600 ${fz(11)}px JetBrains Mono, monospace`; ctx.fillText(readBur().toFixed(2) + ' mL', cx, cy + R + 31);
+  }
+  const readBur = () => Math.round(S.bur * 20) / 20; // nearest 0.05 mL
+
+  function drawDrops(ctx, ys) {
+    ctx.fillStyle = 'rgba(200,230,255,.85)';
+    const flow = currentFlow();
+    if (flow > 0.35) {
+      ctx.strokeStyle = 'rgba(200,230,255,.6)'; ctx.lineWidth = Math.min(3.2, 1 + flow * 1.6);
+      ctx.beginPath(); ctx.moveTo(bx, TIP); ctx.lineTo(bx, ys); ctx.stroke();
+    } else {
+      for (const d of S.drops) { ctx.beginPath(); ctx.ellipse(bx, d.y, 2.6, 3.4, 0, 0, Math.PI * 2); ctx.fill(); }
+      // forming drop at tip
+      const f = S.pending / DROP; if (f > 0.05) { ctx.beginPath(); ctx.ellipse(bx, TIP + 1.5 * f, 2.2 * f + .6, 2.8 * f + .6, 0, 0, Math.PI * 2); ctx.fill(); }
+    }
+  }
+
+  function drawLabels(ctx) {
+    if (!S.labels) return;
+    const L = [['Burette', bx + 10, 60, 322, 40], ['Stopcock', bx + 22, SY, 300, SY + 18], ['pH electrode', bx + 13, 350, 300, 342], ['Magnetic stirrer', bx + 95, 545, bx + 120, 584], ['Retort stand', 84, 400, 112, 440]];
+    ctx.font = `600 ${fz(9.5)}px Inter, sans-serif`;
+    for (const [t, x1, y1, x2, y2] of L) {
+      ctx.strokeStyle = 'rgba(147,161,189,.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.fillStyle = 'rgba(147,161,189,.95)'; ctx.textAlign = 'left'; ctx.fillText(t, x2 + 4, y2 + 3);
+    }
+    ctx.fillText('pH meter', 486, 444);
+    ctx.fillText(`Flask: ${analyte().f}(aq) + indicator`, 40, 584);
+    ctx.fillStyle = 'rgba(163,230,53,.8)'; ctx.fillText(`${titrant().f}(aq) ${S.Ct.toFixed(3)} M`, 326, 56);
+  }
+
+  /* ================= Flow & simulation ================= */
+  function currentFlow() { // mL/s from tap or hold
+    let q = S.opening > 0 ? 0.02 + S.opening * S.opening * 1.6 : 0;
+    if (S.holding) q = Math.max(q, S.mode === 'fast' ? 0.9 : 0);
+    return q;
+  }
+  function dispense(mL) {
+    if (S.bur + mL > CAP) { mL = Math.max(0, CAP - S.bur); if (!S.emptyWarned) { SL.toast('The burette is empty. Refill it to continue.', 'warn'); S.emptyWarned = true; } S.opening = 0; $('#tap').value = 0; updTap(); }
+    S.bur += mL; S.runVol += mL; S.pending += mL;
+  }
+  function spawnDrops() {
+    while (S.pending >= DROP - 1e-9) { S.pending -= DROP; S.drops.push({ y: TIP + 2, v: 40 }); }
+  }
+  function land() {
+    S.Vadd += DROP;
+    S.pHtrue = flaskPH(S.Vadd);
+    S.pts.push([S.Vadd, S.pHtrue]);
+    S.ripples.push({ age: 0 });
+    if (S.plumes.length < 30) S.plumes.push({ x: bx + (Math.random() - .5) * 10, y: surfaceY(S.Va + S.Vadd) + 6, r: 6, a: 1, pH: titrantPH() });
+    chartDirty = true;
+  }
+  const titrantPH = () => solvePH([{ r: titrant(), C: S.Ct }]);
+  let chartDirty = true;
+
+  function step(dt) {
+    S.t += dt;
+    if (S.stir) S.stirPhase += dt * 9;
+    const q = currentFlow();
+    if (q > 0) dispense(q * dt);
+    if (S.holding && S.mode === 'drop') { S.holdAcc += dt; while (S.holdAcc > 0.3) { S.holdAcc -= 0.3; dispense(DROP - S.pending % DROP); } }
+    spawnDrops();
+    const ys = surfaceY(S.Va + S.Vadd);
+    for (const d of S.drops) { d.v += 1400 * dt; d.y += d.v * dt; }
+    let landed = 0;
+    S.drops = S.drops.filter(d => { if (d.y >= ys) { landed++; return false; } return true; });
+    if (q > 0.35) { // stream: drops land almost immediately
+      landed += S.drops.length; S.drops = [];
+    }
+    for (let i = 0; i < landed; i++) land();
+    S.ripples.forEach(r => r.age += dt); S.ripples = S.ripples.filter(r => r.age < .6);
+    const tau = S.stir ? 0.35 : 2.8;
+    S.plumes.forEach(p => { p.a *= Math.exp(-dt / (tau * .9)); p.r += dt * (S.stir ? 60 : 12); if (S.stir) { p.x += Math.sin(S.stirPhase + p.r) * dt * 30; p.y += dt * 20; } });
+    S.plumes = S.plumes.filter(p => p.a > .03);
+    // meter / bulk mixing lag (in [H+] space for realism near jumps)
+    S.pHshow += (S.pHtrue - S.pHshow) * (1 - Math.exp(-dt / tau));
+    nz = (Math.random() - .5) * 0.006;
+  }
+
+  function render() {
+    const { ctx, w, h } = st;
+    layout();
+    ctx.save();
+    drawBackground(ctx, w, h);
+    ctx.translate(ox, oy); ctx.scale(sc, sc);
+    drawStand(ctx);
+    drawStirrer(ctx);
+    const ys = drawFlask(ctx);
+    const yMen = drawBurette(ctx);
+    drawDrops(ctx, ys);
+    drawMeter(ctx);
+    drawMagnifier(ctx, yMen);
+    drawLabels(ctx);
+    ctx.restore();
+  }
+
+  /* ================= Readouts ================= */
+  function regionText() {
+    if (S.mystery) return '<b>Mystery sample.</b> The concentration in the flask is unknown. Titrate, record concordant titres and calculate it.';
+    const { eq } = eqInfo(); const f = S.Vadd / eq[0].V; const an = analyte(), ti = titrant();
+    const near = Math.abs(f - Math.round(f)) < 0.02;
+    if (S.Vadd < 0.01) return `<b>Start.</b> Only ${an.f} (${an.strong ? 'fully ionised' : 'partly ionised'}) in the flask.`;
+    if (P().poly) {
+      if (near && Math.round(f) >= 1 && Math.round(f) <= 2) return `<b>Equivalence point ${Math.round(f)}.</b> ${Math.round(f) === 1 ? (S.pair === 'ox' ? 'Mainly HC₂O₄⁻' : 'Mainly H₂PO₄⁻') : (S.pair === 'ox' ? 'Mainly C₂O₄²⁻' : 'Mainly HPO₄²⁻')} in solution.`;
+      if (f < 1) return `<b>First buffer region.</b> ${S.pair === 'ox' ? 'H₂C₂O₄ / HC₂O₄⁻' : 'H₃PO₄ / H₂PO₄⁻'}; fraction of first proton removed: ${(f * 100).toFixed(0)} %.`;
+      if (f < 2) return `<b>Second buffer region.</b> ${S.pair === 'ox' ? 'HC₂O₄⁻ / C₂O₄²⁻' : 'H₂PO₄⁻ / HPO₄²⁻'}.`;
+      return `<b>Past the second equivalence point.</b> Excess OH⁻ now controls the pH.`;
+    }
+    if (near && Math.round(f) === 1) return `<b>Equivalence point.</b> Solution of the salt only. ${an.strong && ti.strong ? 'Neither ion hydrolyses, so pH ≈ 7.' : (S.pair === 'wa-sb' && S.flask === 'acid') || (S.pair === 'sa-wb' && S.flask === 'base') ? (S.flask === 'acid' ? 'CH₃COO⁻ is a weak base, so pH > 7.' : 'NH₄⁺ is a weak acid, so pH < 7.') : 'Both ions hydrolyse; pH depends on Ka and Kb.'}`;
+    if (f < 1) return `<b>${an.strong ? 'Before equivalence.' : 'Buffer region.'}</b> ${an.strong ? `Excess ${an.type === 'acid' ? 'H₃O⁺' : 'OH⁻'} remaining: ${((1 - f) * 100).toFixed(0)} %.` : `${an.type === 'acid' ? 'HA and A⁻' : 'NH₃ and NH₄⁺'} both present (${(f * 100).toFixed(0)} % converted).`}`;
+    return `<b>Past equivalence.</b> Excess ${ti.f} in the flask (${((f - 1) * 100).toFixed(0)} % over).`;
+  }
+  let lastHud = 0;
+  function readouts() {
+    $('#hPH').textContent = S.pHshow.toFixed(2);
+    $('#hV').textContent = S.Vadd.toFixed(2);
+    $('#hInd').textContent = IND[S.ind].name;
+    $('#sPH').textContent = S.pHshow.toFixed(2);
+    $('#sBur').innerHTML = readBur().toFixed(2) + '<small>mL</small>';
+    $('#sV').innerHTML = S.Vadd.toFixed(2) + '<small>mL</small>';
+    $('#sH').innerHTML = Math.pow(10, -S.pHtrue).toExponential(2).replace('e-', '×10<sup>−') + '</sup><small>M</small>';
+    $('#region').innerHTML = regionText();
+  }
+
+  /* ================= Curve chart ================= */
+  const cc = $('#cc'), cst = SL.canvas(cc, () => chartDirty = true);
+  let CH = null;
+  function xMax() {
+    if (S.mystery) return Math.min(50, Math.max(30, Math.ceil((S.Vadd + 6) / 5) * 5));
+    const { eq } = eqInfo();
+    return Math.min(50, Math.max(10, Math.ceil(Math.max(eq[eq.length - 1].V * 1.5, S.Vadd + 3) / 5) * 5));
+  }
+  function drawChart() {
+    const { ctx, w, h } = cst; if (!w) return;
+    ctx.clearRect(0, 0, w, h);
+    const pl = 40, pr = $('#oDeriv').checked ? 46 : 14, pt = 16, pb = 34;
+    const xm = xMax();
+    const X = v => pl + v / xm * (w - pl - pr), Y = p => h - pb - p / 14 * (h - pt - pb);
+    CH = { X, Y, pl, pr, pt, pb, xm, w, h };
+    // grid
+    ctx.font = '11px JetBrains Mono, monospace'; ctx.lineWidth = 1;
+    for (let p = 0; p <= 14; p += 2) { ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); ctx.moveTo(pl, Y(p)); ctx.lineTo(w - pr, Y(p)); ctx.stroke(); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'right'; ctx.fillText(p, pl - 6, Y(p) + 4); }
+    const stepX = xm <= 20 ? 2 : 5;
+    for (let v = 0; v <= xm + 1e-9; v += stepX) { ctx.strokeStyle = 'rgba(255,255,255,.04)'; ctx.beginPath(); ctx.moveTo(X(v), pt); ctx.lineTo(X(v), h - pb); ctx.stroke(); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'center'; ctx.fillText(v, X(v), h - pb + 15); }
+    ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'right'; ctx.fillText('V(titrant) / mL', w - pr, h - 4);
+    ctx.save(); ctx.translate(12, pt + 4); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'right'; ctx.fillText('pH', 0, 0); ctx.restore();
+    // indicator band
+    const I = IND[S.ind];
+    if ($('#oBand').checked && I.lo != null && S.ind !== 'univ') {
+      const g = ctx.createLinearGradient(0, Y(I.lo), 0, Y(I.hi));
+      g.addColorStop(0, rgba(liquidRGBA(S.ind, I.lo - .3), .7)); g.addColorStop(1, rgba(liquidRGBA(S.ind, I.hi + .3), .7));
+      ctx.globalAlpha = .35; ctx.fillStyle = g; ctx.fillRect(pl, Y(I.hi), w - pl - pr, Y(I.lo) - Y(I.hi)); ctx.globalAlpha = 1;
+      ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'left'; ctx.fillText(`${I.name} ${I.lo}–${I.hi}`, pl + 6, Y(I.hi) - 4);
+    }
+    const showTheory = $('#oTheory').checked && !S.mystery;
+    if (showTheory) {
+      ctx.strokeStyle = 'rgba(147,161,189,.55)'; ctx.setLineDash([5, 5]); ctx.lineWidth = 1.5; ctx.beginPath();
+      for (let i = 0; i <= 400; i++) { const v = xm * i / 400, p = flaskPH(v); i ? ctx.lineTo(X(v), Y(p)) : ctx.moveTo(X(v), Y(p)); }
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+    // markers
+    if ($('#oMarks').checked && (!S.mystery || S.revealed)) {
+      const { eq, half } = eqInfo();
+      const mk = (V, p, col, lab, up) => {
+        if (V > xm) return;
+        ctx.strokeStyle = col; ctx.setLineDash([3, 4]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(X(V), h - pb); ctx.lineTo(X(V), Y(p)); ctx.lineTo(pl, Y(p)); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = col; ctx.beginPath(); ctx.arc(X(V), Y(p), 4.5, 0, Math.PI * 2); ctx.fill();
+        ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = X(V) > w - 150 ? 'right' : 'left';
+        ctx.fillText(lab, X(V) + (ctx.textAlign === 'left' ? 8 : -8), Y(p) + (up ? -8 : 14));
+      };
+      half.forEach(hf => mk(hf.V, hf.pH, '#60a5fa', `½-eq ${hf.V.toFixed(2)} mL, pH ${hf.pH.toFixed(2)}${Math.abs(hf.pH - hf.pKa) > 0.05 ? ` (pKa ${hf.pKa.toFixed(2)})` : ''}`, true));
+      eq.forEach(e => mk(e.V, e.pH, '#f472b6', `eq ${e.V.toFixed(2)} mL, pH ${e.pH.toFixed(2)}`, false));
+    }
+    // derivative
+    if ($('#oDeriv').checked && S.Vadd > 0.1) {
+      const N = 500, dv = Math.min(S.Vadd, xm) / N; const d = []; let mx = 0;
+      for (let i = 0; i < N; i++) { const v = (i + .5) * dv; const g = (flaskPH(v + dv / 2) - flaskPH(Math.max(0, v - dv / 2))) / dv; d.push([v, Math.abs(g)]); mx = Math.max(mx, Math.abs(g)); }
+      const top = Math.max(1, Math.ceil(mx / 5) * 5);
+      const Yd = g => h - pb - g / top * (h - pt - pb);
+      ctx.strokeStyle = '#facc15'; ctx.lineWidth = 1.6; ctx.beginPath(); d.forEach(([v, g], i) => i ? ctx.lineTo(X(v), Yd(g)) : ctx.moveTo(X(v), Yd(g))); ctx.stroke();
+      ctx.fillStyle = '#facc15'; ctx.textAlign = 'left'; ctx.font = '11px JetBrains Mono, monospace';
+      for (let k = 0; k <= 4; k++) ctx.fillText(SL.fmt(top * k / 4, 1), w - pr + 6, Yd(top * k / 4) + 4);
+      ctx.save(); ctx.translate(w - 6, pt + 4); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'right'; ctx.fillText('|dpH/dV| / mL⁻¹', 0, 0); ctx.restore();
+    }
+    // measured points
+    ctx.strokeStyle = '#a3e635'; ctx.lineWidth = 2.2; ctx.shadowColor = 'rgba(163,230,53,.6)'; ctx.shadowBlur = 6;
+    ctx.beginPath(); ctx.moveTo(X(0), Y(flaskPH(0)));
+    S.pts.forEach(([v, p]) => { if (v <= xm) ctx.lineTo(X(v), Y(p)); });
+    ctx.stroke(); ctx.shadowBlur = 0;
+    const lv = S.pts.length ? S.pts[S.pts.length - 1] : [0, flaskPH(0)];
+    ctx.fillStyle = '#a3e635'; ctx.beginPath(); ctx.arc(X(Math.min(lv[0], xm)), Y(lv[1]), 4, 0, Math.PI * 2); ctx.fill();
+    // legend
+    $('#legend').innerHTML = `<span><i style="background:#a3e635"></i>Measured</span>${showTheory ? '<span><i style="background:#93a1bd"></i>Predicted</span>' : ''}${$('#oMarks').checked && (!S.mystery || S.revealed) ? '<span><i style="background:#f472b6"></i>Equivalence</span>' + (analyte().strong ? '' : '<span><i style="background:#60a5fa"></i>Half-equivalence (pH = pKa)</span>') : ''}${$('#oDeriv').checked ? '<span><i style="background:#facc15"></i>First derivative</span>' : ''}`;
+  }
+  cc.addEventListener('pointermove', e => {
+    if (!CH) return; const p = SL.ptr(e, cc); const tip = $('#ctip');
+    const v = (p.x - CH.pl) / (CH.w - CH.pl - CH.pr) * CH.xm;
+    if (v < 0 || v > CH.xm) { tip.style.display = 'none'; return; }
+    let best = null; if (S.pts.length) { best = S.pts.reduce((a, b) => Math.abs(b[0] - v) < Math.abs(a[0] - v) ? b : a); }
+    const txt = best && Math.abs(best[0] - v) < CH.xm / 40 ? `measured: ${best[0].toFixed(2)} mL, pH ${best[1].toFixed(2)}` : (!S.mystery ? `predicted: ${v.toFixed(2)} mL, pH ${flaskPH(v).toFixed(2)}` : `${v.toFixed(2)} mL`);
+    tip.textContent = txt; tip.style.display = 'block';
+    tip.style.left = Math.min(p.x + 12, CH.w - tip.offsetWidth - 4) + 'px'; tip.style.top = Math.max(4, p.y - 30) + 'px';
+  });
+  cc.addEventListener('pointerleave', () => $('#ctip').style.display = 'none');
+
+  /* ================= Notebook ================= */
+  function renderNb() {
+    const tb = $('#nbBody');
+    if (!S.runs.length) { tb.innerHTML = '<tr><td colspan="4" class="muted small empty">No runs yet. Titrate to the colour change, then record the end point.</td></tr>'; $('#nbMean').textContent = ''; return; }
+    const acc = S.runs.filter(r => !r.rough);
+    const conc = new Set();
+    acc.forEach((a, i) => acc.forEach((b, j) => { if (i !== j && Math.abs(a.titre - b.titre) <= 0.1001) { conc.add(a); conc.add(b); } }));
+    tb.innerHTML = S.runs.map(r => `<tr class="${r.rough ? 'rough' : conc.has(r) ? 'conc' : ''}"><td>${r.label}</td><td class="num">${r.init}</td><td class="num">${r.fin.toFixed(2)}</td><td class="num">${r.titre.toFixed(2)}${conc.has(r) ? ' ✓' : ''}</td></tr>`).join('');
+    if (conc.size >= 2) {
+      const m = [...conc].reduce((s, r) => s + r.titre, 0) / conc.size;
+      S.meanTitre = m;
+      $('#nbMean').innerHTML = `Mean of concordant titres (${conc.size}): <b class="mono">${m.toFixed(3)} mL</b>`;
+      if (!S.chk.conc) complete('conc');
+    } else { S.meanTitre = null; $('#nbMean').innerHTML = '<span class="muted">Need two accurate titres within 0.10 mL for a concordant mean.</span>'; }
+  }
+  function record() {
+    if (S.runVol < 0.05) { SL.toast('Add titrant first, then record when the indicator changes colour.', 'warn'); return; }
+    const fin = readBur(), init = S.refilledMidRun ? '—' : (Math.round(S.runStart * 20) / 20).toFixed(2);
+    const titre = S.refilledMidRun ? Math.round(S.runVol * 20) / 20 : fin - Math.round(S.runStart * 20) / 20;
+    const rough = !S.roughDone; S.roughDone = true;
+    const n = S.runs.filter(r => !r.rough).length + 1;
+    S.runs.push({ label: rough ? 'Rough' : String(n), init, fin, titre, rough, V: S.Vadd });
+    renderNb();
+    // challenge: end point precision
+    const { eq } = eqInfo();
+    if (S.pair === 'sa-sb' && S.ind === 'phph' && !S.mystery && Math.abs(S.Vadd - eq[0].V) <= 0.1) complete('sasb');
+    SL.toast(`Recorded titre ${titre.toFixed(2)} mL. Take a new flask for the next run.`, 'ok');
+  }
+  function check() {
+    const v = parseFloat($('#ans').value);
+    if (!isFinite(v) || v <= 0) { SL.toast('Enter your calculated concentration in mol/L.', 'warn'); return; }
+    const truth = CaEff(), err = Math.abs(v - truth) / truth;
+    if (err <= 0.015) {
+      SL.toast(`Correct: the flask contained ${truth.toFixed(4)} M ${analyte().f} (your answer is within ${(err * 100).toFixed(1)} %).`, 'ok', 5500);
+      if (S.mystery) { S.revealed = true; complete('mystery'); chartDirty = true; $('#caOut').textContent = truth.toFixed(4) + ' M'; }
+    } else {
+      const hint = P().poly ? ' For a polyprotic acid, check which equivalence point your indicator detects (mole ratio 1:1 or 1:2).' : ' Check the mole ratio and convert mL to L.';
+      SL.toast(`Not quite: your value is ${(err * 100).toFixed(1)} % from the true concentration.${hint}`, 'bad', 6000);
+    }
+  }
+
+  /* ================= Challenges ================= */
+  const CHALL = [
+    { id: 'sasb', t: 'Hit the end point', d: 'HCl / NaOH with phenolphthalein: record an end point within ±0.10 mL (two drops) of the equivalence volume.' },
+    { id: 'conc', t: 'Concordant titres', d: 'Record a rough titre and then at least two accurate titres within 0.10 mL of each other.' },
+    { id: 'indwa', t: 'Choose the indicator', d: 'Weak acid – strong base: which indicator gives a sharp end point?', quiz: { opts: ['Methyl orange', 'Methyl red', 'Phenolphthalein', 'Universal indicator'], ans: 2, why: 'The vertical section runs from about pH 7 to 11, which contains phenolphthalein’s 8.2–10 range.' } },
+    { id: 'pka', t: 'Measure pKa', d: 'Titrate CH₃COOH with NaOH, read the pH at half-equivalence and enter the pKa (±0.05).', input: true },
+    { id: 'indwb', t: 'Strong acid – weak base', d: 'NH₃ titrated with HCl has pH 5.28 at equivalence. Which indicator should you use?', quiz: { opts: ['Phenolphthalein', 'Methyl red', 'Bromothymol blue', 'None of them'], ans: 1, why: 'Methyl red (4.4–6.2) sits in the vertical section, which runs from about pH 7 down to 3.' } },
+    { id: 'mystery', t: 'Solve the mystery sample', d: 'Turn on Mystery sample, find concordant titres and calculate the unknown concentration to within 1.5 %.' },
+  ];
+  function renderChall() {
+    $('#chkList').innerHTML = CHALL.map(c => `<li data-id="${c.id}"><span class="led ${S.chk[c.id] ? 'on' : ''}"></span><div style="flex:1"><b>${c.t}</b><span class="small muted">${c.d}</span>${c.quiz ? `<div class="btn-row" style="margin-top:8px">${c.quiz.opts.map((o, i) => `<button class="btn sm" data-q="${c.id}" data-i="${i}">${o}</button>`).join('')}</div>` : ''}${c.input ? `<div class="field" style="max-width:300px"><input type="number" step="0.01" id="pkaIn" placeholder="pKa"><button class="btn sm" id="pkaBtn">Check</button></div>` : ''}</div></li>`).join('');
+  }
+  function complete(id) {
+    if (S.chk[id]) return; S.chk[id] = true;
+    const c = CHALL.find(x => x.id === id);
+    SL.toast(`Challenge complete: <b>${c.t}</b>`, 'ok');
+    const li = document.querySelector(`#chkList li[data-id="${id}"] .led`); if (li) li.classList.add('on');
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-q]');
+    if (b) {
+      const c = CHALL.find(x => x.id === b.dataset.q), i = +b.dataset.i;
+      if (i === c.quiz.ans) { b.classList.add('on'); complete(c.id); SL.toast(c.quiz.why, 'ok', 5000); } else SL.toast('Not that one. Look at where the vertical section of that curve lies.', 'bad');
+    }
+    if (e.target.closest('#pkaBtn')) {
+      const v = parseFloat($('#pkaIn').value);
+      if (Math.abs(v - 4.745) <= 0.06) complete('pka'); else SL.toast('Not quite. Find V(eq), halve it, and read the pH there.', 'bad');
+    }
+  });
+
+  /* ================= Controls ================= */
+  function newFlask(silent) {
+    S.Vadd = 0; S.pts = []; S.drops = []; S.plumes = []; S.pending = 0; S.runVol = 0; S.runStart = S.bur; S.refilledMidRun = false;
+    S.pHtrue = flaskPH(0); S.pHshow = S.pHtrue; chartDirty = true;
+    if (!silent) SL.toast(`Fresh ${S.Va.toFixed(2)} mL aliquot pipetted into a clean flask. Initial burette reading: ${readBur().toFixed(2)} mL.`);
+  }
+  function refill() {
+    const r = Math.round((0.1 + Math.random() * 1.4) * 20) / 20;
+    if (S.runVol > 0) S.refilledMidRun = true;
+    S.bur = r; S.emptyWarned = false; if (!S.refilledMidRun) S.runStart = S.bur;
+    SL.toast(`Burette refilled. New reading ${r.toFixed(2)} mL.`);
+  }
+  function resetAll(msg) {
+    S.runs = []; S.roughDone = false; S.revealed = false; renderNb();
+    S.bur = Math.round((0.1 + Math.random() * 0.9) * 20) / 20; S.emptyWarned = false;
+    newFlask(true);
+    const { eq } = eqInfo();
+    if (!S.mystery && eq[eq.length - 1].V > CAP) SL.toast(`Heads up: the equivalence volume (${eq[eq.length - 1].V.toFixed(1)} mL) is larger than the burette. Refill when it runs out, or change the concentrations.`, 'warn', 6000);
+    if (msg) SL.toast(msg);
+  }
+  function setPair(v) {
+    S.pair = v; S.flask = PAIRS[v].flask;
+    document.querySelectorAll('#flaskSeg button').forEach(b => b.classList.toggle('on', b.dataset.v === S.flask));
+    document.querySelectorAll('#flaskSeg button')[1].disabled = !!PAIRS[v].poly;
+    $('#flaskSeg').style.opacity = PAIRS[v].poly ? .5 : 1;
+    labelsUpd(); resetAll();
+  }
+  function labelsUpd() {
+    $('#caLbl').textContent = `Flask: ${analyte().f}`;
+    $('#ctLbl').textContent = `Burette: ${titrant().f}`;
+  }
+  $('#pair').addEventListener('change', e => setPair(e.target.value));
+  $('#flaskSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || P().poly) return; S.flask = b.dataset.v; document.querySelectorAll('#flaskSeg button').forEach(x => x.classList.toggle('on', x === b)); labelsUpd(); resetAll(); });
+  SL.bind('#ca', v => { S.Ca = v; if (!S.mystery) { resetAll(); } }, v => S.mystery ? '?' : v.toFixed(3) + ' M');
+  SL.bind('#ct', v => { S.Ct = v; resetAll(); }, v => v.toFixed(3) + ' M');
+  $('#va').addEventListener('change', e => { S.Va = +e.target.value; resetAll(); });
+  $('#ind').addEventListener('change', e => { S.ind = e.target.value; chartDirty = true; });
+  $('#mystery').addEventListener('change', e => {
+    S.mystery = e.target.checked;
+    if (S.mystery) { S.trueCa = Math.round((0.06 + Math.random() * 0.09) * 10000) / 10000; $('#caOut').textContent = '?'; $('#ca').disabled = true; $('#oTheory').disabled = true; }
+    else { $('#caOut').textContent = S.Ca.toFixed(3) + ' M'; $('#ca').disabled = false; $('#oTheory').disabled = false; }
+    resetAll(S.mystery ? 'Mystery sample loaded. Its concentration is hidden: do a rough titration, then accurate ones.' : 'Back to a known sample.');
+  });
+  $('#modeSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.mode = b.dataset.v; document.querySelectorAll('#modeSeg button').forEach(x => x.classList.toggle('on', x === b)); });
+  const hb = $('#holdBtn');
+  const holdOn = e => { e.preventDefault(); S.holding = true; S.holdAcc = 0.3; hb.classList.add('active'); };
+  const holdOff = () => { S.holding = false; hb.classList.remove('active'); };
+  hb.addEventListener('pointerdown', holdOn); ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => hb.addEventListener(t, holdOff));
+  hb.addEventListener('contextmenu', e => e.preventDefault());
+  $('#oneDrop').onclick = () => dispense(DROP - (S.pending % DROP || 0));
+  $('#add1').onclick = () => { S.opening = 0; dispense(1.0); };
+  function updTap() { const v = +$('#tap').value; S.opening = v / 100; $('#tapOut').textContent = v === 0 ? 'closed' : `${(currentFlowFromOpen(S.opening)).toFixed(2)} mL/s`; $('#tap').style.setProperty('--p', v + '%'); }
+  const currentFlowFromOpen = o => o > 0 ? 0.02 + o * o * 1.6 : 0;
+  $('#tap').addEventListener('input', updTap);
+  $('#closeTap').onclick = () => { $('#tap').value = 0; updTap(); };
+  $('#newFlask').onclick = () => newFlask();
+  $('#refill').onclick = refill;
+  $('#record').onclick = record;
+  $('#clearNb').onclick = () => { S.runs = []; S.roughDone = false; renderNb(); };
+  $('#check').onclick = check;
+  ['#oTheory', '#oMarks', '#oDeriv', '#oBand'].forEach(s => $(s).addEventListener('change', () => chartDirty = true));
+  $('#tLabels').onclick = e => { S.labels = !S.labels; e.currentTarget.setAttribute('aria-pressed', S.labels); };
+  $('#tStir').onclick = e => { S.stir = !S.stir; e.currentTarget.setAttribute('aria-pressed', S.stir); };
+  if (window.innerWidth < 600) { S.labels = false; $('#tLabels').setAttribute('aria-pressed', 'false'); }
+
+  // press-and-hold on the stopcock in the picture
+  const toBase = e => { const p = SL.ptr(e, cv); return { x: (p.x - ox) / sc, y: (p.y - oy) / sc }; };
+  cv.addEventListener('pointerdown', e => { const p = toBase(e); if (Math.hypot(p.x - bx, p.y - SY) < 32) { cv.setPointerCapture(e.pointerId); holdOn(e); } });
+  cv.addEventListener('pointerup', holdOff); cv.addEventListener('pointercancel', holdOff);
+  cv.addEventListener('pointermove', e => { const p = toBase(e); cv.style.cursor = Math.hypot(p.x - bx, p.y - SY) < 32 ? 'pointer' : 'default'; });
+  // keyboard: space = hold
+  document.addEventListener('keydown', e => { if (e.code === 'Space' && !['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(e.target.tagName)) { e.preventDefault(); if (!S.holding) holdOn(e); } });
+  document.addEventListener('keyup', e => { if (e.code === 'Space') holdOff(); });
+
+  /* ================= Indicator cards (theory) ================= */
+  $('#indCards').innerHTML = ['phph', 'mo', 'mr', 'btb', 'univ'].map(k => {
+    const I = IND[k]; const stops = []; for (let p = 0; p <= 14; p += .5) stops.push(`${rgba(liquidRGBA(k, p))} ${(p / 14 * 100).toFixed(1)}%`);
+    return `<div class="ind-card"><div style="min-width:150px"><b>${I.name}</b><div class="mini">${k === 'univ' ? 'continuous, pH 1–13' : `pH ${I.lo}–${I.hi}: ${I.acidC} → ${I.baseC}`}</div></div><div class="ind-bar" style="background:linear-gradient(90deg,${stops.join(',')})"></div></div>`;
+  }).join('') + '<p class="mini" style="margin:0">Each bar spans pH 0 (left) to 14 (right), drawn with the same colour model the flask uses.</p>';
+
+  /* ================= Quiz ================= */
+  // shuffle answer positions so the correct option is not always in the same place
+  const shuffleQ = qs => qs.map(q => { const idx = q.options.map((_, i) => i); for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; } return Object.assign({}, q, { options: idx.map(i => q.options[i]), answer: idx.indexOf(q.answer) }); });
+  SL.quiz('#quiz', shuffleQ([
+    { q: '25.00 mL of 0.100 M CH₃COOH is titrated with 0.100 M NaOH. What is the pH at the equivalence point?', options: ['7.00', '4.74', '8.72', '11.96'], answer: 2, why: 'At equivalence the flask holds 0.0500 M CH₃COO⁻, a weak base with Kb = 5.6×10⁻¹⁰. [OH⁻] = √(Kb c) = 5.3×10⁻⁶ M, so pH = 8.72.' },
+    { q: 'At the half-equivalence point of a weak acid titration…', options: ['pH = 7', 'pH = pKa', 'pH = pKb', '[H₃O⁺] = [OH⁻]'], answer: 1, why: 'Half the acid has been converted to its conjugate base, so [A⁻] = [HA] and the log term in Henderson–Hasselbalch is zero.' },
+    { q: 'What is the difference between the equivalence point and the end point?', options: ['They are always identical', 'Equivalence is the stoichiometric point; the end point is where the indicator changes', 'The end point is always at pH 7', 'Equivalence only exists for strong acids'], answer: 1, why: 'Equivalence is set by the mole ratio; the end point is an observation. A well-chosen indicator makes them agree within one drop.' },
+    { q: 'Why is methyl orange unsuitable for titrating ethanoic acid with sodium hydroxide?', options: ['It is too expensive', 'It changes colour at pH 3.1–4.4, in the buffer region, well before equivalence', 'It does not change colour at all', 'It reacts with NaOH'], answer: 1, why: 'The vertical section is around pH 7–11. Methyl orange would change gradually, many millilitres too early.' },
+    { q: 'Which titration has no sharp vertical section and is best followed with a pH meter?', options: ['HCl / NaOH', 'CH₃COOH / NaOH', 'HCl / NH₃', 'CH₃COOH / NH₃'], answer: 3, why: 'Both reactants are weak, so the pH changes gradually around equivalence and no indicator gives a sharp end point.' },
+    { q: 'Titres of 24.30, 24.65, 24.35 and 24.40 mL are obtained (after a rough run). Which mean should be used?', options: ['24.43 mL (all four)', '24.35 mL (24.30, 24.35, 24.40)', '24.65 mL', '24.33 mL (24.30 and 24.35 only)'], answer: 1, why: '24.30, 24.35 and 24.40 all lie within 0.10 mL of one another; 24.65 is an outlier.' },
+    { q: 'NH₃ has Kb = 1.8×10⁻⁵. What is the pKa of NH₄⁺?', options: ['4.74', '9.26', '5.28', '14.00'], answer: 1, why: 'Ka = Kw/Kb = 5.6×10⁻¹⁰, so pKa = 14.00 − 4.74 = 9.26.' },
+    { q: 'For H₃PO₄ titrated with NaOH, the second equivalence volume is…', options: ['equal to the first', 'twice the first', 'three times the first', 'half the first'], answer: 1, why: 'Each equivalence point corresponds to one more proton removed per H₃PO₄, so V₂ = 2V₁.' },
+    { q: 'Doubling the concentration of a strong acid in the flask (same base) will…', options: ['raise the starting pH by 0.30 and halve V(eq)', 'lower the starting pH by 0.30 and double V(eq)', 'not change the curve', 'double the pH at equivalence'], answer: 1, why: 'pH = −log c falls by log 2 = 0.30, and twice as many moles of acid need twice the volume of base.' },
+  ]));
+
+  /* ================= Boot ================= */
+  renderChall();
+  labelsUpd();
+  resetAll();
+  let acc = 0;
+  const L = SL.loop((dt) => {
+    step(dt); render();
+    acc += dt; if (acc > 0.1) { acc = 0; readouts(); if (chartDirty) { drawChart(); chartDirty = false; } }
+  }).start();
+  document.addEventListener('visibilitychange', () => document.hidden ? L.stop() : L.start());
+})();
+</script>
+</body>
+</html>
