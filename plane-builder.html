@@ -1,0 +1,1204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Build & Fly a Plane · Pentarch SimLab</title>
+<meta name="description" content="Design an aircraft in a virtual hangar (wings, airfoil, engine, mass, tail and centre of gravity), then take off, fly and land it in a physics-based flight simulator over the Nairobi savannah.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .stage.pb{height:560px;touch-action:none;outline:none}
+  @media (max-width:640px){.stage.pb{height:420px;min-height:0}}
+  .modebar{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+  .modebar .seg button{padding:9px 18px;font-size:.92rem;display:inline-flex;align-items:center;gap:7px}
+  .modebar .seg button svg{width:16px;height:16px}
+  .modebar .hint{color:var(--muted);font-size:.85rem}
+  .hidden{display:none!important}
+  @media (max-width:980px){.labcol{display:contents}.labcol .modebar{order:0}.labcol .stage{order:1}.labcol .flybar{order:2}.lab>aside{order:3}.labcol .chartbox{order:4;margin-top:0}}
+  .seg.full{display:flex}.seg.full button{flex:1;text-align:center}
+  .chartbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 10px 4px;margin-top:14px}
+  .chartbox h4{font:600 .72rem var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:0 0 4px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  .chartbox h4 span{color:var(--muted);letter-spacing:0;text-transform:none;font-weight:500}
+  .chartbox canvas{display:block;width:100%;height:220px}
+  .legend-row{display:flex;flex-wrap:wrap;gap:12px;font:500 .72rem var(--mono);color:var(--muted);margin:4px 0 6px}
+  .legend-row i{display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:5px;vertical-align:3px}
+  .presets{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .presets .btn{padding:7px 4px;font-size:.76rem;line-height:1.2}
+  select.inp{margin:4px 0 6px}
+  .afinfo{font:500 .72rem var(--mono);color:var(--muted);margin:-2px 0 6px}
+  .checks{display:grid;gap:6px;margin-top:10px}
+  .checks div{display:flex;gap:9px;align-items:center;font-size:.84rem;color:var(--muted)}
+  .checks .led{flex:none}
+  .stats .stat .v{font-size:1.02rem}
+  .flybar{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px;margin-top:10px}
+  @media (max-width:640px){.flybar{grid-template-columns:repeat(4,minmax(0,1fr))}}
+  .flybar .btn{padding:10px 4px;font-size:.76rem;flex-direction:column;gap:3px;touch-action:none}
+  .flybar .btn svg{width:18px;height:18px}
+  .mission{display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border:1px solid var(--line2);border-radius:10px;cursor:pointer;background:var(--bg2);margin-bottom:6px;transition:.15s}
+  .mission:hover{border-color:var(--accent)}
+  .mission.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--bg2))}
+  .mission .led{margin-top:6px;flex:none}
+  .mission b{display:block;font-size:.88rem}
+  .mission span{display:block;font-size:.78rem;color:var(--muted);line-height:1.35}
+  .keys{font-size:.8rem;color:var(--muted);line-height:1.9}
+  .banner{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(5,9,19,.9);border:1px solid var(--line2);border-radius:14px;padding:18px 22px;text-align:center;max-width:min(440px,90%);display:none;z-index:4}
+  .banner h3{margin:0 0 6px}
+  .banner p{margin:0 0 12px;color:var(--muted);font-size:.9rem}
+  .banner .btn-row{justify-content:center}
+  .chal{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
+  .chal .led{margin-top:7px;flex:none}
+  .chal b{display:block}
+  .chal p{margin:2px 0 0;color:var(--muted);font-size:.9rem}
+  .warnbox{font-size:.82rem;margin-top:10px;padding:9px 11px;border-radius:9px;border:1px solid}
+  .warnbox.ok{border-color:rgba(34,197,94,.4);background:rgba(34,197,94,.08);color:#bbf7d0}
+  .warnbox.warn{border-color:rgba(245,158,11,.45);background:rgba(245,158,11,.08);color:#fde68a}
+  .warnbox.bad{border-color:rgba(239,68,68,.5);background:rgba(239,68,68,.1);color:#fecaca}
+  svg.diag text{font-family:var(--mono);font-size:12px;fill:var(--muted)}
+  svg.diag{width:100%;height:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+</style>
+</head>
+<body data-page="plane-builder">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab wide-controls">
+    <div class="labcol">
+      <div class="modebar">
+        <div class="seg" id="modeSeg"><button data-m="build" class="on"><i data-lucide="wrench"></i> Build</button><button data-m="fly"><i data-lucide="plane-takeoff"></i> Fly</button></div>
+        <span class="hint" id="modeHint">Design your aircraft in the hangar, then switch to Fly. Your design drives the flight physics.</span>
+      </div>
+      <div class="stage pb" id="stage" tabindex="0">
+        <canvas id="cv" aria-label="Aircraft designer and flight simulator"></canvas>
+        <div class="hud hidden" id="hudFly">
+          <span class="readout">IAS <b id="hIas">0</b> kt</span>
+          <span class="readout">ALT <b id="hAlt">0</b> m</span>
+          <span class="readout">V/S <b id="hVs">0</b> m/s</span>
+          <span class="readout">α <b id="hAoa">0</b>°</span>
+          <span class="readout">θ <b id="hPitch">0</b>°</span>
+          <span class="readout">THR <b id="hThr">0</b>%</span>
+          <span class="readout" id="hCfg">FLAP 0 · GEAR DN</span>
+        </div>
+        <div class="hud hud-b hidden" id="hudR"><span class="readout" id="hMsg">Ready</span></div>
+        <div class="banner" id="banner"><h3 id="bTitle"></h3><p id="bText"></p><div class="btn-row"><button class="btn primary" id="bRetry"><i data-lucide="rotate-ccw"></i> Fly again</button><button class="btn" id="bBuild"><i data-lucide="wrench"></i> Back to hangar</button></div></div>
+      </div>
+      <div class="flybar hidden" id="flybar">
+        <button class="btn" data-hold="up"><i data-lucide="arrow-up"></i>Nose up</button>
+        <button class="btn" data-hold="down"><i data-lucide="arrow-down"></i>Nose down</button>
+        <button class="btn" data-hold="thrUp"><i data-lucide="chevrons-up"></i>Throttle +</button>
+        <button class="btn" data-hold="thrDn"><i data-lucide="chevrons-down"></i>Throttle −</button>
+        <button class="btn" data-tap="flaps"><i data-lucide="fold-vertical"></i>Flaps</button>
+        <button class="btn" data-tap="gear"><i data-lucide="circle-dot"></i>Gear</button>
+        <button class="btn" data-hold="brake"><i data-lucide="octagon"></i>Brakes</button>
+        <button class="btn" data-tap="pause"><i data-lucide="pause"></i>Pause</button>
+      </div>
+      <div class="chartbox" id="perfBox">
+        <h4>Power required vs power available <span id="perfNote">at take-off mass, field elevation</span></h4>
+        <div class="legend-row"><span><i style="background:#f87171"></i>P<sub>req</sub> = DV</span><span><i style="background:#34d399"></i>P<sub>avail</sub> = TV</span><span><i style="background:#93a1bd"></i>induced part</span><span><i style="background:#a78bfa"></i>parasite part</span></div>
+        <canvas id="chPerf"></canvas>
+      </div>
+      <div class="chartbox hidden" id="fdrBox">
+        <h4>Flight data recorder <span>last 2 minutes</span></h4>
+        <div class="legend-row"><span><i style="background:#22d3ee"></i>altitude (m)</span><span><i style="background:#facc15"></i>airspeed ×5 (m/s)</span><span><i style="background:#f472b6"></i>angle of attack ×20 (°)</span></div>
+        <canvas id="chFdr"></canvas>
+      </div>
+    </div>
+
+    <aside>
+      <!-- BUILD controls -->
+      <div id="buildPanels">
+        <div class="panel">
+          <h3><i data-lucide="warehouse"></i> Hangar presets</h3>
+          <div class="presets" id="presets"></div>
+        </div>
+        <div class="panel">
+          <h3><i data-lucide="plane"></i> Wing</h3>
+          <div class="ctl"><label for="span">Wing span b</label><output></output><input type="range" id="span" min="4" max="40" step="0.1" value="11"></div>
+          <div class="ctl"><label for="chord">Chord c</label><output></output><input type="range" id="chord" min="0.5" max="5" step="0.05" value="1.5"></div>
+          <label class="small muted" for="af">Airfoil section</label>
+          <select id="af" class="inp"></select>
+          <div class="afinfo" id="afInfo"></div>
+          <div class="ctl"><label for="wingX">Wing position (leading edge)</label><output></output><input type="range" id="wingX" min="15" max="60" step="0.5" value="30"></div>
+        </div>
+        <div class="panel">
+          <h3><i data-lucide="fan"></i> Engine</h3>
+          <div class="seg full" id="engSeg" style="margin-bottom:6px"><button data-e="prop" class="on">Propeller</button><button data-e="jet">Jet</button></div>
+          <div class="ctl" id="powCtl"><label for="power">Shaft power</label><output></output><input type="range" id="power" min="0" max="100" step="0.5" value="50"></div>
+          <div class="ctl hidden" id="thrCtl"><label for="thrust">Static thrust</label><output></output><input type="range" id="thrust" min="0" max="100" step="0.5" value="50"></div>
+        </div>
+        <div class="panel">
+          <h3><i data-lucide="weight"></i> Mass & balance</h3>
+          <div class="ctl"><label for="airframe">Airframe (empty, no engine)</label><output></output><input type="range" id="airframe" min="0" max="100" step="0.5" value="50"></div>
+          <div class="ctl"><label for="fuel">Fuel</label><output></output><input type="range" id="fuel" min="0" max="100" step="0.5" value="50"></div>
+          <div class="ctl"><label for="payload">Payload</label><output></output><input type="range" id="payload" min="0" max="100" step="0.5" value="50"></div>
+          <div class="ctl"><label for="payX">Payload position (cabin)</label><output></output><input type="range" id="payX" min="10" max="80" step="0.5" value="38"></div>
+        </div>
+        <div class="panel">
+          <h3><i data-lucide="ruler"></i> Fuselage & tail</h3>
+          <div class="ctl"><label for="fusL">Fuselage length</label><output></output><input type="range" id="fusL" min="4" max="40" step="0.1" value="8.3"></div>
+          <div class="ctl"><label for="tail">Tailplane area S<sub>h</sub>/S</label><output></output><input type="range" id="tail" min="6" max="40" step="0.5" value="20"></div>
+          <label class="toggle">Retractable landing gear (+4% mass)<input type="checkbox" id="retract"></label>
+        </div>
+        <div class="panel">
+          <h3><i data-lucide="map-pin"></i> Airfield</h3>
+          <select id="field" class="inp">
+            <option value="61">Mombasa, Moi International (61 m)</option>
+            <option value="1624" selected>Nairobi, JKIA (1,624 m)</option>
+            <option value="2118">Eldoret International (2,118 m)</option>
+          </select>
+          <div class="ctl"><label for="dT">Temperature vs ISA</label><output></output><input type="range" id="dT" min="-10" max="30" step="1" value="15"></div>
+          <p class="small dim" style="margin:0" id="fieldNote"></p>
+        </div>
+      </div>
+      <!-- FLY controls -->
+      <div id="flyPanels" class="hidden">
+        <div class="panel">
+          <h3><i data-lucide="flag"></i> Missions</h3>
+          <div id="missions"></div>
+        </div>
+        <div class="panel">
+          <h3><i data-lucide="gamepad-2"></i> Flight controls</h3>
+          <div class="ctl"><label for="elev">Elevator (nose up +)</label><output></output><input type="range" id="elev" min="-1" max="1" step="0.01" value="0"></div>
+          <div class="ctl"><label for="thr">Throttle</label><output></output><input type="range" id="thr" min="0" max="1" step="0.01" value="0"></div>
+          <label class="toggle">Show force vectors (L, D, T, W)<input type="checkbox" id="vec" checked></label>
+          <label class="toggle">Stall warning horn<input type="checkbox" id="horn" checked></label>
+          <div class="keys"><kbd>↑</kbd>/<kbd>W</kbd> nose up · <kbd>↓</kbd>/<kbd>S</kbd> nose down · <kbd>Space</kbd> centre elevator<br><kbd>Shift</kbd>/<kbd>A</kbd> throttle up · <kbd>Ctrl</kbd>/<kbd>Z</kbd> throttle down<br><kbd>F</kbd> flaps · <kbd>G</kbd> gear · <kbd>B</kbd> brakes · <kbd>P</kbd> pause · <kbd>R</kbd> restart</div>
+        </div>
+        <div class="panel">
+          <h3><i data-lucide="gauge"></i> Live flight data</h3>
+          <div class="stats">
+            <div class="stat"><div class="k">TAS</div><div class="v" id="fTas">—</div></div>
+            <div class="stat"><div class="k">Mass</div><div class="v" id="fMass">—</div></div>
+            <div class="stat"><div class="k">Lift / weight</div><div class="v" id="fLW">—</div></div>
+            <div class="stat"><div class="k">L/D now</div><div class="v" id="fLD">—</div></div>
+            <div class="stat"><div class="k">Thrust</div><div class="v" id="fT">—</div></div>
+            <div class="stat"><div class="k">Fuel</div><div class="v" id="fFuel">—</div></div>
+            <div class="stat"><div class="k">Distance</div><div class="v" id="fX">—</div></div>
+            <div class="stat"><div class="k">Stall speed</div><div class="v" id="fVs">—</div></div>
+          </div>
+        </div>
+      </div>
+      <!-- performance summary (both modes) -->
+      <div class="panel" id="perfPanel">
+        <h3><i data-lucide="clipboard-check"></i> Design performance</h3>
+        <div class="stats">
+          <div class="stat"><div class="k">Wing area S</div><div class="v" id="pS">—</div></div>
+          <div class="stat"><div class="k">Aspect ratio</div><div class="v" id="pAR">—</div></div>
+          <div class="stat"><div class="k">Take-off mass</div><div class="v" id="pM">—</div></div>
+          <div class="stat"><div class="k">Wing loading</div><div class="v" id="pWS">—</div></div>
+          <div class="stat"><div class="k">Stall (clean)</div><div class="v" id="pVs">—</div></div>
+          <div class="stat"><div class="k">Stall (flaps 30)</div><div class="v" id="pVs30">—</div></div>
+          <div class="stat"><div class="k">Thrust/weight</div><div class="v" id="pTW">—</div></div>
+          <div class="stat"><div class="k">Take-off roll</div><div class="v" id="pTO">—</div></div>
+          <div class="stat"><div class="k">Best glide L/D</div><div class="v" id="pLD">—</div></div>
+          <div class="stat"><div class="k">Best glide speed</div><div class="v" id="pVmd">—</div></div>
+          <div class="stat"><div class="k">Max climb rate</div><div class="v" id="pROC">—</div></div>
+          <div class="stat"><div class="k">Max level speed</div><div class="v" id="pVmax">—</div></div>
+          <div class="stat"><div class="k">Static margin</div><div class="v" id="pSM">—</div></div>
+          <div class="stat"><div class="k">Range (Breguet)</div><div class="v" id="pR">—</div></div>
+        </div>
+        <div id="designWarn"></div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+    <div class="tabpanel prose">
+      <div class="callout"><i data-lucide="info"></i><div><b>About the model.</b> The simulator integrates the longitudinal (pitch-plane) equations of motion 240 times a second: two translational equations, the pitching-moment equation and a ground-contact model. Aerodynamic coefficients come from your design using lifting-line theory, component drag build-up and classical stability estimates. It is a 2-D model: there is no roll or yaw, no wind and no propeller slipstream, and the post-stall behaviour is approximate.</div></div>
+      <h3>1. The four forces</h3>
+      <svg class="diag" viewBox="0 0 640 250" role="img" aria-label="Four forces on an aircraft in a climb">
+        <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="context-stroke"/></marker></defs>
+        <line x1="40" y1="200" x2="600" y2="200" stroke="#2a3a5c" stroke-dasharray="4 4"/>
+        <g transform="translate(320,140) rotate(-12)">
+          <path d="M-110,0 C-90,-14 70,-16 110,-4 C116,0 110,6 100,8 L-90,10 C-104,10 -114,6 -110,0Z" fill="#93a1bd" opacity=".35" stroke="#cbd5e1"/>
+          <path d="M-100,-4 L-128,-34 L-112,-34 L-84,-6Z" fill="#93a1bd" opacity=".4"/>
+          <line x1="0" y1="0" x2="130" y2="0" stroke="#f59e0b" stroke-width="3" marker-end="url(#ah)"/><text x="134" y="-6" style="fill:#f59e0b">T (along body)</text>
+        </g>
+        <line x1="320" y1="140" x2="309" y2="40" stroke="#34d399" stroke-width="3" marker-end="url(#ah)"/><text x="250" y="32" style="fill:#34d399">L (⊥ to V)</text>
+        <line x1="320" y1="140" x2="230" y2="150" stroke="#f87171" stroke-width="3" marker-end="url(#ah)"/><text x="150" y="168" style="fill:#f87171">D (opposite V)</text>
+        <line x1="320" y1="140" x2="320" y2="235" stroke="#60a5fa" stroke-width="3" marker-end="url(#ah)"/><text x="328" y="232" style="fill:#60a5fa">W = mg</text>
+        <line x1="320" y1="140" x2="470" y2="124" stroke="#e6ecf7" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ah)"/><text x="476" y="128">V (flight path, γ)</text>
+        <path d="M420,129 A100,100 0 0 0 416,115" fill="none" stroke="#facc15"/><text x="430" y="108" style="fill:#facc15">α</text>
+        <text x="40" y="24">θ = γ + α (pitch = flight-path angle + angle of attack)</text>
+      </svg>
+      <p>In the pitch plane the aircraft has velocity $V$ along a flight path inclined at $\gamma$, with pitch attitude $\theta$ and angle of attack $\alpha = \theta - \gamma$. Lift acts perpendicular to the velocity, drag opposite to it, thrust along the body and weight straight down:</p>
+      <div class="eq">$$m\dot V = T\cos\alpha - D - W\sin\gamma, \qquad mV\dot\gamma = L + T\sin\alpha - W\cos\gamma$$</div>
+      <div class="eq">$$I_{yy}\,\dot q = M = \tfrac12\rho V^2 S\bar c\, C_m, \qquad \dot\theta = q$$</div>
+      <h3>2. The lift equation and stall speed</h3>
+      <div class="eq">$$L = \tfrac12\rho V^2 S C_L \quad\Rightarrow\quad V_s = \sqrt{\frac{2W}{\rho S C_{L,max}}}$$</div>
+      <p>In level flight $L = W$, so flying slower needs a higher $C_L$ and therefore a higher angle of attack. At $C_{L,max}$ the wing stalls; that sets the minimum flying speed. Flaps raise $C_{L,max}$ and lower the stall speed for take-off and landing. Because $\rho$ appears in the denominator, the stall speed (as true airspeed) is higher at a hot, high airfield such as Nairobi than at the coast. The <b>wing loading</b> $W/S$ is the single most important number for slow-speed performance.</p>
+      <p>The wing's lift curve slope follows from lifting-line theory, $a = a_0/(1 + a_0/(\pi e AR))$ with $a_0 = 0.9\times2\pi$ and $e = 0.8$, and the wing's lift curve rounds off near the stall so that its peak clean $C_{L,max}$ is about 90% of the section value.</p>
+      <h3>3. Drag and power required</h3>
+      <div class="eq">$$C_D = C_{D0} + kC_L^2, \qquad k = \frac{1}{\pi e AR}$$</div>
+      <p>$C_{D0}$ is built up from components: the wing (section drag), the fuselage (turbulent skin friction $C_f = 0.455/(\log_{10}Re)^{2.58}$ times a form factor and wetted area), the tail and the landing gear. The power needed for level flight is</p>
+      <div class="eq">$$P_{req} = DV = \underbrace{\tfrac12\rho V^3 S C_{D0}}_{\text{parasite}} + \underbrace{\frac{2kW^2}{\rho V S}}_{\text{induced}}$$</div>
+      <p>Parasite power grows as $V^3$; induced power falls as $1/V$. The sum has a minimum: the speed for minimum power (best endurance and minimum sink in a glide). Minimum <i>drag</i> (best glide angle and, for propeller aircraft, best range) occurs at a higher speed, where the tangent from the origin touches the $P_{req}$ curve:</p>
+      <div class="eq">$$\left(\frac{L}{D}\right)_{max} = \frac{1}{2\sqrt{kC_{D0}}}, \qquad V_{md} = \sqrt{\frac{2W}{\rho S}}\left(\frac{k}{C_{D0}}\right)^{1/4}$$</div>
+      <p>The excess power sets the climb rate, $V_y = (P_{avail}-P_{req})/W$, and the right-hand crossing of the two curves is the maximum level speed. A propeller's thrust is modelled as $T = \eta_p P/\sqrt{V^2 + V_c^2}$, which matches the static thrust from actuator-disc theory at $V=0$ and $\eta_p P/V$ at speed. Jet thrust is nearly constant with speed. Both fall with air density.</p>
+      <h3>4. Take-off and range</h3>
+      <div class="eq">$$s_g \approx \frac{V_{LO}^2}{2\bar a}, \qquad \bar a = \frac{1}{m}\Big[T - D - \mu(W - L)\Big]_{0.7V_{LO}}, \qquad V_{LO} = 1.2\,V_{s}$$</div>
+      <p>Breguet's range equation for a propeller aircraft, with propeller efficiency $\eta_p$ and brake specific fuel consumption $c$ (expressed per unit weight of fuel), is</p>
+      <div class="eq">$$R = \frac{\eta_p}{c}\,\frac{L}{D}\,\ln\frac{W_0}{W_1}$$</div>
+      <h3>5. Longitudinal static stability</h3>
+      <p>An aircraft is statically stable in pitch if a gust that raises the angle of attack produces a nose-down moment: $C_{m\alpha} < 0$. The tail makes this happen. The point about which $C_m$ does not change with $\alpha$ is the <b>neutral point</b>:</p>
+      <div class="eq">$$\frac{x_{np}}{\bar c} = \frac{x_{ac}}{\bar c} + \eta\,V_H\,\frac{a_t}{a}\left(1 - \frac{d\varepsilon}{d\alpha}\right) - \frac{\Delta C_{m\alpha,fus}}{a}, \qquad V_H = \frac{S_h l_t}{S\bar c}$$</div>
+      <p>with downwash gradient $d\varepsilon/d\alpha \approx 2a/(\pi AR)$. The <b>static margin</b> is the distance from the centre of gravity to the neutral point in chords, and $C_{m\alpha} = -a\cdot SM$:</p>
+      <div class="eq">$$SM = \frac{x_{np} - x_{cg}}{\bar c}$$</div>
+      <p>Typical light aircraft fly with 5–20%. A negative margin (CG behind the neutral point) is unstable: any disturbance grows and the pilot must fight it continuously. A very large margin is stable but sluggish; the elevator may not be able to raise the nose for take-off or landing. Try both in the simulator. Move the payload forward and backward and watch the CG marker cross the neutral point.</p>
+      <h3>6. Pitch control and damping</h3>
+      <p>The elevator adds $C_{m\delta}\,\delta_e$ with $C_{m\delta} \approx -\tau\,\eta\,a_t V_H$. In trim, $C_m = 0$, so each elevator setting corresponds to one angle of attack and hence (in level flight) one airspeed: the elevator is really a speed control. The tail also damps pitching motion: $C_{mq} \approx -2\eta a_t V_H\,l_t/\bar c$. Together these give the short-period oscillation you feel when you jab the elevator.</p>
+    </div>
+
+    <div class="tabpanel prose" id="workedPanel"></div>
+
+    <div class="tabpanel prose">
+      <p>Missions are in the <b>Fly</b> panel; design challenges are checked live in the hangar. Lights turn green when you succeed.</p>
+      <div id="chals"></div>
+      <h3>Investigations</h3>
+      <ol class="steps">
+        <li><b>Hot and high.</b> Take the Trainer, note the take-off roll at Mombasa ISA, then at Nairobi ISA+20. Explain the difference using the density ratio and $V_s \propto 1/\sqrt\rho$.</li>
+        <li><b>Glide ratio.</b> In the Glide mission, hold the best-glide speed shown in the hangar and estimate your glide ratio from height lost and distance covered. Fly 15 knots faster and slower and compare.</li>
+        <li><b>Find the back of the power curve.</b> In level flight, slow down to just above the stall. Why do you need more throttle, not less, to stay level?</li>
+        <li><b>Aspect ratio.</b> Keep wing area fixed but double the span (halve the chord). How do best L/D, stall speed and climb rate change? Why do gliders look the way they do?</li>
+        <li><b>Unstable aircraft.</b> Move the payload aft until the static margin is negative, then fly. Describe what happens when you let go of the elevator.</li>
+      </ol>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  const D2R = Math.PI / 180, R2D = 180 / Math.PI, g0 = 9.80665, KT = 1.943844;
+  const $ = s => document.querySelector(s);
+  const { clamp, lerp, fmt } = SL;
+  const logistic = x => 1 / (1 + Math.exp(-x));
+  const soft = x => x <= 0.75 ? x : 0.75 + 0.25 * Math.tanh((x - 0.75) / 0.25);
+
+  /* ======================= Atmosphere ======================= */
+  function atmos(h, dT) {
+    const Tisa = 288.15 - 0.0065 * h, T = Tisa + (dT || 0);
+    const p = 101325 * Math.pow(Tisa / 288.15, 5.25588);
+    const rho = p / (287.053 * T), mu = 1.458e-6 * Math.pow(T, 1.5) / (T + 110.4);
+    return { T, p, rho, mu, sigma: rho / 1.225 };
+  }
+
+  /* ======================= Airfoils ======================= */
+  const AF = {
+    '0012': { name: 'NACA 0012 (symmetric)', a0: 0, clmax: 1.45, cd0: 0.0060, note: 'Aerobatic: lifts equally inverted.' },
+    '2412': { name: 'NACA 2412 (classic trainer)', a0: -2.08, clmax: 1.55, cd0: 0.0064, note: 'Gentle stall, used on many light aircraft.' },
+    '4412': { name: 'NACA 4412 (high camber)', a0: -4.15, clmax: 1.65, cd0: 0.0068, note: 'More lift at low speed, more pitching moment.' },
+    '23012': { name: 'NACA 23012 (five-digit)', a0: -1.2, clmax: 1.70, cd0: 0.0062, note: 'High C<sub>L,max</sub>, small moment; sharp stall.' },
+    '64215': { name: 'NACA 64-215 (laminar flow)', a0: -1.6, clmax: 1.40, cd0: 0.0045, note: 'Low drag in cruise; lower C<sub>L,max</sub>.' },
+    'S1223': { name: 'Selig S1223 (very high lift)', a0: -8.0, clmax: 2.10, cd0: 0.0125, note: 'Huge lift at low speed, but draggy.' },
+  };
+  const A0 = 0.9 * 2 * Math.PI, EOS = 0.8, IW = 2 * D2R;
+  const FLAPS = [{ deg: 0, dCL: 0, da: 0, dCD: 0 }, { deg: 15, dCL: 0.35, da: -3.5 * D2R, dCD: 0.010 }, { deg: 30, dCL: 0.65, da: -7 * D2R, dCD: 0.035 }];
+
+  /* ======================= Design inputs ======================= */
+  const logMap = (min, max) => ({ to: v => min * Math.pow(max / min, v / 100), from: x => 100 * Math.log(x / min) / Math.log(max / min) });
+  const MAP = { power: logMap(15, 3000), thrust: logMap(1.5, 150), airframe: logMap(120, 20000), fuel: logMap(5, 10000), payload: logMap(20, 12000) };
+  const P = { span: 11, chord: 1.5, af: '2412', wingX: 0.30, eng: 'prop', power: 120, thrust: 15, airframe: 640, fuel: 110, payload: 200, payX: 0.38, L: 8.3, tail: 0.20, retract: false, elev: 1624, dT: 15 };
+  const PRESETS = {
+    trainer: { label: 'Trainer', span: 11, chord: 1.5, af: '2412', wingX: 0.315, eng: 'prop', power: 120, airframe: 640, fuel: 110, payload: 200, payX: 0.36, L: 8.3, tail: 0.20, retract: false },
+    bush: { label: 'Safari bush plane', span: 15.9, chord: 1.95, af: '4412', wingX: 0.302, eng: 'prop', power: 500, airframe: 1650, fuel: 600, payload: 950, payX: 0.42, L: 11.5, tail: 0.22, retract: false },
+    glider: { label: 'Motor-glider', span: 18, chord: 0.85, af: '64215', wingX: 0.317, eng: 'prop', power: 60, airframe: 420, fuel: 40, payload: 100, payX: 0.27, L: 7.5, tail: 0.14, retract: true },
+    jet: { label: 'Business jet', span: 14.4, chord: 2.0, af: '23012', wingX: 0.406, eng: 'jet', thrust: 16, airframe: 3600, fuel: 1500, payload: 600, payX: 0.36, L: 13, tail: 0.24, retract: true },
+    cargo: { label: 'Regional turboprop', span: 26, chord: 2.6, af: '4412', wingX: 0.278, eng: 'prop', power: 3000, airframe: 8500, fuel: 2500, payload: 3500, payX: 0.42, L: 22, tail: 0.24, retract: true },
+    micro: { label: 'Microlight', span: 9.5, chord: 1.4, af: 'S1223', wingX: 0.268, eng: 'prop', power: 45, airframe: 170, fuel: 30, payload: 90, payX: 0.34, L: 6, tail: 0.18, retract: false },
+  };
+
+  /* ======================= Design model ======================= */
+  function design(p) {
+    const D = { p };
+    const S = p.span * p.chord, c = p.chord, AR = p.span / p.chord, af = AF[p.af];
+    const k = 1 / (Math.PI * EOS * AR), aw = A0 / (1 + A0 / (Math.PI * EOS * AR)), at = A0 / (1 + A0 / (Math.PI * 0.8 * 4.5));
+    Object.assign(D, { S, c, AR, k, aw, at, af, a0: af.a0 * D2R, CLmax: af.clmax });
+    // geometry
+    const L = p.L, d = clamp(L / 7.5, 0.7, 3.6);
+    const xle = p.wingX * L, xac = xle + 0.25 * c;
+    const Sh = p.tail * S, ct = Math.sqrt(Sh / 4.5), xt = L - 0.75 * ct, lt = xt - xac;
+    const VH = Sh * lt / (S * c);
+    // masses (kg) and positions (m from nose)
+    const mEng = p.eng === 'prop' ? 0.9 * p.power + 20 : p.thrust * 1000 / (5.5 * g0);
+    const mAir = p.airframe * (p.retract ? 1.04 : 1);
+    const parts = [
+      [mAir * 0.30, xle + 0.42 * c], [mAir * 0.52, 0.42 * L], [mAir * 0.10, L - 0.6 * ct], [mAir * 0.08, xle + 0.3 * c],
+      [mEng, p.eng === 'prop' ? 0.04 * L : xle + 0.15 * c], [p.fuel, xle + 0.4 * c], [p.payload, p.payX * L]];
+    const m = parts.reduce((a, q) => a + q[0], 0), xcg = parts.reduce((a, q) => a + q[0] * q[1], 0) / m;
+    const deda = 2 * aw / (Math.PI * AR), eta = 0.9;
+    const CmaFus = 0.010 * 57.3 * d * d * L / (c * S);
+    const xnp = xac + c * (eta * VH * (at / aw) * (1 - deda) - CmaFus / aw);
+    const SM = (xnp - xcg) / c;
+    const Cmd = 0.45 * eta * at * VH, Cmq = -2 * eta * at * VH * (lt / c) - 0.5;
+    const Iyy = m * Math.pow(0.17 * L, 2) + 0.05 * m * Math.pow(p.span / 2, 2) * 0.1;
+    Object.assign(D, { L, d, xle, xac, Sh, ct, xt, lt, VH, mEng, mEmpty: mAir + mEng, m, xcg, xnp, SM, Cmd, Cmq, Iyy, deda, CmaFus, parts });
+    // drag build-up (parasite, gear separately)
+    const Swf = Math.PI * d * L * 0.85, f = L / d, FF = 1 + 60 / f ** 3 + f / 400;
+    D.cdWing = af.cd0 * 1.15; D.cdTail = af.cd0 * 1.15 * 1.6 * p.tail;
+    D.FFf = FF; D.Swf = Swf;
+    D.gearDA = 0.2 * Math.sqrt(m / 1000);   // drag area of extended gear (m²)
+    // engine
+    D.propD = p.eng === 'prop' ? 0.6 * Math.pow(p.power, 0.25) : 0;
+    return D;
+  }
+  function cdFus(D, rho, V, mu) { const Re = Math.max(1e5, rho * Math.max(V, 5) * D.L / mu); return 0.455 / Math.pow(Math.log10(Re), 2.58) * D.FFf * D.Swf / D.S; }
+  function CD0(D, rho, V, mu, gear, flap) { return 1.1 * (D.cdWing + D.cdTail + cdFus(D, rho, V, mu)) + (gear ? D.gearDA / D.S : 0) + FLAPS[flap].dCD; }
+  function liftCoef(D, aw, flap) {
+    const F = FLAPS[flap], a0 = D.a0 + F.da, cm = D.CLmax + F.dCL, cmN = -0.75 * D.CLmax;
+    const lin = D.aw * (aw - a0);
+    const att = lin >= 0 ? cm * soft(lin / cm) : cmN * soft(lin / cmN);
+    const aS = a0 + 1.12 * cm / D.aw, aSn = a0 + 1.12 * cmN / D.aw, w = 1.4 * D2R;
+    const sP = logistic((aw - aS) / w), sN = logistic((aSn - aw) / w);
+    let CL = (1 - sP) * att + sP * Math.max(0.9 * Math.sin(2 * aw), 0.6 * cm);
+    CL = (1 - sN) * CL + sN * Math.min(0.9 * Math.sin(2 * aw), 0.6 * cmN);
+    return { CL, sep: Math.max(sP, sN), aS };
+  }
+  function dragCoef(D, CL, aw, flap, gear, rho, V, mu, sep) { return CD0(D, rho, V, mu, gear, flap) + D.k * CL * CL + sep * 1.3 * Math.sin(aw) ** 2; }
+  function thrust(D, V, thr, atm) {
+    if (thr <= 0) return 0;
+    if (D.p.eng === 'jet') return D.p.thrust * 1000 * thr * Math.pow(atm.sigma, 0.75) * (1 - 0.0008 * V);
+    const Pw = D.p.power * 1000 * thr * Math.max(0.05, 1.132 * atm.sigma - 0.132);
+    const A = Math.PI * D.propD * D.propD / 4;
+    const T0 = 0.55 * Math.cbrt(2 * atm.rho * A) * Math.pow(Pw, 2 / 3);
+    const Vc = 0.8 * Pw / T0;
+    return 0.8 * Pw / Math.sqrt(V * V + Vc * Vc);
+  }
+  function fuelFlow(D, thr, atm, T) { // kg/s
+    if (D.p.eng === 'jet') return 0.065 / 3600 * T;
+    return 0.27 / 3.6e6 * D.p.power * 1000 * thr * Math.max(0.05, 1.132 * atm.sigma - 0.132);
+  }
+  function clPeak(D, flap) { let best = 0; for (let a = -5; a < 30; a += 0.1) best = Math.max(best, liftCoef(D, a * D2R, flap).CL); return best; }
+
+  function performance(D) {
+    const atm = atmos(D.p.elev, D.p.dT), W = D.m * g0, rho = atm.rho;
+    const CLm0 = clPeak(D, 0), CLm1 = clPeak(D, 1), CLm2 = clPeak(D, 2);
+    const vs = cl => Math.sqrt(2 * W / (rho * D.S * cl));
+    const Vs0 = vs(CLm0), Vs1 = vs(CLm1), Vs2 = vs(CLm2);
+    const gearCruise = !D.p.retract;
+    // power curves
+    const curve = [];
+    let LDmax = 0, Vmd = 0, ROC = -1e9, Vy = 0, Vmax = 0, Pmin = 1e12, Vmp = 0;
+    for (let V = Vs0 * 0.98; V <= Math.max(Vs0 * 6, 140); V += 0.25) {
+      const q = 0.5 * rho * V * V, CL = W / (q * D.S);
+      if (CL > CLm0) continue;
+      const cd0 = CD0(D, rho, V, atm.mu, gearCruise, 0);
+      const Dp = q * D.S * cd0, Di = q * D.S * D.k * CL * CL, Dt = Dp + Di;
+      const Pa = thrust(D, V, 1, atm) * V, Pr = Dt * V;
+      curve.push({ V, Pr, Pa, Pi: Di * V, Pp: Dp * V });
+      if (W / Dt > LDmax) { LDmax = W / Dt; Vmd = V; }
+      if (Pr < Pmin) { Pmin = Pr; Vmp = V; }
+      if ((Pa - Pr) / W > ROC) { ROC = (Pa - Pr) / W; Vy = V; }
+      if (Pa >= Pr) Vmax = V;
+    }
+    // take-off ground roll (flaps 15, gear down, mu = 0.03)
+    const Vlo = 1.2 * Vs1, V7 = 0.7 * Vlo, q7 = 0.5 * rho * V7 * V7;
+    const CLg = liftCoef(D, IW, 1).CL, CDg = CD0(D, rho, V7, atm.mu, true, 1) + D.k * CLg * CLg;
+    const T7 = thrust(D, V7, 1, atm), acc = (T7 - q7 * D.S * CDg - 0.03 * (W - q7 * D.S * CLg)) / D.m;
+    const sTO = acc > 0 ? Vlo * Vlo / (2 * acc) : Infinity;
+    const T0 = thrust(D, 0, 1, atm);
+    // Breguet range
+    let Rng;
+    const lnW = Math.log(D.m / Math.max(1, D.m - D.p.fuel));
+    if (D.p.eng === 'prop') Rng = 0.8 / (0.27 * g0 / 3.6e6) * LDmax * lnW;
+    else { const ct = 0.065 * g0 / 3600; Rng = (1.316 * Vmd) / ct * (0.866 * LDmax) * lnW; }
+    return { atm, W, CLm0, CLm1, CLm2, Vs0, Vs1, Vs2, curve, LDmax, Vmd, Vmp, ROC, Vy, Vmax, sTO, Vlo, TW: T0 / W, Rng };
+  }
+
+  /* ======================= State ======================= */
+  let Dz = design(P), PF = performance(Dz);
+  let mode = 'build';
+
+  /* ======================= Canvas ======================= */
+  const stage = $('#stage'), cv = $('#cv');
+  let buildDirty = true;
+  const st = SL.canvas(cv, () => { buildDirty = true; });
+  let chPerf = null, chFdr = null;
+  chPerf = SL.canvas($('#chPerf'), () => { if (chPerf) drawPerf(); });
+  chFdr = SL.canvas($('#chFdr'), () => { if (chFdr) drawFdr(); });
+
+  /* ---------- aircraft drawing (local metres, origin at main-gear contact, x forward, y up) ---------- */
+  function planeGeom(D) {
+    const xmg = D.xcg + 0.18 * D.c;                    // main gear just behind CG (from nose)
+    const hc = D.d * 0.5 + 0.35 + 0.08 * D.d;          // fuselage centreline above ground
+    const X = xn => xmg - xn;                          // nose-referenced x -> local (forward +)
+    const tailArm = D.L - xmg;
+    const thTS = Math.atan2(hc - 0.3 * D.d, tailArm);  // tail-strike pitch angle
+    return { xmg, hc, X, thTS, highWing: D.p.eng === 'prop' };
+  }
+  function drawAircraft(ctx, D, G, o) {
+    // o: {flap, gear, thr, t, prop} ; ctx already transformed to metres, y up
+    const { X, hc } = G, L = D.L, d = D.d;
+    const nose = X(0), tail = X(L);
+    // horizontal tail & fin
+    const ct = D.ct, ht = hc + 0.15 * d;
+    ctx.fillStyle = '#c7d2e3';
+    const fin = new Path2D(); fin.moveTo(X(L - 1.6 * ct), hc + 0.35 * d); fin.lineTo(X(L - 0.55 * ct), hc + 0.35 * d + 1.15 * ct); fin.lineTo(X(L - 0.05 * ct), hc + 0.35 * d + 1.15 * ct); fin.lineTo(tail, hc + 0.3 * d); fin.closePath();
+    ctx.fill(fin);
+    ctx.fillStyle = '#0f6b8a'; ctx.fillRect(X(L - 0.45 * ct), hc + 0.35 * d + 0.6 * ct, 0.35 * ct, 0.35 * ct);
+    // fuselage
+    const fus = new Path2D();
+    fus.moveTo(nose, hc - 0.05 * d);
+    fus.bezierCurveTo(nose, hc + 0.4 * d, X(0.08 * L), hc + 0.5 * d, X(0.18 * L), hc + 0.5 * d);
+    fus.lineTo(X(0.62 * L), hc + 0.45 * d);
+    fus.lineTo(tail, hc + 0.32 * d);
+    fus.lineTo(tail, hc + 0.12 * d);
+    fus.lineTo(X(0.6 * L), hc - 0.5 * d);
+    fus.lineTo(X(0.15 * L), hc - 0.5 * d);
+    fus.bezierCurveTo(X(0.04 * L), hc - 0.5 * d, nose, hc - 0.35 * d, nose, hc - 0.05 * d);
+    const gr = ctx.createLinearGradient(0, hc + d * 0.5, 0, hc - d * 0.5);
+    gr.addColorStop(0, '#f1f5f9'); gr.addColorStop(0.55, '#cbd5e1'); gr.addColorStop(1, '#64748b');
+    ctx.fillStyle = gr; ctx.fill(fus);
+    ctx.strokeStyle = 'rgba(15,23,42,.6)'; ctx.lineWidth = 0.04 * Math.max(1, d); ctx.stroke(fus);
+    // accent stripe
+    ctx.fillStyle = 'rgba(34,211,238,.85)';
+    ctx.beginPath(); ctx.moveTo(X(0.1 * L), hc - 0.05 * d); ctx.lineTo(X(0.85 * L), hc + 0.08 * d); ctx.lineTo(X(0.85 * L), hc + 0.0 * d); ctx.lineTo(X(0.1 * L), hc - 0.14 * d); ctx.fill();
+    // windows
+    ctx.fillStyle = '#0b2440';
+    ctx.beginPath(); ctx.moveTo(X(0.10 * L), hc + 0.2 * d); ctx.lineTo(X(0.15 * L), hc + 0.44 * d); ctx.lineTo(X(0.27 * L), hc + 0.44 * d); ctx.lineTo(X(0.27 * L), hc + 0.2 * d); ctx.fill();
+    if (L > 11) { for (let x = 0.33; x < 0.6; x += 0.055) { ctx.beginPath(); ctx.arc(X(x * L), hc + 0.18 * d, 0.09 * d, 0, 7); ctx.fill(); } }
+    // horizontal tailplane (section)
+    drawFoil(ctx, X(L - 1.05 * ct), ht, ct, 0.1, 0, '#e2e8f0');
+    // wing section
+    const wy = G.highWing ? hc + 0.5 * d : hc - 0.32 * d;
+    drawFoil(ctx, X(D.xle), wy, D.c, 0.13, FLAPS[o.flap].deg * D2R, '#f8fafc');
+    if (G.highWing) { ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 0.06; ctx.beginPath(); ctx.moveTo(X(D.xle + 0.35 * D.c), wy - 0.03); ctx.lineTo(X(D.xle + 0.05 * D.c), hc - 0.35 * d); ctx.stroke(); }
+    // engine
+    if (D.p.eng === 'prop') {
+      const R = D.propD / 2;
+      ctx.fillStyle = '#334155'; ctx.beginPath(); ctx.ellipse(nose + 0.12, hc - 0.05 * d, 0.25, 0.18 * d, 0, 0, 7); ctx.fill();
+      const spin = (o.prop || 0);
+      ctx.fillStyle = `rgba(203,213,225,${0.12 + 0.18 * Math.min(1, o.thr * 2)})`;
+      ctx.beginPath(); ctx.ellipse(nose + 0.22, hc - 0.05 * d, 0.06, R, 0, 0, 7); ctx.fill();
+      ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 0.08;
+      const bl = Math.cos(spin) * R; ctx.beginPath(); ctx.moveTo(nose + 0.22, hc - 0.05 * d - bl); ctx.lineTo(nose + 0.22, hc - 0.05 * d + bl); ctx.stroke();
+    } else {
+      const nx0 = X(D.xle - 0.15 * D.c), nl = Math.max(1.6, 0.17 * L), ny = hc - 0.45 * d, nr = 0.22 * d + 0.25;
+      if (o.thr > 0.02) {
+        const eg = ctx.createLinearGradient(nx0 - nl, 0, nx0 - nl - 3 * o.thr * nl, 0);
+        eg.addColorStop(0, 'rgba(255,190,90,.85)'); eg.addColorStop(1, 'rgba(255,90,40,0)');
+        ctx.fillStyle = eg; ctx.beginPath(); ctx.moveTo(nx0 - nl, ny - nr * 0.6); ctx.lineTo(nx0 - nl - 3 * o.thr * nl, ny); ctx.lineTo(nx0 - nl, ny + nr * 0.6); ctx.fill();
+      }
+      ctx.fillStyle = '#94a3b8'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(nx0 - nl, ny - nr, nl, 2 * nr, nr) : ctx.rect(nx0 - nl, ny - nr, nl, 2 * nr); ctx.fill();
+      ctx.fillStyle = '#1e293b'; ctx.fillRect(nx0 - 0.08, ny - nr * 0.8, 0.08, nr * 1.6);
+    }
+    // landing gear
+    if (o.gear) {
+      ctx.strokeStyle = '#475569'; ctx.lineWidth = 0.09; ctx.fillStyle = '#111827';
+      const wr = 0.2 + 0.03 * d;
+      ctx.beginPath(); ctx.moveTo(0, wr); ctx.lineTo(0.15, hc - 0.45 * d); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, wr, wr, 0, 7); ctx.fill();
+      const xn = X(0.12 * L);
+      ctx.beginPath(); ctx.moveTo(xn, wr * 0.85); ctx.lineTo(xn, hc - 0.4 * d); ctx.stroke();
+      ctx.beginPath(); ctx.arc(xn, wr * 0.85, wr * 0.85, 0, 7); ctx.fill();
+    }
+  }
+  function drawFoil(ctx, xle, y, c, t, flapRad, col) {
+    // NACA-like 4-digit section, leading edge at xle (local, forward +), chord drawn backwards
+    const up = [], lo = [];
+    for (let i = 0; i <= 24; i++) {
+      const x = (1 - Math.cos(i / 24 * Math.PI)) / 2;
+      const yt = 5 * t * (0.2969 * Math.sqrt(x) - 0.126 * x - 0.3516 * x * x + 0.2843 * x ** 3 - 0.1036 * x ** 4);
+      const yc = x < 0.4 ? 0.02 / 0.16 * (0.8 * x - x * x) : 0.02 / 0.36 * (0.2 + 0.8 * x - x * x);
+      let px = x, uy = yc + yt, ly = yc - yt;
+      if (x > 0.75 && flapRad) { const dx = x - 0.75; px = 0.75 + dx * Math.cos(flapRad); uy -= dx * Math.sin(flapRad); ly -= dx * Math.sin(flapRad); }
+      up.push([xle - px * c, y + uy * c]); lo.push([xle - px * c, y + ly * c]);
+    }
+    ctx.fillStyle = col; ctx.beginPath(); up.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); lo.reverse().forEach(q => ctx.lineTo(q[0], q[1])); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(15,23,42,.5)'; ctx.lineWidth = 0.03 * c; ctx.stroke();
+  }
+
+  /* ---------- BUILD view: top + side schematic ---------- */
+  function drawBuild(t) {
+    const { ctx, w, h } = st, D = Dz;
+    ctx.clearRect(0, 0, w, h);
+    const bg = ctx.createLinearGradient(0, 0, 0, h); bg.addColorStop(0, '#0b1a33'); bg.addColorStop(1, '#060c19');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+    // blueprint grid
+    ctx.strokeStyle = 'rgba(96,165,250,.08)'; ctx.lineWidth = 1;
+    for (let x = 0; x < w; x += 20) { ctx.beginPath(); ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, h); ctx.stroke(); }
+    for (let y = 0; y < h; y += 20) { ctx.beginPath(); ctx.moveTo(0, y + .5); ctx.lineTo(w, y + .5); ctx.stroke(); }
+    ctx.strokeStyle = 'rgba(96,165,250,.16)';
+    for (let x = 0; x < w; x += 100) { ctx.beginPath(); ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, h); ctx.stroke(); }
+    const narrow = w < 640;
+    // scale so that the larger of span and length fits
+    const topH = h * 0.6, sideH = h - topH;
+    const sc = Math.min((w - 70) / Math.max(D.L * 1.05, 1), (topH - 50) / D.p.span, (w - 70) / D.L);
+    const ox = w / 2 + D.L * sc / 2 - (narrow ? 0 : 10), oy = topH / 2 + 8;      // nose at right
+    const Xs = xn => ox - xn * sc;
+    ctx.font = '600 11px JetBrains Mono, monospace'; ctx.fillStyle = '#60a5fa'; ctx.textAlign = 'left';
+    ctx.fillText('TOP VIEW', 14, 22);
+    // wing planform
+    const b2 = D.p.span / 2 * sc;
+    ctx.fillStyle = 'rgba(203,213,225,.18)'; ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.rect(Xs(D.xle + D.c), oy - b2, D.c * sc, 2 * b2); ctx.fill(); ctx.stroke();
+    // flaps / ailerons
+    ctx.strokeStyle = 'rgba(203,213,225,.5)'; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(Xs(D.xle + 0.75 * D.c), oy - b2); ctx.lineTo(Xs(D.xle + 0.75 * D.c), oy + b2); ctx.stroke(); ctx.setLineDash([]);
+    // tail
+    const bt = Math.sqrt(4.5 * D.Sh) / 2 * sc;
+    ctx.fillStyle = 'rgba(203,213,225,.18)'; ctx.strokeStyle = '#cbd5e1';
+    ctx.beginPath(); ctx.rect(Xs(D.L), oy - bt, D.ct * sc, 2 * bt); ctx.fill(); ctx.stroke();
+    // fuselage
+    const dh = D.d / 2 * sc;
+    ctx.fillStyle = 'rgba(241,245,249,.85)';
+    ctx.beginPath(); ctx.moveTo(Xs(0), oy); ctx.quadraticCurveTo(Xs(0), oy - dh, Xs(0.15 * D.L), oy - dh); ctx.lineTo(Xs(0.62 * D.L), oy - dh * 0.95); ctx.lineTo(Xs(D.L), oy - dh * 0.25); ctx.lineTo(Xs(D.L), oy + dh * 0.25); ctx.lineTo(Xs(0.62 * D.L), oy + dh * 0.95); ctx.lineTo(Xs(0.15 * D.L), oy + dh); ctx.quadraticCurveTo(Xs(0), oy + dh, Xs(0), oy); ctx.fill();
+    // engine (top)
+    if (D.p.eng === 'prop') { ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 3; const R = D.propD / 2 * sc; ctx.beginPath(); ctx.moveTo(Xs(0) + 3, oy - R); ctx.lineTo(Xs(0) + 3, oy + R); ctx.stroke(); }
+    else { ctx.fillStyle = '#94a3b8'; const nl = Math.max(1.6, 0.17 * D.L) * sc, nw = (0.22 * D.d + 0.25) * 2 * sc; [-1, 1].forEach(sg => { ctx.fillRect(Xs(D.xle - 0.15 * D.c), oy + sg * b2 * 0.32 - nw / 2, nl, nw); }); }
+    // payload
+    ctx.fillStyle = 'rgba(250,204,21,.5)'; ctx.fillRect(Xs(D.p.payX * D.L) - 5, oy - dh * 0.6, 10, dh * 1.2);
+    // CG and NP markers
+    const cgX = Xs(D.xcg), npX = Xs(D.xnp);
+    cgMarker(ctx, cgX, oy, 9);
+    ctx.fillStyle = '#f472b6'; ctx.beginPath(); ctx.moveTo(npX, oy - 10); ctx.lineTo(npX - 7, oy - 22); ctx.lineTo(npX + 7, oy - 22); ctx.fill();
+    ctx.fillStyle = '#f472b6'; ctx.textAlign = 'center'; ctx.fillText('NP', npX, oy - 26);
+    ctx.fillStyle = '#facc15'; ctx.fillText('CG', cgX, oy + 26);
+    // dimensions
+    dim(ctx, Xs(D.xle) + 22, oy - b2, Xs(D.xle) + 22, oy + b2, 'b = ' + fmt(D.p.span, 1) + ' m', true);
+    dim(ctx, Xs(D.L), oy + b2 + 14, Xs(0), oy + b2 + 14, 'L = ' + fmt(D.L, 1) + ' m');
+    if (D.c * sc > 26) dim(ctx, Xs(D.xle + D.c), oy - b2 - 10, Xs(D.xle), oy - b2 - 10, 'c = ' + fmt(D.c, 2) + ' m');
+    // side view
+    ctx.strokeStyle = 'rgba(96,165,250,.25)'; ctx.beginPath(); ctx.moveTo(0, topH + 6); ctx.lineTo(w, topH + 6); ctx.stroke();
+    ctx.fillStyle = '#60a5fa'; ctx.textAlign = 'left'; ctx.fillText('SIDE VIEW', 14, topH + 24);
+    const G = planeGeom(D), sc2 = Math.min((w - 70) / D.L, (sideH - 34) / (G.hc + 0.85 * D.d + 1.2 * D.ct));
+    const gy = h - 16;
+    const mgX = w / 2 + (D.L / 2 - G.xmg) * sc2;
+    ctx.strokeStyle = 'rgba(147,161,189,.4)'; ctx.beginPath(); ctx.moveTo(20, gy); ctx.lineTo(w - 20, gy); ctx.stroke();
+    ctx.save(); ctx.translate(mgX, gy); ctx.scale(sc2, -sc2);
+    drawAircraft(ctx, D, G, { flap: 0, gear: true, thr: 0.3, prop: t * 30 });
+    ctx.restore();
+    // CG / NP on side view
+    const cg2 = mgX + (G.xmg - D.xcg) * sc2, np2 = mgX + (G.xmg - D.xnp) * sc2, cy2 = gy - G.hc * sc2;
+    cgMarker(ctx, cg2, cy2, 7);
+    ctx.fillStyle = '#f472b6'; ctx.beginPath(); ctx.moveTo(np2, cy2 - 8); ctx.lineTo(np2 - 6, cy2 - 18); ctx.lineTo(np2 + 6, cy2 - 18); ctx.fill();
+    // legend
+    ctx.textAlign = 'right'; ctx.font = '500 11px JetBrains Mono, monospace';
+    const lx = w - 14; let ly = 22;
+    const items = [['#facc15', `CG ${fmt((D.xcg - D.xle) / D.c * 100, 0)}% MAC`], ['#f472b6', `NP ${fmt((D.xnp - D.xle) / D.c * 100, 0)}% MAC`], [D.SM < 0 ? '#ef4444' : D.SM < 0.05 ? '#f59e0b' : '#34d399', `SM ${fmt(D.SM * 100, 1)}%`], ['#93a1bd', `m ${fmt(D.m, 0)} kg`]];
+    items.forEach(([c, s]) => { ctx.fillStyle = c; ctx.fillText(s, lx, ly); ly += 16; });
+  }
+  function cgMarker(ctx, x, y, r) {
+    ctx.save(); ctx.fillStyle = '#facc15'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = '#111827'; ctx.fill();
+    ctx.fillStyle = '#facc15';
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.arc(x, y, r, -Math.PI / 2, 0); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.arc(x, y, r, Math.PI / 2, Math.PI); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#facc15'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke(); ctx.restore();
+  }
+  function dim(ctx, x1, y1, x2, y2, label, vert) {
+    ctx.save(); ctx.strokeStyle = 'rgba(147,197,253,.6)'; ctx.fillStyle = '#93c5fd'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    [[x1, y1], [x2, y2]].forEach(([x, y]) => { ctx.beginPath(); if (vert) { ctx.moveTo(x - 4, y); ctx.lineTo(x + 4, y); } else { ctx.moveTo(x, y - 4); ctx.lineTo(x, y + 4); } ctx.stroke(); });
+    ctx.font = '500 11px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+    if (vert) { ctx.translate(x1 - 6, (y1 + y2) / 2); ctx.rotate(-Math.PI / 2); ctx.fillText(label, 0, 0); }
+    else { ctx.fillText(label, (x1 + x2) / 2, y1 - 5); }
+    ctx.restore();
+  }
+
+  /* ---------- performance chart ---------- */
+  function drawPerf() {
+    const c = PF.curve; if (!c.length) { chPerf.ctx.clearRect(0, 0, chPerf.w, chPerf.h); return; }
+    const k = 1 / 1000, vmaxShow = Math.min(c[c.length - 1].V, Math.max(PF.Vmax * 1.25, PF.Vmd * 2.2));
+    const cc = c.filter(p => p.V <= vmaxShow);
+    const ymax = Math.max(...cc.map(p => p.Pa)) * k * 1.3;
+    const ser = [
+      { data: cc.filter(p => p.Pi * k <= ymax).map(p => [p.V * KT, p.Pi * k]), color: 'rgba(147,161,189,.75)', dash: [4, 4], width: 1.3 },
+      { data: cc.filter(p => p.Pp * k <= ymax).map(p => [p.V * KT, p.Pp * k]), color: 'rgba(167,139,250,.8)', dash: [4, 4], width: 1.3 },
+      { data: cc.filter(p => p.Pr * k <= ymax).map(p => [p.V * KT, p.Pr * k]), color: '#f87171', width: 2.4 },
+      { data: cc.map(p => [p.V * KT, p.Pa * k]), color: '#34d399', width: 2.4 },
+    ];
+    const m = SL.chart(chPerf, ser, { xmin: Math.floor(PF.Vs0 * KT * 0.8 / 10) * 10, xmax: Math.ceil(vmaxShow * KT / 10) * 10, ymin: 0, ymax, xlabel: 'TAS (knots)', ylabel: 'power (kW)', pad: [24, 14, 30, 48] });
+    const ctx = chPerf.ctx;
+    const mark = (V, label, col, y) => { if (!isFinite(V) || V <= 0) return; const x = m.X(V * KT); ctx.strokeStyle = col; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(x, m.Y(0)); ctx.lineTo(x, m.Y(ymax)); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = col; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(label, x, m.Y(ymax) + 10 + (y || 0)); };
+    mark(PF.Vs0, 'Vs', '#f59e0b', 0); mark(PF.Vmp, 'Vmp', '#93a1bd', 12); mark(PF.Vmd, 'Vmd', '#facc15', 24); mark(PF.Vmax, 'Vmax', '#34d399', 0);
+    // tangent from origin to Preq at Vmd
+    const pr = cc.reduce((b, p) => Math.abs(p.V - PF.Vmd) < Math.abs(b.V - PF.Vmd) ? p : b, cc[0]);
+    ctx.strokeStyle = 'rgba(250,204,21,.6)'; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.moveTo(m.X(0), m.Y(0)); const f = 1.25; ctx.lineTo(m.X(pr.V * KT * f), m.Y(Math.min(ymax, pr.Pr * k * f))); ctx.stroke(); ctx.setLineDash([]);
+    if (mode === 'fly' && sim) { const x = m.X(sim.V * KT); if (sim.V * KT < vmaxShow * KT) { ctx.fillStyle = '#22d3ee'; ctx.beginPath(); ctx.arc(x, m.Y(Math.min(ymax, sim.Dn * sim.V * k)), 5, 0, 7); ctx.fill(); } }
+    $('#perfNote').textContent = `${fmt(PF.W / g0, 0)} kg, ${fmt(PF.atm.rho, 3)} kg/m³ (field ${P.elev.toLocaleString('en')} m, ISA${P.dT >= 0 ? '+' : ''}${P.dT})`;
+  }
+
+  /* ======================= UI: BUILD ======================= */
+  const fmtKg = v => v >= 1000 ? fmt(v / 1000, 2) + ' t' : fmt(v, 0) + ' kg';
+  function setCtl(id, val, out) { const el = $('#' + id); el.value = val; const o = el.closest('.ctl').querySelector('output'); if (o) o.textContent = out; el.style.setProperty('--p', ((val - el.min) / (el.max - el.min) * 100) + '%'); }
+  function syncUI() {
+    setCtl('span', P.span, fmt(P.span, 1) + ' m'); setCtl('chord', P.chord, fmt(P.chord, 2) + ' m');
+    setCtl('wingX', P.wingX * 100, fmt(P.wingX * 100, 1) + '% of L');
+    setCtl('power', MAP.power.from(P.power), fmt(P.power, 0) + ' kW'); setCtl('thrust', MAP.thrust.from(P.thrust), fmt(P.thrust, 1) + ' kN');
+    setCtl('airframe', MAP.airframe.from(P.airframe), fmtKg(P.airframe)); setCtl('fuel', MAP.fuel.from(P.fuel), fmtKg(P.fuel)); setCtl('payload', MAP.payload.from(P.payload), fmtKg(P.payload));
+    setCtl('payX', P.payX * 100, fmt(P.payX * 100, 1) + '% of L'); setCtl('fusL', P.L, fmt(P.L, 1) + ' m'); setCtl('tail', P.tail * 100, fmt(P.tail * 100, 1) + '%');
+    setCtl('dT', P.dT, (P.dT >= 0 ? '+' : '') + P.dT + ' °C');
+    $('#af').value = P.af; $('#retract').checked = P.retract; $('#field').value = String(P.elev);
+    document.querySelectorAll('#engSeg button').forEach(b => b.classList.toggle('on', b.dataset.e === P.eng));
+    $('#powCtl').classList.toggle('hidden', P.eng !== 'prop'); $('#thrCtl').classList.toggle('hidden', P.eng !== 'jet');
+  }
+  function recompute() {
+    Dz = design(P); PF = performance(Dz); buildDirty = true;
+    const D = Dz, f = PF;
+    $('#afInfo').innerHTML = `α<sub>L=0</sub> ${fmt(D.af.a0, 1)}° · c<sub>l,max</sub> ${D.af.clmax} · c<sub>d0</sub> ${D.af.cd0} · ${D.af.note}`;
+    $('#pS').innerHTML = fmt(D.S, 1) + '<small>m²</small>'; $('#pAR').textContent = fmt(D.AR, 1);
+    $('#pM').innerHTML = fmtKg(D.m).replace(' ', '<small>') + '</small>';
+    $('#pWS').innerHTML = fmt(D.m / D.S, 0) + '<small>kg/m²</small>';
+    $('#pVs').innerHTML = fmt(f.Vs0 * KT, 0) + '<small>kt</small>'; $('#pVs30').innerHTML = fmt(f.Vs2 * KT, 0) + '<small>kt</small>';
+    $('#pTW').textContent = fmt(f.TW, 2);
+    $('#pTO').innerHTML = isFinite(f.sTO) ? fmt(f.sTO, 0) + '<small>m</small>' : '<span style="color:#ef4444">none</span>';
+    $('#pLD').textContent = fmt(f.LDmax, 1); $('#pVmd').innerHTML = fmt(f.Vmd * KT, 0) + '<small>kt</small>';
+    $('#pROC').innerHTML = f.ROC > 0 ? fmt(f.ROC, 1) + '<small>m/s</small>' : '<span style="color:#ef4444">' + fmt(f.ROC, 1) + '</span>';
+    $('#pVmax').innerHTML = f.Vmax > 0 ? fmt(f.Vmax * KT, 0) + '<small>kt</small>' : '—';
+    $('#pSM').innerHTML = `<span style="color:${D.SM < 0 ? '#ef4444' : D.SM < 0.05 || D.SM > 0.35 ? '#f59e0b' : 'inherit'}">${fmt(D.SM * 100, 1)}</span><small>%</small>`;
+    $('#pR').innerHTML = fmt(f.Rng / 1000, 0) + '<small>km</small>';
+    const atm = f.atm;
+    const da = (288.15 / 0.0065) * (1 - Math.pow(atm.sigma, 0.235));
+    $('#fieldNote').textContent = `Air density ${fmt(atm.rho, 3)} kg/m³ (σ = ${fmt(atm.sigma, 3)}), temperature ${fmt(atm.T - 273.15, 1)} °C, density altitude ${fmt(da, 0)} m. Runway 06/24: 2,500 m.`;
+    // warnings
+    const W = [];
+    if (D.SM < 0) W.push(['bad', `Unstable: the CG is ${fmt(-D.SM * D.c, 2)} m behind the neutral point. Move payload or wing, or enlarge the tail.`]);
+    else if (D.SM < 0.05) W.push(['warn', 'Static margin under 5%: very twitchy in pitch.']);
+    else if (D.SM > 0.35) W.push(['warn', 'Static margin over 35%: very nose-heavy. The elevator may not be able to rotate for take-off or flare.']);
+    if (!isFinite(f.sTO)) W.push(['bad', 'Not enough thrust to accelerate to lift-off speed.']);
+    else if (f.sTO > 2500) W.push(['bad', `Take-off roll ${fmt(f.sTO, 0)} m exceeds the 2,500 m runway.`]);
+    if (f.ROC <= 0) W.push(['bad', 'Cannot climb: power required exceeds power available at every speed.']);
+    if (D.m / D.S > 650) W.push(['warn', 'Very high wing loading: high stall speed.']);
+    if (!W.length) W.push(['ok', 'Design looks airworthy. Switch to Fly to test it.']);
+    $('#designWarn').innerHTML = W.map(([c, s]) => `<div class="warnbox ${c}">${s}</div>`).join('');
+    drawPerf();
+    checkDesignChallenges();
+  }
+  const bindR = (id, fn, map) => $('#' + id).addEventListener('input', e => { const v = +e.target.value; fn(map ? map.to(v) : v); markCustom(); syncUI(); recompute(); });
+  bindR('span', v => P.span = v); bindR('chord', v => P.chord = v); bindR('wingX', v => P.wingX = v / 100);
+  bindR('power', v => P.power = Math.round(v), MAP.power); bindR('thrust', v => P.thrust = Math.round(v * 10) / 10, MAP.thrust);
+  bindR('airframe', v => P.airframe = Math.round(v / 5) * 5, MAP.airframe); bindR('fuel', v => P.fuel = Math.round(v), MAP.fuel); bindR('payload', v => P.payload = Math.round(v / 5) * 5, MAP.payload);
+  bindR('payX', v => P.payX = v / 100); bindR('fusL', v => P.L = v); bindR('tail', v => P.tail = v / 100);
+  bindR('dT', v => P.dT = v);
+  $('#af').innerHTML = Object.entries(AF).map(([k, a]) => `<option value="${k}">${a.name}</option>`).join('');
+  $('#af').onchange = e => { P.af = e.target.value; markCustom(); recompute(); };
+  $('#retract').onchange = e => { P.retract = e.target.checked; markCustom(); recompute(); };
+  $('#field').onchange = e => { P.elev = +e.target.value; recompute(); };
+  document.querySelectorAll('#engSeg button').forEach(b => b.onclick = () => { P.eng = b.dataset.e; markCustom(); syncUI(); recompute(); });
+  $('#presets').innerHTML = Object.entries(PRESETS).map(([k, p]) => `<button class="btn sm" data-preset="${k}">${p.label}</button>`).join('');
+  let currentPreset = 'trainer';
+  function markCustom() { currentPreset = null; document.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('on')); }
+  function loadPreset(k) {
+    const pr = PRESETS[k]; Object.assign(P, { power: 120, thrust: 15 }, pr); delete P.label;
+    currentPreset = k; document.querySelectorAll('[data-preset]').forEach(b => b.classList.toggle('on', b.dataset.preset === k));
+    syncUI(); recompute();
+  }
+  document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => loadPreset(b.dataset.preset));
+
+  /* ======================= FLY: simulator ======================= */
+  const RWY = { x0: 0, x1: 2500, aim: 300 };
+  function terrain(x) {
+    if (x > -2500 && x < 6000) return 0;
+    const u = x < 0 ? -2500 - x : x - 6000, ramp = Math.min(1, u / 1500);
+    return ramp * (28 + 22 * Math.sin(x / 420) + 12 * Math.sin(x / 157 + 1.3));
+  }
+  let sim = null, G = null, paused = false;
+  const keys = {};
+  const MISSIONS = [
+    { id: 'free', t: 'Free flight', d: 'Start on the runway threshold. Explore.' },
+    { id: 'climb', t: 'Take off and climb to 300 m', d: 'Flaps 15 set. Full throttle, rotate near 1.2 V<sub>s</sub>, climb to 300 m above the field.' },
+    { id: 'land', t: 'Land safely', d: 'You are on a 3° approach, 2.8 km from the aiming point, flaps 30. Touch down gently on the runway and stop.' },
+    { id: 'glide', t: 'Engine-out glide', d: 'Engine failed at 600 m. Fly best-glide speed and land on the runway.' },
+    { id: 'heavy', t: 'Heavy lift', d: 'Design an aircraft whose payload is at least 35% of take-off mass, then climb to 300 m.' },
+  ];
+  let mission = 'climb';
+  const missionDone = {};
+  function renderMissions() {
+    $('#missions').innerHTML = MISSIONS.map(m => `<div class="mission ${m.id === mission ? 'on' : ''}" data-mis="${m.id}"><span class="led ${missionDone[m.id] ? 'on' : ''}"></span><div><b>${m.t}</b><span>${m.d}</span></div></div>`).join('');
+    document.querySelectorAll('[data-mis]').forEach(el => el.onclick = () => { mission = el.dataset.mis; renderMissions(); startMission(); stage.focus({ preventScroll: true }); });
+  }
+  function trim(D, V, gam, flap, gear, h) {
+    const atm = atmos(P.elev + h, P.dT), q = 0.5 * atm.rho * V * V, W = D.m * g0, F = FLAPS[flap];
+    let T = 0, ab = 0, aw = 0, CL = 0;
+    for (let it = 0; it < 8; it++) {          // thrust acts along the body, so iterate α and T together
+      CL = (W * Math.cos(gam) - T * Math.sin(ab)) / (q * D.S);
+      let lo = D.a0 + F.da, hi = lo + 25 * D2R;
+      for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (liftCoef(D, mid, flap).CL < CL) lo = mid; else hi = mid; }
+      aw = (lo + hi) / 2; ab = aw - IW;
+      const CD = CD0(D, atm.rho, V, atm.mu, gear, flap) + D.k * CL * CL;
+      T = Math.max(0, (q * D.S * CD + W * Math.sin(gam)) / Math.cos(ab));
+    }
+    const Tmax = thrust(D, V, 1, atm);
+    const thr = clamp(T / Math.max(1, Tmax), 0, 1);
+    const awt0 = D.a0 + 0.3 / D.aw;
+    const de = D.aw * D.SM * (aw - awt0) / D.Cmd;      // radians
+    return { aw, ab, theta: ab + gam, thr, elev: clamp(de / (20 * D2R), -1, 1) };
+  }
+  function startMission() {
+    const D = Dz; G = planeGeom(D);
+    const s = { x: 30, h: 0, vx: 0, vh: 0, th: 0, q: 0, thr: 0, elev: 0, flap: 1, gear: true, fuel: P.fuel, m: D.m, engine: true, t: 0, onGround: true, brake: false, prop: 0, crashed: false, landed: false, airborne: false, maxH: 0, groundRoll: null, rollStart: 30, td: null, fdr: [], fdrT: 0, events: [], tailStrike: false, V: 0, Dn: 0, L: 0, T: 0, aw: 0, sep: 0, stallT: 0 };
+    if (mission === 'land') {
+      const Vs = Math.sqrt(2 * D.m * g0 / (atmos(P.elev, P.dT).rho * D.S * PF.CLm2));
+      const V = 1.3 * Vs, gam = -3 * D2R, x = -2500, h = (RWY.aim - x) * Math.tan(3 * D2R);
+      const tr = trim(D, V, gam, 2, true, h);
+      Object.assign(s, { x, h, vx: V * Math.cos(gam), vh: V * Math.sin(gam), th: tr.theta, thr: tr.thr, elev: tr.elev, flap: 2, onGround: false, airborne: true });
+    } else if (mission === 'glide') {
+      const V = PF.Vmd, h = 600, gam = -Math.atan(1 / PF.LDmax);
+      const x = RWY.aim + 300 - 0.85 * PF.LDmax * h;
+      const tr = trim(D, V, gam, 0, !P.retract, h);
+      Object.assign(s, { x, h, vx: V * Math.cos(gam), vh: V * Math.sin(gam), th: tr.theta, thr: 0, elev: tr.elev, flap: 0, gear: !P.retract, engine: false, onGround: false, airborne: true });
+    } else if (mission === 'free') { s.flap = 0; }
+    s.elev0 = s.elev;
+    sim = s; paused = false; $('#banner').style.display = 'none';
+    $('#elev').value = s.elev; $('#thr').value = s.thr;
+    msg(mission === 'heavy' && D.p.payload < 0.35 * D.m ? `Payload fraction ${fmt(D.p.payload / D.m * 100, 0)}%: below 35%, redesign in the hangar` : MISSIONS.find(m => m.id === mission).t);
+    fdrReset();
+  }
+  function msg(s, col) { $('#hMsg').innerHTML = col ? `<span style="color:${col}">${s}</span>` : s; }
+  function endBanner(title, text, ok) {
+    $('#bTitle').innerHTML = title; $('#bText').innerHTML = text; $('#banner').style.display = 'block';
+    $('#bTitle').style.color = ok ? '#4ade80' : '#f87171'; SL.refreshIcons($('#banner'));
+  }
+
+  function step(dt) {
+    const s = sim, D = Dz; if (!s || s.crashed || s.done) return;
+    // pilot inputs
+    if (keys.up) s.elev = clamp(s.elev + 0.7 * dt, -1, 1);
+    if (keys.down) s.elev = clamp(s.elev - 0.7 * dt, -1, 1);
+    if (keys.thrUp) s.thr = clamp(s.thr + 0.5 * dt, 0, 1);
+    if (keys.thrDn) s.thr = clamp(s.thr - 0.5 * dt, 0, 1);
+    s.brake = !!keys.brake;
+    const atm = atmos(P.elev + Math.max(0, s.h), P.dT);
+    const V = Math.hypot(s.vx, s.vh), gam = V > 3 ? Math.atan2(s.vh, s.vx) : 0;
+    const ab = s.th - gam, aw = ab + IW;
+    const lc = liftCoef(D, aw, s.flap), CL = lc.CL;
+    const q = 0.5 * atm.rho * V * V;
+    const CD = dragCoef(D, CL, aw, s.flap, s.gear, atm.rho, V, atm.mu, lc.sep);
+    const Lf = q * D.S * CL, Df = q * D.S * CD;
+    const engOn = s.engine && s.fuel > 0;
+    const T = engOn ? thrust(D, V, s.thr, atm) : 0;
+    if (engOn) s.fuel = Math.max(0, s.fuel - fuelFlow(D, s.thr, atm, T) * dt);
+    s.m = D.m - (P.fuel - s.fuel);
+    const W = s.m * g0;
+    let Fx = -Df * Math.cos(gam) - Lf * Math.sin(gam) + T * Math.cos(s.th);
+    let Fh = -Df * Math.sin(gam) + Lf * Math.cos(gam) + T * Math.sin(s.th) - W;
+    const gH = terrain(s.x);
+    const onGround = s.h <= gH + 0.02 && Fh <= 0.5 * W;
+    if (onGround && s.h <= gH + 0.02) {
+      const N = Math.max(0, -Fh);
+      const onRwy = s.x >= RWY.x0 && s.x <= RWY.x1;
+      const mu = s.brake ? 0.45 : onRwy ? 0.03 : 0.12;
+      if (Math.abs(s.vx) > 0.05) Fx -= Math.sign(s.vx) * mu * N; else if (Math.abs(Fx) < mu * N) { Fx = 0; s.vx = 0; }
+      Fh = Math.max(Fh, 0);
+    }
+    s.vx += Fx / s.m * dt; s.vh += Fh / s.m * dt;
+    // pitch
+    const awt0 = D.a0 + 0.3 / D.aw;
+    const qhat = s.q * D.c / (2 * Math.max(V, 10));
+    const Cm = -D.aw * D.SM * (aw - awt0) + D.Cmd * s.elev * 20 * D2R + D.Cmq * qhat - 0.12 * lc.sep;
+    let qdot = q * D.S * D.c * Cm / D.Iyy;
+    if (onGround) qdot -= 2.5 * s.q;               // gear and tyre damping
+    s.q += qdot * dt; s.th += s.q * dt;
+    s.x += s.vx * dt; s.h += s.vh * dt;
+    // ground contact
+    const gH2 = terrain(s.x);
+    if (s.h <= gH2) {
+      const vs = s.vh;
+      s.h = gH2;
+      if (vs < 0) {
+        if (s.airborne) touchdown(vs, V);
+        s.vh = 0;
+      }
+      if (s.th < 0) { if (s.th < -6 * D2R && s.airborne && !s.crashed) crash('Nose-first impact: the nose gear collapsed.'); s.th = 0; s.q = Math.max(0, s.q); }
+      if (s.th > G.thTS) { if (!s.tailStrike) { s.tailStrike = true; SL.toast('Tail strike! Rotate less steeply.', 'warn'); } s.th = G.thTS; s.q = Math.min(0, s.q); }
+      s.onGround = true;
+    } else s.onGround = false;
+    if (!s.onGround && s.h - gH2 > 3 && !s.airborne) { s.airborne = true; if (s.groundRoll === null) { s.groundRoll = s.x - s.rollStart; SL.toast(`Lift-off at ${fmt(V * KT, 0)} kt after a ground roll of ${fmt(s.groundRoll, 0)} m (hangar estimate ${fmt(PF.sTO, 0)} m).`, 'ok', 5000); } }
+    s.t += dt; s.V = V; s.Dn = Df; s.L = Lf; s.T = T; s.aw = aw; s.ab = ab; s.gam = gam; s.sep = lc.sep; s.W = W; s.CL = CL; s.CD = CD;
+    s.maxH = Math.max(s.maxH, s.h - gH2);
+    // stall warning
+    s.stallWarn = s.airborne && aw > lc.aS - 3 * D2R;
+    // mission checks
+    const agl = s.h - gH2;
+    if ((mission === 'climb' || mission === 'heavy') && agl >= 300 && !s.done) {
+      if (mission === 'heavy' && D.p.payload < 0.35 * D.m) { s.done = true; endBanner('300 m reached', `Payload fraction is only ${fmt(D.p.payload / D.m * 100, 0)}%. Redesign for at least 35% to complete Heavy lift.`, false); }
+      else { s.done = true; missionDone[mission] = true; renderMissions(); SL.toast(`<b>Mission complete:</b> ${MISSIONS.find(m => m.id === mission).t}`, 'ok', 5000); endBanner('Mission complete', `Reached 300 m in ${fmt(s.t, 0)} s. Ground roll ${fmt(s.groundRoll, 0)} m${mission === 'heavy' ? `, payload ${fmtKg(D.p.payload)} (${fmt(D.p.payload / D.m * 100, 0)}% of take-off mass)` : ''}.`, true); }
+    }
+    if (s.landed && s.onGround && V < 1 && !s.done) {
+      s.done = true;
+      const td = s.td, ok = td.score >= 60 && td.onRwy;
+      if ((mission === 'land' || mission === 'glide') && ok) { missionDone[mission] = true; renderMissions(); }
+      endBanner(ok ? `Landed: score ${td.score}/100` : `Landing score ${td.score}/100`, `Touchdown ${fmt(-td.vs, 2)} m/s down, ${fmt(td.V * KT, 0)} kt, pitch ${fmt(td.th * R2D, 1)}°, ${td.onRwy ? fmt(td.x, 0) + ' m past the threshold' : 'off the runway'}. Stopped after ${fmt(s.x - td.x, 0)} m. ${td.notes}`, ok);
+    }
+    if (s.fuel <= 0 && s.engine && !s.fuelOut) { s.fuelOut = true; SL.toast('Fuel exhausted: the engine has stopped.', 'bad'); }
+  }
+  function touchdown(vs, V) {
+    const s = sim; if (s.crashed || s.landed) return;
+    if (!s.gear) return crash('Gear-up landing: you forgot to lower the landing gear.');
+    if (vs < -4) return crash(`Hard impact at ${fmt(-vs, 1)} m/s: the landing gear failed.`);
+    const onRwy = s.x >= RWY.x0 && s.x <= RWY.x1;
+    let score = 0, notes = [];
+    score += Math.round(45 * clamp(1 - (Math.abs(vs) - 0.4) / 2.6, 0, 1));
+    if (Math.abs(vs) < 0.6) notes.push('Smooth touchdown.'); else if (Math.abs(vs) > 2) notes.push('Firm landing: flare more.');
+    if (onRwy) { const dx = Math.abs(s.x - RWY.aim); score += Math.round(25 * clamp(1 - Math.max(0, dx - 150) / 700, 0, 1)); if (s.x > 1200) notes.push('Long landing: plan your descent earlier.'); }
+    else notes.push(s.x < 0 ? 'Undershoot: you landed before the runway.' : 'Overshoot: off the end of the runway.');
+    if (s.th >= -0.5 * D2R) score += 15; else notes.push('Nose-wheel first: hold the nose up in the flare.');
+    const Vs = Math.sqrt(2 * s.m * g0 / (atmos(P.elev, P.dT).rho * Dz.S * clPeak(Dz, s.flap)));
+    if (V < 1.35 * Vs) score += 15; else notes.push('Too fast: bleed off speed before touchdown.');
+    s.landed = true; s.td = { vs, V, th: s.th, x: s.x, onRwy, score, notes: notes.join(' ') };
+    SL.toast(`Touchdown: ${fmt(-vs, 2)} m/s, score ${score}/100`, score >= 60 ? 'ok' : 'warn');
+  }
+  function crash(reason) {
+    const s = sim; s.crashed = true; s.vx = 0; s.vh = 0; s.q = 0;
+    endBanner('Crashed', reason, false); msg('CRASHED', '#ef4444');
+    SL.toast(reason, 'bad');
+  }
+
+  /* ---------- FLY rendering ---------- */
+  const clouds = Array.from({ length: 14 }, (_, i) => ({ x: i * 1700 + Math.random() * 900 - 4000, y: 300 + Math.random() * 2200, s: 0.6 + Math.random() * 1.2, p: 0.25 + Math.random() * 0.35 }));
+  const trees = Array.from({ length: 140 }, (_, i) => ({ x: -6000 + i * 110 + Math.random() * 70, s: 0.7 + Math.random() * 0.6, k: Math.random() }));
+  const cam = { ppm: 8, x: 0, y: 0 };
+  function hillProfile(x) { return 0.55 + 0.2 * Math.sin(x * 0.004) + 0.12 * Math.sin(x * 0.011 + 1) + 0.08 * Math.sin(x * 0.027 + 2); }
+  function ngong(x) { // knuckle-shaped ridge
+    const u = ((x % 1400) + 1400) % 1400 / 1400;
+    let y = 0; for (let k = 0; k < 4; k++) { const c = 0.25 + k * 0.13; y = Math.max(y, Math.exp(-((u - c) ** 2) / 0.0035) * (0.8 + 0.15 * (k % 2))); }
+    return 0.25 + 0.75 * y * Math.min(1, Math.max(0, Math.sin(u * Math.PI)) * 1.6);
+  }
+  function drawFly(t) {
+    const { ctx, w, h } = st, s = sim, D = Dz;
+    if (!s) return;
+    const agl = s.h - terrain(s.x);
+    const target = clamp(h * 0.5 / (agl + 30), 0.3, 9);
+    cam.ppm = cam.ppm + (target - cam.ppm) * 0.05;
+    const ppm = cam.ppm;
+    const px = w * (s.airborne ? 0.3 : 0.38);
+    const py = Math.max(h * 0.45, h - 105 - s.h * ppm);
+    const groundY = py + s.h * ppm;            // screen y of altitude 0
+    const toS = (x, alt) => [px + (x - s.x) * ppm, groundY - alt * ppm];
+    // sky
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    const hi = clamp(s.h / 1500, 0, 1);
+    sky.addColorStop(0, `rgb(${lerp(48, 22, hi)},${lerp(110, 70, hi)},${lerp(190, 160, hi)})`);
+    sky.addColorStop(0.6, `rgb(${lerp(140, 90, hi)},${lerp(190, 150, hi)},${lerp(230, 215, hi)})`);
+    sky.addColorStop(1, '#f5d9a8');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
+    // sun
+    const sg = ctx.createRadialGradient(w * 0.82, h * 0.18, 0, w * 0.82, h * 0.18, 120);
+    sg.addColorStop(0, 'rgba(255,248,220,.95)'); sg.addColorStop(0.15, 'rgba(255,240,200,.6)'); sg.addColorStop(1, 'rgba(255,240,200,0)');
+    ctx.fillStyle = sg; ctx.fillRect(0, 0, w, h);
+    // far ridge (Ngong-like knuckles), city skyline and mid hills, with horizontal and slight vertical parallax
+    const hz = py + Math.min(s.h * ppm, h) * 0.06 + 20;          // horizon line
+    const ridge = (xs, fn, par, scale, amp, base, col) => {
+      ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(0, h);
+      for (let x = 0; x <= w + 8; x += 6) { const u = (x + s.x * par) / scale; ctx.lineTo(x, base - fn(u) * amp); }
+      ctx.lineTo(w, h); ctx.closePath(); ctx.fill();
+    };
+    ridge(0, u => ngong(u * 1400), 0.03, 1.4 * Math.max(600, w), 95, hz, 'rgba(96,112,150,.7)');
+    // Nairobi skyline (hazy)
+    ctx.fillStyle = 'rgba(88,104,140,.75)';
+    const cityOff = -(s.x * 0.05) % 3000;
+    for (let i = 0; i < 18; i++) {
+      const bx = w * 0.55 + i * 15 + cityOff; if (bx < -30 || bx > w + 30) continue;
+      const hb = 10 + ((i * 37) % 17) * 2 + (i === 8 ? 26 : 0) + (i === 12 ? 18 : 0);
+      ctx.fillRect(bx, hz - hb, 12, hb + 2);
+      if (i === 8) { ctx.beginPath(); ctx.ellipse(bx + 6, hz - hb, 10, 3, 0, 0, 7); ctx.fill(); ctx.fillRect(bx + 5, hz - hb - 8, 2, 8); }
+    }
+    ridge(0, u => hillProfile(u * 900), 0.15, 900, 26, hz + 12, 'rgba(110,122,80,.9)');
+    // clouds
+    clouds.forEach(c => {
+      const sx = px + (c.x - s.x * c.p) * Math.min(1, ppm) * 0.6 % (w + 600);
+      const X = ((sx % (w + 600)) + (w + 600)) % (w + 600) - 300;
+      const Y = hz - 70 - (c.y - s.h) * 0.22;
+      if (Y < -80 || Y > h) return;
+      ctx.fillStyle = 'rgba(255,255,255,.6)';
+      for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.ellipse(X + k * 28 * c.s, Y - (k % 2) * 10 * c.s, 34 * c.s, 15 * c.s, 0, 0, 7); ctx.fill(); }
+    });
+    // terrain (near)
+    const gx0 = s.x - px / ppm, gx1 = s.x + (w - px) / ppm;
+    ctx.fillStyle = '#9a8f4e';
+    ctx.beginPath(); ctx.moveTo(0, h);
+    const stepM = Math.max(2, 6 / ppm);
+    for (let x = gx0; x <= gx1 + stepM; x += stepM) { const [sx, sy] = toS(x, terrain(x)); ctx.lineTo(sx, sy); }
+    ctx.lineTo(w, h); ctx.fill();
+    const grd = ctx.createLinearGradient(0, groundY, 0, groundY + 80); grd.addColorStop(0, 'rgba(120,140,60,.6)'); grd.addColorStop(1, 'rgba(60,50,25,.5)');
+    ctx.fillStyle = grd; ctx.fillRect(0, groundY, w, Math.max(0, h - groundY));
+    // acacia trees
+    trees.forEach(tr => {
+      if (tr.x > RWY.x0 - 150 && tr.x < RWY.x1 + 150) return;
+      const [sx, sy] = toS(tr.x, terrain(tr.x)); if (sx < -60 || sx > w + 60) return;
+      const sc = Math.max(0.6, ppm) * tr.s;
+      ctx.strokeStyle = '#3f3220'; ctx.lineWidth = Math.max(1, 0.4 * sc); ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + 0.3 * sc, sy - 5 * sc); ctx.stroke();
+      ctx.fillStyle = tr.k > 0.5 ? '#4b5a2a' : '#56652f'; ctx.beginPath(); ctx.ellipse(sx + 0.3 * sc, sy - 5.6 * sc, 4.5 * sc, 1.3 * sc, 0, 0, 7); ctx.fill();
+    });
+    // runway
+    const [r0x, r0y] = toS(RWY.x0, 0), [r1x] = toS(RWY.x1, 0);
+    if (r1x > -50 && r0x < w + 50) {
+      const thick = Math.max(6, 2.2 * ppm);
+      ctx.fillStyle = '#3a3d44'; ctx.fillRect(r0x, r0y - 0.5, r1x - r0x, thick);
+      ctx.fillStyle = '#e5e7eb';
+      for (let x = RWY.x0 + 60; x < RWY.x1 - 60; x += 60) { const [a] = toS(x, 0), [b] = toS(x + 30, 0); if (b > 0 && a < w) ctx.fillRect(a, r0y - 0.5, b - a, Math.max(1, thick * 0.3)); }
+      [RWY.x0, RWY.x1 - 40].forEach(x0 => { const [a] = toS(x0 + 5, 0), [b] = toS(x0 + 35, 0); ctx.fillRect(a, r0y - 0.5, b - a, thick); });
+      const [aim0] = toS(RWY.aim, 0), [aim1] = toS(RWY.aim + 45, 0); ctx.fillStyle = '#fafafa'; ctx.fillRect(aim0, r0y - 0.5, aim1 - aim0, thick);
+      // runway edge lights
+      ctx.fillStyle = '#fde68a'; for (let x = RWY.x0; x <= RWY.x1; x += 60) { const [a, b] = toS(x, 0); if (a > -5 && a < w + 5) ctx.fillRect(a - 1, b - 3, 2, 2); }
+      ctx.font = '600 11px JetBrains Mono, monospace'; ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.textAlign = 'center';
+      if (ppm > 1.2) { ctx.fillText('06', toS(70, 0)[0], r0y + thick + 13); ctx.fillText('24', toS(RWY.x1 - 70, 0)[0], r0y + thick + 13); }
+      // control tower & windsock
+      const [tx, ty] = toS(-120, 0), ts = Math.max(0.5, ppm);
+      ctx.fillStyle = '#cbd5e1'; ctx.fillRect(tx - 2 * ts, ty - 22 * ts, 4 * ts, 22 * ts); ctx.fillStyle = '#334155'; ctx.fillRect(tx - 4 * ts, ty - 27 * ts, 8 * ts, 5 * ts); ctx.fillStyle = '#7dd3fc'; ctx.fillRect(tx - 3.5 * ts, ty - 26 * ts, 7 * ts, 2.5 * ts);
+      const [wx, wy] = toS(150, 0); ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = Math.max(1, 0.2 * ts); ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(wx, wy - 7 * ts); ctx.stroke(); ctx.fillStyle = '#f97316'; ctx.beginPath(); ctx.moveTo(wx, wy - 7 * ts); ctx.lineTo(wx - 5 * ts, wy - 6.3 * ts); ctx.lineTo(wx - 5 * ts, wy - 5.7 * ts); ctx.lineTo(wx, wy - 5.6 * ts); ctx.fill();
+      // PAPI (4 lights left of aim point) : colours from glide angle of aircraft
+    }
+    const ang = Math.atan2(s.h, RWY.aim - s.x) * R2D, papiSet = [3.5, 3.17, 2.83, 2.5];
+    s.papi = s.x < RWY.aim && s.airborne ? papiSet.map(a => ang > a) : null;
+    // runway-ahead cue when the runway is off screen
+    if (s.airborne && s.x < RWY.x0 && toS(RWY.x0, 0)[0] > w - 20) {
+      const dist = RWY.x0 - s.x, yy = Math.min(h - 40, groundY - 14);
+      ctx.font = '600 12px JetBrains Mono, monospace'; ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(5,9,19,.75)';
+      const label = `RWY 06 ${fmt(dist / 1000, 2)} km ▶`; const tw = ctx.measureText(label).width;
+      ctx.fillRect(w - tw - 104, yy - 14, tw + 14, 20); ctx.fillStyle = '#fde68a'; ctx.fillText(label, w - 96, yy);
+    }
+    // aircraft
+    const G2 = G, sc = ppm, vis = Math.max(1, 70 / (D.L * ppm));
+    const [ax, ay] = toS(s.x, s.h);
+    ctx.save(); ctx.translate(ax, ay); ctx.rotate(-s.th); ctx.scale(sc * vis, -sc * vis);
+    drawAircraft(ctx, D, G2, { flap: s.flap, gear: s.gear, thr: s.engine && s.fuel > 0 ? s.thr : 0, prop: s.prop });
+    ctx.restore();
+    // shadow
+    if (agl < 200) { const [shx, shy] = toS(s.x, terrain(s.x)); ctx.fillStyle = `rgba(0,0,0,${0.25 * (1 - agl / 200)})`; ctx.beginPath(); ctx.ellipse(shx - D.L * 0.3 * ppm * vis, shy, D.L * 0.5 * ppm * vis, 3, 0, 0, 7); ctx.fill(); }
+    // force vectors (from CG)
+    if ($('#vec').checked && s.W) {
+      const cgx = ax + Math.cos(-s.th) * (G2.xmg - D.xcg) * sc * vis - Math.sin(-s.th) * G2.hc * sc * vis * -1 * 0;
+      const cgL = [(G2.xmg - D.xcg), G2.hc];
+      const cxp = ax + (cgL[0] * Math.cos(s.th) - cgL[1] * Math.sin(s.th)) * sc * vis, cyp = ay - (cgL[0] * Math.sin(s.th) + cgL[1] * Math.cos(s.th)) * sc * vis;
+      void cgx;
+      const Ls = 70 / s.W, gm = s.gam || 0;
+      const vec = (F, ang, col, lab) => { const len = F * Ls; if (Math.abs(len) < 3) return; const ex = cxp + Math.cos(ang) * len, ey = cyp - Math.sin(ang) * len; SL.arrow(ctx, cxp, cyp, ex, ey, col, 2.5, 9); ctx.fillStyle = col; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(lab, ex + Math.cos(ang) * 10, ey - Math.sin(ang) * 10 + 4); };
+      vec(s.L, gm + Math.PI / 2, '#34d399', 'L'); vec(s.Dn, gm + Math.PI, '#f87171', 'D'); vec(s.T, s.th, '#f59e0b', 'T'); vec(s.W, -Math.PI / 2, '#60a5fa', 'W');
+      if (s.V > 3) { // flight path vector marker
+        const fx = cxp + Math.cos(gm) * 95, fy = cyp - Math.sin(gm) * 95;
+        ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(fx, fy, 6, 0, 7); ctx.moveTo(fx - 14, fy); ctx.lineTo(fx - 6, fy); ctx.moveTo(fx + 6, fy); ctx.lineTo(fx + 14, fy); ctx.moveTo(fx, fy - 6); ctx.lineTo(fx, fy - 12); ctx.stroke();
+        ctx.setLineDash([3, 4]); ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cxp, cyp); ctx.lineTo(cxp + Math.cos(s.th) * 110, cyp - Math.sin(s.th) * 110); ctx.stroke(); ctx.setLineDash([]);
+      }
+    }
+    // instruments: AoA gauge + altitude tape
+    drawAoA(ctx, w - 66, h - 200, s);
+    if (s.stallWarn) { ctx.fillStyle = `rgba(239,68,68,${0.6 + 0.4 * Math.sin(t * 12)})`; ctx.font = '700 16px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText('STALL', w / 2, 70); }
+    if (s.papi) { const py0 = h - 252; ctx.font = '500 11px JetBrains Mono, monospace'; ctx.fillStyle = 'rgba(5,9,19,.75)'; ctx.fillRect(w - 150, py0, 136, 20); ctx.textAlign = 'left'; ctx.fillStyle = '#cbd5e1'; ctx.fillText('PAPI', w - 144, py0 + 14); s.papi.forEach((wht, i) => { ctx.fillStyle = wht ? '#fff' : '#ef4444'; ctx.beginPath(); ctx.arc(w - 98 + i * 18, py0 + 10, 5, 0, 7); ctx.fill(); }); }
+    if (paused && !s.crashed && !s.done) { ctx.fillStyle = 'rgba(5,9,19,.55)'; ctx.fillRect(0, 0, w, h); ctx.fillStyle = '#fff'; ctx.font = '700 20px Space Grotesk, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('PAUSED (press P)', w / 2, h / 2); }
+  }
+  function drawAoA(ctx, x, y, s) {
+    const hgt = 110, aS = liftCoef(Dz, 0, s.flap).aS * R2D, a = (s.aw || 0) * R2D;
+    const amin = -5, amax = Math.max(aS + 6, 20), Y = v => y + hgt - (clamp(v, amin, amax) - amin) / (amax - amin) * hgt;
+    ctx.fillStyle = 'rgba(5,9,19,.7)'; ctx.fillRect(x - 8, y - 22, 60, hgt + 34);
+    ctx.fillStyle = 'rgba(52,211,153,.35)'; ctx.fillRect(x, Y(aS - 3), 14, Y(amin) - Y(aS - 3));
+    ctx.fillStyle = 'rgba(245,158,11,.5)'; ctx.fillRect(x, Y(aS), 14, Y(aS - 3) - Y(aS));
+    ctx.fillStyle = 'rgba(239,68,68,.6)'; ctx.fillRect(x, Y(amax), 14, Y(aS) - Y(amax));
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(x + 16, Y(a)); ctx.lineTo(x + 26, Y(a) - 5); ctx.lineTo(x + 26, Y(a) + 5); ctx.fill();
+    ctx.font = '500 10px JetBrains Mono, monospace'; ctx.fillStyle = '#cbd5e1'; ctx.textAlign = 'left';
+    ctx.fillText('AoA', x - 2, y - 9); ctx.fillText(fmt(a, 1) + '°', x + 22, Y(a) + 14 > y + hgt ? Y(a) - 8 : Y(a) + 14);
+  }
+
+  /* ---------- flight data recorder ---------- */
+  function fdrReset() { if (sim) { sim.fdr = []; sim.fdrT = 0; } }
+  function drawFdr() {
+    if (!sim || sim.fdr.length < 2) { chFdr.ctx.clearRect(0, 0, chFdr.w, chFdr.h); return; }
+    const d = sim.fdr, t0 = d[0][0];
+    SL.chart(chFdr, [
+      { data: d.map(p => [p[0] - t0, p[1]]), color: '#22d3ee' },
+      { data: d.map(p => [p[0] - t0, p[2] * 5]), color: '#facc15' },
+      { data: d.map(p => [p[0] - t0, p[3] * 20]), color: '#f472b6', width: 1.4 },
+    ], { xlabel: 'time (s)', ymin: Math.min(0, ...d.map(p => p[3] * 20)), pad: [16, 12, 30, 48] });
+  }
+
+  function hud() {
+    const s = sim; if (!s) return;
+    const atm = atmos(P.elev + s.h, P.dT), ias = s.V * Math.sqrt(atm.sigma);
+    $('#hIas').textContent = fmt(ias * KT, 0);
+    $('#hAlt').textContent = fmt(s.h - terrain(s.x), 0);
+    $('#hVs').textContent = fmt(s.vh, 1);
+    $('#hAoa').textContent = fmt((s.ab || 0) * R2D, 1);
+    $('#hPitch').textContent = fmt(s.th * R2D, 1);
+    $('#hThr').textContent = fmt(s.thr * 100, 0);
+    $('#hCfg').textContent = `FLAP ${FLAPS[s.flap].deg} · GEAR ${s.gear ? 'DN' : 'UP'}${s.brake ? ' · BRK' : ''}${!s.engine || s.fuel <= 0 ? ' · ENG OFF' : ''}`;
+    $('#fTas').innerHTML = fmt(s.V, 1) + '<small>m/s</small>';
+    $('#fMass').innerHTML = fmt(s.m, 0) + '<small>kg</small>';
+    $('#fLW').textContent = s.W ? fmt(s.L / s.W, 2) : '—';
+    $('#fLD').textContent = s.Dn > 1 ? fmt(s.L / s.Dn, 1) : '—';
+    $('#fT').innerHTML = fmt(s.T / 1000, 2) + '<small>kN</small>';
+    $('#fFuel').innerHTML = fmt(s.fuel, 0) + '<small>kg</small>';
+    $('#fX').innerHTML = fmt(s.x, 0) + '<small>m</small>';
+    const VsNow = Math.sqrt(2 * s.m * g0 / (atm.rho * Dz.S * clPeak(Dz, s.flap)));
+    $('#fVs').innerHTML = fmt(VsNow * KT, 0) + '<small>kt TAS</small>';
+    const e = $('#elev'); if (+e.value !== s.elev) { e.value = s.elev; e.closest('.ctl').querySelector('output').textContent = (s.elev >= 0 ? '+' : '') + fmt(s.elev * 20, 1) + '°'; e.style.setProperty('--p', ((s.elev + 1) / 2 * 100) + '%'); }
+    const th = $('#thr'); if (+th.value !== s.thr) { th.value = s.thr; th.closest('.ctl').querySelector('output').textContent = fmt(s.thr * 100, 0) + '%'; th.style.setProperty('--p', s.thr * 100 + '%'); }
+    if (!s.crashed && !s.done) {
+      if (s.stallWarn) msg('STALL WARNING', '#ef4444');
+      else if (!s.airborne && s.onGround && s.V > 1) msg(`Take-off roll · rotate at ~${fmt(1.2 * PF.Vs1 * Math.sqrt(atm.sigma) * KT, 0)} kt IAS`);
+      else if (s.airborne && !s.gear && s.h - terrain(s.x) < 60 && s.vh < 0) msg('Gear up! Press G', '#f59e0b');
+    }
+  }
+
+  /* ---------- audio (stall horn) ---------- */
+  let horn = null;
+  function hornSet(on) {
+    if (!$('#horn').checked) on = false;
+    if (on && !horn) { const ac = SL.audio(); if (!ac) return; const o = ac.createOscillator(), g = ac.createGain(); o.type = 'square'; o.frequency.value = 520; g.gain.value = 0.03; o.connect(g).connect(ac.destination); o.start(); horn = { o, g }; }
+    else if (!on && horn) { horn.o.stop(); horn = null; }
+  }
+
+  /* ======================= Mode switching & input ======================= */
+  function setMode(m) {
+    mode = m;
+    document.querySelectorAll('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+    $('#buildPanels').classList.toggle('hidden', m !== 'build'); $('#flyPanels').classList.toggle('hidden', m !== 'fly');
+    $('#hudFly').classList.toggle('hidden', m !== 'fly'); $('#hudR').classList.toggle('hidden', m !== 'fly');
+    $('#flybar').classList.toggle('hidden', m !== 'fly'); $('#fdrBox').classList.toggle('hidden', m !== 'fly');
+    $('#modeHint').textContent = m === 'build' ? 'Design your aircraft in the hangar, then switch to Fly. Your design drives the flight physics.' : 'Click the stage, then fly with the keyboard, or use the buttons and sliders.';
+    if (m === 'fly') { renderMissions(); startMission(); stage.focus({ preventScroll: true }); } else { hornSet(false); $('#banner').style.display = 'none'; buildDirty = true; }
+    SL.refreshIcons();
+  }
+  document.querySelectorAll('#modeSeg button').forEach(b => b.onclick = () => setMode(b.dataset.m));
+  $('#bRetry').onclick = () => { startMission(); stage.focus({ preventScroll: true }); };
+  $('#bBuild').onclick = () => setMode('build');
+  const KEYMAP = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ShiftLeft: 'thrUp', ShiftRight: 'thrUp', KeyA: 'thrUp', ControlLeft: 'thrDn', ControlRight: 'thrDn', KeyZ: 'thrDn', KeyB: 'brake' };
+  function inView() { const r = stage.getBoundingClientRect(); return r.bottom > 80 && r.top < innerHeight - 80; }
+  function tap(a) {
+    if (!sim) return;
+    if (a === 'flaps') { sim.flap = (sim.flap + 1) % 3; SL.toast(`Flaps ${FLAPS[sim.flap].deg}°`, '', 1200); }
+    if (a === 'gear') { if (!P.retract) SL.toast('This design has fixed landing gear.', 'warn', 1800); else if (sim.onGround) SL.toast('Gear cannot retract on the ground.', 'warn', 1800); else { sim.gear = !sim.gear; SL.toast(`Gear ${sim.gear ? 'down' : 'up'}`, '', 1200); } }
+    if (a === 'pause') paused = !paused;
+    if (a === 'centre') sim.elev = sim.elev0 || 0;
+  }
+  document.addEventListener('keydown', e => {
+    if (mode !== 'fly' || !inView() || ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) && e.target.type !== 'range') return;
+    const k = KEYMAP[e.code];
+    if (k) { keys[k] = true; e.preventDefault(); SL.audio(); }
+    if (e.code === 'Space') { tap('centre'); e.preventDefault(); }
+    if (e.code === 'KeyF') tap('flaps'); if (e.code === 'KeyG') tap('gear'); if (e.code === 'KeyP') tap('pause');
+    if (e.code === 'KeyR') startMission();
+    if (e.code === 'KeyV') { $('#vec').checked = !$('#vec').checked; }
+  });
+  document.addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys[k] = false; });
+  window.addEventListener('blur', () => Object.keys(keys).forEach(k => keys[k] = false));
+  document.querySelectorAll('[data-hold]').forEach(b => {
+    const k = b.dataset.hold;
+    b.addEventListener('pointerdown', e => { keys[k] = true; b.classList.add('on'); b.setPointerCapture(e.pointerId); SL.audio(); e.preventDefault(); });
+    const up = () => { keys[k] = false; b.classList.remove('on'); };
+    b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('lostpointercapture', up);
+  });
+  document.querySelectorAll('[data-tap]').forEach(b => b.addEventListener('click', () => tap(b.dataset.tap)));
+  $('#elev').addEventListener('input', e => { if (sim) sim.elev = +e.target.value; });
+  $('#thr').addEventListener('input', e => { if (sim) sim.thr = +e.target.value; });
+
+  /* ======================= Challenges (design) ======================= */
+  const CH = [
+    { id: 'stable', t: 'Balance the aircraft', d: 'Get a static margin between 5% and 20% with the payload at 50% of the fuselage length or further aft.' },
+    { id: 'stol', t: 'Bush strip', d: 'Design an aircraft with take-off mass over 1,500 kg that lifts off in under 300 m at Nairobi (ISA+15).' },
+    { id: 'glide', t: 'Sailplane', d: 'Reach a best glide ratio of 25 or more.' },
+    { id: 'fast', t: 'Fast cruiser', d: 'Reach a maximum level speed above 250 knots with a propeller engine.' },
+    { id: 'eldoret', t: 'Hot and high', d: 'At Eldoret with ISA+20, design a stable aircraft carrying 1,000 kg of payload that still climbs at over 3 m/s.' },
+    { id: 'missions', t: 'Pilot’s licence', d: 'Complete the take-off, landing and engine-out glide missions in the Fly mode.' },
+  ];
+  const chDone = {};
+  function renderChals() { $('#chals').innerHTML = CH.map(c => `<div class="chal"><span class="led ${chDone[c.id] ? 'on' : ''}"></span><div><b>${c.t}</b><p>${c.d}</p></div></div>`).join(''); }
+  renderChals();
+  let bootDone = false;
+  function chOk(id) { if (chDone[id] || !bootDone) return; chDone[id] = true; renderChals(); SL.toast('<b>Challenge complete:</b> ' + CH.find(c => c.id === id).t, 'ok', 4500); }
+  function checkDesignChallenges() {
+    const D = Dz, f = PF;
+    if (D.SM >= 0.05 && D.SM <= 0.2 && P.payX >= 0.5) chOk('stable');
+    if (D.m > 1500 && f.sTO < 300 && P.elev === 1624 && P.dT >= 15) chOk('stol');
+    if (f.LDmax >= 25) chOk('glide');
+    if (P.eng === 'prop' && f.Vmax * KT > 250) chOk('fast');
+    if (P.elev === 2118 && P.dT >= 20 && P.payload >= 1000 && D.SM > 0.03 && f.ROC > 3) chOk('eldoret');
+    if (missionDone.climb && missionDone.land && missionDone.glide) chOk('missions');
+  }
+
+  /* ======================= Worked examples ======================= */
+  function worked() {
+    const keep = Object.assign({}, P);
+    Object.assign(P, PRESETS.trainer, { elev: 1624, dT: 15 }); delete P.label;
+    const D = design(P), f = performance(D), atm = f.atm, W = D.m * g0;
+    const sea = atmos(61, 0), Wsea = W, fSea = (() => { const q = Object.assign({}, P, { elev: 61, dT: 0 }); const pp = performance(design(q)); return pp; })();
+    const cd0 = CD0(D, atm.rho, f.Vmd, atm.mu, true, 0);
+    const Vmd = Math.sqrt(2 * W / (atm.rho * D.S)) * Math.pow(D.k / cd0, 0.25), LDm = 1 / (2 * Math.sqrt(D.k * cd0));
+    Object.assign(P, keep);
+    const F = (n, d = 2) => fmt(n, d);
+    $('#workedPanel').innerHTML = `
+      <p>These examples use the <b>Trainer</b> preset at Nairobi JKIA (1,624 m, ISA+15 °C). Load that preset in the hangar to compare with the live numbers.</p>
+      <h3>Example 1: Stall speed at Nairobi</h3>
+      <div class="worked"><ol>
+        <li>Take-off mass $m = ${F(D.m, 0)}$ kg, so $W = mg = ${F(W, 0)}$ N. Wing area $S = bc = 11\\times1.5 = ${F(D.S, 1)}\\ \\text{m}^2$, wing loading $W/S = ${F(W / D.S, 0)}$ Pa.</li>
+        <li>ISA at 1,624 m is $${F(288.15 - 0.0065 * 1624 - 273.15, 1)}^\\circ$C; at ISA+15 the air is $${F(atm.T - 273.15, 1)}^\\circ$C and $\\rho = ${F(atm.rho, 3)}\\ \\text{kg/m}^3$ (σ = ${F(atm.sigma, 3)}).</li>
+        <li>The wing's clean $C_{L,max} = ${F(f.CLm0, 2)}$ (about 90% of the NACA 2412 section value of 1.55, because the lift curve rounds off before the stall).</li>
+        <li>$V_s = \\sqrt{2W/(\\rho S C_{L,max})} = \\sqrt{2\\times${F(W, 0)}/(${F(atm.rho, 3)}\\times${F(D.S, 1)}\\times${F(f.CLm0, 2)})} = ${F(f.Vs0, 1)}$ m/s $= ${F(f.Vs0 * KT, 0)}$ knots (true airspeed).</li>
+        <li>At Mombasa (ISA, $\\rho = ${F(sea.rho, 3)}$) the same aircraft stalls at ${F(fSea.Vs0 * KT, 0)} kt: the ratio is $\\sqrt{${F(sea.rho, 3)}/${F(atm.rho, 3)}} = ${F(Math.sqrt(sea.rho / atm.rho), 3)}$. The indicated airspeed at the stall is the same at both airfields.</li>
+      </ol></div>
+      <h3>Example 2: Best glide</h3>
+      <div class="worked"><ol>
+        <li>$AR = b^2/S = ${F(D.AR, 2)}$, $k = 1/(\\pi e AR) = 1/(\\pi\\times0.8\\times${F(D.AR, 2)}) = ${F(D.k, 4)}$.</li>
+        <li>Component build-up near the best-glide speed gives $C_{D0} \\approx ${F(cd0, 4)}$ (wing ${F(1.1 * D.cdWing, 4)}, tail ${F(1.1 * D.cdTail, 4)}, fuselage ${F(1.1 * cdFus(D, atm.rho, f.Vmd, atm.mu), 4)}, fixed gear ${F(D.gearDA / D.S, 4)}).</li>
+        <li>$(L/D)_{max} = 1/(2\\sqrt{kC_{D0}}) = ${F(LDm, 1)}$. From 600 m the still-air glide range is about $600\\times${F(LDm, 1)} = ${F(600 * LDm / 1000, 1)}$ km.</li>
+        <li>$V_{md} = \\sqrt{2W/(\\rho S)}\\,(k/C_{D0})^{1/4} = ${F(Vmd, 1)}$ m/s $= ${F(Vmd * KT, 0)}$ kt. The hangar finds the same speed by scanning the power curve: ${F(f.Vmd * KT, 0)} kt.</li>
+      </ol></div>
+      <h3>Example 3: Take-off roll</h3>
+      <div class="worked"><ol>
+        <li>With flaps 15, $C_{L,max} = ${F(f.CLm1, 2)}$ so $V_s = ${F(f.Vs1, 1)}$ m/s and $V_{LO} = 1.2V_s = ${F(f.Vlo, 1)}$ m/s.</li>
+        <li>At $0.7V_{LO} = ${F(0.7 * f.Vlo, 1)}$ m/s the propeller gives $T = ${F(thrust(D, 0.7 * f.Vlo, 1, atm), 0)}$ N (power reduced to ${F(100 * (1.132 * atm.sigma - 0.132), 0)}% by the thin air).</li>
+        <li>Subtracting drag and rolling friction ($\\mu = 0.03$) gives the mean acceleration $\\bar a$, and $s_g = V_{LO}^2/(2\\bar a) = ${F(f.sTO, 0)}$ m. At Mombasa it would be ${F(fSea.sTO, 0)} m.</li>
+        <li>Check it: fly the take-off mission. The simulator reports your actual ground roll at lift-off; it is usually a little longer because pilots rotate gradually.</li>
+      </ol></div>
+      <h3>Example 4: Static margin</h3>
+      <div class="worked"><ol>
+        <li>Wing aerodynamic centre $x_{ac} = ${F(D.xac, 2)}$ m from the nose; tail arm $l_t = ${F(D.lt, 2)}$ m; tail volume $V_H = S_h l_t/(S\\bar c) = ${F(D.VH, 3)}$.</li>
+        <li>Lift slopes: wing $a = ${F(D.aw, 2)}$, tail $a_t = ${F(D.at, 2)}$ per radian; downwash $d\\varepsilon/d\\alpha = ${F(D.deda, 3)}$; fuselage $\\Delta C_{m\\alpha} = ${F(D.CmaFus, 3)}$.</li>
+        <li>$x_{np} = x_{ac} + \\bar c\\,[\\eta V_H (a_t/a)(1 - d\\varepsilon/d\\alpha) - \\Delta C_{m\\alpha}/a] = ${F(D.xnp, 2)}$ m.</li>
+        <li>Mass and moment summation puts the CG at $x_{cg} = ${F(D.xcg, 2)}$ m, so $SM = (${F(D.xnp, 2)} - ${F(D.xcg, 2)})/${F(D.c, 2)} = ${F(D.SM * 100, 1)}\\%$.</li>
+      </ol></div>`;
+  }
+  worked();
+
+  SL.quiz('#quiz', [
+    { q: 'An aircraft stalls at 50 kt at sea level. Roughly what true airspeed does it stall at where the air density is 81% of sea level?', options: ['40 kt', '50 kt', '56 kt', '62 kt'], answer: 2, why: '$V_s \\propto 1/\\sqrt\\rho$: $50/\\sqrt{0.81} = 55.6$ kt. The indicated stall speed is unchanged.' },
+    { q: 'What does the elevator mainly control in steady flight?', options: ['Altitude directly', 'Angle of attack, and therefore airspeed', 'Engine power', 'Bank angle'], answer: 1, why: 'Each elevator position trims the aircraft at one angle of attack (one $C_L$), which in level flight means one airspeed. Throttle then controls climb or descent.' },
+    { q: 'Induced drag…', options: ['increases with airspeed', 'is largest at low speed and high C<sub>L</sub>', 'does not depend on aspect ratio', 'disappears in a climb'], answer: 1, why: '$D_i = kC_L^2 qS = 2kW^2/(\\rho V^2 S)$, so it falls as $1/V^2$ and is reduced by a higher aspect ratio.' },
+    { q: 'At the speed for maximum L/D…', options: ['parasite drag equals induced drag', 'power required is minimum', 'the aircraft is stalled', 'thrust equals weight'], answer: 0, why: 'Minimising $D = qSC_{D0} + kW^2/(qS)$ gives the two terms equal. Minimum power occurs at a lower speed.' },
+    { q: 'The static margin becomes negative. What happens?', options: ['The aircraft becomes more stable', 'A nose-up disturbance produces a further nose-up moment: statically unstable', 'Stall speed falls', 'Nothing changes'], answer: 1, why: 'With the CG behind the neutral point $C_{m\\alpha} > 0$ and disturbances grow. Some fighters fly like this with computer control; light aircraft must not.' },
+    { q: 'Why does a heavy aircraft need a longer runway at Nairobi than at Mombasa?', options: ['Gravity is stronger at altitude', 'Lower air density raises the lift-off true airspeed and reduces engine power', 'The runway is uphill', 'Tyres grip less'], answer: 1, why: 'Both effects lengthen the take-off: $V_{LO}^2 \\propto 1/\\rho$ and thrust drops with density.' },
+    { q: 'On the power curve, the maximum rate of climb occurs at the speed where…', options: ['P<sub>avail</sub> − P<sub>req</sub> is largest', 'P<sub>req</sub> is largest', 'the curves cross', 'V = V<sub>s</sub>'], answer: 0, why: 'Rate of climb $= (P_{avail} - P_{req})/W$. The crossing points are the minimum and maximum level-flight speeds.' },
+    { q: 'Lowering flaps for landing mainly…', options: ['reduces drag', 'increases C<sub>L,max</sub>, lowering the stall speed (and adds drag for a steeper approach)', 'increases the aspect ratio', 'moves the CG forward'], answer: 1, why: 'Flaps add camber, shifting the lift curve left and raising $C_{L,max}$. The extra drag also helps on a steep approach.' },
+    { q: 'A glider with L/D = 40 at 1,000 m in still air can glide about…', options: ['4 km', '10 km', '40 km', '400 km'], answer: 2, why: 'Glide distance ≈ height × L/D = 1 km × 40.' },
+  ]);
+
+  /* ======================= Main loop ======================= */
+  let fdrRedraw = 0;
+  const loop = SL.loop((dt, t) => {
+    if (mode === 'build') { drawBuild(t); return; }
+    if (sim && !paused) {
+      const n = Math.max(1, Math.round(dt * 240));
+      for (let i = 0; i < n; i++) step(dt / n);
+      sim.prop += (sim.engine && sim.fuel > 0 ? 8 + 50 * sim.thr : 0) * dt;
+      sim.fdrT += dt;
+      if (sim.fdrT > 0.25) { sim.fdrT = 0; sim.fdr.push([sim.t, sim.h - terrain(sim.x), sim.V, (sim.ab || 0) * R2D]); if (sim.fdr.length > 480) sim.fdr.shift(); }
+    }
+    drawFly(t); hud();
+    hornSet(!!(sim && sim.stallWarn && !paused && !sim.crashed));
+    if ((fdrRedraw += dt) > 0.5) { fdrRedraw = 0; drawFdr(); drawPerf(); }
+  }).start();
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { loop.stop(); hornSet(false); } else loop.start(); });
+
+  loadPreset('trainer');
+  bootDone = true;
+  window.PB = { P, design, performance, atmos, liftCoef, thrust, trim, get D() { return Dz; }, get PF() { return PF; }, get sim() { return sim; }, setMode, startMission, keys, set mission(m) { mission = m; }, step, loadPreset, PRESETS };
+})();
+</script>
+</body>
+</html>

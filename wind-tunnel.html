@@ -1,0 +1,984 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wind Tunnel & Airfoils · Pentarch SimLab</title>
+<meta name="description" content="A virtual wind tunnel: shape a NACA airfoil or spin a cylinder, set angle of attack, airspeed and altitude, and see real potential-flow streamlines, pressure, lift, drag and stall.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .stage.wt{height:540px;touch-action:none;cursor:ns-resize}
+  @media (max-width:640px){.stage.wt{height:400px;min-height:0}}
+  .charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+  @media (max-width:640px){.charts{grid-template-columns:1fr}}
+  .chartbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 10px 4px}
+  .chartbox h4{font:600 .72rem var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:0 0 4px;display:flex;justify-content:space-between;gap:8px}
+  .chartbox h4 span{color:var(--muted);letter-spacing:0;text-transform:none;font-weight:500}
+  .chartbox canvas{display:block;width:100%;height:190px}
+  .presets{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:6px}
+  .presets .btn{padding:7px 6px;font-size:.78rem}
+  .naca{font:700 1.5rem var(--display);letter-spacing:.02em;margin:2px 0 8px;line-height:1.1}
+  .naca small{display:block;font:500 .72rem var(--mono);color:var(--muted);letter-spacing:0;margin-top:4px}
+  .balance{background:linear-gradient(180deg,#071021,#050a16);border:1px solid var(--line2);border-radius:12px;padding:12px;font-family:var(--mono)}
+  .balance .row{display:grid;grid-template-columns:70px 1fr auto;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.06)}
+  .balance .row:last-child{border:0}
+  .balance .lbl{font-size:.7rem;color:var(--dim);letter-spacing:.1em;text-transform:uppercase}
+  .balance .dig{font-size:1.35rem;font-weight:600;color:#7dfcff;text-shadow:0 0 12px rgba(34,211,238,.55);text-align:right}
+  .balance .u{font-size:.72rem;color:var(--muted);min-width:44px}
+  .balance .sub{font-size:.68rem;color:var(--dim);text-align:right;grid-column:2/4;margin-top:-3px}
+  .chal{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
+  .chal .led{margin-top:7px;flex:none}
+  .chal b{display:block}
+  .chal p{margin:2px 0 0;color:var(--muted);font-size:.9rem}
+  .vischips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+  .chipt{display:inline-flex;align-items:center;gap:7px;font-size:.8rem;color:var(--muted);background:var(--panel);border:1px solid var(--line2);padding:6px 11px;border-radius:99px;cursor:pointer;user-select:none}
+  .chipt input{appearance:none;width:12px;height:12px;border-radius:50%;border:2px solid var(--line2);margin:0;flex:none}
+  .chipt input:checked{background:var(--accent);border-color:var(--accent);box-shadow:0 0 8px var(--accent)}
+  .chipt:has(input:checked){color:var(--text);border-color:color-mix(in srgb,var(--accent) 50%,var(--line2))}
+  .statsp{margin-top:14px}
+  .statsp .stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+  @media (max-width:640px){.statsp .stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .hidden{display:none!important}
+  @media (max-width:980px){.labcol{display:contents}.labcol .stage{order:1}.lab>aside{order:2}.labcol .charts{order:4;margin-top:0}.labcol .vischips{order:1}.labcol .statsp{order:3;margin-top:0}}
+  .seg.full{display:flex}.seg.full button{flex:1;text-align:center}
+  .tip{position:absolute;pointer-events:none;font:500 .72rem var(--mono);background:rgba(5,9,19,.88);border:1px solid var(--line2);border-radius:8px;padding:5px 8px;color:var(--text);white-space:nowrap;display:none;z-index:3}
+  .reclist{max-height:220px;overflow:auto}
+  svg.diag text{font-family:var(--mono);font-size:12px;fill:var(--muted)}
+  svg.diag{width:100%;height:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+  .legend-row{display:flex;flex-wrap:wrap;gap:12px;font:500 .72rem var(--mono);color:var(--muted);margin-top:6px}
+  .legend-row i{display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:5px;vertical-align:3px}
+</style>
+</head>
+<body data-page="wind-tunnel">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab wide-controls">
+    <div class="labcol">
+      <div class="stage wt" id="stage">
+        <canvas id="cv" aria-label="Wind tunnel test section: drag up or down to change the angle of attack"></canvas>
+        <div class="hud">
+          <span class="readout">α <b id="hA">4.0</b>°</span>
+          <span class="readout">V <b id="hV">30</b> m/s</span>
+          <span class="readout">C<sub>L</sub> <b id="hCL">0</b></span>
+          <span class="readout">C<sub>D</sub> <b id="hCD">0</b></span>
+          <span class="readout">L/D <b id="hLD">0</b></span>
+        </div>
+        <div class="hud hud-r"><span class="readout" id="hFlow">Attached flow</span></div>
+        <div class="tip" id="tip"></div>
+      </div>
+      <div class="vischips" id="visChips">
+        <label class="chipt"><input type="checkbox" id="vP" checked> Pressure map</label>
+        <label class="chipt"><input type="checkbox" id="vS" checked> Streamlines</label>
+        <label class="chipt"><input type="checkbox" id="vSm" checked> Smoke</label>
+        <label class="chipt"><input type="checkbox" id="vT"> Timelines</label>
+        <label class="chipt"><input type="checkbox" id="vF" checked> Forces</label>
+        <label class="chipt"><input type="checkbox" id="vN"> NACA outline</label>
+      </div>
+      <div class="charts">
+        <div class="chartbox"><h4>Pressure coefficient <span id="cpNote">upper vs lower surface</span></h4><canvas id="chCp"></canvas>
+          <div class="legend-row"><span><i style="background:#22d3ee"></i>upper</span><span><i style="background:#f59e0b"></i>lower</span><span><i style="background:#f472b6"></i>separated (sketch)</span></div></div>
+        <div class="chartbox"><h4>Lift curve <span>C<sub>L</sub> vs α</span></h4><canvas id="chCL"></canvas>
+          <div class="legend-row"><span><i style="background:#22d3ee"></i>tunnel model</span><span><i style="background:#93a1bd"></i>thin-airfoil 2π(α−α<sub>L0</sub>)</span><span><i style="background:#facc15"></i>recorded</span></div></div>
+        <div class="chartbox"><h4>Drag polar <span>C<sub>L</sub> vs C<sub>D</sub></span></h4><canvas id="chPolar"></canvas></div>
+        <div class="chartbox"><h4>Lift-to-drag ratio <span>L/D vs α</span></h4><canvas id="chLD"></canvas></div>
+      </div>
+      <div class="panel statsp">
+        <h3><i data-lucide="gauge"></i> Live results</h3>
+        <div class="stats">
+          <div class="stat"><div class="k">Density ρ</div><div class="v" id="sRho">—</div></div>
+          <div class="stat"><div class="k">Dyn. pressure q</div><div class="v" id="sQ">—</div></div>
+          <div class="stat"><div class="k">Reynolds no.</div><div class="v" id="sRe">—</div></div>
+          <div class="stat"><div class="k">Zero-lift angle</div><div class="v" id="sA0">—</div></div>
+          <div class="stat"><div class="k">Stall angle</div><div class="v" id="sAs">—</div></div>
+          <div class="stat"><div class="k">Max C<sub>L</sub></div><div class="v" id="sClm">—</div></div>
+          <div class="stat"><div class="k">Moment coeff.</div><div class="v" id="sCm">—</div></div>
+          <div class="stat"><div class="k">Inviscid C<sub>L</sub></div><div class="v" id="sKJ">—</div></div>
+        </div>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="shapes"></i> Test model</h3>
+        <div class="seg full" id="modeSeg" style="margin-bottom:10px"><button data-m="foil" class="on">Airfoil</button><button data-m="cyl">Spinning cylinder</button></div>
+        <div id="foilCtl">
+          <div class="naca"><span id="nacaName">NACA 2412</span><small id="joukNote"></small></div>
+          <div class="presets">
+            <button class="btn sm" data-p="0012">0012</button><button class="btn sm on" data-p="2412">2412</button><button class="btn sm" data-p="4412">4412</button>
+            <button class="btn sm" data-p="6409">6409</button><button class="btn sm" data-p="0018">0018</button><button class="btn sm" data-p="flat">Flat plate</button>
+          </div>
+          <div class="ctl"><label for="cm">Max camber <i>m</i></label><output>2%</output><input type="range" id="cm" min="0" max="9" step="0.5" value="2"></div>
+          <div class="ctl"><label for="cp">Camber position <i>p</i></label><output>40%</output><input type="range" id="cp" min="10" max="90" step="10" value="40"></div>
+          <div class="ctl"><label for="ct">Thickness <i>t</i></label><output>12%</output><input type="range" id="ct" min="1" max="24" step="1" value="12"></div>
+        </div>
+        <div id="cylCtl" class="hidden">
+          <div class="ctl"><label for="spin">Spin ratio <i>ωR/V</i></label><output>1.0</output><input type="range" id="spin" min="-3" max="3" step="0.1" value="1"></div>
+          <p class="small muted" style="margin:4px 0 0">Positive spin: the top surface moves downstream, so the circulation is clockwise and the lift is upward (the Magnus effect).</p>
+        </div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="wind"></i> Tunnel settings</h3>
+        <div class="ctl" id="aCtl"><label for="alpha">Angle of attack α</label><output>4.0°</output><input type="range" id="alpha" min="-10" max="25" step="0.5" value="4"></div>
+        <div class="ctl"><label for="vel">Airspeed V</label><output>30 m/s</output><input type="range" id="vel" min="5" max="80" step="1" value="30"></div>
+        <div class="ctl"><label for="alt">Altitude (ISA)</label><output>0 m</output><input type="range" id="alt" min="0" max="5000" step="25" value="0"></div>
+        <div class="btn-row" style="margin:2px 0 6px"><button class="btn sm" data-alt="0">Sea level</button><button class="btn sm" data-alt="1795">Nairobi 1,795 m</button><button class="btn sm" data-alt="4000">4,000 m</button></div>
+        <div class="ctl"><label for="chord" id="chordLbl">Model chord c</label><output>0.30 m</output><input type="range" id="chord" min="0.1" max="3" step="0.05" value="0.3"></div>
+        <div class="ctl"><label for="span">Model span b</label><output>1.0 m</output><input type="range" id="span" min="0.3" max="20" step="0.1" value="1"></div>
+        <label class="toggle">Finite-wing (3-D) corrections<input type="checkbox" id="w3d"></label>
+        <p class="small dim" style="margin:0" id="arNote">Off: the model spans wall to wall, so the tunnel measures 2-D section data.</p>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="scale"></i> Force balance</h3>
+        <div class="balance">
+          <div class="row"><span class="lbl">Lift</span><span class="dig" id="bL">0.0</span><span class="u">N</span><span class="sub" id="bLk">0 kgf</span></div>
+          <div class="row"><span class="lbl">Drag</span><span class="dig" id="bD">0.0</span><span class="u">N</span><span class="sub" id="bDk">0 kgf</span></div>
+          <div class="row"><span class="lbl">Moment</span><span class="dig" id="bM">0.0</span><span class="u">N·m</span><span class="sub">about the quarter chord, nose-up positive</span></div>
+        </div>
+        <div class="btn-row" style="margin-top:10px"><button class="btn primary sm" id="rec"><i data-lucide="circle-dot"></i> Record point</button><button class="btn sm" id="sweep"><i data-lucide="repeat"></i> Auto α-sweep</button><button class="btn sm" id="clr"><i data-lucide="eraser"></i> Clear</button></div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tabs" data-tabs id="tabs">
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button><i data-lucide="table"></i> Data log</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+    <div class="tabpanel prose">
+      <div class="callout"><i data-lucide="info"></i><div><b>What this tunnel computes.</b> The streamlines, smoke and pressure colours come from an exact <em>inviscid potential-flow</em> solution: the flow past a circle, conformally mapped into a Joukowski airfoil with the same thickness and camber as your NACA section, with the Kutta condition fixing the circulation. Real air is viscous, so the force balance uses a calibrated model on top of thin-airfoil theory (lift slope, stall, skin-friction and pressure drag). Beyond the stall the potential-flow picture is no longer valid; the turbulent wake you see is a model, not a solution of the Navier–Stokes equations.</div></div>
+
+      <h3>1. Bernoulli and the pressure coefficient</h3>
+      <p>Along a streamline of steady, incompressible, inviscid flow the total pressure is constant:</p>
+      <div class="eq">$$p + \tfrac12\rho V^2 = p_\infty + \tfrac12\rho V_\infty^2 = p_0$$</div>
+      <p>Wherever the air speeds up, its static pressure drops. Engineers express the local pressure as a dimensionless <b>pressure coefficient</b>:</p>
+      <div class="eq">$$C_p = \frac{p - p_\infty}{\tfrac12\rho V_\infty^2} = 1 - \left(\frac{V}{V_\infty}\right)^2$$</div>
+      <p>At a stagnation point $V = 0$ so $C_p = 1$ (red in the colour map). Over the upper surface of a lifting airfoil the flow is faster than the free stream, so $C_p$ is negative (blue to cyan): that is <b>suction</b>. By convention $-C_p$ is plotted upwards, so the area between the upper and lower curves is proportional to the section lift coefficient.</p>
+      <div class="eq">$$c_l \approx \int_0^1 \left(C_{p,\text{lower}} - C_{p,\text{upper}}\right)\, d\!\left(\tfrac{x}{c}\right)$$</div>
+
+      <h3>2. Potential flow, circulation and Kutta–Joukowski</h3>
+      <p>For irrotational, incompressible flow we can write a complex potential $w(\zeta) = \phi + i\psi$. Lines of constant stream function $\psi$ are streamlines. Flow at speed $V_\infty$ and angle $\alpha$ past a circle of radius $R$ centred at $\zeta_0$, with circulation $\Gamma$, is</p>
+      <div class="eq">$$w(\zeta) = V_\infty\!\left[(\zeta-\zeta_0)e^{-i\alpha} + \frac{R^2 e^{i\alpha}}{\zeta-\zeta_0}\right] + \frac{i\Gamma}{2\pi}\ln(\zeta-\zeta_0)$$</div>
+      <p>The <b>Joukowski transformation</b> $z = \zeta + a^2/\zeta$ maps a circle passing through $\zeta = a$ into an airfoil with a sharp trailing edge at $z = 2a$. Shifting the circle centre left thickens the section; shifting it up adds camber. Because the map is conformal, streamlines stay streamlines, and the velocity in the airfoil plane is</p>
+      <div class="eq">$$u - iv = \frac{dw/d\zeta}{dz/d\zeta} = \frac{dw/d\zeta}{1 - a^2/\zeta^2}$$</div>
+      <p>Any value of $\Gamma$ gives a valid potential flow, but only one is physical. The <b>Kutta condition</b> says the flow must leave the sharp trailing edge smoothly. That puts the rear stagnation point exactly at the trailing edge and fixes</p>
+      <div class="eq">$$\Gamma = 4\pi V_\infty R \sin(\alpha + \beta), \qquad \beta = \arctan\frac{\text{Im}\,\zeta_0}{a - \text{Re}\,\zeta_0}$$</div>
+      <p>The <b>Kutta–Joukowski theorem</b> then gives the lift per unit span, $L' = \rho V_\infty \Gamma$. Try switching off the Kutta condition in your head: a circulation of zero would put the rear stagnation point on the upper surface and the flow would whip around the sharp edge at infinite speed. Real viscous flow cannot do that, which is why a starting vortex is shed and the circulation builds up.</p>
+      <div class="callout warn"><i data-lucide="triangle-alert"></i><div><b>The "equal transit time" myth.</b> Switch on <em>pulsed smoke timelines</em>. Air going over the top arrives at the trailing edge well before the air going underneath: it does not "meet up again". Lift comes from the circulation that the Kutta condition demands, equivalently from the airfoil turning the flow downwards (Newton's third law). Bernoulli and Newton are two views of the same physics.</div></div>
+
+      <h3>3. Thin-airfoil theory</h3>
+      <p>Replacing the airfoil by a vortex sheet along its camber line $y_c(x)$ and enforcing flow tangency gives the classic results (with $x = \tfrac{c}{2}(1-\cos\theta)$):</p>
+      <div class="eq">$$c_l = 2\pi(\alpha - \alpha_{L=0}), \qquad \alpha_{L=0} = -\frac{1}{\pi}\int_0^{\pi}\frac{dy_c}{dx}(\cos\theta - 1)\,d\theta$$</div>
+      <div class="eq">$$c_{m,c/4} = \frac{\pi}{4}(A_2 - A_1), \qquad A_n = \frac{2}{\pi}\int_0^{\pi}\frac{dy_c}{dx}\cos n\theta\,d\theta$$</div>
+      <p>A symmetric section has $\alpha_{L=0} = 0$ and $c_{m,c/4} = 0$. Camber shifts the lift curve to the left (lift at zero incidence) and adds a nose-down moment. The aerodynamic centre is at the quarter chord. Real sections reach about $0.1$ per degree, roughly 90% of $2\pi$ per radian, because the boundary layer slightly reduces the effective camber; this tunnel uses $a_0 = 0.9\times 2\pi$.</p>
+      <p>The NACA 4-digit series defines the section by digits <b>m p tt</b>: maximum camber $m$ (% chord), its position $p$ (tenths of chord) and thickness $t$ (% chord). NACA 2412: 2% camber at 40% chord, 12% thick. The mean line is</p>
+      <div class="eq">$$y_c = \begin{cases}\dfrac{m}{p^2}\left(2px - x^2\right) & x \le p\\[2mm] \dfrac{m}{(1-p)^2}\left[(1-2p) + 2px - x^2\right] & x > p\end{cases}$$</div>
+
+      <h3>4. From section to wing</h3>
+      <p>The force on a model or wing of planform area $S = bc$ is</p>
+      <div class="eq">$$L = \tfrac12 \rho V^2 S\, C_L, \qquad D = \tfrac12 \rho V^2 S\, C_D, \qquad M = \tfrac12\rho V^2 S c\, C_m$$</div>
+      <p>A finite wing sheds trailing vortices from its tips. The downwash they induce tilts the lift backwards, creating <b>induced drag</b>, and reduces the lift slope. Prandtl's lifting-line theory gives, with aspect ratio $AR = b^2/S$ and span efficiency $e$:</p>
+      <div class="eq">$$C_{D} = c_{d} + \frac{C_L^2}{\pi e\,AR}, \qquad a = \frac{a_0}{1 + a_0/(\pi e AR)}$$</div>
+      <p>The familiar parabolic drag polar $C_D = C_{D0} + kC_L^2$ with $k = 1/(\pi e AR)$ follows. The maximum lift-to-drag ratio occurs where induced drag equals zero-lift drag: $C_L^* = \sqrt{C_{D0}/k}$ and $(L/D)_{max} = 1/(2\sqrt{k\,C_{D0}})$.</p>
+
+      <h3>5. Reynolds number and the boundary layer</h3>
+      <div class="eq">$$Re = \frac{\rho V c}{\mu}$$</div>
+      <p>$Re$ compares inertial to viscous forces. Close to the surface a thin <b>boundary layer</b> slows from the outer velocity to zero (no-slip). At low $Re$ it is laminar and has low skin friction but separates easily; above roughly $5\times10^5$ it becomes turbulent, with higher friction but much better resistance to an adverse pressure gradient. Here the skin-friction coefficient uses the Prandtl–Schlichting transitional formula $C_f = 0.455/(\log_{10}Re)^{2.58} - 1700/Re$, and $c_{d0} \approx 2C_f\,(1 + 2t + 60t^4)$.</p>
+
+      <h3>6. Stall</h3>
+      <p>Behind the suction peak the pressure rises towards the trailing edge (an <b>adverse pressure gradient</b>). The boundary layer loses momentum as it climbs this pressure hill. As $\alpha$ increases the suction peak grows, the boundary layer separates progressively from the trailing edge forward, and finally the flow breaks away over most of the upper surface. Lift falls, drag rises steeply and the pitching moment turns nose-down. Thin sections can stall abruptly from the leading edge; thicker ones stall more gently from the trailing edge. The tunnel models $c_{l,max}$ between about $0.8$ (flat plate) and $1.7$ (cambered 12% sections), rising slowly with Reynolds number.</p>
+
+      <h3>7. The spinning cylinder (Magnus effect)</h3>
+      <p>A spinning cylinder drags air round with it, creating circulation $\Gamma \approx 2\pi R^2\omega$ (an inviscid idealisation). With spin ratio $s = \omega R/V$ the ideal lift coefficient (based on diameter) is $C_L = 2\pi s$. When $s > 2$ the two stagnation points merge and lift off the surface. Real cylinders separate, so measured lift is much lower; this tunnel's balance uses an empirical curve. Flettner rotor ships and the curving free kick both rely on this effect.</p>
+    </div>
+
+    <div class="tabpanel prose" id="workedPanel"></div>
+
+    <div class="tabpanel prose">
+      <p>Each challenge checks itself as you work. Use <b>Record point</b> to log tunnel data (and see it as yellow dots on the lift curve).</p>
+      <div id="chals"></div>
+    </div>
+
+    <div class="tabpanel">
+      <p class="muted small">Points recorded with the force balance. Copy the table into a spreadsheet to plot your own curves.</p>
+      <div class="reclist"><table class="data" id="recTable"><thead><tr><th>#</th><th>Model</th><th>α (°)</th><th>V (m/s)</th><th>ρ</th><th>L (N)</th><th>D (N)</th><th>C<sub>L</sub></th><th>C<sub>D</sub></th><th>L/D</th></tr></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+  const $ = s => document.querySelector(s);
+
+  /* ======================= Atmosphere ======================= */
+  function isa(h) {
+    const T = 288.15 - 0.0065 * h;
+    const p = 101325 * Math.pow(T / 288.15, 5.25588);
+    const rho = p / (287.053 * T);
+    const mu = 1.458e-6 * Math.pow(T, 1.5) / (T + 110.4);
+    return { T, p, rho, mu };
+  }
+
+  /* ======================= NACA geometry & thin-airfoil theory ======================= */
+  function camber(m, p, x) {
+    if (m === 0) return [0, 0];
+    if (x < p) return [m / (p * p) * (2 * p * x - x * x), 2 * m / (p * p) * (p - x)];
+    return [m / ((1 - p) * (1 - p)) * ((1 - 2 * p) + 2 * p * x - x * x), 2 * m / ((1 - p) * (1 - p)) * (p - x)];
+  }
+  function thinAirfoil(m, p) {
+    const N = 2000; let a0 = 0, A1 = 0, A2 = 0;
+    for (let i = 0; i < N; i++) {
+      const th = (i + 0.5) / N * Math.PI, x = (1 - Math.cos(th)) / 2, dy = camber(m, p, x)[1], dth = Math.PI / N;
+      a0 += dy * (Math.cos(th) - 1) * dth; A1 += dy * Math.cos(th) * dth; A2 += dy * Math.cos(2 * th) * dth;
+    }
+    A1 *= 2 / Math.PI; A2 *= 2 / Math.PI;
+    return { aL0: -a0 / Math.PI, cm: Math.PI / 4 * (A2 - A1) };
+  }
+  function nacaOutline(m, p, t, n = 80) {
+    const up = [], lo = [];
+    for (let i = 0; i <= n; i++) {
+      const x = (1 - Math.cos(i / n * Math.PI)) / 2;
+      const yt = 5 * t * (0.2969 * Math.sqrt(x) - 0.1260 * x - 0.3516 * x * x + 0.2843 * x ** 3 - 0.1036 * x ** 4);
+      const [yc, dy] = camber(m, p, x), th = Math.atan(dy);
+      up.push([x - yt * Math.sin(th), yc + yt * Math.cos(th)]); lo.push([x + yt * Math.sin(th), yc - yt * Math.cos(th)]);
+    }
+    return { up, lo };
+  }
+
+  /* ======================= Viscous "tunnel" model ======================= */
+  const A0 = 0.9 * 2 * Math.PI;           // measured section lift slope (per rad)
+  function cfTrans(Re) { return Math.max(0.0012, 0.455 / Math.pow(Math.log10(Re), 2.58) - 1700 / Re); }
+  function sectionModel(m, p, t, Re) {
+    const ta = thinAirfoil(m, p);
+    const reF = SL.clamp(0.82 + 0.09 * Math.log10(Re / 1e5), 0.72, 1.08);
+    const tEff = t <= 0.13 ? t : 0.13 - 0.8 * (t - 0.13);
+    const thinPen = t < 0.06 ? (0.06 - t) * 4 : 0;
+    const clmaxP = (1.05 + 5 * tEff + 4 * m - thinPen) * reF;
+    const clmaxN = -Math.max(0.5, (1.05 + 5 * tEff - 3 * m - thinPen) * reF);
+    const aSp = ta.aL0 + 1.12 * clmaxP / A0, aSn = ta.aL0 + 1.12 * clmaxN / A0;
+    const w = (0.6 + 6 * Math.min(t, 0.15)) * D2R;    // thin sections stall more abruptly
+    const cd0 = 2 * cfTrans(Re) * (1 + 2 * t + 60 * t ** 4);
+    const clmd = 10 * m;
+    return { ...ta, clmaxP, clmaxN, aSp, aSn, w, cd0, clmd, t, m, p };
+  }
+  const soft = x => x <= 0.75 ? x : 0.75 + 0.25 * Math.tanh((x - 0.75) / 0.25);
+  const logistic = x => 1 / (1 + Math.exp(-x));
+  function sepFactor(M, a) { return Math.max(logistic((a - M.aSp) / M.w), logistic((M.aSn - a) / M.w)); }
+  function cl2d(M, a) {
+    const lin = A0 * (a - M.aL0);
+    const att = lin >= 0 ? M.clmaxP * soft(lin / M.clmaxP) : M.clmaxN * soft(lin / M.clmaxN);
+    const sP = logistic((a - M.aSp) / M.w), sN = logistic((M.aSn - a) / M.w);
+    const sepP = Math.max(0.95 * Math.sin(2 * a), 0.62 * M.clmaxP), sepN = Math.min(0.95 * Math.sin(2 * a), 0.62 * M.clmaxN);
+    let c = att;
+    c = (1 - sP) * c + sP * sepP;
+    c = (1 - sN) * c + sN * sepN;
+    return c;
+  }
+  function cd2d(M, a, cl) {
+    const s = sepFactor(M, a);
+    const att = M.cd0 + 0.0075 * (cl - M.clmd) ** 2;
+    const sep = M.cd0 + 1.8 * Math.sin(a) ** 2 + 0.04;
+    return (1 - s) * att + s * sep;
+  }
+  function cm2d(M, a) { const s = sepFactor(M, a); return M.cm - s * 0.12 * Math.sign(a - M.aL0 || 1); }
+  // finite wing via lifting line with nonlinear section data: CL = cl(α − CL/(π e AR))
+  const EOSW = 0.9;
+  function wing(M, a, AR) {
+    if (!AR) { const cl = cl2d(M, a); return { CL: cl, CD: cd2d(M, a, cl), CM: cm2d(M, a), ai: 0, sep: sepFactor(M, a) }; }
+    const k = 1 / (Math.PI * EOSW * AR); let CL = cl2d(M, a) * 0.8;
+    for (let i = 0; i < 60; i++) CL = 0.5 * CL + 0.5 * cl2d(M, a - CL * k);
+    const ae = a - CL * k, cl = cl2d(M, ae);
+    return { CL, CD: cd2d(M, ae, cl) + k * CL * CL, CM: cm2d(M, ae), ai: CL * k, sep: sepFactor(M, ae) };
+  }
+  // spinning cylinder: empirical (real) coefficients
+  function cylModel(s, Re) {
+    const CL = 3.2 * Math.tanh(s / 2.2);
+    const crisis = logistic((Math.log10(Re) - 5.55) / 0.07);
+    const CD = 1.2 - 0.85 * crisis + 0.25 * s * s / (1 + 0.15 * s * s);
+    return { CL, CD, CM: 0, sep: 1 };
+  }
+
+  /* ======================= Joukowski conformal map ======================= */
+  const J = { e: 0.1, f: 0.04, R: 1, x0: -0.1, y0: 0.04, beta: 0, G: 0, alpha: 0, cyl: false, chord: 4, xLE: -2, xTE: 2 };
+  function setCircle(e, f) { J.e = e; J.f = f; J.x0 = -e; J.y0 = f; J.R = Math.hypot(1 + e, f); J.beta = Math.atan2(f, 1 + e); }
+  function surface(n) {           // z-plane surface points, from TE round the circle
+    const pts = [];
+    for (let i = 0; i <= n; i++) {
+      const th = -J.beta + i / n * 2 * Math.PI;
+      const zx = J.x0 + J.R * Math.cos(th), zy = J.y0 + J.R * Math.sin(th);
+      if (J.cyl) { pts.push([zx, zy, th]); continue; }
+      const r2 = zx * zx + zy * zy;
+      pts.push([zx + zx / r2, zy - zy / r2, th]);
+    }
+    return pts;
+  }
+  function measure() {                 // measure t/c and f/c of current Joukowski section
+    const pts = surface(720);
+    let iLE = 0; pts.forEach((p, i) => { if (p[0] < pts[iLE][0]) iLE = i; });
+    const up = pts.slice(0, iLE + 1).reverse(), lo = pts.slice(iLE);   // both from LE to TE
+    const xLE = pts[iLE][0], xTE = 2, c = xTE - xLE;
+    const interp = (arr, x) => { for (let i = 1; i < arr.length; i++) if (arr[i][0] >= x) { const a = arr[i - 1], b = arr[i], u = (x - a[0]) / ((b[0] - a[0]) || 1e-9); return a[1] + u * (b[1] - a[1]); } return arr[arr.length - 1][1]; };
+    let tmax = 0, fmax = 0;
+    for (let k = 1; k < 200; k++) { const x = xLE + c * k / 200, yu = interp(up, x), yl = interp(lo, x); tmax = Math.max(tmax, yu - yl); fmax = Math.max(fmax, (yu + yl) / 2); }
+    return { t: tmax / c, f: fmax / c, xLE, c, iLE };
+  }
+  function fitJoukowski(t, f) {        // solve circle offsets for target thickness & camber
+    let e = Math.max(0.004, t / 1.3), g = 2 * f;
+    for (let it = 0; it < 12; it++) {
+      setCircle(e, g); const m = measure();
+      if (m.t > 1e-5) e *= Math.pow(t / m.t, 0.9);
+      if (f > 1e-5 && m.f > 1e-6) g *= Math.pow(f / m.f, 0.9); else g = 0;
+    }
+    setCircle(e, g); const m = measure(); J.xLE = m.xLE; J.chord = m.c; J.iLE = m.iLE; return m;
+  }
+  function csqrt(x, y) { const r = Math.hypot(x, y); const u = Math.sqrt(Math.max(0, (r + x) / 2)); const v = Math.sqrt(Math.max(0, (r - x) / 2)); return [u, y < 0 ? -v : v]; }
+  // display point -> {zeta, inside}
+  const tmp = { zx: 0, zy: 0, dx: 0, dy: 0, inside: false };
+  function toZeta(Px, Py) {
+    const ca = Math.cos(J.alpha), sa = Math.sin(J.alpha);
+    const zx = Px * ca - Py * sa, zy = Px * sa + Py * ca;
+    let x, y;
+    if (J.cyl) { x = zx; y = zy; }
+    else {
+      const s = csqrt(zx * zx - zy * zy - 4, 2 * zx * zy);
+      const x1 = (zx + s[0]) / 2, y1 = (zy + s[1]) / 2, x2 = (zx - s[0]) / 2, y2 = (zy - s[1]) / 2;
+      const d1 = (x1 - J.x0) ** 2 + (y1 - J.y0) ** 2, d2 = (x2 - J.x0) ** 2 + (y2 - J.y0) ** 2;
+      if (d1 >= d2) { x = x1; y = y1; } else { x = x2; y = y2; }
+    }
+    tmp.zx = x; tmp.zy = y; tmp.dx = x - J.x0; tmp.dy = y - J.y0;
+    tmp.inside = tmp.dx * tmp.dx + tmp.dy * tmp.dy < J.R * J.R * 0.9995;
+    return tmp;
+  }
+  function psiAt(Px, Py) {
+    const q = toZeta(Px, Py); if (q.inside) return NaN;
+    const ca = Math.cos(J.alpha), sa = Math.sin(J.alpha), r2 = q.dx * q.dx + q.dy * q.dy;
+    return (q.dy * ca - q.dx * sa) + J.R * J.R * (sa * q.dx - ca * q.dy) / r2 + J.G / (2 * Math.PI) * 0.5 * Math.log(r2);
+  }
+  // velocity in display frame (V∞ = 1). returns [u, v] or null inside
+  function velAt(Px, Py) {
+    const q = toZeta(Px, Py); if (q.inside) return null;
+    const ca = Math.cos(J.alpha), sa = Math.sin(J.alpha);
+    const dx = q.dx, dy = q.dy, r2 = dx * dx + dy * dy, r4 = r2 * r2;
+    const ix = (dx * dx - dy * dy) / r4, iy = -2 * dx * dy / r4;        // 1/d^2
+    const R2 = J.R * J.R;
+    // dw/dζ = e^{-iα} − R² e^{iα}/d² + iΓ/(2π d)
+    let wx = ca - R2 * (ca * ix - sa * iy), wy = -sa - R2 * (ca * iy + sa * ix);
+    const g = J.G / (2 * Math.PI);
+    wx += g * (dy / r2); wy += g * (dx / r2);               // i/d = i(dx − i dy)/r2 = (dy + i dx)/r2
+    let Wx = wx, Wy = wy;
+    if (!J.cyl) {
+      const zr2 = q.zx * q.zx + q.zy * q.zy, zr4 = zr2 * zr2;
+      const jx = 1 - (q.zx * q.zx - q.zy * q.zy) / zr4, jy = 2 * q.zx * q.zy / zr4;  // 1 − 1/ζ²
+      const den = jx * jx + jy * jy; if (den < 1e-6) return [1, 0];
+      Wx = (wx * jx + wy * jy) / den; Wy = (wy * jx - wx * jy) / den;
+    }
+    // display conj velocity = W e^{iα}
+    const ux = Wx * ca - Wy * sa, uy = Wx * sa + Wy * ca;
+    return [ux, -uy];
+  }
+  function surfaceCp(n) {              // returns {up:[[x/c,Cp]], lo:[[x/c,Cp]]}
+    const up = [], lo = [], pts = [];
+    for (let i = 1; i < n; i++) {
+      const th = -J.beta + i / n * 2 * Math.PI;
+      const vs = 2 * Math.sin(th - J.alpha) + J.G / (2 * Math.PI * J.R);
+      const ex = J.R * Math.cos(th), ey = J.R * Math.sin(th);
+      let speed = Math.abs(vs), x;
+      if (J.cyl) { x = Math.cos(th); }
+      else {
+        const zx = J.x0 + ex, zy = J.y0 + ey, zr2 = zx * zx + zy * zy, zr4 = zr2 * zr2;
+        const jx = 1 - (zx * zx - zy * zy) / zr4, jy = 2 * zx * zy / zr4;
+        speed /= Math.hypot(jx, jy);
+        x = (zx + zx / zr2 - J.xLE) / J.chord;
+      }
+      pts.push([x, 1 - speed * speed, th]);
+    }
+    if (J.cyl) { pts.forEach(p => { const deg = ((p[2] * R2D) % 360 + 360) % 360; (deg <= 180 ? up : lo).push([deg <= 180 ? deg : 360 - deg, p[1]]); }); up.sort((a, b) => a[0] - b[0]); lo.sort((a, b) => a[0] - b[0]); return { up, lo }; }
+    let iLE = 0; pts.forEach((p, i) => { if (p[0] < pts[iLE][0]) iLE = i; });
+    pts.slice(0, iLE + 1).forEach(p => up.push([p[0], p[1]])); pts.slice(iLE).forEach(p => lo.push([p[0], p[1]]));
+    up.reverse();
+    return { up, lo };
+  }
+
+  /* ======================= State ======================= */
+  const S = { mode: 'foil', m: 0.02, p: 0.4, t: 0.12, alpha: 4 * D2R, V: 30, alt: 0, c: 0.3, b: 1, w3d: false, spin: 1, recs: [], sweeping: false };
+  let M = null, atm = isa(0), R = {};      // section model, atmosphere, results
+  let geomDirty = true, fieldDirty = true;
+
+  function compute() {
+    atm = isa(S.alt);
+    const Re = atm.rho * S.V * S.c / atm.mu;
+    const AR = S.w3d ? S.b / S.c : 0;
+    let res;
+    if (S.mode === 'foil') {
+      M = sectionModel(S.m, S.p, S.t, Re);
+      res = wing(M, S.alpha, AR);
+    } else { res = cylModel(S.spin, Re); }
+    const q = 0.5 * atm.rho * S.V * S.V, Sref = S.c * S.b;
+    R = { ...res, Re, q, Sref, AR, L: q * Sref * res.CL, Dr: q * Sref * res.CD, Mo: q * Sref * S.c * res.CM };
+    // potential flow circulation
+    J.cyl = S.mode === 'cyl';
+    J.alpha = J.cyl ? 0 : S.alpha;
+    if (J.cyl) { setCircle(0, 0); J.R = 1; J.x0 = 0; J.y0 = 0; J.beta = 0; J.G = 2 * Math.PI * S.spin; J.chord = 2; J.xLE = -1; R.CLkj = 2 * Math.PI * S.spin; }
+    else { J.G = 4 * Math.PI * J.R * Math.sin(J.alpha + J.beta); R.CLkj = 2 * J.G / J.chord; }
+  }
+
+  /* ======================= Canvas & rendering ======================= */
+  const stage = $('#stage'), cv = $('#cv');
+  const st = SL.canvas(cv, () => { fieldDirty = true; });
+  const view = { s: 100, cx: 0, cy: 0 };
+  function setView() {
+    const { w, h } = st;
+    view.s = Math.min(w * (w < 640 ? 0.62 : 0.44) / 4.3, h / 4.4);
+    view.cx = w * (w < 640 ? 0.5 : 0.46); view.cy = h * 0.5;
+  }
+  const W2S = (x, y) => [view.cx + x * view.s, view.cy - y * view.s];
+  const S2W = (sx, sy) => [(sx - view.cx) / view.s, (view.cy - sy) / view.s];
+
+  // pressure / streamline field
+  const off = document.createElement('canvas'); const offx = off.getContext('2d');
+  let streamPath = null, dividing = null, bodyPath = null, nacaPath = null;
+  const CELL = 4;
+  function cpColor(cp) {
+    // Cp=1 red, 0 navy, negative blue -> cyan -> pale
+    if (cp >= 0) { const u = Math.min(1, cp); return [14 + u * 225, 24 + u * 70, 48 - u * 10, 70 + u * 170]; }
+    const u = Math.sqrt(Math.min(1, -cp / 3));
+    const u2 = Math.min(1, Math.max(0, (-cp - 3) / 5));
+    // navy -> blue -> cyan, then towards white for very strong suction
+    const r = u < 0.55 ? 14 + u / 0.55 * (37 - 14) : 37 + (u - 0.55) / 0.45 * (34 - 37);
+    const g = u < 0.55 ? 24 + u / 0.55 * (99 - 24) : 99 + (u - 0.55) / 0.45 * (211 - 99);
+    const b = u < 0.55 ? 48 + u / 0.55 * (235 - 48) : 235 + (u - 0.55) / 0.45 * (238 - 235);
+    return [r + u2 * 180, g + u2 * 40, b + u2 * 15, 70 + u * 170];
+  }
+  function buildField() {
+    setView();
+    const { w, h } = st;
+    const nx = Math.ceil(w / CELL) + 1, ny = Math.ceil(h / CELL) + 1;
+    off.width = nx; off.height = ny;
+    const img = offx.createImageData(nx, ny), psi = new Float32Array(nx * ny);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const [x, y] = S2W(i * CELL, j * CELL);
+      const k = j * nx + i, ps = psiAt(x, y); psi[k] = ps;
+      if (isNaN(ps)) { img.data[k * 4 + 3] = 0; continue; }
+      const v = velAt(x, y); const sp2 = v ? v[0] * v[0] + v[1] * v[1] : 1;
+      const col = cpColor(1 - sp2);
+      img.data[k * 4] = col[0]; img.data[k * 4 + 1] = col[1]; img.data[k * 4 + 2] = col[2]; img.data[k * 4 + 3] = col[3];
+    }
+    offx.putImageData(img, 0, 0);
+    // marching squares on psi
+    const psiB = J.G / (2 * Math.PI) * Math.log(J.R), dpsi = 0.21;
+    streamPath = new Path2D(); dividing = new Path2D();
+    const P = (i, j) => psi[j * nx + i];
+    const edge = (i, j, e, lv) => {      // point on edge e of cell (i,j)
+      let a, b, ax, ay, bx, by;
+      if (e === 0) { a = P(i, j); b = P(i + 1, j); ax = i; ay = j; bx = i + 1; by = j; }
+      else if (e === 1) { a = P(i + 1, j); b = P(i + 1, j + 1); ax = i + 1; ay = j; bx = i + 1; by = j + 1; }
+      else if (e === 2) { a = P(i, j + 1); b = P(i + 1, j + 1); ax = i; ay = j + 1; bx = i + 1; by = j + 1; }
+      else { a = P(i, j); b = P(i, j + 1); ax = i; ay = j; bx = i; by = j + 1; }
+      const u = (lv - a) / (b - a);
+      return [(ax + u * (bx - ax)) * CELL, (ay + u * (by - ay)) * CELL];
+    };
+    const TABLE = { 1: [[3, 0]], 2: [[0, 1]], 3: [[3, 1]], 4: [[1, 2]], 5: [[3, 0], [1, 2]], 6: [[0, 2]], 7: [[3, 2]], 8: [[2, 3]], 9: [[0, 2]], 10: [[0, 1], [2, 3]], 11: [[1, 2]], 12: [[1, 3]], 13: [[0, 1]], 14: [[0, 3]] };
+    for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+      const a = P(i, j), b = P(i + 1, j), c = P(i + 1, j + 1), d = P(i, j + 1);
+      if (isNaN(a) || isNaN(b) || isNaN(c) || isNaN(d)) continue;
+      const lo = Math.min(a, b, c, d), hi = Math.max(a, b, c, d);
+      if (hi - lo > 1.5) continue;     // skip the branch-cut seam
+      const k0 = Math.ceil((lo - psiB) / dpsi), k1 = Math.floor((hi - psiB) / dpsi);
+      for (let k = k0; k <= k1; k++) {
+        const lv = psiB + k * dpsi;
+        const idx = (a > lv ? 1 : 0) | (b > lv ? 2 : 0) | (c > lv ? 4 : 0) | (d > lv ? 8 : 0);
+        const segs = TABLE[idx]; if (!segs) continue;
+        const path = k === 0 ? dividing : streamPath;
+        for (const [e1, e2] of segs) { const p1 = edge(i, j, e1, lv), p2 = edge(i, j, e2, lv); path.moveTo(p1[0], p1[1]); path.lineTo(p2[0], p2[1]); }
+      }
+    }
+    // body outline (display coords)
+    bodyPath = new Path2D();
+    const ca = Math.cos(-J.alpha), sa = Math.sin(-J.alpha);
+    const toD = (x, y) => W2S(x * ca - y * sa, x * sa + y * ca);
+    surface(240).forEach((p, i) => { const [sx, sy] = toD(p[0], p[1]); i ? bodyPath.lineTo(sx, sy) : bodyPath.moveTo(sx, sy); });
+    bodyPath.closePath();
+    nacaPath = null;
+    if (!J.cyl) {
+      nacaPath = new Path2D(); const o = nacaOutline(S.m, S.p, S.t);
+      const pts = o.up.slice().reverse().concat(o.lo);
+      pts.forEach((p, i) => { const [sx, sy] = toD(J.xLE + p[0] * J.chord, p[1] * J.chord); i ? nacaPath.lineTo(sx, sy) : nacaPath.moveTo(sx, sy); });
+      nacaPath.closePath();
+    }
+    buildWake();
+    fieldDirty = false;
+  }
+
+  // separation / wake geometry in display world coords
+  const wake = { on: false, sx: 0, sy: 0, tx: 0, ty: 0, k: 0, bx: 0, by: 0 };
+  function rotD(x, y) { const ca = Math.cos(-J.alpha), sa = Math.sin(-J.alpha); return [x * ca - y * sa, x * sa + y * ca]; }
+  function buildWake() {
+    const sep = R.sep || 0;
+    if (J.cyl) {
+      // separation angles measured from the front of the cylinder; spin delays separation on the side moving with the flow
+      const fu = (100 + 25 * Math.tanh(S.spin / 1.5)) * D2R, fl = (100 - 25 * Math.tanh(S.spin / 1.5)) * D2R;
+      wake.on = true; wake.k = 1;
+      wake.sx = -Math.cos(fu); wake.sy = Math.sin(fu);
+      wake.bx = -Math.cos(fl); wake.by = -Math.sin(fl);
+      wake.tx = wake.bx; wake.ty = wake.by;
+      wake.defl = -0.25 * Math.tanh(S.spin / 1.5);
+      return;
+    }
+    // separation position along the upper surface (fraction of chord from LE)
+    const a = S.alpha, aS = M.aSp;
+    const prog = SL.clamp((a - (aS - 5 * D2R)) / (8 * D2R), 0, 1);
+    const xs = 1 - 0.92 * prog * prog * (3 - 2 * prog);
+    wake.k = Math.max(sep, prog * 0.35);
+    wake.on = prog > 0.02;
+    // locate upper-surface point at x/c = xs
+    const pts = surface(400); let best = null;
+    pts.forEach((p, i) => { if (i <= J.iLE * 400 / 720 + 2) { const xc = (p[0] - J.xLE) / J.chord; if (!best || Math.abs(xc - xs) < best.d) best = { d: Math.abs(xc - xs), x: p[0], y: p[1] }; } });
+    const s = rotD(best.x, best.y), t = rotD(2, 0);
+    wake.sx = s[0]; wake.sy = s[1]; wake.tx = t[0]; wake.ty = t[1]; wake.bx = t[0]; wake.by = t[1]; wake.defl = 0;
+  }
+  function inWake(x, y) {
+    if (!wake.on) return 0;
+    if (x < Math.min(wake.sx, wake.bx) - 0.02) return 0;
+    const spread = 0.1 + 0.08 * wake.k;
+    const top = wake.sy + Math.max(0, x - wake.sx) * spread;
+    let bot;
+    if (J.cyl) bot = wake.by - Math.max(0, x - wake.bx) * spread;
+    else if (x < wake.tx) { const u = (x - wake.sx) / ((wake.tx - wake.sx) || 1e-6); bot = wake.sy + u * (wake.ty - wake.sy) - 0.06; }
+    else bot = wake.ty - (x - wake.tx) * 0.06;
+    const shift = J.cyl ? wake.defl * Math.max(0, x - 1) : 0;
+    return (y < top + shift && y > bot + shift) ? 1 : 0;
+  }
+
+  /* ---------- smoke particles ---------- */
+  const parts = [];
+  const NOZ = 22;
+  let tlTimer = 0, emitT = 0;
+  function spawn(x, y, kind, band) { if (parts.length < 7000) parts.push({ x, y, px: x, py: y, kind, band, age: 0, ph: Math.random() * 6.28 }); }
+  function bounds() { const [x0, y1] = S2W(0, 0), [x1, y0] = S2W(st.w, st.h); return { x0, x1, y0, y1 }; }
+  function updParticles(dt, t) {
+    const B = bounds();
+    const spd = 1.6 + S.V / 30;            // world units per second at V∞
+    emitT -= dt;
+    if ($('#vSm').checked && emitT <= 0) {
+      emitT = 0.045;
+      for (let i = 0; i < NOZ; i++) {
+        const y = B.y0 + (i + 0.5) / NOZ * (B.y1 - B.y0); spawn(B.x0 - 0.02, y, 0, i);
+      }
+    }
+    if ($('#vT').checked) {
+      tlTimer -= dt;
+      if (tlTimer <= 0) { tlTimer = 1.4; const x = B.x0 + 0.25; for (let k = 0; k < 160; k++) spawn(x, B.y0 + k / 159 * (B.y1 - B.y0), 1, k); }
+    }
+    // turbulent eddies shed from the separation point
+    if (wake.on && wake.k > 0.15 && Math.random() < wake.k * 1.4) {
+      for (let k = 0; k < 2; k++) spawn(wake.sx + 0.02, wake.sy + 0.03 + Math.random() * 0.05, 2, 0);
+      if (J.cyl) spawn(wake.bx + 0.02, wake.by - 0.03 - Math.random() * 0.05, 2, 0);
+    }
+    const sub = 1, h = dt * spd / sub;
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i]; p.px = p.x; p.py = p.y; p.age += dt;
+      for (let s = 0; s < sub; s++) {
+        let v = velAt(p.x, p.y);
+        if (!v) { p.dead = 1; break; }
+        let sp = Math.hypot(v[0], v[1]); if (sp > 4) { v[0] *= 4 / sp; v[1] *= 4 / sp; }
+        const wk = inWake(p.x, p.y) * Math.max(wake.k, J.cyl ? 1 : 0);
+        if (wk > 0) {
+          const f = 1 - 0.75 * wk;
+          const ex = Math.sin(p.y * 4.5 + t * 3.5 + p.ph) * 0.8 + Math.sin(p.x * 2.5 - t * 2) * 0.4;
+          const ey = Math.cos(p.x * 4 - t * 3 + p.ph) * 0.8 + Math.sin((p.x + p.y) * 2 + t * 1.5) * 0.4;
+          v = [v[0] * f + 0.3 * wk + ex * 0.4 * wk, v[1] * f + ey * 0.45 * wk];
+          if (!p.turb) p.turb = 1;
+        }
+        // RK2 midpoint
+        const mx = p.x + v[0] * h / 2, my = p.y + v[1] * h / 2;
+        let v2 = velAt(mx, my); if (!v2) v2 = v;
+        if (wk > 0) v2 = v;
+        let sp2 = Math.hypot(v2[0], v2[1]); if (sp2 > 4) { v2 = [v2[0] * 4 / sp2, v2[1] * 4 / sp2]; }
+        p.x += v2[0] * h; p.y += v2[1] * h;
+      }
+      if (p.dead || p.x > B.x1 + 0.1 || p.y < B.y0 - 0.5 || p.y > B.y1 + 0.5 || p.age > 14 || (p.kind === 2 && p.age > 4)) parts.splice(i, 1);
+    }
+  }
+
+  const bg = document.createElement('canvas'), bgx = bg.getContext('2d'); let bgDirty = true;
+  function drawBg(w, h, stalled) {
+    bg.width = Math.round(w * st.dpr); bg.height = Math.round(h * st.dpr);
+    const ctx = bgx; ctx.setTransform(st.dpr, 0, 0, st.dpr, 0, 0);
+    const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#060b18'); g.addColorStop(1, '#040812');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    if ($('#vP').checked) { ctx.save(); ctx.imageSmoothingEnabled = true; ctx.globalAlpha = stalled ? 0.6 : 0.95; ctx.drawImage(off, 0, 0, off.width * CELL, off.height * CELL); ctx.restore(); }
+    ctx.strokeStyle = 'rgba(255,255,255,.035)'; ctx.lineWidth = 1;
+    for (let x = (view.cx % (view.s * 0.5)); x < w; x += view.s * 0.5) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+    if ($('#vS').checked && streamPath) {
+      ctx.save(); ctx.globalAlpha = stalled ? 0.35 : 0.75;
+      ctx.strokeStyle = 'rgba(220,235,255,.55)'; ctx.lineWidth = 1; ctx.stroke(streamPath);
+      ctx.strokeStyle = '#facc15'; ctx.lineWidth = 1.6; ctx.globalAlpha = stalled ? 0.4 : 0.9; ctx.stroke(dividing);
+      ctx.restore();
+    }
+    ctx.font = '500 11px JetBrains Mono, monospace'; ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'left';
+    SL.arrow(ctx, 14, h - 22, 70, h - 22, '#93a1bd', 2, 8); ctx.fillText('V∞ ' + S.V + ' m/s', 78, h - 18);
+    if ($('#vP').checked) {
+      const lw = Math.min(160, w * 0.35), lx = w - lw - 14, ly = h - 34;
+      for (let i = 0; i < lw; i++) { const cp = 1 - i / lw * 4; const c = cpColor(cp); ctx.fillStyle = `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},1)`; ctx.fillRect(lx + i, ly, 1, 9); }
+      ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'left'; ctx.fillText('Cp', lx, ly - 6); ctx.fillText('+1', lx, ly + 22); ctx.textAlign = 'right'; ctx.fillText('−3', lx + lw, ly + 22); ctx.textAlign = 'center'; ctx.fillText('0', lx + lw / 4, ly + 22);
+    }
+    if (!J.cyl) { ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'left'; ctx.fillText('drag ↕ to pitch', 14, h - 42); }
+    bgDirty = false;
+  }
+  function pill(ctx, txt, x, y, col, align) {
+    ctx.font = '600 12px JetBrains Mono, monospace'; const tw = ctx.measureText(txt).width;
+    const x0 = align === 'right' ? x - tw - 8 : x;
+    ctx.fillStyle = 'rgba(5,9,19,.82)'; ctx.strokeStyle = col; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x0, y - 10, tw + 8, 20, 6) : ctx.rect(x0, y - 10, tw + 8, 20); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = col; ctx.textAlign = 'left'; ctx.fillText(txt, x0 + 4, y + 4);
+  }
+  function draw(t) {
+    const { ctx, w, h } = st;
+    if (fieldDirty) { buildField(); bgDirty = true; }
+    const stalled = R.sep > 0.5;
+    if (bgDirty || bg.width !== Math.round(w * st.dpr) || bg.height !== Math.round(h * st.dpr)) drawBg(w, h, stalled);
+    ctx.drawImage(bg, 0, 0, w, h);
+    // particles
+    if (parts.length) {
+      ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      const groups = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+      const last = {};
+      for (const p of parts) {
+        const [x2, y2] = W2S(p.x, p.y);
+        if (p.kind === 0) {           // continuous streakline per nozzle
+          const gi = p.turb ? 1 : (p.band % 2 ? 2 : 3), L = last[p.band];
+          if (L && Math.abs(L[0] - x2) + Math.abs(L[1] - y2) < view.s * 0.45 && L[2] === gi) { groups[gi].moveTo(L[0], L[1]); groups[gi].lineTo(x2, y2); }
+          last[p.band] = [x2, y2, gi];
+        } else {
+          const [x1, y1] = W2S(p.px, p.py), gi = p.kind === 1 ? 0 : 1;
+          groups[gi].moveTo(x1, y1); groups[gi].lineTo(x2 + 0.01, y2);
+        }
+      }
+      const cols = ['rgba(255,255,255,.95)', 'rgba(244,114,182,.6)', 'rgba(125,252,255,.55)', 'rgba(230,240,255,.4)'];
+      const lw = [2.4, 1.8, 1.6, 1.4];
+      groups.forEach((g, i) => { ctx.strokeStyle = cols[i]; ctx.lineWidth = lw[i]; ctx.stroke(g); });
+      ctx.restore();
+    }
+    // body
+    if (bodyPath) {
+      ctx.save();
+      const bg = ctx.createLinearGradient(0, view.cy - view.s, 0, view.cy + view.s);
+      bg.addColorStop(0, '#cfd8e6'); bg.addColorStop(0.45, '#7a879c'); bg.addColorStop(1, '#2b3446');
+      ctx.fillStyle = bg; ctx.shadowColor = 'rgba(34,211,238,.35)'; ctx.shadowBlur = 16; ctx.fill(bodyPath);
+      ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 1.2; ctx.stroke(bodyPath);
+      if (J.cyl) {   // spin marks
+        const [cx, cy] = W2S(0, 0), rr = view.s;
+        const ang = (t * S.spin * 2.2) % (2 * Math.PI);
+        ctx.strokeStyle = 'rgba(15,23,41,.55)'; ctx.lineWidth = 3;
+        for (let k = 0; k < 6; k++) { const a = -ang + k * Math.PI / 3; ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * rr * 0.25, cy + Math.sin(a) * rr * 0.25); ctx.lineTo(cx + Math.cos(a) * rr * 0.9, cy + Math.sin(a) * rr * 0.9); ctx.stroke(); }
+        if (Math.abs(S.spin) > 0.05) {
+          const dir = S.spin > 0, a1 = -2.4, a2 = -0.74, rr2 = rr * 1.18;
+          ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, rr2, dir ? a1 : a2, dir ? a2 : a1, !dir); ctx.stroke();
+          const e = dir ? a2 : a1, tx = dir ? -Math.sin(e) : Math.sin(e), ty = dir ? Math.cos(e) : -Math.cos(e);
+          const ex = cx + Math.cos(e) * rr2, ey = cy + Math.sin(e) * rr2; SL.arrow(ctx, ex - tx * 8, ey - ty * 8, ex, ey, '#facc15', 2, 9);
+        }
+      }
+      if ($('#vN').checked && nacaPath) { ctx.setLineDash([5, 4]); ctx.strokeStyle = '#f472b6'; ctx.lineWidth = 1.5; ctx.stroke(nacaPath); ctx.setLineDash([]); }
+      ctx.restore();
+    }
+    // force arrows
+    if ($('#vF').checked) {
+      const [ox, oy] = J.cyl ? W2S(0, 0) : W2S(...rotD(J.xLE + 0.25 * J.chord, 0));
+      const sc = view.s * 0.95;
+      const L = R.CL * sc, Dg = R.CD * sc * 4;
+      if (Math.abs(L) > 2) { SL.arrow(ctx, ox, oy, ox, oy - L, '#34d399', 3, 11); pill(ctx, 'L = ' + SL.fmt(R.L, 1) + ' N', ox - 8, oy - L + (L > 0 ? -12 : 14), '#34d399', 'right'); }
+      if (Dg > 2) { SL.arrow(ctx, ox, oy, ox + Dg, oy, '#f87171', 3, 10); pill(ctx, 'D = ' + SL.fmt(R.Dr, 2) + ' N (arrow ×4)', ox + Dg + 8, oy, '#f87171', 'left'); }
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ox, oy, 3, 0, 7); ctx.fill();
+    }
+    if (stalled && !J.cyl) { ctx.fillStyle = 'rgba(244,114,182,.9)'; ctx.font = '600 12px JetBrains Mono, monospace'; ctx.textAlign = 'center'; const [wx, wy] = W2S(wake.tx + 0.9, wake.sy + 0.45); ctx.fillText('separated wake', wx, wy); }
+  }
+
+  /* ======================= Charts ======================= */
+  const chCp = SL.canvas($('#chCp'), () => charts()), chCL = SL.canvas($('#chCL'), () => charts()), chP = SL.canvas($('#chPolar'), () => charts()), chLD = SL.canvas($('#chLD'), () => charts());
+  function dot(ctx, x, y, c, r) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r || 5, 0, 7); ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke(); }
+  function sweepData() {
+    const AR = S.w3d ? S.b / S.c : 0, out = [];
+    if (S.mode === 'cyl') { for (let s = -3; s <= 3.001; s += 0.1) { const r = cylModel(s, R.Re); out.push({ a: s, ...r }); } return out; }
+    for (let a = -10; a <= 25.001; a += 0.25) { const r = wing(M, a * D2R, AR); out.push({ a, ...r }); }
+    return out;
+  }
+  function charts() {
+    if (!M && S.mode === 'foil') return;
+    const data = sweepData(), cyl = S.mode === 'cyl';
+    // Cp plot
+    const cp = surfaceCp(360);
+    const ser = [{ data: cp.up.map(p => [p[0], -p[1]]), color: '#22d3ee' }, { data: cp.lo.map(p => [p[0], -p[1]]), color: '#f59e0b' }];
+    let ymax = Math.min(8, Math.max(1.5, ...ser[0].data.map(p => p[1]), ...ser[1].data.map(p => p[1])));
+    if (!cyl && R.sep > 0.25) {     // separated plateau sketch on the upper surface
+      const xs = (() => { const prog = SL.clamp((S.alpha - (M.aSp - 5 * D2R)) / (8 * D2R), 0, 1); return 1 - 0.92 * prog * prog * (3 - 2 * prog); })();
+      const scale = SL.clamp(R.CL / (R.CLkj || 1), 0.2, 1);
+      const sk = cp.up.map(p => [p[0], -p[1] * scale]);
+      let plat = null; sk.forEach(p => { if (p[0] >= xs && plat === null) plat = p[1]; });
+      ser.push({ data: sk.map(p => [p[0], p[0] >= xs ? Math.max(0.2, plat * 0.55) : p[1]]), color: '#f472b6', dash: [5, 4] });
+    }
+    SL.chart(chCp, ser, { xmin: cyl ? 0 : 0, xmax: cyl ? 180 : 1, ymin: -1.2, ymax: Math.ceil(ymax), xlabel: cyl ? 'θ from front (°)' : 'x/c', ylabel: '−Cp', pad: [22, 12, 30, 40] });
+    $('#cpNote').textContent = cyl ? 'top vs bottom of cylinder (inviscid)' : 'inviscid Joukowski section';
+    // CL-alpha
+    const clS = data.map(d => [d.a, d.CL]);
+    const series = [{ data: clS, color: '#22d3ee', width: 2.2 }];
+    if (!cyl) series.push({ data: [[-10, 2 * Math.PI * (-10 * D2R - M.aL0)], [25, 2 * Math.PI * (25 * D2R - M.aL0)]], color: 'rgba(147,161,189,.7)', dash: [4, 4], width: 1.2 });
+    else series.push({ data: data.map(d => [d.a, 2 * Math.PI * d.a]), color: 'rgba(147,161,189,.7)', dash: [4, 4], width: 1.2 });
+    const lim = cyl ? [-4, 4] : [-1.4, 2.2];
+    const m1 = SL.chart(chCL, series, { xmin: cyl ? -3 : -10, xmax: cyl ? 3 : 25, ymin: lim[0], ymax: lim[1], xlabel: cyl ? 'spin ratio s' : 'α (°)', ylabel: 'CL', pad: [22, 12, 30, 40] });
+    const cur = cyl ? S.spin : S.alpha * R2D;
+    S.recs.filter(r => r.mode === S.mode).forEach(r => dot(chCL.ctx, m1.X(cyl ? r.spin : r.a), m1.Y(r.CL), '#facc15', 3.5));
+    dot(chCL.ctx, m1.X(cur), m1.Y(SL.clamp(R.CL, lim[0], lim[1])), '#22d3ee');
+    // polar
+    const pre = data.filter(d => d.sep < 0.5);
+    const cdMax = cyl ? Math.max(...data.map(d => d.CD)) * 1.05 : Math.min(0.2, Math.max(0.03, ...pre.map(d => d.CD)) * 1.4);
+    const pol = data.filter(d => d.CD <= cdMax);
+    const m2 = SL.chart(chP, [{ data: (cyl ? data : pol).map(d => [d.CD, d.CL]), color: '#a78bfa', width: 2.2 }], { xmin: 0, xmax: cdMax, ymin: lim[0], ymax: lim[1], xlabel: 'CD', ylabel: 'CL', pad: [22, 12, 30, 40] });
+    if (R.CD <= cdMax) dot(chP.ctx, m2.X(R.CD), m2.Y(R.CL), '#a78bfa');
+    // tangent from origin (max L/D)
+    if (!cyl) {
+      const best = data.reduce((b, d) => d.CL / d.CD > b.CL / b.CD ? d : b, data[0]);
+      const ctx = chP.ctx; ctx.strokeStyle = 'rgba(250,204,21,.6)'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(m2.X(0), m2.Y(0)); ctx.lineTo(m2.X(best.CD * 1.6), m2.Y(best.CL * 1.6)); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = '#facc15'; ctx.font = '11px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText('max L/D tangent', m2.X(best.CD * 1.1) + 6, m2.Y(best.CL * 1.1));
+    }
+    // L/D
+    const ld = data.map(d => [d.a, d.CL / d.CD]);
+    const ldMax = Math.ceil(Math.max(...ld.map(p => p[1])) / 20) * 20, ldMin = Math.min(0, Math.floor(Math.min(...ld.map(p => p[1])) / 20) * 20);
+    const m3 = SL.chart(chLD, [{ data: ld, color: '#34d399', width: 2.2 }], { xmin: cyl ? -3 : -10, xmax: cyl ? 3 : 25, ymin: ldMin, ymax: ldMax, xlabel: cyl ? 'spin ratio s' : 'α (°)', ylabel: 'L/D', pad: [22, 12, 30, 46] });
+    dot(chLD.ctx, m3.X(cur), m3.Y(R.CL / R.CD), '#34d399');
+  }
+
+  /* ======================= UI wiring ======================= */
+  function nacaName() {
+    if (S.t <= 0.011 && S.m === 0) return 'Flat plate';
+    const mm = Math.round(S.m * 100), pp = Math.round(S.p * 10), tt = Math.round(S.t * 100);
+    return 'NACA ' + (mm ? '' + mm + pp : '00') + String(tt).padStart(2, '0') + (S.m * 100 % 1 ? '*' : '');
+  }
+  let lastJ = null;
+  function update(geom) {
+    if (S.mode === 'foil' && (geom || !lastJ)) { lastJ = fitJoukowski(Math.max(0.01, S.t), S.m); }
+    compute();
+    fieldDirty = true;
+    const cyl = S.mode === 'cyl';
+    $('#nacaName').textContent = nacaName();
+    if (lastJ) $('#joukNote').textContent = `Joukowski twin: t/c ${SL.fmt(lastJ.t * 100, 1)}%, f/c ${SL.fmt(lastJ.f * 100, 1)}%`;
+    $('#hA').textContent = cyl ? '—' : SL.fmt(S.alpha * R2D, 1);
+    $('#hV').textContent = S.V;
+    $('#hCL').textContent = SL.fmt(R.CL, 3); $('#hCD').textContent = SL.fmt(R.CD, 4); $('#hLD').textContent = SL.fmt(R.CL / R.CD, 1);
+    const fl = $('#hFlow');
+    if (cyl) fl.innerHTML = '<span style="color:#f472b6">Bluff body: separated wake (modelled)</span>';
+    else if (R.sep > 0.5) fl.innerHTML = '<span style="color:#f472b6">STALLED: flow separated</span>';
+    else if (S.alpha > M.aSp - 4 * D2R || S.alpha < M.aSn + 4 * D2R) fl.innerHTML = '<span style="color:#f59e0b">Near stall: trailing-edge separation</span>';
+    else fl.textContent = 'Attached flow';
+    // balance
+    $('#bL').textContent = SL.fmt(R.L, R.L > 100 ? 1 : 2); $('#bD').textContent = SL.fmt(R.Dr, R.Dr > 100 ? 1 : 3); $('#bM').textContent = SL.fmt(R.Mo, 3);
+    $('#bLk').textContent = SL.fmt(R.L / 9.80665, 2) + ' kgf'; $('#bDk').textContent = SL.fmt(R.Dr / 9.80665, 3) + ' kgf';
+    // stats
+    $('#sRho').innerHTML = SL.fmt(atm.rho, 3) + '<small>kg/m³</small>';
+    $('#sQ').innerHTML = SL.fmt(R.q, 0) + '<small>Pa</small>';
+    $('#sRe').innerHTML = (R.Re / 1e6).toFixed(2) + '<small>×10⁶</small>';
+    if (!cyl) {
+      $('#sA0').innerHTML = SL.fmt(M.aL0 * R2D, 2) + '<small>°</small>';
+      const sw = sweepData(); let aStall = sw[sw.length - 1];
+      for (let i = 1; i < sw.length - 1; i++) if (sw[i].a > 0 && sw[i].CL >= sw[i - 1].CL && sw[i].CL > sw[i + 1].CL) { aStall = sw[i]; break; }
+      $('#sAs').innerHTML = SL.fmt(aStall.a, 1) + '<small>°</small>';
+      $('#sClm').textContent = SL.fmt(aStall.CL, 2);
+      $('#sCm').textContent = SL.fmt(R.CM, 3);
+      R.aStall = aStall.a; R.CLmax = aStall.CL;
+    } else { $('#sA0').textContent = '—'; $('#sAs').textContent = '—'; $('#sClm').textContent = '—'; $('#sCm').textContent = '—'; }
+    $('#sKJ').textContent = SL.fmt(R.CLkj, 3);
+    charts();
+    checkChallenges();
+  }
+
+  const rng = (id, key, scale, fmt, geom) => SL.bind(id, v => { S[key] = v * scale; if (!booting) update(geom); }, fmt);
+  let booting = true;
+  rng('#cm', 'm', 0.01, v => v + '%', true);
+  rng('#cp', 'p', 0.01, v => v + '%', true);
+  rng('#ct', 't', 0.01, v => v + '%', true);
+  rng('#alpha', 'alpha', D2R, v => v.toFixed(1) + '°');
+  rng('#vel', 'V', 1, v => v + ' m/s');
+  rng('#alt', 'alt', 1, v => v.toLocaleString('en') + ' m');
+  rng('#chord', 'c', 1, v => v.toFixed(2) + ' m');
+  rng('#span', 'b', 1, v => v.toFixed(1) + ' m');
+  rng('#spin', 'spin', 1, v => v.toFixed(1));
+  SL.bind('#w3d', v => { S.w3d = v; $('#arNote').textContent = v ? `On: aspect ratio AR = b/c = ${SL.fmt(S.b / S.c, 1)}; tip vortices add induced drag and reduce the lift slope.` : 'Off: the model spans wall to wall, so the tunnel measures 2-D section data.'; if (!booting) update(); });
+  ['#span', '#chord'].forEach(id => $(id).addEventListener('input', () => { if (S.w3d) $('#arNote').textContent = `On: aspect ratio AR = b/c = ${SL.fmt(S.b / S.c, 1)}; tip vortices add induced drag and reduce the lift slope.`; }));
+  ['#vP', '#vS', '#vSm', '#vT', '#vF', '#vN'].forEach(id => $(id).addEventListener('change', () => { bgDirty = true; if (id === '#vSm' || id === '#vT') { if (!$(id).checked) for (let i = parts.length - 1; i >= 0; i--) if ((id === '#vT') === (parts[i].kind === 1)) parts.splice(i, 1); } }));
+  function setRange(id, v) { const el = $(id); el.value = v; el.dispatchEvent(new Event('input')); }
+  const PRESETS = { '0012': [0, 40, 12], '2412': [2, 40, 12], '4412': [4, 40, 12], '6409': [6, 40, 9], '0018': [0, 40, 18], 'flat': [0, 40, 1] };
+  document.querySelectorAll('[data-p]').forEach(b => b.onclick = () => {
+    const [m, p, t] = PRESETS[b.dataset.p]; booting = true; setRange('#cm', m); setRange('#cp', p); setRange('#ct', t); booting = false;
+    document.querySelectorAll('[data-p]').forEach(x => x.classList.toggle('on', x === b)); update(true);
+  });
+  ['#cm', '#cp', '#ct'].forEach(id => $(id).addEventListener('input', () => document.querySelectorAll('[data-p]').forEach(x => x.classList.remove('on'))));
+  document.querySelectorAll('[data-alt]').forEach(b => b.onclick = () => setRange('#alt', b.dataset.alt));
+  document.querySelectorAll('#modeSeg button').forEach(b => b.onclick = () => {
+    document.querySelectorAll('#modeSeg button').forEach(x => x.classList.toggle('on', x === b));
+    S.mode = b.dataset.m; parts.length = 0;
+    $('#foilCtl').classList.toggle('hidden', S.mode !== 'foil'); $('#cylCtl').classList.toggle('hidden', S.mode !== 'cyl'); $('#aCtl').classList.toggle('hidden', S.mode !== 'foil');
+    $('#chordLbl').textContent = S.mode === 'cyl' ? 'Cylinder diameter d' : 'Model chord c';
+    $('#vN').closest('.chipt').classList.toggle('hidden', S.mode !== 'foil');
+    stage.style.cursor = S.mode === 'cyl' ? 'crosshair' : 'ns-resize';
+    update(true);
+  });
+
+  // drag to pitch + hover probe
+  let drag = null; const tip = $('#tip');
+  cv.addEventListener('pointerdown', e => { if (S.mode !== 'foil') return; drag = { y: SL.ptr(e, cv).y, a: +$('#alpha').value }; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointermove', e => {
+    const p = SL.ptr(e, cv);
+    if (drag) { const na = SL.clamp(Math.round((drag.a + (drag.y - p.y) * 0.12) * 2) / 2, -10, 25); if (na !== +$('#alpha').value) setRange('#alpha', na); tip.style.display = 'none'; return; }
+    if (e.pointerType === 'touch') return;
+    const [x, y] = S2W(p.x, p.y), v = velAt(x, y);
+    if (!v) { tip.style.display = 'none'; return; }
+    const sp = Math.hypot(v[0], v[1]);
+    tip.style.display = 'block'; tip.style.left = Math.min(p.x + 14, st.w - 170) + 'px'; tip.style.top = (p.y + 14) + 'px';
+    tip.innerHTML = `|V| ${SL.fmt(sp * S.V, 1)} m/s · Cp ${SL.fmt(1 - sp * sp, 2)}<br>p − p∞ ${SL.fmt((1 - sp * sp) * R.q, 0)} Pa`;
+  });
+  const end = () => { drag = null; };
+  cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+  cv.addEventListener('pointerleave', () => { tip.style.display = 'none'; });
+
+  // recording
+  function record(silent) {
+    const r = { mode: S.mode, name: S.mode === 'cyl' ? 'Cylinder s=' + S.spin.toFixed(1) : nacaName(), a: +(S.alpha * R2D).toFixed(2), spin: S.spin, V: S.V, rho: atm.rho, L: R.L, D: R.Dr, CL: R.CL, CD: R.CD, m: S.m, t: S.t, alt: S.alt, w3d: S.w3d };
+    S.recs.push(r);
+    const tb = $('#recTable tbody');
+    tb.insertAdjacentHTML('beforeend', `<tr><td>${S.recs.length}</td><td>${r.name}${r.w3d ? ' (3-D)' : ''}</td><td class="num">${S.mode === 'cyl' ? '—' : r.a.toFixed(1)}</td><td class="num">${r.V}</td><td class="num">${r.rho.toFixed(3)}</td><td class="num">${SL.fmt(r.L, 2)}</td><td class="num">${SL.fmt(r.D, 3)}</td><td class="num">${r.CL.toFixed(3)}</td><td class="num">${r.CD.toFixed(4)}</td><td class="num">${(r.CL / r.CD).toFixed(1)}</td></tr>`);
+    if (!silent) SL.toast(`Recorded point ${S.recs.length}: C<sub>L</sub> = ${r.CL.toFixed(3)}, C<sub>D</sub> = ${r.CD.toFixed(4)}`, 'ok', 2200);
+    charts(); checkChallenges(r);
+  }
+  $('#rec').onclick = () => record();
+  $('#clr').onclick = () => { S.recs = []; $('#recTable tbody').innerHTML = ''; charts(); };
+  $('#sweep').onclick = () => {
+    if (S.sweeping || S.mode !== 'foil') return; S.sweeping = true; $('#sweep').classList.add('on');
+    let a = -6; const step = () => { setRange('#alpha', a); record(true); a += 2; if (a <= 22) setTimeout(step, 260); else { S.sweeping = false; $('#sweep').classList.remove('on'); SL.toast('α-sweep complete: 15 points logged in the Data log tab.', 'ok'); } };
+    step();
+  };
+
+  /* ======================= Challenges ======================= */
+  const CH = [
+    { id: 'zero', t: 'Symmetric versus cambered at zero incidence', d: 'Record a point for NACA 0012 at α = 0°, then for NACA 4412 at α = 0°. Why does only one of them lift?', done: false },
+    { id: 'ldmax', t: 'Find the angle of maximum L/D', d: 'Choose any airfoil, then record a point within ±0.5° of the angle that gives the highest lift-to-drag ratio. (Hint: watch the L/D chart, or find the tangent on the drag polar.)', done: false },
+    { id: 'stall', t: 'Stall the airfoil', d: 'Increase α until the lift coefficient has fallen at least 20% below its maximum. Watch the separated wake grow from the trailing edge.', done: false },
+    { id: 'a0', t: 'Measure the zero-lift angle of NACA 4412', d: 'Set NACA 4412 and record a point with |C<sub>L</sub>| < 0.03. Compare with thin-airfoil theory (−4.15°).', done: false },
+    { id: 'kg', t: 'Lift 5 kg slowly', d: 'With a model of chord ≤ 0.3 m and span ≤ 1 m (2-D mode) at an airspeed of 15 m/s or less, make the balance read at least 5 kgf of lift without stalling. Which airfoil makes this easiest?', done: false },
+    { id: 'altitude', t: 'Thin air in Nairobi', d: 'Record a point at sea level, then the same airfoil, α and V at the Nairobi altitude (1,795 m). Lift should drop by the density ratio (about 18%).', done: false },
+    { id: 'aspect', t: 'Tip vortices cost drag', d: 'Switch on finite-wing corrections and find a configuration with AR ≥ 8 whose L/D is at least 25.', done: false },
+    { id: 'magnus', t: 'Magnus lift', d: 'Switch to the spinning cylinder and make it produce a downward force with C<sub>L</sub> < −2.', done: false },
+  ];
+  function renderChals() {
+    $('#chals').innerHTML = CH.map(c => `<div class="chal"><span class="led ${c.done ? 'on' : ''}" id="led-${c.id}"></span><div><b>${c.t}</b><p>${c.d}</p></div></div>`).join('');
+  }
+  renderChals();
+  function done(id) { const c = CH.find(x => x.id === id); if (!c || c.done) return; c.done = true; $('#led-' + id).classList.add('on'); SL.toast('<b>Challenge complete:</b> ' + c.t, 'ok', 4200); }
+  function checkChallenges(rec) {
+    if (!R || !M || booting) return;
+    if (S.mode === 'foil' && R.CLmax && S.alpha * R2D > R.aStall && R.CL < 0.8 * R.CLmax) done('stall');
+    if (S.mode === 'cyl' && R.CL < -2) done('magnus');
+    if (S.mode === 'foil' && !S.w3d && S.c <= 0.3001 && S.b <= 1.0001 && S.V <= 15 && R.L / 9.80665 >= 5 && R.sep < 0.5) done('kg');
+    if (S.mode === 'foil' && S.w3d && S.b / S.c >= 8 && R.CL / R.CD >= 25) done('aspect');
+    if (!rec) return;
+    const recs = S.recs;
+    if (recs.some(r => r.mode === 'foil' && r.m === 0 && Math.abs(r.t - 0.12) < 0.001 && Math.abs(r.a) < 0.01) && recs.some(r => r.mode === 'foil' && Math.abs(r.m - 0.04) < 1e-6 && Math.abs(r.t - 0.12) < 0.001 && Math.abs(r.a) < 0.01)) done('zero');
+    if (rec.mode === 'foil') {
+      const best = sweepData().reduce((b, d) => d.CL / d.CD > b.CL / b.CD ? d : b, { CL: 0, CD: 1 });
+      if (Math.abs(rec.a - best.a) <= 0.5) done('ldmax');
+      if (Math.abs(rec.m - 0.04) < 1e-6 && Math.abs(rec.t - 0.12) < 0.001 && Math.abs(rec.CL) < 0.03) done('a0');
+      const sea = recs.find(r => r.mode === 'foil' && r.alt === 0 && r !== rec && r.a === rec.a && r.V === rec.V && r.m === rec.m && r.t === rec.t);
+      if (sea && Math.abs(rec.alt - 1795) < 30) done('altitude');
+    }
+  }
+
+  /* ======================= Worked examples (numbers from the model) ======================= */
+  function worked() {
+    const ta = thinAirfoil(0.02, 0.4), a0d = ta.aL0 * R2D;
+    const sea = isa(0), nbo = isa(1795);
+    const a6 = 6 * D2R, clThin = 2 * Math.PI * (a6 - ta.aL0);
+    const Re1 = sea.rho * 30 * 0.3 / sea.mu, M1 = sectionModel(0.02, 0.4, 0.12, Re1);
+    const cl1 = cl2d(M1, a6), cd1 = cd2d(M1, a6, cl1), q1 = 0.5 * sea.rho * 30 * 30, L1 = q1 * 0.3 * cl1, D1 = q1 * 0.3 * cd1;
+    const Re2 = nbo.rho * 30 * 0.3 / nbo.mu;
+    const cf = cfTrans(Re1), cd0 = 2 * cf * (1 + 0.24 + 60 * 0.12 ** 4);
+    // finite wing example
+    const AR = 8, k = 1 / (Math.PI * EOSW * AR), aw = A0 / (1 + A0 * k);
+    const CDo = cd0 + 0.0075 * (0 - 0.2) ** 2, CLs = Math.sqrt(CDo / k), LDm = 1 / (2 * Math.sqrt(k * CDo));
+    const cyl = 2 * Math.PI * 1.5;
+    const f = (n, d = 3) => SL.fmt(n, d);
+    $('#workedPanel').innerHTML = `
+      <p>All numbers below are produced by the same model the tunnel uses, so you can reproduce them in the lab. Set the values given and compare with the balance.</p>
+      <h3>Example 1: Lift on a NACA 2412 model at sea level</h3>
+      <div class="worked">
+      <p><b>Set:</b> NACA 2412, α = 6°, V = 30 m/s, sea level, c = 0.30 m, b = 1.0 m, 3-D corrections off.</p>
+      <ol>
+        <li>Density at sea level (ISA): $\\rho = ${f(sea.rho, 3)}\\ \\text{kg/m}^3$. Dynamic pressure $q = \\tfrac12\\rho V^2 = \\tfrac12(${f(sea.rho, 3)})(30)^2 = ${f(q1, 1)}\\ \\text{Pa}$.</li>
+        <li>Thin-airfoil theory for the 2412 mean line gives $\\alpha_{L=0} = ${f(a0d, 2)}^\\circ$, so $c_l = 2\\pi(\\alpha-\\alpha_{L=0}) = 2\\pi\\,(${f(6 - a0d, 2)}^\\circ \\times \\pi/180) = ${f(clThin, 3)}$.</li>
+        <li>The tunnel uses the measured slope $a_0 = 0.9\\times 2\\pi$: $c_l = ${f(cl1, 3)}$ (well below stall, so no rounding).</li>
+        <li>Planform area $S = cb = 0.30\\ \\text{m}^2$. Lift $L = qSc_l = ${f(q1, 1)}\\times0.30\\times${f(cl1, 3)} = ${f(L1, 1)}\\ \\text{N}$, about ${f(L1 / 9.80665, 2)} kgf.</li>
+        <li>Section drag $c_d = ${f(cd1, 4)}$ gives $D = ${f(D1, 2)}\\ \\text{N}$ and $L/D = ${f(cl1 / cd1, 1)}$.</li>
+      </ol></div>
+
+      <h3>Example 2: Reynolds number, sea level versus Nairobi</h3>
+      <div class="worked"><ol>
+        <li>Sea level: $\\rho = ${f(sea.rho, 3)}$, $\\mu = ${(sea.mu * 1e5).toFixed(3)}\\times10^{-5}\\ \\text{Pa s}$. $Re = \\rho V c/\\mu = ${f(sea.rho, 3)}\\times30\\times0.30/${(sea.mu * 1e5).toFixed(3)}\\times10^{-5} = ${(Re1 / 1e5).toFixed(2)}\\times10^5$.</li>
+        <li>Nairobi (1,795 m, ISA): $T = ${f(nbo.T - 273.15, 1)}^\\circ\\text{C}$, $\\rho = ${f(nbo.rho, 3)}$, $\\mu = ${(nbo.mu * 1e5).toFixed(3)}\\times10^{-5}$, so $Re = ${(Re2 / 1e5).toFixed(2)}\\times10^5$.</li>
+        <li>The density ratio is $${f(nbo.rho, 3)}/${f(sea.rho, 3)} = ${f(nbo.rho / sea.rho, 3)}$: at the same airspeed and α, lift in Nairobi is ${f((1 - nbo.rho / sea.rho) * 100, 1)}% lower. This is why aircraft need longer runways at JKIA than at Mombasa.</li>
+      </ol></div>
+
+      <h3>Example 3: Best glide of a finite wing</h3>
+      <div class="worked"><ol>
+        <li>Take a 2412 wing with $AR = 8$, $e = ${EOSW}$. Induced-drag factor $k = 1/(\\pi e AR) = ${f(k, 4)}$.</li>
+        <li>3-D lift slope: $a = a_0/(1 + a_0 k) = ${f(A0, 3)}/(1 + ${f(A0 * k, 3)}) = ${f(aw, 3)}\\ \\text{rad}^{-1}$, i.e. ${f(aw * D2R, 4)} per degree.</li>
+        <li>At $Re = ${(Re1 / 1e5).toFixed(2)}\\times10^5$: $C_f = ${f(cf, 5)}$, so $c_{d0} \\approx 2C_f(1+2t+60t^4) = ${f(cd0, 4)}$. Treating the profile drag as roughly constant, $C_{D0} \\approx ${f(CDo, 4)}$.</li>
+        <li>$C_L^* = \\sqrt{C_{D0}/k} = ${f(CLs, 3)}$ and $(L/D)_{max} = 1/(2\\sqrt{kC_{D0}}) = ${f(LDm, 1)}$.</li>
+        <li>In the tunnel, switch on 3-D corrections with $c = 0.3$ m and $b = 2.4$ m and read the L/D chart: the peak is a little lower because the profile drag rises with $C_L$.</li>
+      </ol></div>
+
+      <h3>Example 4: Magnus lift on a spinning cylinder</h3>
+      <div class="worked"><ol>
+        <li>A cylinder of diameter $d = 0.30$ m spins with $s = \\omega R/V = 1.5$ in a 30 m/s stream: $\\omega = sV/R = 1.5\\times30/0.15 = 300\\ \\text{rad/s}$ (${f(300 * 60 / (2 * Math.PI), 0)} rpm).</li>
+        <li>Ideal circulation $\\Gamma = 2\\pi R^2\\omega = 2\\pi(0.15)^2(300) = ${f(2 * Math.PI * 0.0225 * 300, 2)}\\ \\text{m}^2/\\text{s}$, so $L' = \\rho V\\Gamma = ${f(sea.rho * 30 * 2 * Math.PI * 0.0225 * 300, 1)}$ N per metre of span and $C_L = 2\\pi s = ${f(cyl, 2)}$.</li>
+        <li>The tunnel's empirical curve gives $C_L = ${f(cylModel(1.5, 6e5).CL, 2)}$: real cylinders achieve less than half the ideal value because the boundary layer separates.</li>
+      </ol></div>`;
+  }
+  worked();
+
+  SL.quiz('#quiz', [
+    { q: 'At a stagnation point on an airfoil, the pressure coefficient is…', options: ['0', '1', '−1', 'It depends on the airspeed'], answer: 1, why: '$C_p = 1 - (V/V_\\infty)^2$ and $V = 0$ there, so $C_p = 1$ regardless of the free-stream speed.' },
+    { q: 'What does the Kutta condition fix in the potential-flow model?', options: ['The free-stream velocity', 'The circulation, by requiring smooth flow off the sharp trailing edge', 'The Reynolds number', 'The thickness of the airfoil'], answer: 1, why: 'Potential theory allows any circulation. Requiring the rear stagnation point at the trailing edge selects $\\Gamma = 4\\pi V R\\sin(\\alpha+\\beta)$.' },
+    { q: 'According to thin-airfoil theory, a symmetric airfoil at α = 5° has c<sub>l</sub> of about…', options: ['0.09', '0.27', '0.55', '1.0'], answer: 2, why: '$c_l = 2\\pi\\alpha = 2\\pi\\times(5\\pi/180) = 0.548$.' },
+    { q: 'Why does a cambered airfoil produce lift at α = 0?', options: ['Its upper surface is longer, so air must travel faster to meet the lower air', 'Its zero-lift angle is negative, so α = 0 is already above it', 'Camber reduces drag', 'It does not; only incidence makes lift'], answer: 1, why: 'Camber turns the flow downwards; in thin-airfoil theory this shifts $\\alpha_{L=0}$ negative (−2.1° for NACA 2412). The "equal transit time" explanation is false: the upper air arrives first.' },
+    { q: 'Doubling airspeed at constant α changes the lift by a factor of…', options: ['√2', '2', '4', '8'], answer: 2, why: '$L = \\tfrac12\\rho V^2 S C_L$, so lift scales with $V^2$.' },
+    { q: 'What happens at the stall?', options: ['The engine stops', 'The boundary layer separates from most of the upper surface; lift falls and drag rises sharply', 'The airfoil reaches the speed of sound', 'The Reynolds number becomes negative'], answer: 1, why: 'A stall is an aerodynamic event caused by separation in the adverse pressure gradient, not an engine problem.' },
+    { q: 'For a finite wing, increasing the aspect ratio (same area) mainly…', options: ['Increases induced drag', 'Reduces induced drag and increases the lift slope', 'Reduces skin friction', 'Moves the aerodynamic centre to mid-chord'], answer: 1, why: 'Induced drag $C_L^2/(\\pi e AR)$ falls with AR, and $a = a_0/(1+a_0/(\\pi e AR))$ rises towards $a_0$. Gliders use very high AR for this reason.' },
+    { q: 'Maximum L/D on a parabolic drag polar occurs where…', options: ['C<sub>L</sub> is maximum', 'Induced drag equals zero-lift drag', 'Drag is minimum', 'α = 0'], answer: 1, why: 'Minimising $C_D/C_L = C_{D0}/C_L + kC_L$ gives $C_{D0} = kC_L^2$.' },
+    { q: 'The Reynolds number of a 0.3 m model at 30 m/s at sea level is roughly…', options: ['6 × 10³', '6 × 10⁵', '6 × 10⁷', '0.6'], answer: 1, why: '$Re = \\rho V c/\\mu = 1.225\\times30\\times0.3/1.79\\times10^{-5} \\approx 6.2\\times10^5$.' },
+    { q: 'A backspinning cylinder in a stream experiences a force…', options: ['Only along the stream (drag)', 'Perpendicular to the stream due to circulation (Magnus effect), plus drag', 'Towards the axis of rotation', 'None, by d’Alembert’s paradox'], answer: 1, why: 'Spin creates circulation; Kutta–Joukowski gives $L\' = \\rho V \\Gamma$ perpendicular to the flow. D’Alembert’s paradox (zero drag) only holds in inviscid theory.' },
+  ]);
+
+  /* ======================= Loop ======================= */
+  booting = false;
+  update(true);
+  buildField();
+  const perf = { u: 0, d: 0, n: 0 };
+  const loop = SL.loop((dt, t) => { const t0 = performance.now(); updParticles(dt, t); const t1 = performance.now(); draw(t); perf.u += t1 - t0; perf.d += performance.now() - t1; perf.n++; }).start();
+  document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
+  window.WT = { perf, parts, J, R: () => R, M: () => M, isa, thinAirfoil, sectionModel, cl2d, cd2d, wing, velAt, surfaceCp, fitJoukowski, cylModel };
+})();
+</script>
+</body>
+</html>

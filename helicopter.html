@@ -1,0 +1,811 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Helicopter Flight · Pentarch SimLab</title>
+<meta name="description" content="Fly a light helicopter with collective, cyclic and tail-rotor pedals. Rotor momentum theory, ground effect, translational lift, density altitude, sling loads and autorotation, simulated live.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .stage.hc{height:560px;touch-action:none;outline:none}
+  @media (max-width:640px){.stage.hc{height:430px;min-height:0}}
+  .hidden{display:none!important}
+  .flybar{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px;margin-top:10px}
+  @media (max-width:640px){.flybar{grid-template-columns:repeat(4,minmax(0,1fr))}}
+  .flybar .btn{padding:10px 4px;font-size:.76rem;flex-direction:column;gap:3px;touch-action:none}
+  .flybar .btn svg{width:18px;height:18px}
+  .chartbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 10px 4px;margin-top:14px}
+  .chartbox h4{font:600 .72rem var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:0 0 4px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  .chartbox h4 span{color:var(--muted);letter-spacing:0;text-transform:none;font-weight:500}
+  .chartbox canvas{display:block;width:100%;height:220px}
+  .legend-row{display:flex;flex-wrap:wrap;gap:12px;font:500 .72rem var(--mono);color:var(--muted);margin:4px 0 6px}
+  .legend-row i{display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:5px;vertical-align:3px}
+  .mission{display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border:1px solid var(--line2);border-radius:10px;cursor:pointer;background:var(--bg2);margin-bottom:6px;transition:.15s}
+  .mission:hover{border-color:var(--accent)}
+  .mission.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--bg2))}
+  .mission .led{margin-top:6px;flex:none}
+  .mission b{display:block;font-size:.88rem}
+  .mission span{display:block;font-size:.78rem;color:var(--muted);line-height:1.35}
+  .keys{font-size:.8rem;color:var(--muted);line-height:1.9}
+  .banner{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(5,9,19,.9);border:1px solid var(--line2);border-radius:14px;padding:18px 22px;text-align:center;max-width:min(440px,90%);display:none;z-index:4}
+  .banner h3{margin:0 0 6px}
+  .banner p{margin:0 0 12px;color:var(--muted);font-size:.9rem}
+  .banner .btn-row{justify-content:center}
+  select.inp{margin:4px 0 6px}
+  .stats .stat .v{font-size:1.02rem}
+  .chal{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
+  .chal .led{margin-top:7px;flex:none}
+  .chal b{display:block}
+  .chal p{margin:2px 0 0;color:var(--muted);font-size:.9rem}
+  svg.diag text{font-family:var(--mono);font-size:12px;fill:var(--muted)}
+  svg.diag{width:100%;height:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+  @media (max-width:980px){.labcol{display:contents}.labcol .stage{order:1}.labcol .flybar{order:2}.lab>aside{order:3}.labcol .chartbox{order:4;margin-top:0}}
+</style>
+</head>
+<body data-page="helicopter">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab wide-controls">
+    <div class="labcol">
+      <div class="stage hc" id="stage" tabindex="0">
+        <canvas id="cv" aria-label="Helicopter flight simulator, side view with a top-view yaw inset"></canvas>
+        <div class="hud">
+          <span class="readout">ALT <b id="hAlt">0</b> m</span>
+          <span class="readout">V/S <b id="hVs">0</b> m/s</span>
+          <span class="readout">GS <b id="hGs">0</b> m/s</span>
+          <span class="readout">RPM <b id="hRpm">100</b>%</span>
+          <span class="readout">COLL <b id="hCol">0</b>%</span>
+          <span class="readout" id="hFlags">ON GROUND</span>
+        </div>
+        <div class="hud hud-b"><span class="readout" id="hMsg">Ready</span></div>
+        <div class="banner" id="banner"><h3 id="bTitle"></h3><p id="bText"></p><div class="btn-row"><button class="btn primary" id="bRetry"><i data-lucide="rotate-ccw"></i> Fly again</button></div></div>
+      </div>
+      <div class="flybar">
+        <button class="btn" data-hold="colUp"><i data-lucide="arrow-up-to-line"></i>Collective +</button>
+        <button class="btn" data-hold="colDn"><i data-lucide="arrow-down-to-line"></i>Collective −</button>
+        <button class="btn" data-hold="cycB"><i data-lucide="arrow-left"></i>Cyclic aft</button>
+        <button class="btn" data-hold="cycF"><i data-lucide="arrow-right"></i>Cyclic fwd</button>
+        <button class="btn" data-hold="pedL"><i data-lucide="rotate-ccw"></i>Left pedal</button>
+        <button class="btn" data-hold="pedR"><i data-lucide="rotate-cw"></i>Right pedal</button>
+        <button class="btn" data-tap="hook"><i data-lucide="anchor"></i>Hook</button>
+        <button class="btn" data-tap="pause"><i data-lucide="pause"></i>Pause</button>
+      </div>
+      <div class="chartbox">
+        <h4>Power required in level flight <span id="pcNote"></span></h4>
+        <div class="legend-row"><span><i style="background:#f87171"></i>total required</span><span><i style="background:#93a1bd"></i>induced</span><span><i style="background:#a78bfa"></i>profile</span><span><i style="background:#f59e0b"></i>parasite</span><span><i style="background:#34d399"></i>available</span><span><i style="background:#22d3ee"></i>you</span></div>
+        <canvas id="chP"></canvas>
+      </div>
+    </div>
+
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="flag"></i> Missions</h3>
+        <div id="missions"></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="gamepad-2"></i> Controls</h3>
+        <div class="ctl"><label for="col">Collective (blade pitch)</label><output></output><input type="range" id="col" min="0" max="1" step="0.005" value="0"></div>
+        <div class="ctl"><label for="cyc">Cyclic (− aft, + forward)</label><output></output><input type="range" id="cyc" min="-1" max="1" step="0.01" value="0"></div>
+        <div class="ctl"><label for="ped">Pedals (− left, + right)</label><output></output><input type="range" id="ped" min="-1" max="1" step="0.01" value="0"></div>
+        <label class="toggle">Automatic anti-torque (pedal assist)<input type="checkbox" id="assist" checked></label>
+        <label class="toggle">Show forces and downwash vectors<input type="checkbox" id="vec" checked></label>
+        <div class="btn-row" style="margin:8px 0 4px"><button class="btn sm danger" id="engBtn"><i data-lucide="power"></i> Cut engine</button><button class="btn sm" id="restart"><i data-lucide="rotate-ccw"></i> Restart</button></div>
+        <div class="keys"><kbd>↑</kbd>/<kbd>W</kbd> collective up · <kbd>↓</kbd>/<kbd>S</kbd> down<br><kbd>→</kbd>/<kbd>D</kbd> cyclic forward · <kbd>←</kbd>/<kbd>A</kbd> aft (springs back)<br><kbd>Q</kbd>/<kbd>E</kbd> pedals · <kbd>H</kbd> hook/release · <kbd>X</kbd> engine · <kbd>P</kbd> pause · <kbd>R</kbd> restart</div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="settings-2"></i> Aircraft & conditions</h3>
+        <div class="ctl"><label for="pay">Payload (passengers, cargo)</label><output></output><input type="range" id="pay" min="0" max="400" step="10" value="120"></div>
+        <select id="site" class="inp">
+          <option value="10">Mombasa coast (10 m)</option>
+          <option value="1687" selected>Nairobi, Wilson Airport (1,687 m)</option>
+          <option value="4000">Mount Kenya rescue (4,000 m)</option>
+        </select>
+        <div class="ctl"><label for="dT">Temperature vs ISA</label><output></output><input type="range" id="dT" min="-10" max="30" step="1" value="15"></div>
+        <p class="small dim" style="margin:0" id="siteNote"></p>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="gauge"></i> Rotor & performance</h3>
+        <div class="stats">
+          <div class="stat"><div class="k">Gross mass</div><div class="v" id="sM">—</div></div>
+          <div class="stat"><div class="k">Disk loading</div><div class="v" id="sDL">—</div></div>
+          <div class="stat"><div class="k">Thrust now</div><div class="v" id="sT">—</div></div>
+          <div class="stat"><div class="k">Induced v<sub>i</sub></div><div class="v" id="sVi">—</div></div>
+          <div class="stat"><div class="k">Power req.</div><div class="v" id="sPr">—</div></div>
+          <div class="stat"><div class="k">Power avail.</div><div class="v" id="sPa">—</div></div>
+          <div class="stat"><div class="k">Hover OGE</div><div class="v" id="sOGE">—</div></div>
+          <div class="stat"><div class="k">Hover IGE</div><div class="v" id="sIGE">—</div></div>
+          <div class="stat"><div class="k">Tail-rotor thrust</div><div class="v" id="sTr">—</div></div>
+          <div class="stat"><div class="k">Yaw rate</div><div class="v" id="sYaw">—</div></div>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+    <div class="tabpanel prose">
+      <div class="callout"><i data-lucide="info"></i><div><b>About the model.</b> A light, piston-engined two-blade helicopter (rotor radius 5.0 m, tip speed 200 m/s, 200 kW at sea level). Rotor thrust comes from blade-element theory, $T = C_T\rho A(\Omega R)^2$ with $C_T = \tfrac{\sigma a}{2}\big(\tfrac{\theta_0}{3}(1+\tfrac32\mu^2) - \tfrac{\lambda}{2}\big)$, coupled to a momentum-theory inflow model that includes climb, descent (with the empirical vortex-ring curve), forward flight, ground effect and rotor-speed dynamics. Motion is simulated in the vertical plane; yaw is shown in the top-view inset. Flapping, blade stall and lateral (roll) dynamics are simplified away.</div></div>
+      <h3>1. How a rotor makes thrust: momentum theory</h3>
+      <svg class="diag" viewBox="0 0 640 230" role="img" aria-label="Actuator disc and slipstream in hover">
+        <defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="context-stroke"/></marker></defs>
+        <path d="M170,20 C230,80 250,95 255,110 L385,110 C390,95 410,80 470,20" fill="none" stroke="#2a3a5c" stroke-dasharray="5 4"/>
+        <path d="M255,110 C262,150 270,180 278,220 M385,110 C378,150 370,180 362,220" fill="none" stroke="#2a3a5c" stroke-dasharray="5 4"/>
+        <rect x="250" y="106" width="140" height="8" rx="3" fill="#22d3ee" opacity=".6"/>
+        <text x="400" y="114" style="fill:#22d3ee">disc area A, thrust T</text>
+        <line x1="320" y1="40" x2="320" y2="95" stroke="#93a1bd" stroke-width="2" marker-end="url(#a2)"/><text x="330" y="60">far above: V = 0</text>
+        <line x1="320" y1="122" x2="320" y2="160" stroke="#facc15" stroke-width="2.5" marker-end="url(#a2)"/><text x="330" y="148" style="fill:#facc15">at disc: vᵢ</text>
+        <line x1="320" y1="175" x2="320" y2="222" stroke="#f472b6" stroke-width="3" marker-end="url(#a2)"/><text x="330" y="208" style="fill:#f472b6">far wake: 2vᵢ (contracts to A/2)</text>
+      </svg>
+      <p>Treat the rotor as an <b>actuator disc</b> that pushes air downwards. The mass flow through the disc is $\dot m = \rho A v_i$. Far below, the wake moves at $2v_i$ (a result of energy conservation), so the momentum given to the air each second, which equals the thrust, is</p>
+      <div class="eq">$$T = \dot m\,(2v_i) = 2\rho A v_i^2 \quad\Rightarrow\quad v_i = \sqrt{\frac{T}{2\rho A}}$$</div>
+      <p>The ideal power is the thrust times the velocity at the disc:</p>
+      <div class="eq">$$P_{ideal} = T v_i = \frac{T^{3/2}}{\sqrt{2\rho A}}, \qquad P = \kappa\,T v_i + \underbrace{\frac{\sigma C_{d0}}{8}\rho A(\Omega R)^3\left(1+4.65\mu^2\right)}_{\text{profile power}}$$</div>
+      <p>$\kappa \approx 1.15$ accounts for non-uniform inflow and tip losses. The <b>figure of merit</b> $FM = P_{ideal}/P$ (0.6–0.75 for real rotors) measures hover efficiency. The <b>disk loading</b> $T/A$ is the key design number: a big, lightly loaded rotor needs less power to hover, which is why helicopters have such large rotors and why a Harrier or a rocket, with tiny "discs", burns so much fuel to hover.</p>
+      <h3>2. Density altitude</h3>
+      <p>Hover power scales as $1/\sqrt\rho$, while a piston engine's power falls roughly as $(1.132\sigma - 0.132)$ (Gagg–Ferrar). At Wilson Airport on a warm afternoon both effects work against you. On Mount Kenya at 4,000 m a light helicopter may only hover in ground effect with a very light load. Change the site and temperature and watch the "Hover OGE" readout.</p>
+      <h3>3. Ground effect</h3>
+      <p>Close to the ground the downwash cannot spread freely; the induced velocity is reduced and the same power produces more thrust. Cheeseman and Bennett's image-vortex estimate is</p>
+      <div class="eq">$$\frac{T_{IGE}}{T_{OGE}}\bigg|_{P} = \frac{1}{1 - \left(\dfrac{R}{4z}\right)^2}$$</div>
+      <p>where $z$ is the rotor height. The effect fades above about one rotor diameter. The simulator reduces $v_i$ by the factor $1-(R/4z)^2$ (weakened as forward speed sweeps the wake away), which is why the helicopter feels "cushioned" near the pad.</p>
+      <h3>4. Forward flight and translational lift</h3>
+      <p>Tilting the rotor disc forward with the <b>cyclic</b> tilts the thrust vector; its horizontal component accelerates the helicopter. In forward flight the rotor processes a much larger mass of air, so it needs a smaller induced velocity for the same thrust (Glauert):</p>
+      <div class="eq">$$v_i = \frac{T}{2\rho A\sqrt{V^2 + (V_c + v_i)^2}} \;\xrightarrow{V \gg v_h}\; \frac{T}{2\rho A V}$$</div>
+      <p>Induced power therefore falls as speed rises: <b>effective translational lift</b>, felt at about 8–12 m/s as a sudden surplus of thrust. Profile power rises slowly and parasite power ($\tfrac12\rho f V^3$) rises steeply, giving the classic bucket-shaped power curve. The bottom of the bucket is the best endurance speed and the best speed for autorotation.</p>
+      <h3>5. Torque and the tail rotor</h3>
+      <p>The engine drives the main rotor with torque $Q = P/\Omega$; by Newton's third law the rotor pushes the fuselage the other way. This rotor turns anticlockwise seen from above, so the fuselage tries to yaw to the right. The tail rotor, on an arm $l_{tr}$, cancels it:</p>
+      <div class="eq">$$T_{tr} = \frac{Q}{l_{tr}} = \frac{P_{main}}{\Omega\, l_{tr}}$$</div>
+      <p>The pedals change tail-rotor pitch. More collective means more power, more torque and more left pedal is needed. Switch off <i>automatic anti-torque</i> to manage it yourself, and watch the top-view inset.</p>
+      <h3>6. Autorotation</h3>
+      <p>If the engine fails, lower the collective immediately. As the helicopter descends, air flows <i>up</i> through the disc. With low blade pitch this upflow drives the rotor like a windmill, keeping rotor speed up while still producing thrust close to the weight: the helicopter descends steadily, like a sycamore seed. The descent rate is set by the power the rotor still needs:</p>
+      <div class="eq">$$V_{d} \approx \frac{P_{i} + P_0 + P_{p}}{T} \qquad\text{(lowest near the bucket speed)}$$</div>
+      <p>Near the ground the pilot <b>flares</b> (aft cyclic) to convert forward speed into rotor energy and reduce the sink rate, then raises the collective to cushion the touchdown using the rotor's stored kinetic energy $\tfrac12 I_R\Omega^2$. Let rotor speed decay below about 70% and the blades stall: there is no recovery. Rotor RPM dynamics follow $I_R\,\Omega\,\dot\Omega = P_{engine} - P_{required}$.</p>
+      <div class="callout warn"><i data-lucide="triangle-alert"></i><div><b>Vortex ring state.</b> Descending vertically at about the induced velocity, the rotor re-ingests its own wake and momentum theory breaks down. The simulator uses an empirical curve for this region: power rises, thrust becomes erratic, and adding collective can make the descent worse. The cure is forward speed.</div></div>
+    </div>
+
+    <div class="tabpanel prose" id="workedPanel"></div>
+
+    <div class="tabpanel prose">
+      <p>Missions are on the right of the simulator. These investigations use the live readouts.</p>
+      <div id="chals"></div>
+      <h3>Investigations</h3>
+      <ol class="steps">
+        <li><b>Ground cushion.</b> Hover at 1 m and note the collective; climb slowly to 15 m. How much more collective and power do you need out of ground effect? Compare with $1/(1-(R/4z)^2)$.</li>
+        <li><b>The power bucket.</b> Fly level at 0, 10, 20, 30 and 40 m/s and note the power required. Plot it against the chart. Where is the minimum?</li>
+        <li><b>Torque.</b> Turn off automatic anti-torque. Raise the collective sharply. Which way does the nose go, and why? What does the inset show when you cut the engine?</li>
+        <li><b>Hot and high.</b> Find the heaviest payload you can hover out of ground effect at Mombasa, Wilson and Mount Kenya.</li>
+      </ol>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  const D2R = Math.PI / 180, R2D = 180 / Math.PI, g0 = 9.80665;
+  const $ = s => document.querySelector(s);
+  const { clamp, lerp, fmt } = SL;
+
+  /* ======================= Helicopter data ======================= */
+  const H = {
+    R: 5.0, Om0: 40, sigma: 0.06, a: 5.7, cd0: 0.008, kappa: 1.15, IR: 900,
+    mEmpty: 680, mPilot: 80, mFuel: 100, Pmax: 200e3, eta: 0.95,
+    fx: 1.3, fz: 3.5, ltr: 6.0, Rtr: 0.65, Iz: 1600, hub: 2.7, rope: 10, mLoad: 180,
+  };
+  H.A = Math.PI * H.R * H.R; H.Atr = Math.PI * H.Rtr * H.Rtr;
+  const C = { pay: 120, elev: 1687, dT: 15 };
+  function atmos(h, dT) {
+    const Tisa = 288.15 - 0.0065 * h, T = Tisa + dT;
+    const p = 101325 * Math.pow(Tisa / 288.15, 5.25588), rho = p / (287.053 * T);
+    return { rho, T, sigma: rho / 1.225 };
+  }
+  const Pavail = atm => H.Pmax * Math.max(0, 1.132 * atm.sigma - 0.132);
+  const mass = () => H.mEmpty + H.mPilot + H.mFuel + C.pay;
+
+  /* ---------- induced velocity (axial empirical + Glauert forward flight) ---------- */
+  function vAxial(Vc, vh) {
+    const x = Vc / vh;
+    if (x >= 0) return vh * (-x / 2 + Math.sqrt(x * x / 4 + 1));
+    if (x <= -2) return vh * (-x / 2 - Math.sqrt(x * x / 4 - 1));
+    return vh * (1 - 1.125 * x - 1.372 * x * x - 1.718 * x ** 3 - 0.655 * x ** 4);   // vortex-ring / turbulent-wake fit
+  }
+  function vInduced(Vn, Vp, vh) {
+    const va = vAxial(Vn, vh);
+    const w = clamp((Vp / vh - 0.3) / 1.2, 0, 1);
+    if (w === 0) return va;
+    let v = va; for (let i = 0; i < 12; i++) { const vn = vh * vh / Math.sqrt(Vp * Vp + (Vn + v) ** 2); v = 0.5 * v + 0.5 * vn; }
+    return (1 - w) * va + w * v;
+  }
+  function groundFactor(z, Vp, vh) {
+    const r = H.R / (4 * Math.max(z, 0.5 * H.R));
+    return clamp(1 - r * r / (1 + (Vp / Math.max(vh, 1)) ** 2), 0.6, 1);
+  }
+  // rotor solve: given blade pitch θ0, rotor speed, velocities through/along the disc
+  function rotor(th0, Om, Vn, Vp, rho, z, Tguess) {
+    const OR = Om * H.R, mu = Vp / OR;
+    let T = Tguess || 9000, vi = 5, kG = 1;
+    for (let it = 0; it < 10; it++) {
+      const vh = Math.sqrt(Math.max(T, 50) / (2 * rho * H.A));
+      kG = groundFactor(z, Vp, vh);
+      vi = vInduced(Vn, Vp, vh) * kG;
+      const lam = (Vn + vi) / OR;
+      const CT = Math.max(-0.002, H.sigma * H.a / 2 * (th0 / 3 * (1 + 1.5 * mu * mu) - lam / 2));
+      const Tn = CT * rho * H.A * OR * OR;
+      T = 0.5 * T + 0.5 * Tn;
+    }
+    const P0 = H.sigma * H.cd0 / 8 * rho * H.A * OR ** 3 * (1 + 4.65 * mu * mu);
+    const Pi = H.kappa * Math.max(T, 0) * vi, Pc = T * Vn;
+    return { T, vi, kG, mu, P0, Pi, Pc, P: Pi + Pc + P0 };
+  }
+  function tailPower(Ttr, rho, Om) { const v = Math.sqrt(Math.abs(Ttr) / (2 * rho * H.Atr)); return 1.15 * Math.abs(Ttr) * v + 2000 * (Om / H.Om0) ** 3; }
+
+  // steady-state level-flight power (for chart and hover performance)
+  function levelPower(V, m, rho, z) {
+    const W = m * g0, Dp = 0.5 * rho * H.fx * V * V, T = Math.hypot(W, Dp), tilt = Math.atan2(Dp, W);
+    const Vn = V * Math.sin(tilt), Vp = V * Math.cos(tilt), OR = H.Om0 * H.R, mu = Vp / OR;
+    const vh = Math.sqrt(T / (2 * rho * H.A)), kG = z ? groundFactor(z, Vp, vh) : 1;
+    const vi = vInduced(Vn, Vp, vh) * kG;
+    const Pi = H.kappa * T * vi, P0 = H.sigma * H.cd0 / 8 * rho * H.A * OR ** 3 * (1 + 4.65 * mu * mu), Pp = Dp * V;
+    const Pm = Pi + P0 + Pp, Ptr = tailPower(Pm / H.Om0 / H.ltr, rho, H.Om0);
+    return { Pi, P0, Pp, Ptr, P: (Pm + Ptr) / H.eta, vi, T };
+  }
+  function hoverCeilingPayload(rho, Pa, z) { let lo = -400, hi = 1500; for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; const m = H.mEmpty + H.mPilot + H.mFuel + mid; if (levelPower(0, m, rho, z).P <= Pa) lo = mid; else hi = mid; } return lo; }
+
+  /* ======================= World & missions ======================= */
+  const PADA = 0, PADB = 420, CRATE = 160, ZONE = 760;
+  const MISSIONS = [
+    { id: 'free', t: 'Free flight', d: 'Lift off from pad A and explore. Try the power bucket and the ground cushion.' },
+    { id: 'hover', t: 'Hover at 5 m for 10 s', d: 'Hold 4–6 m skid height with groundspeed under 1 m/s for 10 seconds.' },
+    { id: 'pad', t: 'Land on the hospital pad', d: 'Fly 420 m to pad H2 and touch down gently: under 1 m/s down and 1 m/s along.' },
+    { id: 'sling', t: 'Sling-load delivery', d: 'Hover over the 180 kg crate, press Hook, fly it to the construction site, set it down and release it. Cabin payload is removed to stay within the power limit.' },
+    { id: 'auto', t: 'Engine failure: autorotate', d: 'At 300 m and 30 m/s the engine will fail. Lower collective, keep rotor RPM green, flare and land.' },
+  ];
+  let mission = 'hover';
+  const missionDone = {};
+  let S = null, paused = false;
+  const keys = {};
+
+  function start() {
+    S = { x: PADA, h: 0, vx: 0, vh: 0, ph: 0, phd: 0, Om: H.Om0, psi: 0, r: 0, col: 0, cyc: 0, ped: 0, engine: true, t: 0, onGround: true, airborne: false,
+          T: 0, vi: 0, P: 0, Ptr: 0, Pe: 0, Ttr: 0, kG: 1, hoverT: 0, done: false, crashed: false,
+          load: { x: CRATE, h: 0, vx: 0, vh: 0, hooked: false, delivered: false }, dust: [], blade: 0, tblade: 0, failT: null, spinT: 0, lowRpmT: 0 };
+    if (mission === 'auto') {
+      // trimmed cruise at 300 m, 30 m/s
+      S.h = 300; S.x = -900; S.vx = 30; S.airborne = true; S.onGround = false;
+      const atm = atmos(C.elev + S.h, C.dT), m = mass();
+      const Dp = 0.5 * atm.rho * H.fx * 900; S.ph = Math.atan2(Dp, m * g0) + 0.004 * 30; S.cyc = S.ph / 0.38;
+      S.col = findCollective(m, atm.rho, 30, 0); S.failT = 3;
+    }
+    if (mission !== 'sling') S.load = null;
+    else if (C.pay > 0) { C.pay = 0; const el = $('#pay'); el.value = 0; el.dispatchEvent(new Event('input')); SL.toast('Cabin payload set to 0 kg: the crate is your payload today.', '', 3500); }
+    paused = false; $('#banner').style.display = 'none';
+    msg(MISSIONS.find(m => m.id === mission).t);
+    syncSliders();
+  }
+  function findCollective(m, rho, V, Vc) {
+    const W = m * g0, Dp = 0.5 * rho * H.fx * V * V, tilt = Math.atan2(Dp, W), Treq = Math.hypot(W, Dp);
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 30; i++) { const c = (lo + hi) / 2; const r = rotor(colToPitch(c), H.Om0, V * Math.sin(tilt) + Vc, V * Math.cos(tilt), rho, 400, Treq); if (r.T < Treq) lo = c; else hi = c; }
+    return (lo + hi) / 2;
+  }
+  const colToPitch = c => (1 + 13 * c) * D2R;
+  function msg(s, col) { $('#hMsg').innerHTML = col ? `<span style="color:${col}">${s}</span>` : s; }
+  function endBanner(title, text, ok) { $('#bTitle').innerHTML = title; $('#bTitle').style.color = ok ? '#4ade80' : '#f87171'; $('#bText').innerHTML = text; $('#banner').style.display = 'block'; }
+  function crash(why) { if (S.crashed) return; S.crashed = true; endBanner('Crashed', why, false); msg('CRASHED', '#ef4444'); SL.toast(why, 'bad'); }
+  function win(id, text) { if (S.done) return; S.done = true; missionDone[id] = true; renderMissions(); renderChals(); SL.toast('<b>Mission complete:</b> ' + MISSIONS.find(m => m.id === id).t, 'ok', 5000); endBanner('Mission complete', text, true); }
+
+  /* ======================= Physics step ======================= */
+  function step(dt) {
+    if (!S || S.crashed || S.done) return;
+    // pilot inputs
+    if (keys.colUp) S.col = clamp(S.col + 0.35 * dt, 0, 1);
+    if (keys.colDn) S.col = clamp(S.col - 0.35 * dt, 0, 1);
+    const cycTarget = keys.cycF ? 1 : keys.cycB ? -1 : null;
+    if (cycTarget !== null) S.cyc = clamp(S.cyc + Math.sign(cycTarget - S.cyc) * 1.6 * dt, -1, 1);
+    else if (S.cycSpring) S.cyc -= Math.sign(S.cyc) * Math.min(Math.abs(S.cyc), 1.6 * dt);
+    const pedTarget = keys.pedR ? 1 : keys.pedL ? -1 : null;
+    if (pedTarget !== null) S.ped = clamp(S.ped + Math.sign(pedTarget - S.ped) * 2 * dt, -1, 1);
+    else if (S.pedSpring) S.ped -= Math.sign(S.ped) * Math.min(Math.abs(S.ped), 2 * dt);
+    if (S.failT !== null && S.t >= S.failT && S.engine) { S.engine = false; SL.toast('<b>ENGINE FAILURE!</b> Lower the collective now.', 'bad', 5000); }
+
+    const m = mass() + (S.load && S.load.hooked ? 0 : 0);
+    const atm = atmos(C.elev + Math.max(0, S.h), C.dT), rho = atm.rho;
+    // disc orientation: fuselage pitch plus small blowback with airspeed
+    const phd = S.ph - 0.004 * S.vx;
+    const nx = Math.sin(phd), nh = Math.cos(phd);
+    const Vn = S.vx * nx + S.vh * nh;
+    const Vp = Math.abs(S.vx * nh - S.vh * nx);
+    const z = S.h + H.hub;
+    const rr = rotor(colToPitch(S.col), S.Om, Vn, Vp, rho, z, S.T || m * g0 * 0.3);
+    const T = Math.max(0, rr.T);
+    // tail rotor: torque balance
+    const Pe = S.Pe;
+    const Qreact = Pe * H.eta / Math.max(S.Om, 5);
+    const Ttr_bal = Qreact / H.ltr;
+    const omr = (S.Om / H.Om0) ** 2;
+    const Ttr = $('#assist').checked ? Ttr_bal - 350 * S.ped * omr : (0.5 - 0.5 * S.ped) * 1400 * omr;   // left pedal = more tail-rotor thrust = nose left
+    const Ptr = tailPower(Ttr, rho, S.Om);
+    const Preq = rr.P + Ptr + 0.04 * Math.abs(rr.P);
+    // engine with governor
+    const Pa = Pavail(atm);
+    let PeNew = 0;
+    if (S.engine) PeNew = clamp(Preq + H.IR * H.Om0 * 4 * (H.Om0 - S.Om), 0, Pa);
+    S.Pe = PeNew;
+    // rotor speed
+    S.Om += (PeNew - Preq) / (H.IR * Math.max(S.Om, 5)) * dt;
+    S.Om = clamp(S.Om, 2, H.Om0 * 1.3);
+    // translational forces
+    let Fx = T * nx - 0.5 * rho * H.fx * Math.abs(S.vx) * S.vx;
+    let Fh = T * nh - 0.5 * rho * H.fz * Math.abs(S.vh) * S.vh - m * g0;
+    // sling load
+    const L = S.load;
+    if (L) {
+      const hx = S.x, hh = S.h + 0.2;
+      if (L.hooked) {
+        const dx = L.x - hx, dh = L.h + 1.2 - hh, d = Math.hypot(dx, dh);
+        if (d > H.rope) {
+          const ext = d - H.rope, ux = dx / d, uh = dh / d;
+          const vrel = (L.vx - S.vx) * ux + (L.vh - S.vh) * uh;
+          const Ten = Math.max(0, 3e4 * ext + 1500 * vrel);
+          Fx += Ten * ux; Fh += Ten * uh;
+          L.fx = -Ten * ux; L.fh = -Ten * uh; L.ten = Ten;
+        } else { L.fx = 0; L.fh = 0; L.ten = 0; }
+      } else { L.fx = 0; L.fh = 0; L.ten = 0; }
+      const lfx = L.fx - 0.5 * rho * 1.2 * Math.abs(L.vx) * L.vx, lfh = L.fh - H.mLoad * g0 - 0.5 * rho * 1.2 * Math.abs(L.vh) * L.vh;
+      L.vx += lfx / H.mLoad * dt; L.vh += lfh / H.mLoad * dt;
+      L.x += L.vx * dt; L.h += L.vh * dt;
+      if (L.h <= 0) { L.h = 0; if (L.vh < 0) L.vh = 0; L.vx *= Math.max(0, 1 - 6 * dt); }
+      L.onGround = L.h <= 0.01;
+    }
+    // integrate
+    S.vx += Fx / m * dt; S.vh += Fh / m * dt;
+    S.x += S.vx * dt; S.h += S.vh * dt;
+    // attitude: cyclic commands disc/fuselage pitch (second-order response)
+    const phCmd = S.cyc * 0.38;
+    const w = 2.6, zeta = 0.8;
+    S.phd += (w * w * (phCmd - S.ph) - 2 * zeta * w * S.phd) * dt;
+    S.ph += S.phd * dt;
+    // yaw
+    const Mz = Ttr * H.ltr - Qreact - (700 + 60 * Math.hypot(S.vx, S.vh)) * S.r;
+    S.r += Mz / H.Iz * dt; S.psi += S.r * dt;
+    // ground
+    if (S.h <= 0) {
+      const vs = S.vh;
+      S.h = 0;
+      if (vs < 0) {
+        if (S.airborne) touchdown(vs);
+        S.vh = 0;
+      }
+      S.vx *= Math.max(0, 1 - 3 * dt);
+      if (Math.abs(S.vx) < 0.05) S.vx = 0;
+      S.ph = clamp(S.ph, -4 * D2R, 4 * D2R); S.phd *= 0.8;
+      S.r *= Math.max(0, 1 - 8 * dt);
+      S.onGround = true;
+    } else S.onGround = false;
+    if (!S.onGround && S.h > 0.6 && !S.airborne) S.airborne = true;
+    // record
+    Object.assign(S, { T, vi: rr.vi, kG: rr.kG, P: Preq, Ptr, Ttr, Pa, rho, mu: rr.mu, Vn, Pi: rr.Pi, P0: rr.P0, Pc: rr.Pc, Qreact });
+    S.t += dt;
+    // warnings / failures
+    const rpm = S.Om / H.Om0;
+    if (rpm < 0.62 && S.airborne && !S.onGround) { S.lowRpmT += dt; if (S.lowRpmT > 0.4) crash('Rotor speed decayed below 62%: the blades stalled. In an engine failure, lower the collective at once.'); }
+    else S.lowRpmT = 0;
+    if (Math.abs(S.r) > 1.4 && !S.onGround) { S.spinT += dt; if (S.spinT > 3) crash('Uncontrolled yaw spin: the tail rotor could not balance the main-rotor torque.'); } else S.spinT = 0;
+    missionLogic(dt);
+  }
+  function touchdown(vs) {
+    if (S.crashed || S.done) return;
+    if (vs < -3.2) return crash(`Hard landing at ${fmt(-vs, 1)} m/s: skids and airframe damaged.`);
+    if (Math.abs(S.ph) > 14 * D2R) return crash('The skids hit the ground at a steep attitude and the helicopter rolled over.');
+    if (Math.abs(S.vx) > 12) return crash(`Touched down at ${fmt(Math.abs(S.vx), 1)} m/s along the ground: the skids dug in.`);
+    S.lastTD = { vs, vx: S.vx, x: S.x, rpm: S.Om / H.Om0 };
+    if (vs < -1.5) SL.toast(`Firm touchdown: ${fmt(-vs, 1)} m/s`, 'warn', 2500);
+  }
+  function missionLogic(dt) {
+    const gs = Math.abs(S.vx);
+    if (mission === 'hover') {
+      if (S.h >= 4 && S.h <= 6 && gs < 1) { S.hoverT += dt; S.hoverE = (S.hoverE || 0) + S.P * dt; if (S.hoverT >= 10) win('hover', `Held a stable hover at ${fmt(S.h, 1)} m for 10 s, using on average ${fmt(S.hoverE / S.hoverT / 1000, 0)} kW of the ${fmt(S.Pa / 1000, 0)} kW available.`); }
+      else { S.hoverT = 0; S.hoverE = 0; }
+    }
+    if (mission === 'pad' && S.onGround && S.lastTD && S.airborne && !S.done) {
+      const td = S.lastTD; S.lastTD = null;
+      if (Math.abs(td.x - PADB) <= 6) {
+        if (td.vs > -1 && Math.abs(td.vx) < 1) win('pad', `Touched down ${fmt(Math.abs(td.x - PADB), 1)} m from the centre of the pad at ${fmt(-td.vs, 2)} m/s.`);
+        else { S.done = true; endBanner('Too firm', `On the pad, but at ${fmt(-td.vs, 2)} m/s down and ${fmt(Math.abs(td.vx), 2)} m/s along. Aim for under 1 m/s each.`, false); }
+      }
+    }
+    if (mission === 'sling' && S.load) {
+      const L = S.load;
+      if (!L.hooked && L.wasHooked && L.onGround && Math.abs(L.x - ZONE) <= 10) win('sling', `Crate delivered ${fmt(Math.abs(L.x - ZONE), 1)} m from the target. Peak rope tension ${fmt((S.peakTen || 0) / 1000, 1)} kN (static weight ${fmt(H.mLoad * g0 / 1000, 2)} kN).`);
+      if (L.ten) S.peakTen = Math.max(S.peakTen || 0, L.ten);
+      if (L.ten > 22000) { L.hooked = false; SL.toast('The rope snapped: tension exceeded 22 kN. Move more smoothly.', 'bad'); }
+    }
+    if (mission === 'auto' && S.onGround && S.lastTD && !S.done) {
+      const td = S.lastTD; S.lastTD = null;
+      if (td.vs <= -2.5) { S.done = true; endBanner('Survived, just', `Touchdown at ${fmt(-td.vs, 1)} m/s is too firm for a pass (limit 2.5 m/s). Flare a little lower and cushion with collective.`, false); }
+      else win('auto', `Autorotative landing at ${fmt(-td.vs, 2)} m/s down, ${fmt(Math.abs(td.vx), 1)} m/s along, rotor RPM ${fmt(td.rpm * 100, 0)}%.`);
+    }
+  }
+
+  /* ======================= Rendering ======================= */
+  const stage = $('#stage'), cv = $('#cv');
+  const st = SL.canvas(cv);
+  let chP = null; chP = SL.canvas($('#chP'), () => { if (chP) drawChart(); });
+  const cam = { ppm: 14 };
+  const trees = Array.from({ length: 70 }, (_, i) => ({ x: -1500 + i * 55 + Math.random() * 40, s: 0.7 + Math.random() * 0.6 }));
+  const clouds = Array.from({ length: 9 }, (_, i) => ({ x: i * 420 + Math.random() * 200, y: 60 + Math.random() * 120, s: 0.6 + Math.random() }));
+  function drawHeli(ctx, s, t) {
+    // local metres: origin at skid bottom centre, x forward, y up
+    // skids
+    ctx.strokeStyle = '#334155'; ctx.lineWidth = 0.12; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-1.5, 0.06); ctx.lineTo(1.5, 0.06); ctx.quadraticCurveTo(1.9, 0.06, 2.0, 0.35); ctx.stroke();
+    ctx.lineWidth = 0.09; ctx.beginPath(); ctx.moveTo(-0.9, 0.06); ctx.lineTo(-0.7, 0.75); ctx.moveTo(0.9, 0.06); ctx.lineTo(0.8, 0.75); ctx.stroke();
+    // tail boom
+    ctx.fillStyle = '#e2e8f0';
+    ctx.beginPath(); ctx.moveTo(-0.8, 1.35); ctx.lineTo(-6.0, 1.75); ctx.lineTo(-6.0, 1.95); ctx.lineTo(-0.6, 1.95); ctx.closePath(); ctx.fill();
+    // fin & stabiliser
+    ctx.fillStyle = '#cbd5e1';
+    ctx.beginPath(); ctx.moveTo(-5.6, 1.9); ctx.lineTo(-6.3, 2.9); ctx.lineTo(-6.6, 2.9); ctx.lineTo(-6.25, 1.6); ctx.closePath(); ctx.fill();
+    ctx.fillRect(-5.9, 1.65, 0.8, 0.08);
+    // tail rotor (face-on disc in side view)
+    const tr = s.tblade;
+    ctx.fillStyle = 'rgba(203,213,225,.18)'; ctx.beginPath(); ctx.arc(-6.25, 2.25, H.Rtr, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(30,41,59,.85)'; ctx.lineWidth = 0.08;
+    for (let k = 0; k < 2; k++) { const a = tr + k * Math.PI; ctx.beginPath(); ctx.moveTo(-6.25 - Math.cos(a) * H.Rtr, 2.25 - Math.sin(a) * H.Rtr); ctx.lineTo(-6.25 + Math.cos(a) * H.Rtr, 2.25 + Math.sin(a) * H.Rtr); ctx.stroke(); }
+    // cabin
+    const gr = ctx.createLinearGradient(0, 2.4, 0, 0.7); gr.addColorStop(0, '#fb923c'); gr.addColorStop(0.5, '#f97316'); gr.addColorStop(1, '#9a3412');
+    ctx.fillStyle = gr;
+    ctx.beginPath(); ctx.moveTo(-1.2, 0.8); ctx.lineTo(0.9, 0.75); ctx.bezierCurveTo(2.0, 0.8, 2.35, 1.5, 1.9, 2.1); ctx.bezierCurveTo(1.4, 2.5, 0.2, 2.55, -0.6, 2.4); ctx.lineTo(-1.3, 2.0); ctx.closePath(); ctx.fill();
+    // canopy
+    const cg = ctx.createLinearGradient(1, 2.4, 2, 1.0); cg.addColorStop(0, 'rgba(186,230,253,.9)'); cg.addColorStop(1, 'rgba(14,116,144,.85)');
+    ctx.fillStyle = cg; ctx.beginPath(); ctx.moveTo(0.4, 2.35); ctx.bezierCurveTo(1.3, 2.4, 1.95, 2.1, 2.05, 1.6); ctx.bezierCurveTo(2.1, 1.25, 1.9, 1.05, 1.5, 1.05); ctx.lineTo(0.5, 1.3); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.ellipse(1.35, 2.0, 0.35, 0.12, -0.5, 0, 7); ctx.fill();
+    // stripe & registration
+    ctx.fillStyle = '#0f172a'; ctx.fillRect(-1.25, 1.2, 1.7, 0.12);
+    // engine cowl & mast
+    ctx.fillStyle = '#94a3b8'; ctx.beginPath(); ctx.ellipse(-0.3, 2.45, 0.9, 0.25, 0, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = '#475569'; ctx.fillRect(-0.08, 2.4, 0.16, 0.4);
+  }
+  function drawRotor(ctx, s, t) {
+    // main rotor in side view: thin ellipse, blades foreshortened, with motion blur
+    const cx = 0, cy = 2.85, R = H.R;
+    const blur = clamp(s.Om / H.Om0, 0, 1.2);
+    ctx.fillStyle = `rgba(226,232,240,${0.08 + 0.12 * blur})`; ctx.beginPath(); ctx.ellipse(cx, cy, R, 0.16, 0, 0, 7); ctx.fill();
+    for (let k = 0; k < 7; k++) {
+      const a = s.blade - k * 0.09 * blur;
+      const al = k === 0 ? 0.95 : 0.45 * (1 - k / 7) * blur;
+      ctx.strokeStyle = `rgba(30,41,59,${al})`; ctx.lineWidth = 0.13;
+      for (let b = 0; b < 2; b++) { const ab = a + b * Math.PI, x = Math.cos(ab) * R, y = Math.sin(ab) * 0.14; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + x, cy + y + 0.02 * Math.abs(x)); ctx.stroke(); }
+    }
+    ctx.fillStyle = '#1e293b'; ctx.beginPath(); ctx.arc(cx, cy, 0.14, 0, 7); ctx.fill();
+  }
+  function draw(t, dtFrame) {
+    const { ctx, w, h } = st; if (!S) return;
+    const target = clamp(h * 0.42 / (S.h + 12), 1.2, 15);
+    cam.ppm += (target - cam.ppm) * 0.05; const ppm = cam.ppm;
+    const px = w * 0.42, py = Math.max(h * 0.45, h - 80 - S.h * ppm), gy = py + S.h * ppm;
+    const toS = (x, a) => [px + (x - S.x) * ppm, gy - a * ppm];
+    // sky
+    const sky = ctx.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#3a74b8'); sky.addColorStop(0.65, '#9cc5e8'); sky.addColorStop(1, '#f2d9a6');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
+    const hz = py + Math.min(S.h * ppm, h) * 0.06 + 30;
+    clouds.forEach(c => { const X = (((c.x - S.x * 0.05) % (w + 400)) + w + 400) % (w + 400) - 200, Y = hz - 80 - c.y + S.h * 0.15; ctx.fillStyle = 'rgba(255,255,255,.6)'; for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.ellipse(X + k * 26 * c.s, Y - (k % 2) * 9 * c.s, 30 * c.s, 13 * c.s, 0, 0, 7); ctx.fill(); } });
+    // distant ridge + skyline
+    ctx.fillStyle = 'rgba(96,112,150,.7)'; ctx.beginPath(); ctx.moveTo(0, h);
+    for (let x = 0; x <= w + 6; x += 6) { const u = (x + S.x * 0.03) / 260; ctx.lineTo(x, hz - 40 - 35 * Math.abs(Math.sin(u)) * (0.6 + 0.4 * Math.sin(u * 0.37))); }
+    ctx.lineTo(w, h); ctx.fill();
+    ctx.fillStyle = 'rgba(80,96,132,.8)';
+    for (let i = 0; i < 22; i++) { const bx = (i * 22 - S.x * 0.08) % (w + 600); const X = bx < -40 ? bx + w + 600 : bx; const hb = 14 + ((i * 41) % 19) * 2.4 + (i === 9 ? 34 : 0); ctx.fillRect(X, hz - hb, 16, hb + 2); if (i === 9) { ctx.beginPath(); ctx.ellipse(X + 8, hz - hb, 12, 3, 0, 0, 7); ctx.fill(); } }
+    ctx.fillStyle = 'rgba(110,122,80,.95)'; ctx.fillRect(0, hz, w, h - hz);
+    // near ground
+    const grd = ctx.createLinearGradient(0, gy, 0, h); grd.addColorStop(0, '#8a8a46'); grd.addColorStop(1, '#5a5226');
+    ctx.fillStyle = grd; ctx.fillRect(0, gy, w, h - gy);
+    // trees
+    trees.forEach(tr => { const [sx, sy] = toS(tr.x, 0); if (sx < -40 || sx > w + 40 || Math.abs(tr.x - PADA) < 40 || Math.abs(tr.x - PADB) < 60 || Math.abs(tr.x - ZONE) < 40 || Math.abs(tr.x - CRATE) < 20) return; const k = Math.max(0.5, ppm * 0.9) * tr.s; ctx.strokeStyle = '#3f3220'; ctx.lineWidth = Math.max(1, 0.35 * k); ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, sy - 4.5 * k); ctx.stroke(); ctx.fillStyle = '#4b5a2a'; ctx.beginPath(); ctx.ellipse(sx, sy - 5 * k, 4 * k, 1.2 * k, 0, 0, 7); ctx.fill(); });
+    // hospital building next to pad B
+    { const [bx, by] = toS(PADB + 18, 0), bw = 22 * ppm, bh = 14 * ppm; if (bx < w + 50 && bx + bw > -50) { ctx.fillStyle = '#e2e8f0'; ctx.fillRect(bx, by - bh, bw, bh); ctx.fillStyle = '#94a3b8'; for (let r = 1; r < 4; r++) for (let c2 = 0; c2 < 5; c2++) ctx.fillRect(bx + (1.5 + c2 * 4) * ppm, by - (r * 3.6 + 0.5) * ppm, 2.2 * ppm, 1.8 * ppm); ctx.fillStyle = '#ef4444'; ctx.fillRect(bx + bw / 2 - 0.4 * ppm, by - bh - 3 * ppm, 0.8 * ppm, 2.4 * ppm); ctx.fillRect(bx + bw / 2 - 1.2 * ppm, by - bh - 2.2 * ppm, 2.4 * ppm, 0.8 * ppm); } }
+    // construction site with crane
+    { const [cx0, cy0] = toS(ZONE + 25, 0); if (cx0 > -200 && cx0 < w + 200) { ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = Math.max(1.5, 0.35 * ppm); ctx.beginPath(); ctx.moveTo(cx0, cy0); ctx.lineTo(cx0, cy0 - 30 * ppm); ctx.lineTo(cx0 - 26 * ppm, cy0 - 30 * ppm); ctx.moveTo(cx0, cy0 - 30 * ppm); ctx.lineTo(cx0 + 8 * ppm, cy0 - 30 * ppm); ctx.stroke(); ctx.fillStyle = '#78716c'; ctx.fillRect(cx0 + 4 * ppm, cy0 - 7 * ppm, 16 * ppm, 7 * ppm); } }
+    // pads
+    const pad = (x, label, col) => { const [a, b] = toS(x - 6, 0), [c2] = toS(x + 6, 0); ctx.fillStyle = '#9ca3af'; ctx.fillRect(a, b - 1, c2 - a, Math.max(3, 0.35 * ppm)); ctx.fillStyle = col; ctx.fillRect(a + (c2 - a) * 0.35, b - 1, (c2 - a) * 0.3, Math.max(2, 0.2 * ppm)); ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(label, (a + c2) / 2, b + 16); };
+    pad(PADA, 'PAD A', '#facc15'); pad(PADB, 'H2 HOSPITAL', '#ef4444');
+    { const [a, b] = toS(ZONE - 10, 0), [c2] = toS(ZONE + 10, 0); ctx.fillStyle = 'rgba(250,204,21,.35)'; ctx.fillRect(a, b - 1, c2 - a, Math.max(3, 0.3 * ppm)); ctx.fillStyle = '#fde68a'; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText('DROP ZONE', (a + c2) / 2, b + 16); }
+    // dust from downwash
+    if (S.dust.length) { S.dust.forEach(d => { const [sx, sy] = toS(d.x, d.h); ctx.fillStyle = `rgba(214,190,140,${0.5 * (1 - d.age / d.life)})`; ctx.beginPath(); ctx.arc(sx, sy, (1 + d.age * 3) * Math.max(1, ppm * 0.18), 0, 7); ctx.fill(); }); }
+    // sling load
+    if (S.load) {
+      const L = S.load, [lx, ly] = toS(L.x, L.h), cw = 1.6 * ppm, ch = 1.2 * ppm;
+      ctx.fillStyle = '#b45309'; ctx.fillRect(lx - cw / 2, ly - ch, cw, ch); ctx.strokeStyle = '#78350f'; ctx.lineWidth = 1; ctx.strokeRect(lx - cw / 2, ly - ch, cw, ch); ctx.beginPath(); ctx.moveTo(lx - cw / 2, ly - ch); ctx.lineTo(lx + cw / 2, ly); ctx.moveTo(lx + cw / 2, ly - ch); ctx.lineTo(lx - cw / 2, ly); ctx.stroke();
+      if (L.hooked) { const [hx, hy] = toS(S.x, S.h + 0.2); const taut = L.ten > 0; ctx.strokeStyle = taut ? '#e5e7eb' : 'rgba(229,231,235,.7)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(hx, hy); if (taut) ctx.lineTo(lx, ly - ch); else ctx.quadraticCurveTo((hx + lx) / 2, Math.max(hy, ly - ch) + 20, lx, ly - ch); ctx.stroke(); }
+    }
+    // helicopter
+    const [hx, hy] = toS(S.x, S.h);
+    const vis = Math.max(1, 130 / (9 * ppm));
+    const sx = (0.35 + 0.65 * Math.abs(Math.cos(S.psi))) * (Math.cos(S.psi) >= 0 ? 1 : -1);
+    ctx.save(); ctx.translate(hx, hy); ctx.rotate(S.ph); ctx.scale(ppm * vis * sx, -ppm * vis);
+    drawHeli(ctx, S, t);
+    ctx.save(); ctx.translate(0, 2.85); ctx.rotate(-0.004 * S.vx); ctx.translate(0, -2.85); drawRotor(ctx, S, t); ctx.restore();
+    ctx.restore();
+    if (S.h < 25) { const [sx2, sy2] = toS(S.x, 0); ctx.fillStyle = `rgba(0,0,0,${0.25 * (1 - S.h / 25)})`; ctx.beginPath(); ctx.ellipse(sx2, sy2, 4 * ppm * vis, Math.max(2, 0.4 * ppm), 0, 0, 7); ctx.fill(); }
+    // vectors
+    if ($('#vec').checked && S.T) {
+      const k = 70 / (mass() * g0), [ox, oy] = toS(S.x, S.h + 2.2 * vis);
+      const phd = S.ph - 0.004 * S.vx;
+      SL.arrow(ctx, ox, oy, ox + Math.sin(phd) * S.T * k, oy - Math.cos(phd) * S.T * k, '#34d399', 2.5, 9);
+      ctx.fillStyle = '#34d399'; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText('T', ox + Math.sin(phd) * S.T * k + 6, oy - Math.cos(phd) * S.T * k);
+      SL.arrow(ctx, ox, oy, ox, oy + 70, '#60a5fa', 2.5, 9); ctx.fillStyle = '#60a5fa'; ctx.fillText('W', ox + 6, oy + 66);
+      // downwash arrows below the disc
+      const [rx, ry] = toS(S.x, S.h + 2.85 * vis), vl = clamp(S.vi * 4, 0, 60);
+      ctx.strokeStyle = 'rgba(250,204,21,.6)';
+      for (let i = -2; i <= 2; i++) { const xx = rx + i * H.R * ppm * vis * 0.38; SL.arrow(ctx, xx, ry + 8, xx - Math.sin(phd) * vl * 0.3, ry + 8 + vl, 'rgba(250,204,21,.55)', 1.5, 6); }
+      ctx.fillStyle = 'rgba(250,204,21,.85)'; ctx.fillText('vᵢ ' + fmt(S.vi, 1) + ' m/s', rx + H.R * ppm * vis * 0.8, ry + 22);
+    }
+    const ik = w < 640 ? 0.7 : 1;
+    ctx.save(); ctx.translate(w, h - 6); ctx.scale(ik, ik); ctx.translate(-w, -h + 6); drawGauges(ctx, w, h); ctx.restore();
+    ctx.save(); ctx.translate(0, h - 40); ctx.scale(ik, ik); ctx.translate(0, -h + 40); drawYawInset(ctx, 72, h - 130, 56); ctx.restore();
+    if (S.engine === false && !S.crashed && !S.done) { ctx.fillStyle = `rgba(239,68,68,${0.6 + 0.4 * Math.sin(t * 10)})`; ctx.font = '700 15px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText('ENGINE OFF · AUTOROTATE', w / 2, 66); }
+    if (paused && !S.crashed && !S.done) { ctx.fillStyle = 'rgba(5,9,19,.55)'; ctx.fillRect(0, 0, w, h); ctx.fillStyle = '#fff'; ctx.font = '700 20px Space Grotesk, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('PAUSED (press P)', w / 2, h / 2); }
+  }
+  function drawGauges(ctx, w, h) {
+    // power bar and rotor RPM arc, bottom right
+    const x = w - 150, y = h - 150;
+    ctx.fillStyle = 'rgba(5,9,19,.72)'; ctx.fillRect(x - 10, y - 18, 150, 128);
+    ctx.font = '500 10px JetBrains Mono, monospace'; ctx.fillStyle = '#cbd5e1'; ctx.textAlign = 'left';
+    ctx.fillText('POWER kW', x, y - 4);
+    const scale = H.Pmax * 1.1, bw = 16, bh = 96;
+    ctx.fillStyle = '#1e293b'; ctx.fillRect(x, y + 4, bw, bh);
+    const pr = clamp(S.P / scale, 0, 1), pa = clamp(S.Pa / scale, 0, 1);
+    ctx.fillStyle = S.P > S.Pa ? '#ef4444' : '#f87171'; ctx.fillRect(x, y + 4 + bh * (1 - pr), bw, bh * pr);
+    ctx.fillStyle = '#34d399'; ctx.fillRect(x - 3, y + 4 + bh * (1 - pa) - 1, bw + 6, 3);
+    ctx.fillStyle = '#f87171'; ctx.fillText('req ' + fmt(S.P / 1000, 0), x + bw + 6, y + 70);
+    ctx.fillStyle = '#34d399'; ctx.fillText('avl ' + fmt(S.Pa / 1000, 0), x + bw + 6, y + 84);
+    // rpm arc
+    const cx = x + 98, cy = y + 30, r = 24, rpm = S.Om / H.Om0;
+    const ang = v => Math.PI * (0.75 + 1.5 * clamp((v - 0.5) / 0.7, 0, 1));
+    const seg = (a, b, c) => { ctx.strokeStyle = c; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(cx, cy, r, ang(a), ang(b)); ctx.stroke(); };
+    seg(0.5, 0.85, '#ef4444'); seg(0.85, 0.95, '#f59e0b'); seg(0.95, 1.05, '#22c55e'); seg(1.05, 1.1, '#f59e0b'); seg(1.1, 1.2, '#ef4444');
+    const a = ang(rpm); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * (r - 2), cy + Math.sin(a) * (r - 2)); ctx.stroke();
+    ctx.fillStyle = '#cbd5e1'; ctx.textAlign = 'center'; ctx.fillText('ROTOR', cx, cy - r - 8); ctx.fillText(fmt(rpm * 100, 0) + '%', cx, cy + r + 4);
+  }
+  function drawYawInset(ctx, cx, cy, r) {
+    ctx.fillStyle = 'rgba(5,9,19,.72)'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.15)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.font = '500 9px JetBrains Mono, monospace'; ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'center'; ctx.fillText('TOP VIEW', cx, cy - r + 11);
+    ctx.save(); ctx.translate(cx, cy + 4); ctx.rotate(-S.psi);
+    const k = 4.2;
+    ctx.fillStyle = '#f97316'; ctx.beginPath(); ctx.ellipse(0, -1.0 * k, 0.9 * k, 1.4 * k, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#e2e8f0'; ctx.fillRect(-0.15 * k, 0, 0.3 * k, 5.6 * k);
+    ctx.fillStyle = '#cbd5e1'; ctx.fillRect(-0.9 * k, 5.6 * k, 0.8 * k, 0.25 * k);
+    // main rotor disc + rotation arrow (anticlockwise from above)
+    ctx.strokeStyle = 'rgba(226,232,240,.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(0, -0.6 * k, 5 * k * 0.92, 0, 7); ctx.stroke();
+    ctx.strokeStyle = '#facc15'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, -0.6 * k, 5 * k * 0.92, -0.3, -1.6, true); ctx.stroke();
+    const ea = -1.6, ex = Math.cos(ea) * 5 * k * 0.92, ey = -0.6 * k + Math.sin(ea) * 5 * k * 0.92; SL.arrow(ctx, ex + 6, ey + 1, ex, ey, '#facc15', 1.5, 6);
+    // tail rotor thrust arrow (pushes tail to the right in this frame, i.e. nose left) and torque reaction
+    const tl = clamp(S.Ttr / 900, -1.4, 1.4) * 16;
+    if (Math.abs(tl) > 1) SL.arrow(ctx, 0.3 * k, 5.6 * k, 0.3 * k + tl, 5.6 * k, '#34d399', 2, 6);
+    ctx.restore();
+    // torque reaction arrow on fuselage (nose right = clockwise)
+    const q = clamp(S.Qreact / 4000, 0, 1.4);
+    if (q > 0.05) { ctx.strokeStyle = '#f87171'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy + 4, r * 0.55, -1.2, -1.2 + q * 1.4); ctx.stroke(); const a2 = -1.2 + q * 1.4; SL.arrow(ctx, cx + Math.cos(a2 - 0.15) * r * 0.55, cy + 4 + Math.sin(a2 - 0.15) * r * 0.55, cx + Math.cos(a2) * r * 0.55, cy + 4 + Math.sin(a2) * r * 0.55, '#f87171', 2, 6); }
+    ctx.fillStyle = Math.abs(S.r) > 0.5 ? '#f87171' : '#cbd5e1'; ctx.font = '500 9px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+    ctx.fillText('yaw ' + Math.abs(S.r * R2D).toFixed(0) + '°/s ' + (Math.abs(S.r) < 0.01 ? '' : S.r > 0 ? 'L' : 'R'), cx, cy + r + 12);
+  }
+
+  /* ---------- dust ---------- */
+  function updDust(dt) {
+    const z = S.h + H.hub;
+    if (S.vi > 1 && z < 2.2 * H.R && S.Om > 10) {
+      const strength = S.vi * (1 - z / (2.2 * H.R));
+      const n = Math.floor(strength * 1.2 * (Math.random() + 0.5));
+      for (let i = 0; i < n && S.dust.length < 400; i++) { const dir = Math.random() < 0.5 ? -1 : 1; S.dust.push({ x: S.x + dir * Math.random() * H.R * 0.6, h: 0.1, vx: dir * (strength * (0.8 + Math.random())) + S.vx * 0.3, vh: Math.random() * 1.2, age: 0, life: 1 + Math.random() * 1.2 }); }
+    }
+    for (let i = S.dust.length - 1; i >= 0; i--) { const d = S.dust[i]; d.age += dt; d.x += d.vx * dt; d.h += d.vh * dt; d.vx *= 1 - 0.8 * dt; d.vh -= 0.2 * dt; if (d.h < 0) d.h = 0; if (d.age > d.life) S.dust.splice(i, 1); }
+  }
+
+  /* ---------- chart ---------- */
+  function drawChart() {
+    const atm = atmos(C.elev, C.dT), m = mass(), Pa = Pavail(atm);
+    const pts = []; for (let V = 0; V <= 60; V += 1) pts.push([V, levelPower(V, m, atm.rho, 0)]);
+    const k = 1 / 1000;
+    const ser = [
+      { data: pts.map(p => [p[0], p[1].Pi * k]), color: '#93a1bd', dash: [4, 4], width: 1.3 },
+      { data: pts.map(p => [p[0], p[1].P0 * k]), color: '#a78bfa', dash: [4, 4], width: 1.3 },
+      { data: pts.map(p => [p[0], p[1].Pp * k]), color: '#f59e0b', dash: [4, 4], width: 1.3 },
+      { data: pts.map(p => [p[0], p[1].P * k]), color: '#f87171', width: 2.4 },
+      { data: [[0, Pa * k], [60, Pa * k]], color: '#34d399', width: 2 },
+    ];
+    const mm = SL.chart(chP, ser, { xmin: 0, xmax: 60, ymin: 0, ymax: Math.max(H.Pmax * 1.15, ...pts.map(p => p[1].P)) * k, xlabel: 'airspeed (m/s)', ylabel: 'power (kW)', pad: [24, 14, 30, 48] });
+    const best = pts.reduce((b, p) => p[1].P < b[1].P ? p : b, pts[0]);
+    const ctx = chP.ctx; ctx.fillStyle = '#facc15'; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+    ctx.beginPath(); ctx.arc(mm.X(best[0]), mm.Y(best[1].P * k), 3.5, 0, 7); ctx.fill(); ctx.fillText('bucket ' + best[0] + ' m/s', mm.X(best[0]), mm.Y(best[1].P * k) + 16);
+    if (S) { ctx.fillStyle = '#22d3ee'; ctx.beginPath(); ctx.arc(mm.X(clamp(Math.hypot(S.vx, S.vh), 0, 60)), mm.Y(clamp(S.P * k, 0, 1e9)), 5, 0, 7); ctx.fill(); }
+    $('#pcNote').textContent = `${fmt(m, 0)} kg, ρ = ${fmt(atm.rho, 3)} kg/m³, out of ground effect`;
+  }
+
+  /* ======================= UI ======================= */
+  function renderMissions() {
+    $('#missions').innerHTML = MISSIONS.map(m => `<div class="mission ${m.id === mission ? 'on' : ''}" data-mis="${m.id}"><span class="led ${missionDone[m.id] ? 'on' : ''}"></span><div><b>${m.t}</b><span>${m.d}</span></div></div>`).join('');
+    document.querySelectorAll('[data-mis]').forEach(el => el.onclick = () => { mission = el.dataset.mis; renderMissions(); start(); stage.focus({ preventScroll: true }); });
+  }
+  function setOut(id, v, txt) { const el = $('#' + id); el.value = v; el.closest('.ctl').querySelector('output').textContent = txt; el.style.setProperty('--p', ((v - el.min) / (el.max - el.min) * 100) + '%'); }
+  function syncSliders() {
+    if (!S) return;
+    setOut('col', S.col, fmt(S.col * 100, 0) + '% (' + fmt((1 + 13 * S.col), 1) + '°)');
+    setOut('cyc', S.cyc, (S.cyc >= 0 ? '+' : '') + fmt(S.cyc, 2));
+    setOut('ped', S.ped, (S.ped >= 0 ? '+' : '') + fmt(S.ped, 2));
+  }
+  function updateConditions() {
+    const atm = atmos(C.elev, C.dT), Pa = Pavail(atm), m = mass();
+    const oge = levelPower(0, m, atm.rho, 0).P, ige = levelPower(0, m, atm.rho, H.hub + 1).P;
+    const da = (288.15 / 0.0065) * (1 - Math.pow(atm.sigma, 0.235));
+    $('#siteNote').textContent = `ρ = ${fmt(atm.rho, 3)} kg/m³ (σ = ${fmt(atm.sigma, 3)}), ${fmt(atm.T - 273.15, 1)} °C, density altitude ${fmt(da, 0)} m. Engine can deliver ${fmt(Pa / 1000, 0)} kW of its ${H.Pmax / 1000} kW rating.`;
+    $('#sM').innerHTML = fmt(m, 0) + '<small>kg</small>';
+    $('#sDL').innerHTML = fmt(m * g0 / H.A, 0) + '<small>N/m²</small>';
+    $('#sPa').innerHTML = fmt(Pa / 1000, 0) + '<small>kW</small>';
+    $('#sOGE').innerHTML = `<span style="color:${oge <= Pa ? 'inherit' : '#ef4444'}">${fmt(oge / 1000, 0)}</span><small>kW</small>`;
+    $('#sIGE').innerHTML = `<span style="color:${ige <= Pa ? 'inherit' : '#ef4444'}">${fmt(ige / 1000, 0)}</span><small>kW</small>`;
+    drawChart();
+  }
+  SL.bind('#pay', v => { C.pay = v; updateConditions(); }, v => v + ' kg');
+  SL.bind('#dT', v => { C.dT = v; updateConditions(); }, v => (v >= 0 ? '+' : '') + v + ' °C');
+  $('#site').onchange = e => { C.elev = +e.target.value; updateConditions(); start(); };
+  $('#pay').addEventListener('change', () => start());
+  $('#col').addEventListener('input', e => { if (S) S.col = +e.target.value; syncSliders(); });
+  $('#cyc').addEventListener('input', e => { if (S) { S.cyc = +e.target.value; S.cycSpring = false; } syncSliders(); });
+  $('#ped').addEventListener('input', e => { if (S) { S.ped = +e.target.value; S.pedSpring = false; } syncSliders(); });
+  $('#engBtn').onclick = () => { if (!S) return; S.engine = !S.engine; S.failT = null; $('#engBtn').innerHTML = S.engine ? '<i data-lucide="power"></i> Cut engine' : '<i data-lucide="power"></i> Restart engine'; SL.refreshIcons($('#engBtn')); };
+  $('#restart').onclick = () => start();
+  $('#bRetry').onclick = () => { start(); stage.focus({ preventScroll: true }); };
+  const KEYMAP = { ArrowUp: 'colUp', KeyW: 'colUp', ArrowDown: 'colDn', KeyS: 'colDn', ArrowRight: 'cycF', KeyD: 'cycF', ArrowLeft: 'cycB', KeyA: 'cycB', KeyQ: 'pedL', KeyE: 'pedR' };
+  function inView() { const r = stage.getBoundingClientRect(); return r.bottom > 80 && r.top < innerHeight - 80; }
+  function tap(a) {
+    if (!S) return;
+    if (a === 'pause') paused = !paused;
+    if (a === 'hook' && S.load) {
+      const L = S.load;
+      if (L.hooked) { L.hooked = false; SL.toast('Load released', '', 1500); }
+      else { const d = Math.hypot(L.x - S.x, L.h + 1.2 - S.h); if (d < 3 && S.airborne) { L.hooked = true; L.wasHooked = true; SL.toast('Hooked! Climb gently until the rope is taut.', 'ok', 2500); } else SL.toast(`Hover within 3 m above the crate to hook it (now ${fmt(d, 1)} m).`, 'warn', 2200); }
+    }
+  }
+  document.addEventListener('keydown', e => {
+    if (!inView() || ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) && e.target.type !== 'range') return;
+    const k = KEYMAP[e.code];
+    if (k) { keys[k] = true; e.preventDefault(); if (S) { if (k.startsWith('cyc')) S.cycSpring = true; if (k.startsWith('ped')) S.pedSpring = true; } }
+    if (e.code === 'Space') { e.preventDefault(); if (S) { S.cyc = 0; S.ped = 0; } }
+    if (e.code === 'KeyH') tap('hook'); if (e.code === 'KeyP') tap('pause'); if (e.code === 'KeyR') start(); if (e.code === 'KeyX') $('#engBtn').click();
+  });
+  document.addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys[k] = false; });
+  window.addEventListener('blur', () => Object.keys(keys).forEach(k => keys[k] = false));
+  document.querySelectorAll('[data-hold]').forEach(b => {
+    const k = b.dataset.hold;
+    b.addEventListener('pointerdown', e => { keys[k] = true; if (S) { if (k.startsWith('cyc')) S.cycSpring = true; if (k.startsWith('ped')) S.pedSpring = true; } b.classList.add('on'); b.setPointerCapture(e.pointerId); e.preventDefault(); });
+    const up = () => { keys[k] = false; b.classList.remove('on'); };
+    b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('lostpointercapture', up);
+  });
+  document.querySelectorAll('[data-tap]').forEach(b => b.addEventListener('click', () => tap(b.dataset.tap)));
+
+  function hud() {
+    $('#hAlt').textContent = fmt(S.h, 1); $('#hVs').textContent = fmt(S.vh, 1); $('#hGs').textContent = fmt(S.vx, 1);
+    $('#hRpm').textContent = fmt(S.Om / H.Om0 * 100, 0); $('#hCol').textContent = fmt(S.col * 100, 0);
+    const flags = [];
+    if (S.onGround) flags.push('ON GROUND');
+    else { if (S.kG < 0.97) flags.push('IGE'); else flags.push('OGE'); }
+    if (Math.abs(S.vx) > 7 && Math.abs(S.vx) < 14 && !S.onGround) flags.push('ETL');
+    if (S.load && S.load.hooked) flags.push('LOAD ' + (S.load.ten ? fmt(S.load.ten / 1000, 1) + ' kN' : 'slack'));
+    $('#hFlags').textContent = flags.join(' · ');
+    $('#sT').innerHTML = fmt(S.T / 1000, 2) + '<small>kN</small>';
+    $('#sVi').innerHTML = fmt(S.vi, 1) + '<small>m/s</small>';
+    $('#sPr').innerHTML = `<span style="color:${S.P > S.Pa ? '#ef4444' : 'inherit'}">${fmt(S.P / 1000, 0)}</span><small>kW</small>`;
+    $('#sTr').innerHTML = fmt(S.Ttr, 0) + '<small>N</small>';
+    $('#sYaw').innerHTML = Math.abs(S.r * R2D).toFixed(1) + '<small>°/s ' + (Math.abs(S.r) < 0.01 ? '' : S.r > 0 ? 'left' : 'right') + '</small>';
+    if (!S.crashed && !S.done) {
+      const rpm = S.Om / H.Om0;
+      if (rpm < 0.9 && !S.onGround) msg(`LOW ROTOR RPM ${fmt(rpm * 100, 0)}%: lower collective`, '#ef4444');
+      else if (rpm > 1.1) msg('ROTOR OVERSPEED: raise collective', '#f59e0b');
+      else if (S.P > S.Pa * 0.995 && S.engine && S.airborne) msg('Power limit: rotor RPM drooping', '#f59e0b');
+      else if (mission === 'hover' && S.hoverT > 0) msg(`Hover hold ${fmt(S.hoverT, 1)} / 10 s`, '#4ade80');
+      else if (mission === 'sling' && S.load && !S.load.hooked && !S.load.wasHooked) msg(`Crate ${fmt(S.load.x - S.x, 0)} m ahead: hover over it and press H`);
+      else if (mission === 'sling' && S.load && S.load.hooked) msg(`Drop zone ${fmt(ZONE - S.load.x, 0)} m ahead`);
+      else if (mission === 'pad') msg(`Pad H2 ${fmt(PADB - S.x, 0)} m ahead`);
+      else msg(MISSIONS.find(m => m.id === mission).t);
+    }
+  }
+
+  /* ======================= Challenges, worked examples, quiz ======================= */
+  const CH = [
+    { id: 'hover', t: 'Hover at 5 m for 10 s' }, { id: 'pad', t: 'Gentle landing on hospital pad H2' }, { id: 'sling', t: 'Sling-load delivery to the drop zone' }, { id: 'auto', t: 'Survive an engine failure by autorotation' },
+  ];
+  function renderChals() { $('#chals').innerHTML = CH.map(c => `<div class="chal"><span class="led ${missionDone[c.id] ? 'on' : ''}"></span><div><b>${c.t}</b><p>${MISSIONS.find(m => m.id === c.id).d}</p></div></div>`).join(''); }
+  renderChals();
+
+  function worked() {
+    const atm = atmos(1687, 15), sea = atmos(0, 0), m = H.mEmpty + H.mPilot + H.mFuel + 120, W = m * g0;
+    const vh = Math.sqrt(W / (2 * atm.rho * H.A)), Pid = W * vh, P0 = H.sigma * H.cd0 / 8 * atm.rho * H.A * (H.Om0 * H.R) ** 3;
+    const Pm = H.kappa * Pid + P0, Q = Pm / H.Om0, Ttr = Q / H.ltr, Ptr = tailPower(Ttr, atm.rho, H.Om0), Ptot = (Pm + Ptr) / H.eta;
+    const lp = levelPower(0, m, atm.rho, 0);
+    const zr = (H.hub + 1), kG = 1 - (H.R / (4 * zr)) ** 2;
+    const vhs = Math.sqrt(W / (2 * sea.rho * H.A));
+    const KE = 0.5 * H.IR * H.Om0 ** 2, KE70 = 0.5 * H.IR * (0.7 * H.Om0) ** 2;
+    const F = (n, d = 1) => fmt(n, d);
+    const V30 = levelPower(30, m, atm.rho, 0);
+    $('#workedPanel').innerHTML = `
+      <p>All examples use the default helicopter at Wilson Airport, Nairobi (1,687 m, ISA+15 °C) with 120 kg of payload: gross mass ${F(m, 0)} kg. Rotor radius 5.0 m, so $A = \\pi R^2 = ${F(H.A, 1)}\\ \\text{m}^2$.</p>
+      <h3>Example 1: Induced velocity and hover power</h3>
+      <div class="worked"><ol>
+        <li>Air density: $\\rho = ${F(atm.rho, 3)}\\ \\text{kg/m}^3$. Weight $W = ${F(W, 0)}$ N, disk loading $W/A = ${F(W / H.A, 0)}$ N/m².</li>
+        <li>$v_h = \\sqrt{T/(2\\rho A)} = \\sqrt{${F(W, 0)}/(2\\times${F(atm.rho, 3)}\\times${F(H.A, 1)})} = ${F(vh, 2)}$ m/s. (At sea level it would be ${F(vhs, 2)} m/s.)</li>
+        <li>Ideal power $P = Tv_h = ${F(Pid / 1000, 1)}$ kW. With $\\kappa = 1.15$: induced power ${F(H.kappa * Pid / 1000, 1)} kW.</li>
+        <li>Profile power $\\tfrac{\\sigma C_{d0}}{8}\\rho A(\\Omega R)^3 = \\tfrac{0.06\\times0.008}{8}\\times${F(atm.rho, 3)}\\times${F(H.A, 1)}\\times200^3 = ${F(P0 / 1000, 1)}$ kW.</li>
+        <li>Main rotor: ${F(Pm / 1000, 1)} kW. Figure of merit $FM = ${F(Pid / 1000, 1)}/${F(Pm / 1000, 1)} = ${F(Pid / Pm, 2)}$.</li>
+      </ol></div>
+      <h3>Example 2: Tail-rotor thrust</h3>
+      <div class="worked"><ol>
+        <li>Rotor speed $\\Omega = 40$ rad/s (${F(40 * 60 / (2 * Math.PI), 0)} rpm). Torque $Q = P/\\Omega = ${F(Pm, 0)}/40 = ${F(Q, 0)}$ N·m.</li>
+        <li>Tail arm $l_{tr} = 6.0$ m: $T_{tr} = Q/l_{tr} = ${F(Ttr, 0)}$ N.</li>
+        <li>The tail rotor itself needs about ${F(Ptr / 1000, 1)} kW. With 95% transmission efficiency the engine must supply $(${F(Pm / 1000, 1)} + ${F(Ptr / 1000, 1)})/0.95 = ${F(Ptot / 1000, 1)}$ kW to hover out of ground effect (the simulator's exact figure, using the full inflow model, is ${F(lp.P / 1000, 1)} kW).</li>
+        <li>The engine can give ${F(Pavail(atm) / 1000, 0)} kW here, so the margin is ${F((Pavail(atm) - lp.P) / 1000, 0)} kW: ${Pavail(atm) > lp.P ? 'enough to hover OGE and climb slowly.' : 'not enough to hover out of ground effect.'}</li>
+      </ol></div>
+      <h3>Example 3: Ground effect</h3>
+      <div class="worked"><ol>
+        <li>Skids 1 m above the pad put the rotor at $z = ${F(zr, 1)}$ m. $R/(4z) = ${F(H.R / (4 * zr), 3)}$.</li>
+        <li>Cheeseman–Bennett: $T_{IGE}/T_{OGE} = 1/(1 - ${F((H.R / (4 * zr)) ** 2, 3)}) = ${F(1 / kG, 3)}$: about ${F((1 / kG - 1) * 100, 0)}% more thrust for the same power.</li>
+        <li>Equivalently, the induced velocity (and induced power) at the same thrust falls by ${F((1 - kG) * 100, 0)}%: the "Hover IGE" readout shows the saving.</li>
+      </ol></div>
+      <h3>Example 4: Forward flight and autorotation</h3>
+      <div class="worked"><ol>
+        <li>At 30 m/s the Glauert induced velocity is only ${F(V30.vi, 2)} m/s, so induced power drops to ${F(V30.Pi / 1000, 1)} kW. Profile power rises to ${F(V30.P0 / 1000, 1)} kW and parasite power $\\tfrac12\\rho f V^3 = ${F(V30.Pp / 1000, 1)}$ kW ($f = 1.3$ m²). Total required: ${F(V30.P / 1000, 1)} kW.</li>
+        <li>If the engine fails at that speed, the steady autorotative sink rate is roughly $(P_i + P_0 + P_p + P_{tr})/W \\approx ${F(V30.P * H.eta / W, 1)}$ m/s.</li>
+        <li>The rotor's stored energy at 100% rpm is $\\tfrac12 I_R\\Omega^2 = \\tfrac12\\times900\\times40^2 = ${F(KE / 1000, 0)}$ kJ; at 70% only ${F(KE70 / 1000, 0)} kJ. The ${F((KE - KE70) / 1000, 0)} kJ in between would keep a ${F(lp.P / 1000, 0)} kW hover going for only ${F((KE - KE70) / lp.P, 1)} s: that is why the collective must go down at once.</li>
+      </ol></div>`;
+  }
+  worked();
+
+  SL.quiz('#quiz', [
+    { q: 'Momentum theory says the induced velocity in hover is…', options: ['$\\sqrt{T/(\\rho A)}$', '$\\sqrt{T/(2\\rho A)}$', '$T/(2\\rho A)$', '$2T/(\\rho A)$'], answer: 1, why: '$T = 2\\rho A v_i^2$ because the far wake reaches $2v_i$.' },
+    { q: 'If the rotor diameter is doubled at the same weight, ideal hover power…', options: ['doubles', 'halves', 'stays the same', 'quadruples'], answer: 1, why: '$P = T^{3/2}/\\sqrt{2\\rho A}$ and $A \\propto D^2$, so $P \\propto 1/D$.' },
+    { q: 'Why does a helicopter need less power to hover close to the ground?', options: ['The air is denser there', 'The ground restricts the downwash, reducing the induced velocity', 'The tail rotor works better', 'Gravity is weaker'], answer: 1, why: 'Ground effect: the image of the wake in the ground reduces $v_i$. The benefit fades above about one rotor diameter.' },
+    { q: 'Effective translational lift is caused by…', options: ['the fuselage acting as a wing', 'the rotor processing more air in forward flight, so less induced velocity is needed', 'the tail rotor', 'higher rotor rpm'], answer: 1, why: 'Glauert: $v_i \\approx T/(2\\rho A V)$ once $V \\gg v_h$, so induced power falls.' },
+    { q: 'Raising the collective sharply in a helicopter whose rotor turns anticlockwise (seen from above) makes the nose…', options: ['yaw left', 'yaw right unless you add left pedal', 'pitch up', 'roll left'], answer: 1, why: 'More power means more torque; the reaction yaws the fuselage clockwise (nose right). Left pedal increases tail-rotor thrust to compensate.' },
+    { q: 'After an engine failure the first action is to…', options: ['raise the collective to stop the descent', 'lower the collective to keep rotor rpm', 'apply full left pedal only', 'turn back to the airfield'], answer: 1, why: 'Rotor rpm is life. Lowering the collective reduces blade pitch so the upflow can drive the rotor.' },
+    { q: 'Hover performance gets worse on a hot day at Wilson Airport because…', options: ['the engine gives less power and the rotor needs more power in thinner air', 'the runway is short', 'the helicopter is heavier', 'the rotor turns slower'], answer: 0, why: 'Both effects: $P_{hover} \\propto 1/\\sqrt\\rho$ and piston power falls with density.' },
+    { q: 'The minimum of the power-required curve (the "bucket") is the best speed for…', options: ['maximum range only', 'endurance and the lowest autorotative sink rate', 'hovering', 'landing'], answer: 1, why: 'Least power means least fuel per second (endurance) and least energy loss in autorotation.' },
+    { q: 'Vortex ring state is most likely when…', options: ['flying fast and level', 'descending vertically at about the induced velocity with power on', 'hovering in ground effect', 'climbing quickly'], answer: 1, why: 'The rotor re-ingests its own wake; thrust becomes erratic. Escape with forward speed.' },
+  ]);
+
+  /* ======================= Loop ======================= */
+  let chartT = 0;
+  const loop = SL.loop((dt, t) => {
+    if (S && !paused) {
+      const n = Math.max(1, Math.round(dt * 240));
+      for (let i = 0; i < n; i++) step(dt / n);
+      S.blade += S.Om * dt * 0.55; S.tblade += S.Om * 5.5 * dt * 0.25;
+      updDust(dt);
+    }
+    draw(t, dt); if (S) { hud(); syncSliders(); }
+    if ((chartT += dt) > 0.5) { chartT = 0; drawChart(); }
+  });
+  updateConditions();
+  renderMissions(); start();
+  loop.start();
+  document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
+  window.HC = { H, C, atmos, rotor, levelPower, vInduced, vAxial, Pavail, findCollective, get S() { return S; }, step, start, keys, set mission(m) { mission = m; }, hoverCeilingPayload, mass };
+})();
+</script>
+</body>
+</html>
