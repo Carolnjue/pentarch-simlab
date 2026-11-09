@@ -281,12 +281,12 @@
     wireTourBtn();
     const key = 'sl-tour-seen-' + (document.body.dataset.page || '');
     let seen = false; try { seen = !!localStorage.getItem(key); } catch (e) {}
-    if (!seen) setTimeout(() => !document.querySelector('.sl-tour') && toast(`New to this lab? <a href="#" data-tour style="color:inherit;font-weight:600;text-decoration:underline">Take the 1-minute guided tour</a>`, '', 9000), 1500);
+
     document.addEventListener('click', e => { if (e.target.closest('[data-tour]')) { e.preventDefault(); runTour(); } });
   }
   function wireTourBtn() {
     const b = document.getElementById('slTourBtn');
-    if (b && _tour && _tour.length) { b.hidden = false; b.onclick = () => runTour(); }
+    if (b && _tour && _tour.length) { b.hidden = false; b.onclick = () => { b.classList.remove('tour-new'); runTour(); }; let seen = false; try { seen = !!localStorage.getItem('sl-tour-seen-' + (document.body.dataset.page || '')); } catch (e) {} if (!seen) b.classList.add('tour-new'); }
   }
   function runTour(start) {
     if (!_tour || !_tour.length) return;
@@ -312,7 +312,7 @@
         const tw = Math.min(340, innerWidth - 24); tip.style.width = tw + 'px'; const th = tip.offsetHeight || 190, below = r.bottom + 14 + th < innerHeight;
         let left = Math.max(12, Math.min(innerWidth - tw - 12, r.left + r.width / 2 - tw / 2));
         let top = below ? r.bottom + 14 : Math.max(12, r.top - 14 - tip.offsetHeight);
-        if (r.height > innerHeight * .6) top = Math.min(innerHeight - tip.offsetHeight - 12, Math.max(12, r.top + 20));
+        if (r.height > innerHeight * .6) top = innerHeight - th - 12;
         top = Math.max(12, Math.min(innerHeight - th - 12, top));
         tip.style.cssText = `left:${left}px;top:${top}px;width:${tw}px`;
       };

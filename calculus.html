@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=12">
+<link rel="stylesheet" href="assets/css/simlab.css?v=13">
 <style>
   #stage{height:620px;touch-action:none}
   #stage canvas{cursor:crosshair}
@@ -45,6 +45,7 @@
   .prose .katex-display{overflow-x:auto;overflow-y:hidden;padding:2px 0}
   .meaning{margin:0 0 10px;padding:9px 11px;border-radius:10px;background:color-mix(in srgb,var(--accent) 9%,transparent);border:1px solid color-mix(in srgb,var(--accent) 28%,transparent);font-size:.86rem;line-height:1.5;color:var(--text)}
   @media (max-width:600px){.stage-toolbar .btn{min-width:40px;min-height:38px}}
+  @media (pointer:coarse){.stage-toolbar{gap:8px;right:10px;bottom:10px}.stage-toolbar .btn{min-width:48px;min-height:48px;border-radius:12px;background:rgba(10,16,30,.88);backdrop-filter:blur(4px)}.stage-toolbar .btn svg{width:22px;height:22px}}
 </style>
 </head>
 <body data-page="calculus">
@@ -104,7 +105,7 @@
         <div class="ctl"><label for="nRect">Subintervals n</label><output></output><input type="range" id="nRect" min="1" max="200" step="1" value="8"></div>
         <div class="ctl"><label for="ia">Lower limit a</label><output></output><input type="range" id="ia" min="-6" max="6" step="0.01" value="-1.5"></div>
         <div class="ctl"><label for="ib">Upper limit b</label><output></output><input type="range" id="ib" min="-6" max="6" step="0.01" value="2"></div>
-        <div class="btn-row"><button class="btn primary sm" id="animN"><i data-lucide="play"></i> Sweep n = 1 → 100</button>
+        <div class="btn-row"><button class="btn primary sm" id="animN"><i data-lucide="play"></i> Split n = 1 → 128</button>
           <label class="toggle" style="flex:1"><span>Show F(x)</span><input type="checkbox" id="showF" checked></label></div>
         <p class="small dim" id="simpNote" style="margin:8px 0 0"></p>
       </div>
@@ -307,7 +308,7 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=12"></script>
+<script src="assets/js/simlab.js?v=13"></script>
 <script>
 (() => {
   'use strict';
@@ -954,6 +955,11 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
       ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.fill(); if (strokeA) ctx.stroke();
     };
     const cl = y => SL.clamp(y, -1e4, 1e4);
+    // morph from the previous partition: each new strip starts at the height of the old strip it came from
+    const eT = S.nT === undefined || S.nT >= 1 ? 1 : (t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2)(S.nT);
+    const pN = S.nPrev || n, pdx = (b - a) / pN;
+    const prevVal = x => { const j = SL.clamp(Math.floor((x - a) / pdx), 0, pN - 1); const xa = a + j * pdx; if (meth === 'trap') { const fa = f(xa), fb = f(xa + pdx); return fa + (fb - fa) * (x - xa) / pdx; } return f(meth === 'left' ? xa : meth === 'right' ? xa + pdx : xa + pdx / 2); };
+    const mix = (x, v) => { if (eT >= 1) return v; const pv = prevVal(x); return isFinite(pv) ? pv + (v - pv) * eT : v; };
     if (meth === 'simp') {
       for (let i = 0; i < n; i += 2) {
         const xa = a + i * dx, xm = xa + dx, xb = xa + 2 * dx, fa = f(xa), fm = f(xm), fb = f(xb);
@@ -965,11 +971,11 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
     } else {
       for (let i = 0; i < n; i++) {
         const xa = a + i * dx, xb = xa + dx;
-        if (meth === 'trap') { const fa = f(xa), fb = f(xb); if (!isFinite(fa) || !isFinite(fb)) continue; fillPoly([[m.X(xa), y0p], [m.X(xa), cl(m.Y(fa))], [m.X(xb), cl(m.Y(fb))], [m.X(xb), y0p]], fa + fb); }
+        if (meth === 'trap') { let fa = f(xa), fb = f(xb); if (!isFinite(fa) || !isFinite(fb)) continue; fa = mix(xa + 1e-9 * dx, fa); fb = mix(xb - 1e-9 * dx, fb); fillPoly([[m.X(xa), y0p], [m.X(xa), cl(m.Y(fa))], [m.X(xb), cl(m.Y(fb))], [m.X(xb), y0p]], fa + fb); }
         else {
-          const xs = meth === 'left' ? xa : meth === 'right' ? xb : (xa + xb) / 2; const v = f(xs); if (!isFinite(v)) continue;
+          const xs = meth === 'left' ? xa : meth === 'right' ? xb : (xa + xb) / 2; const v0 = f(xs); if (!isFinite(v0)) continue; const v = mix((xa + xb) / 2, v0);
           fillPoly([[m.X(xa), y0p], [m.X(xa), cl(m.Y(v))], [m.X(xb), cl(m.Y(v))], [m.X(xb), y0p]], v);
-          if (n <= 40) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(m.X(xs), m.Y(v), 2.3, 0, 7); ctx.fill(); }
+          if (n <= 40 && eT >= 1) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(m.X(xs), m.Y(v), 2.3, 0, 7); ctx.fill(); }
         }
       }
     }
@@ -986,6 +992,25 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
     const approx = riemann(f, a, b, n, meth);
     const exact = adaptSimpson(f, a, b, 1e-11);
     const err = approx - exact;
+    // convergence inset: |error| against n on log axes, filled in as n doubles
+    const key = [S.src, a, b, meth].join('|'); if (S.errKey !== key) { S.errKey = key; S.errHist = []; }
+    S.errHist = S.errHist || []; if (isFinite(err) && !S.errHist.some(h => h[0] === n)) { S.errHist.push([n, Math.abs(err)]); S.errHist.sort((p, q) => p[0] - q[0]); }
+    if (S.errHist.length >= 2) {
+      const W = Math.min(210, Math.max(160, L.top.w * 0.42)), Hh = 122, bx = L.top.x + 12, by = L.top.y + L.top.h - Hh - 12;
+      ctx.save(); ctx.fillStyle = 'rgba(5,9,19,.86)'; ctx.strokeStyle = 'rgba(148,163,184,.3)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx, by, W, Hh, 8) : ctx.rect(bx, by, W, Hh); ctx.fill(); ctx.stroke();
+      const pts = S.errHist.filter(h => h[1] > 0), lx = h => Math.log10(h[0]), ly = h => Math.log10(Math.max(h[1], 1e-16));
+      if (pts.length >= 1) {
+        const x0 = 0, x1 = Math.max(Math.log10(128), ...pts.map(lx)), yv = pts.map(ly), y1 = Math.ceil(Math.max(...yv)), y0 = Math.min(Math.floor(Math.min(...yv)), y1 - 2);
+        const px = v => bx + 30 + (v - x0) / (x1 - x0 || 1) * (W - 42), py = v => by + 36 + (y1 - v) / (y1 - y0 || 1) * (Hh - 54);
+        ctx.font = '600 10px JetBrains Mono, monospace'; ctx.fillStyle = '#93a1bd'; ctx.fillText('|error| vs n (log axes)', bx + 8, by + 14);
+        ctx.font = '9px JetBrains Mono, monospace'; ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'right'; ctx.fillText('1e' + y1, bx + 27, py(y1) + 3); ctx.fillText('1e' + y0, bx + 27, py(y0) + 3); ctx.textAlign = 'center';
+        [1, 8, 64].forEach(k => { if (Math.log10(k) <= x1) ctx.fillText(k, px(Math.log10(k)), by + Hh - 6); });
+        ctx.strokeStyle = 'rgba(52,211,153,.9)'; ctx.lineWidth = 1.6; ctx.beginPath(); pts.forEach((h, i) => i ? ctx.lineTo(px(lx(h)), py(ly(h))) : ctx.moveTo(px(lx(h)), py(ly(h)))); ctx.stroke();
+        pts.forEach(h => { ctx.fillStyle = h[0] === n ? '#facc15' : '#34d399'; ctx.beginPath(); ctx.arc(px(lx(h)), py(ly(h)), h[0] === n ? 4 : 2.6, 0, 7); ctx.fill(); });
+        const lastTwo = pts.slice(-2); if (lastTwo.length === 2 && lastTwo[1][0] === 2 * lastTwo[0][0] && lastTwo[1][1] > 1e-13) { ctx.textAlign = 'left'; ctx.fillStyle = '#fde68a'; ctx.fillText('n ×2 → error ÷' + fmt(lastTwo[0][1] / lastTwo[1][1], 2), bx + 8, by + 27); }
+      }
+      ctx.restore();
+    }
     if (L.bot) {
       // accumulation F(x) = ∫_a^x f
       const N = Math.max(120, Math.round(L.bot.w / 2)); const xs = [], Fs = [];
@@ -1102,14 +1127,23 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
     const flush = () => { if (seg.length > 1) { ctx.beginPath(); seg.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); for (let i = seg.length - 1; i >= 0; i--) ctx.lineTo(seg[i][0], seg[i][2]); ctx.closePath(); ctx.fill(); } seg = []; };
     for (let px = r.x; px <= r.x + r.w; px += 2) { const x = m.IX(px), y = f(x), p = P(x); if (!isFinite(y) || !isFinite(p)) { flush(); continue; } seg.push([px, SL.clamp(m.Y(y), -3e3, 3e3), SL.clamp(m.Y(p), -3e3, 3e3)]); }
     flush(); ctx.restore();
+    // faint ghosts of the lower-order polynomials show the sequence converging
+    const kMin = Math.max(0, n - 6);
+    for (let k = kMin; k < n; k++) { const al = 0.08 + 0.32 * (k - kMin + 1) / (n - kMin + 1); curve(m, x => evalTaylor(c, a, x, k), `rgba(244,114,182,${al.toFixed(2)})`, 1.2, { glow: false }); }
     curve(m, f, COL.f, 2.6);
-    curve(m, P, COL.d, 2.4);
+    const eTy = S.tT === undefined || S.tT >= 1 ? 1 : (t => 1 - Math.pow(1 - t, 3))(S.tT), nP = S.tnPrev === undefined ? n : S.tnPrev;
+    curve(m, eTy >= 1 ? P : x => { const p0 = evalTaylor(c, a, x, nP), p1 = P(x); return p0 + (p1 - p0) * eTy; }, COL.d, 2.6);
     const fa = f(a);
     if (isFinite(fa)) { dot(m.X(a), m.Y(fa), '#fff', 7); dot(m.X(a), m.Y(fa), COL.d, 4.5); }
     // probe
     let px = S.probe; if (px === null || px < m.x0 || px > m.x1) px = a + (m.x1 - m.x0) * 0.28;
     const fy = f(px), py = P(px);
     ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(m.X(px), r.y); ctx.lineTo(m.X(px), r.y + r.h); ctx.stroke(); ctx.restore();
+    if (isFinite(fy) && isFinite(py) && Math.abs(fy - py) > 1e-9) {
+      const ya = SL.clamp(m.Y(fy), r.y, r.y + r.h), yb = SL.clamp(m.Y(py), r.y, r.y + r.h);
+      ctx.save(); ctx.strokeStyle = '#fb7185'; ctx.lineWidth = 3; ctx.shadowColor = '#fb7185'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.moveTo(m.X(px), ya); ctx.lineTo(m.X(px), yb); ctx.stroke(); ctx.restore();
+      if (Math.abs(ya - yb) > 18) { const right = m.X(px) < r.x + r.w - 130; label('error ' + fmt(Math.abs(fy - py), 3), m.X(px) + (right ? 8 : -8), (ya + yb) / 2, '#fda4af', right ? 'left' : 'right'); }
+    }
     if (isFinite(fy)) dot(m.X(px), m.Y(fy), COL.f, 4); if (isFinite(py) && Math.abs(m.Y(py)) < 1e5) dot(m.X(px), m.Y(py), COL.d, 4);
     // bottom: log10 |error|
     if (L.bot) {
@@ -1124,7 +1158,7 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
     const fact = k => { let r = 1; for (let i = 2; i <= k; i++) r *= i; return r; };
     CAP = `P${String(n).split('').map(d => '₀₁₂₃₄₅₆₇₈₉'[d]).join('')} matches f and its first ${n} derivative${n === 1 ? '' : 's'} at a = ${fmt(a, 3)}. At x = ${fmt(px, 3)} the error is ${fmt(errP, 3)}${roc && isFinite(roc.R) ? `; beyond |x − a| = ${fmt(roc.R, 3)} (the radius of convergence) adding terms makes it worse, not better` : '; move the pointer away from a to see the error grow'}.`;
     STATS = [['|f − Pₙ| at x', fmt(errP, 3)], ['Radius R', roc ? (isFinite(roc.R) ? fmt(roc.R, 3) : (isNaN(roc.R) ? '—' : '∞')) : '—'], ['f⁽ⁿ⁾(a)', fmt(c[n] * fact(n), 4)], ['cₙ = f⁽ⁿ⁾(a)/n!', fmt(c[n], 4)]];
-    LEG = [['f(x)', COL.f], ['Pₙ(x)', COL.d], ['convergence', '#a78bfa']];
+    LEG = [['f(x)', COL.f], ['Pₙ(x)', COL.d], ['lower orders', 'rgba(244,114,182,.4)'], ['error at x', '#fb7185'], ['convergence', '#a78bfa']];
     S.tState = { px, errP };
   }
 
@@ -1368,11 +1402,11 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
   $('#animH').onclick = () => { S.animH = 1; $('#hlog').value = 0.3; };
   // integral controls
   $$('#method button').forEach(b => b.onclick = () => { S.method = b.dataset.v; $$('#method button').forEach(x => x.classList.toggle('on', x === b)); S.dirty = true; });
-  SL.bind('#nRect', v => { S.n = v; S.dirty = true; });
+  SL.bind('#nRect', v => { if (v !== S.n) { S.nPrev = S.n; S.nT = 0; } S.n = v; S.dirty = true; });
   SL.bind('#ia', v => { S.a = v; S.dirty = true; }, v => fmt(v, 3));
   SL.bind('#ib', v => { S.b = v; S.dirty = true; }, v => fmt(v, 3));
   $('#showF').onchange = () => S.dirty = true;
-  $('#animN').onclick = () => { S.animN = 1; S.animNt = 0; };
+  $('#animN').onclick = () => { S.animN = 1; S.animNt = 0; S.errHist = []; };
   // limits
   const limSel = $('#limPreset');
   limSel.innerHTML = LIMITS.map((l, i) => `<option value="${i}">${l[2]}</option>`).join('');
@@ -1433,7 +1467,7 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
     SL.tex($('#texP'), 'P_{' + n + '}(x)=' + s, false);
   }
   SL.bind('#ta', v => { S.ta = v; if (S.mode === 'taylor') recomputeTaylor(); S.dirty = true; }, v => fmt(v, 3));
-  SL.bind('#tn', v => { S.tn = v; if (S.mode === 'taylor') recomputeTaylor(); S.dirty = true; });
+  SL.bind('#tn', v => { if (v !== S.tn) { S.tnPrev = S.tn; S.tT = 0; } S.tn = v; if (S.mode === 'taylor') recomputeTaylor(); S.dirty = true; });
   $('#animT').onclick = () => { S.animT = 1; S.animTt = 0; };
   // optimisation
   $$('#optSub button').forEach(b => b.onclick = () => {
@@ -1549,7 +1583,9 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
   const loop = SL.loop((dt) => {
     let anim = false;
     if (S.animH) { const el = $('#hlog'); const v = +el.value - dt * 0.9; el.value = Math.max(-3, v); el.dispatchEvent(new Event('input')); if (v <= -3) S.animH = 0; anim = true; }
-    if (S.animN) { S.animNt += dt; const n = Math.min(100, Math.round(1 + S.animNt * S.animNt * 12)); const el = $('#nRect'); if (+el.value !== n) { el.value = n; el.dispatchEvent(new Event('input')); } if (n >= 100) S.animN = 0; anim = true; }
+    if (S.animN) { S.animNt += dt; const n = Math.min(128, Math.pow(2, Math.floor(S.animNt / 0.85))); const el = $('#nRect'); if (+el.value !== n) { el.value = n; el.dispatchEvent(new Event('input')); } if (n >= 128 && S.animNt > 8 * 0.85) S.animN = 0; anim = true; }
+    if (S.nT !== undefined && S.nT < 1) { S.nT = Math.min(1, S.nT + dt / 0.5); anim = true; }
+    if (S.tT !== undefined && S.tT < 1) { S.tT = Math.min(1, S.tT + dt / 0.4); anim = true; }
     if (S.animZ) { const el = $('#lzoom'); const v = +el.value + dt * 0.8; el.value = Math.min(4, v); el.dispatchEvent(new Event('input')); if (v >= 3) S.animZ = 0; anim = true; }
     if (S.animT) { S.animTt += dt; const n = Math.min(20, Math.floor(S.animTt * 2.2)); const el = $('#tn'); if (+el.value !== n) { el.value = n; el.dispatchEvent(new Event('input')); } if (n >= 20) S.animT = 0; anim = true; }
     if (S.animR !== null && S.animR !== undefined) { const el = $('#cR'); const v = +el.value + (S.animR - el.value) * Math.min(1, dt * 5); el.value = v; el.dispatchEvent(new Event('input')); if (Math.abs(v - S.animR) < 0.002) { el.value = S.animR; el.dispatchEvent(new Event('input')); S.animR = null; } anim = true; }

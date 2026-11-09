@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=12">
+<link rel="stylesheet" href="assets/css/simlab.css?v=13">
 <style>
   .ops{padding:20px 0 10px}
   /* Alarm banner (annunciator) */
@@ -125,6 +125,36 @@
   .tagtbl td:first-child{font-family:var(--mono);font-weight:600}
   .pcwrap{height:300px;background:#14171c;border:1px solid #2c323b;border-radius:12px;position:relative}
   .pcwrap canvas{width:100%;height:100%;display:block}
+  /* fit-to-width toggle, equipment strip, coach, briefing */
+  .zoomtog{display:none}
+  @media (max-width:760px){.zoomtog{display:inline-flex}.stage.hmi.fit #cv{width:100%}.stage.hmi.fit .pan-cue,.stage.hmi.fit::after,.stage.hmi.fit::before{display:none!important}}
+  .eqbar{display:none;gap:6px;overflow-x:auto;padding:8px 2px 4px;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent)}
+  .eqbar::-webkit-scrollbar{display:none}
+  @media (max-width:760px){.eqbar{display:flex}}
+  .eqbar button{all:unset;flex:none;display:inline-flex;align-items:center;gap:7px;cursor:pointer;font:600 .78rem var(--mono);padding:10px 12px;border-radius:9px;border:1px solid #2c323b;background:#1b1f25;color:#c3cad6;min-height:20px}
+  .eqbar button.on{border-color:#d1d5db;color:#fff;background:#2a2f37}
+  .eqbar .dot{width:9px;height:9px;border-radius:50%;background:#3f4650;flex:none}
+  .eqbar .dot.p1{background:#ef4444;box-shadow:0 0 8px #ef4444}.eqbar .dot.p2{background:#f97316;box-shadow:0 0 8px #f97316}.eqbar .dot.p3{background:#facc15}.eqbar .dot.p4{background:#c084fc}
+  .eqbar .dot.un{animation:dotfl 1s steps(2) infinite}
+  @keyframes dotfl{50%{opacity:.25}}
+  .brief{margin-top:8px;font-size:.84rem;color:#c3cad6}
+  .brief ul{margin:4px 0 4px 18px;padding:0}.brief li{margin:2px 0}
+  .brief summary{cursor:pointer;color:var(--accent);font-weight:600;font-size:.8rem;padding:4px 0}
+  .coach{position:sticky;bottom:10px;z-index:30;margin:14px 0 0 auto;max-width:520px;background:#14171c;border:1px solid var(--accent);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.55);padding:12px 14px}
+  .coach .ch-h{display:flex;align-items:center;gap:8px;font:700 .72rem var(--mono);letter-spacing:.06em;color:var(--accent);text-transform:uppercase}
+  .coach .ch-h .sp{margin-left:auto;display:flex;gap:6px}
+  .coach .ch-h button{all:unset;cursor:pointer;color:#9aa4b2;padding:4px 6px;border-radius:6px;font:600 .72rem var(--font);text-transform:none;letter-spacing:0}
+  .coach .ch-h button:hover{color:#fff;background:#2a2f37}
+  .coach h4{margin:6px 0 4px;font-size:1rem;color:#fff}
+  .coach p{margin:0;font-size:.88rem;color:#c3cad6;line-height:1.5}
+  .coach .ch-dots{display:flex;gap:4px;margin-top:10px}.coach .ch-dots i{height:4px;flex:1;border-radius:2px;background:#2c323b}.coach .ch-dots i.d{background:var(--accent)}
+  .coach .ch-act{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .coach ol{margin:8px 0 0 18px;padding:0;font-size:.86rem;color:#e6edf3}.coach ol li{margin:3px 0}
+  .coach.min p,.coach.min .ch-dots,.coach.min .ch-act,.coach.min ol{display:none}
+  .coach.left{margin-left:0;margin-right:auto}
+  .coach-hl{outline:2px solid var(--accent)!important;outline-offset:3px;animation:chpulse 1.2s ease-in-out infinite}
+  @keyframes chpulse{50%{outline-color:transparent}}
+  @media (max-width:760px){.coach{max-width:none;bottom:8px;padding:10px 12px;max-height:42vh;overflow:auto}.coach p,.coach ol{font-size:.84rem}}
 </style>
 </head>
 <body data-page="plant-operator">
@@ -144,6 +174,7 @@
     <div class="clock" id="clock">06:00:00<small>DAY 1</small></div>
     <div class="seg" id="speed"><button data-s="0">Pause</button><button data-s="1">1×</button><button data-s="10">10×</button><button data-s="30" class="on">30×</button><button data-s="60">60×</button><button data-s="120">120×</button></div>
     <span class="status" id="status">Free operation</span>
+    <button class="btn sm zoomtog" id="zoomBtn" aria-pressed="true"><i data-lucide="scan"></i> <span>Whole plant</span></button>
   </div>
   <div class="stage hmi" id="hmiStage">
     <div class="hmi-scroll" id="hmiScroll" tabindex="0" aria-label="Plant overview: scroll sideways with the arrow keys"><canvas id="cv" role="img" aria-label="SCADA overview graphic of the borehole, treatment works, reservoir, booster station and power supply"></canvas></div>
@@ -151,7 +182,8 @@
     <div class="pan-cue" id="panCue" aria-hidden="true"><i data-lucide="hand"></i> Swipe to pan <i data-lucide="arrow-right"></i></div>
   </div>
   <div class="hmi-map" id="hmiMap" aria-hidden="true" title="Overview: drag or tap to pan the graphic"><i id="hmiThumb"></i><span style="left:13%">Borehole</span><span style="left:50%">Treatment</span><span style="left:85%">Reservoir · town</span></div>
-  <div class="swipe">Swipe the graphic sideways (or drag the strip above) to pan. Tap equipment to open its faceplate.</div>
+  <div class="swipe" id="swipeNote">Swipe the graphic sideways (or drag the strip above) to pan. Tap equipment to open its faceplate.</div>
+  <div class="eqbar" id="eqbar" aria-label="Equipment: tap to open its faceplate"></div>
 
   <div class="console">
     <aside>
@@ -159,6 +191,7 @@
         <h3><i data-lucide="clipboard-list"></i> Shift &amp; scenario</h3>
         <div class="ctl" style="grid-template-columns:1fr"><label for="scen">Exercise</label>
           <select id="scen">
+            <option value="guided">Guided first fault (step-by-step coach)</option>
             <option value="random">Training shift: random emergency</option>
             <option value="dryrun">Borehole pump dry-running</option>
             <option value="boostertrip">Booster pump trip</option>
@@ -172,7 +205,9 @@
           </select></div>
         <div class="btn-row" style="margin-top:8px"><button class="btn primary" id="startShift"><i data-lucide="play"></i> Start shift</button><button class="btn" id="endShift"><i data-lucide="flag"></i> End exercise</button></div>
         <div class="fp-note" id="shiftNote">Choose an exercise and start the shift. The plant runs normally until something goes wrong.</div>
-        <p class="mini" style="margin:6px 0 0"><b>New to SCADA?</b> Explore in free operation first: tap any equipment on the overview (or a Faceplate tab) to see its readings and controls. Tags follow a code: first letter = what is measured (L level, F flow, P pressure, T temperature), then T transmitter, I indicator, C controller, V valve; the number is the plant area (1xx borehole … 4xx reservoir, 5xx town). So LT-401 is the reservoir level transmitter. Full key in the P&amp;ID symbols tab.</p>
+        <div class="brief"><b>New to SCADA?</b>
+          <ul><li>Start with the <b>Guided first fault</b>: a coach walks you through your first alarm.</li><li>Tap any equipment on the overview to open its faceplate.</li><li>Tag letters: L level, F flow, P pressure, T temperature; LT-401 = reservoir level transmitter.</li></ul>
+          <details><summary>Read full briefing</summary><p class="mini">Explore in free operation first: tap any equipment on the overview (or in the Faceplate list) to see its readings and controls. Tags follow a code: first letter = what is measured (L level, F flow, P pressure, T temperature), then T transmitter, I indicator, C controller, V valve; the number is the plant area (1xx borehole … 4xx reservoir, 5xx town). So LT-401 is the reservoir level transmitter. When an alarm comes in: acknowledge it, open the outlined equipment, compare related tags and trends, then follow the matching SOP card below the console. Full symbol key in the P&amp;ID symbols tab.</p></details></div>
         <div class="panel-title">Your diagnosis</div>
         <div class="diag"><select id="diagSel" aria-label="Root cause"><option value="">Root cause…</option></select><button class="btn sm" id="diagBtn">Record</button></div>
         <div class="fp-note" id="diagNote">Record what you believe the root cause is. It is marked in the debrief.</div>
@@ -219,6 +254,7 @@
       <div class="fp-note">Weights: continuity 30%, quality 20%, safety 20%, time to resolve 15%, diagnosis 15%.</div>
     </div>
   </div>
+  <div class="coach" id="coach" hidden aria-live="polite"></div>
 </section>
 
 <section class="tabs" data-tabs id="learn">
@@ -410,7 +446,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=12"></script>
+<script src="assets/js/simlab.js?v=13"></script>
 <script>
 (() => {
 'use strict';
@@ -844,7 +880,8 @@ function warmup(sec) { S.warm = true; let tt = 0; while (tt < sec) { step(2); ev
 function startShift() {
   try { SL.audio(); } catch (e) {}
   let id = $('#scen').value;
-  const random = id === 'random';
+  const random = id === 'random', guided = id === 'guided';
+  if (guided) id = 'boostertrip';
   if (random) { const ks = Object.keys(FAULTS); id = ks[Math.floor(Math.random() * ks.length)]; }
   S = fresh(); resetAlarms(); HIST = []; LOG = []; F = null;
   const startH = id === 'free' ? 6 : FAULTS[id].hour;
@@ -852,11 +889,11 @@ function startShift() {
   if (id !== 'free') { F = mkF(id, random); FAULTS[id].pre(); }
   warmup(3 * 3600);
   if (F && FAULTS[id].post) FAULTS[id].post();
-  if (F) F.injectAt = S.t + 90 + Math.random() * 150;
+  if (F) { F.injectAt = S.t + 90 + Math.random() * 150; F.guided = guided; }
   ev('sys', `Shift handover at ${clockStr(S.t).slice(0, 5)}. Plant in normal operation.` + (F && F.id === 'power' ? ' Previous shift notes: nothing to report.' : ''));
-  $('#shiftNote').textContent = id === 'free' ? 'Free operation. Explore the plant; no faults will be injected.' : random ? 'Training shift running. An emergency will occur. Watch the alarm banner.' : `Exercise: ${FAULTS[id].name}. Watch the alarms, diagnose and recover.`;
+  $('#shiftNote').textContent = guided ? 'Guided first fault: follow the coach card. It moves on by itself as you act.' : id === 'free' ? 'Free operation. Explore the plant; no faults will be injected.' : random ? 'Training shift running. An emergency will occur. Watch the alarm banner.' : `Exercise: ${FAULTS[id].name}. Watch the alarms, diagnose and recover.`;
   $('#diagSel').value = ''; $('#diagNote').textContent = 'Record what you believe the root cause is. It is marked in the debrief.';
-  refreshFP(); setSpeed(30);
+  refreshFP(); setSpeed(30); coachStart();
 }
 function mkF(id, random) { return { id, random, on: false, done: false, onset: 0, injectAt: 0, t: 0, win: 0, sup: 0, qual: 0, okT: 0, pen: { dry: 0, hot: 0, trips: 0, genOL: 0, reset: 0, dead: 0 }, ovf0: 0, diag: [], ops: [], acks: 0, firstAlarm: 0, variant: '' }; }
 function injectFault() { F.on = true; F.onset = S.t; F.ovf0 = S.res.ovfVol; FAULTS[F.id].inject(); }
@@ -1174,7 +1211,7 @@ let HITS = [], animT = 0, hover = null, flash = true;
 function hit(id, x, y, w, h) { HITS.push({ id, x, y, w, h }); }
 function drawHMI(dt) {
   animT += dt; flash = Math.floor(animT * 2) % 2 === 0;
-  const { ctx, w, dpr } = cst; const sc = w / 1100;
+  const { ctx, w, dpr } = cst; const sc = w / 1100; BIGI = sc < 0.5;
   ctx.setTransform(dpr * sc, 0, 0, dpr * sc, 0, 0);
   ctx.fillStyle = C.bg; ctx.fillRect(0, 0, 1100, 620);
   HITS = [];
@@ -1308,8 +1345,22 @@ function drawHMI(dt) {
   ctx.fillStyle = C.txt; ctx.textAlign = 'left'; ctx.fillText('BUS ' + (live ? '415 V' : '0 V') + '  LOAD ' + f0(S.pw.load) + ' kW', 360, 508);
   ind(ctx, 566, 460, 'POWER'); ctx.restore(); hit('POWER', 240, 450, 420, 150);
   if (hover) { const hh = HITS.find(x => x.id === hover); if (hh) { ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.setLineDash([4, 3]); ctx.lineWidth = 1; ctx.strokeRect(hh.x - 3, hh.y - 3, hh.w + 6, hh.h + 6); ctx.setLineDash([]); } }
-  const sh = HITS.find(x => x.id === sel); if (sh) { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.strokeRect(sh.x - 4, sh.y - 4, sh.w + 8, sh.h + 8); }
+  const sh = eqRect(sel); if (sh) { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = BIGI ? 3 : 1.5; ctx.strokeRect(sh.x - 4, sh.y - 4, sh.w + 8, sh.h + 8); }
+  // acknowledged alarms: outline the faulted equipment so the operator knows where to look
+  const pulse = 0.55 + 0.45 * Math.sin(animT * 5);
+  for (const [k] of EQ) {
+    const a = eqAlarm(k); if (!a || a.un) continue; const r = eqRect(k); if (!r) continue;
+    const c = PRI[a.pri].c; ctx.save(); ctx.globalAlpha = pulse; ctx.strokeStyle = c; ctx.lineWidth = BIGI ? 6 : 3; ctx.shadowColor = c; ctx.shadowBlur = 14;
+    rr(ctx, r.x - 7, r.y - 7, r.w + 14, r.h + 14, 8); ctx.stroke(); ctx.restore();
+    ctx.font = BIGI ? '700 20px JetBrains Mono, monospace' : '700 10px JetBrains Mono, monospace'; const lbl = 'P' + a.pri + ' ALARM'; const lw = ctx.measureText(lbl).width + (BIGI ? 14 : 8), lh = BIGI ? 26 : 15;
+    const lx = clamp(r.x - 7, 4, 1096 - lw), ly = r.y - 7 - lh < 30 ? r.y + r.h + 7 : r.y - 7 - lh;
+    ctx.fillStyle = c; rr(ctx, lx, ly, lw, lh, 4); ctx.fill(); ctx.fillStyle = a.pri === 1 ? '#fff' : '#111'; ctx.textAlign = 'left'; ctx.fillText(lbl, lx + (BIGI ? 7 : 4), ly + (BIGI ? 19 : 11));
+  }
+  if (COACH_EQ) { const r = eqRect(COACH_EQ); if (r) { ctx.save(); ctx.setLineDash([8, 5]); ctx.lineDashOffset = -animT * 30; ctx.strokeStyle = '#fff'; ctx.globalAlpha = 0.6 + 0.4 * Math.sin(animT * 6); ctx.lineWidth = BIGI ? 5 : 2.5; rr(ctx, r.x - 13, r.y - 13, r.w + 26, r.h + 26, 10); ctx.stroke(); ctx.restore(); } }
+  ctx.font = '10px JetBrains Mono, monospace';
 }
+let BIGI = false, COACH_EQ = null;
+function eqRect(id) { let r = null; for (const hh of HITS) if (hh.id === id) { if (!r) r = { x: hh.x, y: hh.y, x2: hh.x + hh.w, y2: hh.y + hh.h }; else { r.x = Math.min(r.x, hh.x); r.y = Math.min(r.y, hh.y); r.x2 = Math.max(r.x2, hh.x + hh.w); r.y2 = Math.max(r.y2, hh.y + hh.h); } } return r && { x: r.x, y: r.y, w: r.x2 - r.x, h: r.y2 - r.y }; }
 function rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
 function pipe(pts, flow, wd) {
   const ctx = cst.ctx; ctx.lineJoin = 'round';
@@ -1339,12 +1390,12 @@ function tagBox(ctx, x, y, title, rows, eq, mode) {
 function bar(ctx, x, y, w, h, f, lim) { ctx.fillStyle = C.box; ctx.fillRect(x, y, w, h); ctx.strokeStyle = C.boxLine; ctx.strokeRect(x, y, w, h); ctx.fillStyle = '#5b6878'; ctx.fillRect(x + 1, y + h * (1 - clamp(f, 0, 1)), w - 2, h * clamp(f, 0, 1)); ctx.strokeStyle = C.dim; lim.forEach(l => { ctx.beginPath(); ctx.moveTo(x - 3, y + h * (1 - l)); ctx.lineTo(x + w + 3, y + h * (1 - l)); ctx.stroke(); }); }
 function ind(ctx, x, y, eq) {
   const a = eqAlarm(eq); if (!a) return; if (a.un && !flash) return;
-  const c = PRI[a.pri].c; ctx.fillStyle = c; ctx.beginPath(); const s = 9;
+  const c = PRI[a.pri].c; ctx.fillStyle = c; ctx.beginPath(); const s = BIGI ? 15 : 9;
   if (a.pri === 1) ctx.rect(x - s, y - s, 2 * s, 2 * s);
   else if (a.pri === 2) { ctx.moveTo(x, y - s - 2); ctx.lineTo(x + s + 2, y); ctx.lineTo(x, y + s + 2); ctx.lineTo(x - s - 2, y); }
   else if (a.pri === 3) { ctx.moveTo(x - s - 1, y - s); ctx.lineTo(x + s + 1, y - s); ctx.lineTo(x, y + s + 1); }
   else ctx.arc(x, y, s, 0, 7);
-  ctx.closePath(); ctx.fill(); ctx.fillStyle = a.pri === 1 ? '#fff' : '#111'; ctx.font = '700 10px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(a.pri, x, y + (a.pri === 3 ? 1 : 4)); ctx.font = '10px JetBrains Mono, monospace';
+  ctx.closePath(); ctx.fill(); ctx.fillStyle = a.pri === 1 ? '#fff' : '#111'; ctx.font = BIGI ? '700 16px JetBrains Mono, monospace' : '700 10px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(a.pri, x, y + (a.pri === 3 ? 1 : 4) * (BIGI ? 1.5 : 1)); ctx.font = '10px JetBrains Mono, monospace';
 }
 const cvEl = $('#cv'), tip = $('#tip');
 function hmiPt(e) { const r = cvEl.getBoundingClientRect(); const sc = r.width / 1100; return { x: (e.clientX - r.left) / sc, y: (e.clientY - r.top) / sc }; }
@@ -1368,7 +1419,7 @@ cvEl.addEventListener('pointermove', e => {
   if (hover) { tip.style.display = 'block'; tip.innerHTML = TIPS[hover](); const sr = $('#hmiStage').getBoundingClientRect(); let x = e.clientX - sr.left + 14, y = e.clientY - sr.top + 14; if (x + 260 > sr.width) x -= 280; if (y + 90 > sr.height) y -= 100; tip.style.left = x + 'px'; tip.style.top = y + 'px'; } else tip.style.display = 'none';
 });
 cvEl.addEventListener('pointerleave', () => { hover = null; tip.style.display = 'none'; });
-cvEl.addEventListener('click', e => { const id = hitAt(hmiPt(e)); if (id) { sel = id; refreshFP(); if (window.innerWidth < 980) $('#fpPanel').scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
+cvEl.addEventListener('click', e => { const id = hitAt(hmiPt(e)); if (id) { sel = id; refreshFP(); eqbarUpd(true); if (window.innerWidth < 980) $('#fpPanel').scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
 
 /* ===================== ALARM UI ===================== */
 let afilt = 'act';
@@ -1389,7 +1440,7 @@ function renderAlarms() {
 }
 $('#alist').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  if (b.dataset.ack) { ack(b.dataset.ack); }
+  if (b.dataset.ack) { ack(b.dataset.ack); focusEq(ALBY[b.dataset.ack].eq); }
   if (b.dataset.shelve) { const st = AL[b.dataset.shelve]; st.shelf = S.t + 3600; st.acked = true; ev('op', 'Alarm SHELVED for 1 h: ' + ALBY[b.dataset.shelve].tag + ' ' + ALBY[b.dataset.shelve].desc); }
   if (b.dataset.unshelve) { AL[b.dataset.unshelve].shelf = 0; ev('op', 'Alarm unshelved: ' + ALBY[b.dataset.unshelve].tag); }
   renderAlarms(); renderBanner();
@@ -1561,7 +1612,7 @@ function tick(dt) {
     uiT = 0;
     $('#clock').innerHTML = clockStr(S.t) + `<small>DAY ${S.day}</small>`;
     $('#status').textContent = speed === 0 ? 'PAUSED' : (F ? (F.done ? 'Exercise complete' : 'Training shift in progress') : 'Free operation') + ` · ${speed}× · 1 s = ${speed} s plant time`;
-    renderBanner(); renderAlarms(); renderLog(); updFP(); renderScore(); drawTrend();
+    renderBanner(); renderAlarms(); renderLog(); updFP(); renderScore(); drawTrend(); eqbarUpd(); coachTick();
     if (pcVisible) drawPumpCurve();
   }
 }
@@ -1569,7 +1620,7 @@ const loop = SL.loop(tick);
 document.addEventListener('visibilitychange', () => { if (document.hidden) loop.stop(); else loop.start(); });
 
 /* ===================== INIT ===================== */
-$('#scen').value = 'random';
+$('#scen').value = 'guided';
 S = fresh(); resetAlarms(); S.t = 3 * 3600; warmup(3 * 3600);
 ev('sys', 'SCADA online. Plant in free operation. Choose an exercise and start the shift.');
 refreshFP(); loop.start();
@@ -1592,10 +1643,115 @@ window.__plant = { run(sec) { let t = 0; while (t < sec) { step(2); evalAlarms(2
   addEventListener('resize', upd); setTimeout(upd, 300); upd();
 })();
 
+
+/* ---------- phone: fit-to-width toggle and tappable equipment strip ---------- */
+const hStage = $('#hmiStage'), hScroll = $('#hmiScroll'), zBtn = $('#zoomBtn');
+let hmiFit = true;
+function setFit(v) {
+  hmiFit = v; hStage.classList.toggle('fit', v); zBtn.setAttribute('aria-pressed', String(!v));
+  zBtn.innerHTML = v ? '<i data-lucide="zoom-in"></i> <span>Zoom in</span>' : '<i data-lucide="scan"></i> <span>Whole plant</span>';
+  SL.refreshIcons(zBtn);
+  $('#swipeNote').textContent = v ? 'Whole plant shown. Tap equipment below (or on the overview) to open its faceplate; Zoom in to read the tag values.' : 'Swipe the graphic sideways (or drag the strip above) to pan. Tap equipment to open its faceplate.';
+  dispatchEvent(new Event('resize')); setTimeout(() => { dispatchEvent(new Event('resize')); if (!v) scrollHmiTo(sel, 'auto'); }, 60);
+}
+zBtn.onclick = () => setFit(!hmiFit);
+setFit(true);
+function scrollHmiTo(id, behavior) {
+  if (hmiFit || hScroll.scrollWidth <= hScroll.clientWidth + 4) return;
+  const r = eqRect(id); if (!r) return; const sc = cvEl.getBoundingClientRect().width / 1100;
+  hScroll.scrollTo({ left: (r.x + r.w / 2) * sc - hScroll.clientWidth / 2, behavior: behavior || 'smooth' });
+}
+function focusEq(id) { if (!id || !FP[id]) return; sel = id; refreshFP(); eqbarUpd(true); scrollHmiTo(id); }
+const eqb = $('#eqbar');
+eqb.innerHTML = EQ.map(([k, l]) => `<button data-eqb="${k}"><span class="dot"></span>${l}</button>`).join('');
+eqb.addEventListener('click', e => { const b = e.target.closest('[data-eqb]'); if (!b) return; focusEq(b.dataset.eqb); setTimeout(() => $('#fpPanel').scrollIntoView({ behavior: 'smooth', block: 'start' }), 80); });
+function eqbarUpd(selChanged) {
+  eqb.querySelectorAll('[data-eqb]').forEach(b => {
+    const a = eqAlarm(b.dataset.eqb), d = b.firstChild;
+    d.className = 'dot' + (a ? ' p' + a.pri + (a.un ? ' un' : '') : '');
+    b.classList.toggle('on', b.dataset.eqb === sel);
+    b.title = a ? 'Priority ' + a.pri + ' alarm' + (a.un ? ' (unacknowledged)' : '') : 'Normal';
+  });
+  if (selChanged) { const b = eqb.querySelector('.on'); if (b && eqb.scrollWidth > eqb.clientWidth) eqb.scrollTo({ left: b.offsetLeft - eqb.clientWidth / 2 + b.offsetWidth / 2, behavior: 'smooth' }); }
+}
+eqbarUpd();
+document.addEventListener('click', e => { if (e.target.closest('#eqlist [data-eq]')) eqbarUpd(true); }, true);
+
+/* ---------- coach: guided first fault and hints for other exercises ---------- */
+const SOPOF = { dryrun: 'SOP-01', boostertrip: 'SOP-02', burst: 'SOP-03', chlor: 'SOP-04', filter: 'SOP-05', power: 'SOP-06', sensor: 'SOP-07', overflow: 'SOP-08' };
+const alarmUp = () => ALDEF.some(a => { const st = AL[a.id]; return (st.active || !st.acked) && !shelved(st); });
+const unackN = () => ALDEF.filter(a => { const st = AL[a.id]; return st.active && !st.acked && !shelved(st); }).length;
+const GSTEPS = [
+  { t: 'Wait for the first alarm', p: 'The plant is healthy for now. Within a few minutes of plant time something will go wrong. Keep an eye on the alarm banner at the top of the console.', el: '#annun', done: () => F && F.on && unackN() > 0 },
+  { t: 'Acknowledge the alarm', p: 'An alarm is flashing. Press <b>Ack all</b> in the banner. Acknowledging only tells the system you have seen it: it fixes nothing. (Plant speed has been dropped to 10× to give you time.)', el: '#ackAll', done: () => unackN() === 0 },
+  { t: 'Open the faulted equipment', p: 'Booster pump <b>P-201</b> is outlined in colour. Tap it on the overview, or in the equipment list, to open its faceplate.', eq: 'P201', done: () => sel === 'P201' },
+  { t: 'Read the evidence', p: 'P-201 current is above its 46 A full-load rating and the winding temperature is climbing: a failing bearing. It will trip soon. Is the standby pump ready? Open <b>P-202</b>.', eq: 'P202', done: () => sel === 'P202' },
+  { t: 'Spot the trap', p: 'P-202 shows mode <b>MANUAL</b>: it was left that way after maintenance, so the PLC cannot start it automatically. Press <b>Auto</b> on the P-202 faceplate.', el: '#fp [data-act="b1.auto"]', eq: 'P202', done: () => S.boost[1].mode === 'auto' || S.boost[1].run },
+  { t: 'Lock out the faulty pump', p: 'Open <b>P-201</b> again and choose <b>OOS</b> (out of service), then press <b>Call fitter</b>. P-202 takes over automatically. Never keep resetting a pump with a failing bearing.', el: '#fp [data-act="b0.oos"]', eq: 'P201', done: () => S.boost[0].mode === 'oos' || S.flags.fitP201 },
+  { t: 'Record your diagnosis', p: 'Under <b>Your diagnosis</b>, choose "Duty booster mechanical fault and trip; standby not in Auto" and press <b>Record</b>. Your first diagnosis is scored.', el: '#diagSel', done: () => F.diag.length > 0 },
+  { t: 'Confirm the recovery', p: 'Watch town pressure PT-501 stay above 1 bar (the outlined town panel). After 5 minutes of stable supply the exercise closes and your debrief opens.', eq: 'TOWN', done: () => F.done },
+];
+const coachEl = $('#coach');
+let CO = null;
+function coachStart() {
+  CO = F ? { guided: !!F.guided, step: 0, hint: 0, min: false, closed: false, slowed: false, key: '' } : null;
+  coachEl.classList.remove('min'); coachTick(true);
+}
+function coachHL(sel) { $$('.coach-hl').forEach(x => x.classList.remove('coach-hl')); if (sel) { const el = $(sel); if (el) el.classList.add('coach-hl'); } }
+function coachActions() {
+  let act = FAULTS[F.id].actions.slice();
+  if (F.id === 'power') act = act.map(x => x.replace('VARACTION', F.variant === 'battery' ? 'Request a battery boost/jump-start (field action)' : 'Order an emergency fuel delivery (field action)'));
+  return act;
+}
+function coachTick(force) {
+  if (!CO || CO.closed || !F) { if (!coachEl.hidden) { coachEl.hidden = true; coachHL(null); COACH_EQ = null; } return; }
+  let html, key, hl = null; COACH_EQ = null;
+  const ctl = `<span class="sp"><button data-co="min" aria-label="${CO.min ? 'Expand' : 'Minimise'} coach">${CO.min ? 'Show' : 'Hide'}</button><button data-co="close" aria-label="Close coach">✕</button></span>`;
+  if (CO.guided) {
+    while (CO.step < GSTEPS.length && GSTEPS[CO.step].done()) {
+      CO.step++;
+      if (CO.step === 1 && !CO.slowed && speed > 10) { CO.slowed = true; setSpeed(10); }
+    }
+    if (CO.step >= GSTEPS.length) {
+      key = 'gdone';
+      html = `<div class="ch-h"><i data-lucide="graduation-cap"></i> Coach · complete${ctl}</div><h4>First fault handled</h4><p>You acknowledged, investigated, restored supply, protected the asset and recorded a diagnosis: the same order every real alarm deserves. Next, try a random emergency; the coach will hold back and offer hints only when you ask.</p><div class="ch-act"><button class="btn sm primary" data-co="random"><i data-lucide="shuffle"></i> Start a random emergency</button></div>`;
+    } else {
+      const g = GSTEPS[CO.step]; key = 'g' + CO.step; hl = g.el || null; COACH_EQ = g.eq || null;
+      html = `<div class="ch-h"><i data-lucide="graduation-cap"></i> Coach · step ${CO.step + 1} of ${GSTEPS.length}${ctl}</div><h4>${g.t}</h4><p>${g.p}</p><div class="ch-dots">${GSTEPS.map((_, i) => `<i class="${i <= CO.step ? 'd' : ''}"></i>`).join('')}</div>${g.eq ? `<div class="ch-act"><button class="btn sm" data-co="show" data-eq="${g.eq}"><i data-lucide="crosshair"></i> Show me</button></div>` : ''}`;
+    }
+  } else {
+    if (F.done) { CO.closed = true; return coachTick(); }
+    const up = F.on && alarmUp();
+    if (up && !CO.slowed && F.random && speed > 10) { CO.slowed = true; setSpeed(10); }
+    const acts = coachActions(), sop = SOPOF[F.id];
+    key = (up ? 'u' : 'w') + CO.hint;
+    hl = up && unackN() > 0 ? '#ackAll' : null;
+    html = `<div class="ch-h"><i data-lucide="life-buoy"></i> ${up ? 'Alarm · first response' : 'Shift briefing'}${ctl}</div>
+      <ol><li><b>Acknowledge</b> the alarm (Ack all): it only says you have seen it.</li><li><b>Open the outlined equipment</b> and compare related tags; in the alarm list, History shows which alarm came <i>first</i>.</li><li><b>Follow the matching SOP card</b>, act, then record your diagnosis.</li></ol>
+      ${CO.hint ? `<p style="margin-top:8px"><b>Hints</b> (from the correct response):</p><ol>${acts.slice(0, CO.hint).map(a => `<li>${a}</li>`).join('')}</ol>` : ''}
+      ${up ? `<div class="ch-act">${CO.hint < acts.length ? `<button class="btn sm" data-co="hint"><i data-lucide="lightbulb"></i> ${CO.hint ? 'Next hint' : 'I am stuck: give me a hint'}</button>` : ''}${CO.hint ? `<button class="btn sm" data-co="sop" data-sop="${sop}"><i data-lucide="book-marked"></i> Open ${sop}</button>` : ''}</div>` : '<p style="margin-top:8px">Waiting for the first alarm. Hints unlock when it arrives.</p>'}`;
+  }
+  coachEl.hidden = false; coachEl.classList.toggle('min', CO.min);
+  coachEl.classList.toggle('left', !!COACH_EQ && /P20|TOWN|T401|LCV/.test(COACH_EQ));
+  if (force || key !== CO.key) { CO.key = key; coachEl.innerHTML = html; SL.refreshIcons(coachEl); }
+  else { const m = coachEl.querySelector('[data-co="min"]'); if (m) m.textContent = CO.min ? 'Show' : 'Hide'; }
+  coachHL(hl);
+}
+coachEl.addEventListener('click', e => {
+  const b = e.target.closest('[data-co]'); if (!b || !CO) return; const a = b.dataset.co;
+  if (a === 'min') { CO.min = !CO.min; coachTick(true); }
+  if (a === 'close') { CO.closed = true; coachTick(); }
+  if (a === 'hint') { CO.hint++; ev('op', 'Coach hint ' + CO.hint + ' viewed'); coachTick(true); }
+  if (a === 'sop') { const d = [...$$('#sop details')].find(x => x.querySelector('.code').textContent === b.dataset.sop); if (d) { d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'center' }); d.classList.add('coach-hl'); setTimeout(() => d.classList.remove('coach-hl'), 3000); } }
+  if (a === 'show') { const id = b.dataset.eq; if (hmiFit && window.innerWidth <= 760) setFit(false); setTimeout(() => scrollHmiTo(id), 120); $('#hmiStage').scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  if (a === 'random') { $('#scen').value = 'random'; startShift(); }
+});
+window.__plant.coach = () => CO; window.__plant.setFit = setFit; window.__plant.ackAll = () => $('#ackAll').click();
+
 /* ---------- guided tour ---------- */
 const startTour = () => SL.tour([
-  { el: '#scen', title: 'Choose an exercise', text: 'Pick a training emergency (dry-running pump, burst main, chlorinator failure, power cut…) or free operation, then press Start shift. You are the operator on duty.' },
-  { el: '#hmiStage', title: 'The SCADA overview', text: 'Live P&ID of the whole system, from borehole to town. Tap any pump, valve or tank to open its faceplate. On a phone, swipe sideways or drag the overview strip to pan.' },
+  { el: '#scen', title: 'Choose an exercise', text: 'Start with the Guided first fault: a coach card walks you through your first alarm step by step. Then try a random emergency (with hints on request), a specific one, or free operation. Press Start shift: you are the operator on duty.' },
+  { el: '#hmiStage', title: 'The SCADA overview', text: 'Live P&ID of the whole system, from borehole to town. Tap any pump, valve or tank to open its faceplate. On a phone the whole plant is shown; use Zoom in to read the tags, or tap the equipment list under it.' },
   { el: '#annun', title: 'Alarm annunciator', text: 'Counts of active alarms by priority (1 is most urgent) and the latest alarm. Acknowledge to show you have seen it; silence stops the horn but does not fix anything.' },
   { el: '#speed', title: 'Plant time', text: 'Run the plant faster to see slow processes such as the reservoir filling, or pause to think. Alarms still need you at any speed.' },
   { el: '#fpPanel', title: 'Faceplates', text: 'Select equipment to see its live values and operate it: start and stop pumps, switch auto/manual, set valve positions and setpoints.' },
