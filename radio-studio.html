@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=3">
+<link rel="stylesheet" href="assets/css/simlab.css?v=6">
 <style>
   :root{--gl:#1a2232;--g2:#0b0f18;--live:#ff2a2a}
   .studio{background:linear-gradient(180deg,#0a0d15,#06080c);border:1px solid var(--gl);border-radius:16px;padding:12px;margin:20px 0 10px;box-shadow:0 24px 60px -30px #000;position:relative}
@@ -279,7 +279,7 @@
       <div class="go">
         <label class="toggle" style="padding:0;gap:8px"><span>Producer hints</span><input type="checkbox" id="hints" checked></label>
         <button class="btn primary" id="startBtn"><i data-lucide="radio"></i> Go live</button>
-        <span class="small" style="color:#93a1bd">Space = talk (presenter), N = play next, D = dump, M = mute monitor.</span>
+        <span class="small" style="color:#93a1bd">Space = talk (presenter), N = play next (fades out a song still playing), D = dump, M = mute monitor.</span>
       </div>
     </div>
   </section>
@@ -442,7 +442,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=3"></script>
+<script src="assets/js/simlab.js?v=6"></script>
 <script>
 (() => {
 'use strict';
@@ -745,6 +745,8 @@ function playNext(by) {
   if (PO.link) { const l = PO.link; l.status = 'done'; l.endedAt = S.clock; PO.link = null; onEntryEnd(l, 'end'); }
   if (newsLive()) { if (by === 'you') SL.toast('The network news is on air. Wait for it to finish.', 'warn'); return false; }
   const e = nextEntry(); if (!e) { if (by === 'you') SL.toast('Nothing left in the log before the news join.', 'warn'); return false; }
+  // live assist: pressing play-next while a song is still running segues out of it (3 s fade), as a real playout system does
+  if (by === 'you') for (const q of PO.pl) if (q.e && q.e.type === 'song' && plRemain(q) > 3.2) endEntry(q, 'fade');
   return startEntry(e, by);
 }
 function playoutStep() {
@@ -1029,7 +1031,7 @@ function onEntryEnd(e, how) {
   if (e.type === 'news' && S.scen === 'ids') { const t0 = S.t; opp('Station ID within 30 s after the news', 5, 30, () => PO.log.some(x => x.type === 'jingle' && x.startedAt >= e.fixed + e.dur - 1 && x.status !== 'wait') || (CARTP.id === 'id1' || CARTP.id === 'legal')); }
 }
 function onNewsJoin(e) {
-  const crash = PO.pl.some(p => p.e && plRemain(p) > 1.5);
+  const crash = PO.pl.some(p => p.e && plRemain(p) > 1.5 && open(p.ch));
   for (const p of PO.pl) if (p.e) endEntry(p, 'cut');
   if (PO.link) { PO.link.status = 'done'; PO.link = null; }
   if (crash) penal(6, 'Crashed the news: still playing at 07:00:00');
@@ -1108,9 +1110,11 @@ function talkStep(dt) {
   const talking = micLive() && presTalking();
   for (const tu of TU) {
     if (tu.done) continue;
-    if (talking && S.t < tu.postAt + .7) { tu.talked = true; tu.last = S.t; }
-    if (talking && S.t >= tu.postAt + .7 && !tu.crashed && tu.talked) { tu.crashed = true; if (me('pres')) penal(4, `Crashed the post on ${tu.e.title}`); }
-    if (S.t > tu.postAt + 1.2) { tu.done = true; if (tu.talked && !tu.crashed) { const gap = tu.postAt - tu.last; if (me('pres')) { if (gap <= 2.5) { award(4, 4, `Hit the post on ${tu.e.title} (${gap.toFixed(1)} s)`); S.posts = (S.posts || 0) + 1; if (S.posts >= 3) chal('posts'); } else award(2, 4, `Talked up ${tu.e.title}, finished ${gap.toFixed(1)} s early`); } } }
+    // time relative to the post, measured on the same (audio) clock as the track itself so slow frames cannot skew it
+    const tp = PO.pl.find(q => q.e === tu.e), rel = tp ? plPos(tp) - tu.e.intro : 99;
+    if (talking && rel < .7) { tu.talked = true; tu.last = rel; }
+    if (talking && rel >= .7 && !tu.crashed && tu.talked) { tu.crashed = true; if (me('pres')) penal(4, `Crashed the post on ${tu.e.title}`); }
+    if (rel > 1.2) { tu.done = true; if (tu.talked && !tu.crashed) { const gap = -tu.last; if (me('pres')) { if (gap <= 2.5) { award(4, 4, `Hit the post on ${tu.e.title} (${gap.toFixed(1)} s)`); S.posts = (S.posts || 0) + 1; if (S.posts >= 3) chal('posts'); } else award(2, 4, `Talked up ${tu.e.title}, finished ${gap.toFixed(1)} s early`); } } }
   }
   for (let i = TU.length - 1; i >= 0; i--) if (TU[i].done) TU.splice(i, 1);
   // talking over vocals / ads

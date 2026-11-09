@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=3">
+<link rel="stylesheet" href="assets/css/simlab.css?v=6">
 <style>
   .ops{padding:20px 0 10px}
   /* Alarm banner (annunciator) */
@@ -394,7 +394,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=3"></script>
+<script src="assets/js/simlab.js?v=6"></script>
 <script>
 (() => {
 'use strict';
@@ -863,7 +863,9 @@ function scores() {
   const tgt = FAULTS[F.id].target, el = (F.done && F.resolved ? F.tRes : F.t);
   const time = F.done && !F.resolved ? 0 : clamp(100 * (1 - Math.max(0, el - tgt) / (3 * tgt)), 0, 100);
   const dg = F.diag.length ? (F.diag[0] === F.id ? 100 : F.diag.includes(F.id) ? 50 : 0) : 0;
-  const total = 0.3 * cont + 0.2 * qual + 0.2 * safe + 0.15 * time + 0.15 * dg;
+  let total = 0.3 * cont + 0.2 * qual + 0.2 * safe + 0.15 * time + 0.15 * dg;
+  // an exercise ended before the plant was stabilised cannot rate as competent, however well the reservoir buffered the town
+  if (F.done && !F.resolved) total *= 0.6;
   return { cont, qual, safe, time, dg, total, ovf, el };
 }
 function finish(resolved) {
@@ -884,7 +886,7 @@ function finish(resolved) {
   const tl = F.ops.slice().reverse().slice(0, 30).map(o => `<div>+${f0((o.t - F.onset) / 60)} min · ${o.msg}</div>`).join('') || '<div>No operator actions were logged.</div>';
   const dName = id => (DIAG.find(d => d[0] === id) || [0, '—'])[1];
   SL.modal(`<div class="debrief"><h3>${resolved ? 'Debrief: plant recovered' : 'Debrief: exercise ended'}</h3>
-    <p class="muted">${fd.name}${F.variant ? ' (' + (F.variant === 'battery' ? 'flat starter battery' : 'no fuel') + ')' : ''} · time to stabilise ${f0(sc.el / 60)} min (target ${f0(fd.target / 60)} min)</p>
+    <p class="muted">${fd.name}${F.variant ? ' (' + (F.variant === 'battery' ? 'flat starter battery' : 'no fuel') + ')' : ''} · ${resolved ? `time to stabilise ${f0(sc.el / 60)} min` : `not stabilised after ${f0(sc.el / 60)} min`} (target ${f0(fd.target / 60)} min)</p>
     <div style="display:flex;align-items:baseline;gap:12px"><span class="bigscore">${f0(sc.total)}</span><b>${grade}</b></div>
     <table class="data"><tr><th>Criterion</th><th>Score</th><th>Weight</th></tr>
       <tr><td>Service continuity (town above 1 bar)</td><td class="num">${f0(sc.cont)}</td><td class="num">30 %</td></tr>
@@ -892,6 +894,7 @@ function finish(resolved) {
       <tr><td>Safety and asset protection</td><td class="num">${f0(sc.safe)}</td><td class="num">20 %</td></tr>
       <tr><td>Time to resolve</td><td class="num">${f0(sc.time)}</td><td class="num">15 %</td></tr>
       <tr><td>Diagnosis (${F.diag.length ? dName(F.diag[0]) : 'none recorded'})</td><td class="num">${f0(sc.dg)}</td><td class="num">15 %</td></tr></table>
+    ${resolved ? '' : '<p class="small" style="color:#fca5a5">The exercise ended before the plant was stabilised, so the weighted total is scaled by 0.6. Storage in the reservoir can hide a fault for a while; it does not fix it.</p>'}
     <h4>Root cause</h4><p>${root}</p>
     <h4>The evidence on the HMI</h4><ul>${evd.map(x => `<li>${x}</li>`).join('')}</ul>
     <h4>Correct response</h4><ol>${act.map(x => `<li>${x}</li>`).join('')}</ol>
@@ -1519,7 +1522,7 @@ SL.quiz('#quiz', [
   { q: 'Why do the dosing pumps latch off after a power interruption in this plant?', options: ['To save chemical', 'So that an operator confirms the dosing system is healthy before chlorine is added again', 'Because the PLC loses its program', 'Because the ATS disconnects them permanently'], answer: 1, why: 'Many chemical systems need a manual reset after a power loss. The catch is that the borehole restarts automatically, so the operator must remember to reset dosing or unchlorinated water flows to the reservoir.' },
   { q: 'Free chlorine residual 0.6 mg/L with a T10 of 40 minutes gives a CT of…', options: ['24 mg·min/L', '66.7 mg·min/L', '0.015 mg·min/L', '40.6 mg·min/L'], answer: 0, why: 'CT = C × T10 = 0.6 × 40 = 24 mg·min/L, above the WHO guidance of 15 mg·min/L.' },
   { q: 'LT-401 reads a steady 3.48 m, LT-402 reads 3.80 m and rising, and inflow exceeds outflow by 40 m³/h. Which instrument do you trust?', options: ['LT-401, it is the primary', 'LT-402, because it agrees with the mass balance', 'Neither: shut the plant down', 'Average the two'], answer: 1, why: 'A positive net inflow means the level must be rising. LT-402 is consistent with the physics; LT-401 is frozen. Switch the controller to LT-402 and call an instrument technician.' },
-  { q: 'The standby generator is rated 80 kW. BP-101 takes about 31 kW and each booster about 20 kW. Which line-up is safe on the generator?', options: ['BP-101 and both boosters', 'BP-101 and one booster', 'Both boosters only, plus the backwash pumps', 'Everything: generators can be overloaded briefly'], answer: 1, why: 'About 31 + 20 + 3 kW auxiliaries = 54 kW. Adding the second booster pushes the set close to or past its rating, especially at peak flow, and risks an overload trip.' },
+  { q: 'The standby generator is rated 80 kW. BP-101 takes about 31 kW, the auxiliaries 3 kW, and each booster about 20 kW (up to about 25 kW at peak town demand). Which line-up is safe on the generator?', options: ['BP-101 and both boosters', 'BP-101 and one booster', 'Both boosters only, plus the backwash pumps', 'Everything: generators can be overloaded briefly'], answer: 1, why: 'BP-101 and one booster: about 31 + 20 + 3 = 54 kW, leaving margin. With both boosters it is 74 kW at normal flow and about 84 kW at peak demand: past the 80 kW rating, so the set trips on overload. Run one booster only.' },
   { q: 'According to ISA-18.2, which of these should NOT be configured as an alarm?', options: ['Reservoir high-high level', 'Generator running on load during a planned test, which needs no action', 'Chlorine residual low', 'Booster pump tripped'], answer: 1, why: 'An alarm must require a timely operator response. Conditions that need no action should be events or messages, otherwise they become nuisance alarms that train operators to ignore the list.' },
 ]);
 
