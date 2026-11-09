@@ -145,12 +145,12 @@
 
   function pageHero(m) {
     const d = deptById[m.dept];
-    return `<section class="page-hero"><div class="container">
+    return `<section class="page-hero" data-fx="${m.dept}"><canvas class="hero-fx" aria-hidden="true"></canvas><div class="container">
       <div class="crumbs"><a href="index.html">SimLab</a> / <a href="index.html#${d.id}">${d.name}</a> / ${m.title}</div>
       <div class="tag">${icon(m.icon)} ${d.name}</div>
       <h1>${m.title}</h1>
       <p class="lead">${m.desc}</p>
-      <div class="meta"><span class="chip">${icon('graduation-cap')} ${m.level}</span><span class="chip">${icon('mouse-pointer-click')} Interactive</span><span class="chip">${icon('book-open')} Theory, worked examples & quiz</span></div>
+      <div class="meta"><span class="chip">${icon('graduation-cap')} ${m.level}</span><span class="chip">${icon('mouse-pointer-click')} Interactive</span><span class="chip">${icon('book-open')} Theory, worked examples & quiz</span><button class="chip tour-btn" id="slTourBtn" hidden>${icon('compass')} Take the guided tour</button></div>
     </div></section>`;
   }
 
@@ -224,6 +224,105 @@
     refreshIcons();
   }
 
+  /* ---------------- Department-themed animated hero backgrounds ---------------- */
+  function heroFx(sec) {
+    const cv = sec.querySelector('.hero-fx'); if (!cv) return;
+    const dept = sec.dataset.fx, st = canvas(cv), reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const acc = getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#7c5cff';
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    const pts = Array.from({ length: 40 }, () => ({ x: Math.random(), y: Math.random(), v: rnd(.2, 1), p: Math.random() * 6.28 }));
+    const draw = t => {
+      const { ctx, w, h } = st; if (!w) return; ctx.clearRect(0, 0, w, h);
+      const x0 = w * 0.45; ctx.save(); ctx.globalAlpha = .55; ctx.strokeStyle = acc; ctx.fillStyle = acc; ctx.lineWidth = 1.2;
+      const fade = ctx.createLinearGradient(x0, 0, w, 0); fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(.35, acc); fade.addColorStop(1, acc);
+      ctx.strokeStyle = fade; ctx.fillStyle = fade;
+      if (dept === 'engineering') {
+        [[.72, .45, 70, 18, 1], [.86, .28, 44, 12, -1.5], [.9, .78, 56, 14, -1.29]].forEach(([cx, cy, r, z, sp]) => {
+          const X = w * cx, Y = h * cy, a0 = t * .25 * sp; ctx.beginPath();
+          for (let i = 0; i <= z * 4; i++) { const a = a0 + i / (z * 4) * 6.283, rr = (i % 4 === 1 || i % 4 === 2) ? r + 6 : r - 6; ctx.lineTo(X + Math.cos(a) * rr, Y + Math.sin(a) * rr); }
+          ctx.stroke(); ctx.beginPath(); ctx.arc(X, Y, r * .25, 0, 7); ctx.stroke();
+        });
+        ctx.globalAlpha = .18; for (let x = x0; x < w; x += 24) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+      } else if (dept === 'physics') {
+        for (let k = 0; k < 4; k++) { const v = 1 + k * .25; ctx.beginPath(); for (let i = 0; i <= 60; i++) { const u = i / 60, X = x0 + u * (w - x0) * v * .8, Y = h * .95 - Math.sin(u * Math.PI) * h * (.4 + k * .12); if (X > w) break; i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); } ctx.stroke(); const u = ((t * .15 + k * .23) % 1); ctx.beginPath(); ctx.arc(x0 + u * (w - x0) * v * .8, h * .95 - Math.sin(u * Math.PI) * h * (.4 + k * .12), 3.5, 0, 7); ctx.fill(); }
+      } else if (dept === 'life') {
+        const cx = w * .8, n = 22; for (let i = 0; i < n; i++) { const y = i / (n - 1) * h, a = t * .8 + i * .5, dx = Math.cos(a) * 60; ctx.globalAlpha = .25; ctx.beginPath(); ctx.moveTo(cx + dx, y); ctx.lineTo(cx - dx, y); ctx.stroke(); ctx.globalAlpha = .6 + .3 * Math.sin(a); ctx.beginPath(); ctx.arc(cx + dx, y, 3.5, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(cx - dx, y, 3.5, 0, 7); ctx.fill(); }
+      } else if (dept === 'health') {
+        ctx.lineWidth = 2; ctx.beginPath(); const per = 220, sh = (t * 90) % per;
+        for (let X = x0; X < w; X += 2) { const u = ((X - x0 + sh) % per) / per; let y = 0; if (u > .3 && u < .34) y = -8; else if (u > .4 && u < .42) y = 10; else if (u > .42 && u < .46) y = -60; else if (u > .46 && u < .49) y = 18; else if (u > .6 && u < .7) y = -14 * Math.sin((u - .6) / .1 * Math.PI); X === x0 ? ctx.moveTo(X, h * .55 + y) : ctx.lineTo(X, h * .55 + y); }
+        ctx.stroke();
+      } else if (dept === 'chemistry') {
+        const ms = [[.75, .4], [.9, .7], [.62, .78]]; ms.forEach(([mx, my], k) => { const X = w * mx, Y = h * my, a = t * .5 + k; const at = [[0, 0], ...[0, 1, 2, 3].map(i => [Math.cos(a + i * 1.57) * 34, Math.sin(a + i * 1.57) * 18])]; at.slice(1).forEach(q => { ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X + q[0], Y + q[1]); ctx.stroke(); }); at.forEach((q, i) => { ctx.beginPath(); ctx.arc(X + q[0], Y + q[1], i ? 5 : 9, 0, 7); ctx.fill(); }); });
+      } else if (dept === 'computing') {
+        ctx.font = '12px JetBrains Mono, monospace'; pts.forEach((p, i) => { const X = x0 + p.x * (w - x0), Y = ((p.y * h + t * 30 * p.v) % (h + 20)) - 10; ctx.globalAlpha = .25 + .5 * p.v; ctx.fillText((Math.floor(t * 2 * p.v + i) % 2) ? '1' : '0', X, Y); });
+      } else if (dept === 'media') {
+        const n = 48, bw = (w - x0) / n; for (let i = 0; i < n; i++) { const v = (Math.sin(t * 3 + i * .45) * .5 + .5) * (Math.sin(t * 1.3 + i * .17) * .4 + .6); const bh = v * h * .6; ctx.globalAlpha = .25 + .5 * v; ctx.fillRect(x0 + i * bw, h * .55 - bh / 2, bw * .55, bh); }
+      } else if (dept === 'operations') {
+        const cx = w * .8, cy = h * .5, R = Math.min(h * .45, 140); ctx.globalAlpha = .3; for (let i = 1; i <= 3; i++) { ctx.beginPath(); ctx.arc(cx, cy, R * i / 3, 0, 7); ctx.stroke(); }
+        const a = t * 1.1; ctx.globalAlpha = .7; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); ctx.stroke();
+        pts.slice(0, 6).forEach(p => { const pa = p.p, d = Math.abs(((a - pa) % 6.283 + 6.283) % 6.283); ctx.globalAlpha = Math.max(.1, 1 - d / 3); ctx.beginPath(); ctx.arc(cx + Math.cos(pa) * R * p.v * .9, cy + Math.sin(pa) * R * p.v * .9, 3, 0, 7); ctx.fill(); });
+      } else if (dept === 'earth') {
+        for (let k = 1; k <= 7; k++) { ctx.globalAlpha = .12 + k * .06; ctx.beginPath(); for (let i = 0; i <= 80; i++) { const a = i / 80 * 6.283, r = k * 18 * (1 + .18 * Math.sin(a * 3 + t * .3 + k) + .08 * Math.sin(a * 5 - t * .2)); const X = w * .8 + Math.cos(a) * r * 1.4, Y = h * .5 + Math.sin(a) * r; i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); } ctx.stroke(); }
+      } else if (dept === 'business') {
+        const n = 26, bw = (w - x0) / n; let v = h * .6; for (let i = 0; i < n; i++) { const o = v, c = v - Math.sin(i * 1.7 + Math.floor(t)) * 18 - 6; const hi = Math.min(o, c) - 8, lo = Math.max(o, c) + 8; ctx.globalAlpha = .55; ctx.beginPath(); ctx.moveTo(x0 + i * bw + bw * .3, hi); ctx.lineTo(x0 + i * bw + bw * .3, lo); ctx.stroke(); ctx.fillRect(x0 + i * bw + bw * .1, Math.min(o, c), bw * .4, Math.abs(c - o) + 1); v = Math.max(h * .2, Math.min(h * .85, c)); }
+      }
+      ctx.restore();
+    };
+    if (reduce) { setTimeout(() => draw(0), 50); return; }
+    const lp = loop((dt, t) => draw(t)).start();
+    if ('IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(e => e.isIntersecting ? lp.start() : lp.stop())).observe(sec);
+  }
+
+  /* ---------------- Guided tour ---------------- */
+  let _tour = null;
+  /** Register a guided tour: steps = [{el:'css selector', title, text, before?:fn}] */
+  function tour(steps) {
+    _tour = steps.filter(Boolean);
+    const b = document.getElementById('slTourBtn');
+    if (b) { b.hidden = false; b.onclick = () => runTour(); }
+    const key = 'sl-tour-seen-' + (document.body.dataset.page || '');
+    let seen = false; try { seen = !!localStorage.getItem(key); } catch (e) {}
+    if (!seen) setTimeout(() => toast(`New to this lab? <a href="#" data-tour style="color:inherit;font-weight:600;text-decoration:underline">Take the 1-minute guided tour</a>`, '', 9000), 1500);
+    document.addEventListener('click', e => { if (e.target.closest('[data-tour]')) { e.preventDefault(); runTour(); } });
+  }
+  function runTour(start) {
+    if (!_tour || !_tour.length) return;
+    try { localStorage.setItem('sl-tour-seen-' + (document.body.dataset.page || ''), '1'); } catch (e) {}
+    document.querySelectorAll('.sl-tour').forEach(x => x.remove());
+    let i = start || 0;
+    const ov = document.createElement('div'); ov.className = 'sl-tour';
+    ov.innerHTML = `<div class="sl-tour-hole"></div><div class="sl-tour-tip" role="dialog" aria-live="polite"><div class="sl-tour-n"></div><h4></h4><p></p><div class="btn-row"><button class="btn sm ghost" data-a="skip">Close</button><span style="flex:1"></span><button class="btn sm" data-a="back">Back</button><button class="btn sm primary" data-a="next">Next</button></div></div>`;
+    document.body.appendChild(ov);
+    const hole = ov.querySelector('.sl-tour-hole'), tip = ov.querySelector('.sl-tour-tip');
+    const show = () => {
+      const s = _tour[i]; if (s.before) try { s.before(); } catch (e) {}
+      const el = s.el && document.querySelector(s.el);
+      tip.querySelector('.sl-tour-n').textContent = `Step ${i + 1} of ${_tour.length}`;
+      tip.querySelector('h4').textContent = s.title || ''; tip.querySelector('p').innerHTML = s.text || '';
+      tip.querySelector('[data-a=back]').disabled = i === 0;
+      tip.querySelector('[data-a=next]').textContent = i === _tour.length - 1 ? 'Finish' : 'Next';
+      const place = () => {
+        if (!el) { hole.style.cssText = 'left:50%;top:40%;width:0;height:0'; tip.style.cssText = 'left:50%;top:40%;transform:translate(-50%,-50%)'; return; }
+        const r = el.getBoundingClientRect(), pad = 8;
+        hole.style.cssText = `left:${r.left - pad}px;top:${r.top - pad}px;width:${r.width + pad * 2}px;height:${r.height + pad * 2}px`;
+        const tw = Math.min(340, innerWidth - 24), below = r.bottom + 14 + 190 < innerHeight;
+        let left = Math.max(12, Math.min(innerWidth - tw - 12, r.left + r.width / 2 - tw / 2));
+        let top = below ? r.bottom + 14 : Math.max(12, r.top - 14 - tip.offsetHeight);
+        if (r.height > innerHeight * .6) top = Math.min(innerHeight - tip.offsetHeight - 12, Math.max(12, r.top + 20));
+        tip.style.cssText = `left:${left}px;top:${top}px;width:${tw}px`;
+      };
+      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(place, 420); } place();
+    };
+    const onScroll = () => { if (ov.isConnected) { const s = _tour[i], el = s.el && document.querySelector(s.el); if (el) { const r = el.getBoundingClientRect(), pad = 8; hole.style.left = r.left - pad + 'px'; hole.style.top = r.top - pad + 'px'; } } };
+    window.addEventListener('scroll', onScroll, { passive: true }); window.addEventListener('resize', show);
+    const end = () => { ov.remove(); window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', show); document.removeEventListener('keydown', key); };
+    const key = e => { if (e.key === 'Escape') end(); if (e.key === 'ArrowRight') nav(1); if (e.key === 'ArrowLeft') nav(-1); };
+    const nav = d => { i += d; if (i < 0) i = 0; if (i >= _tour.length) { end(); toast('Tour complete. Now try the challenges tab.', 'ok'); return; } show(); };
+    document.addEventListener('keydown', key);
+    ov.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a) { if (e.target === ov) end(); return; } if (a.dataset.a === 'skip') end(); if (a.dataset.a === 'back') nav(-1); if (a.dataset.a === 'next') nav(1); });
+    show();
+  }
+
   /* ---------------- Mount ---------------- */
   function mount() {
     const page = document.body.dataset.page;
@@ -231,6 +330,7 @@
     if (m && !document.body.dataset.dept) document.body.dataset.dept = m.dept;
     const h = document.getElementById('sl-header'); if (h) h.outerHTML = header();
     const hero = document.getElementById('sl-hero'); if (hero && m) hero.outerHTML = pageHero(m);
+    const heroEl = document.querySelector('.page-hero[data-fx]'); if (heroEl) setTimeout(() => heroFx(heroEl), 30);
     const f = document.getElementById('sl-footer');
     if (f && m) f.parentNode.insertBefore(moreLabs(m), f);
     if (f) f.outerHTML = footer();
@@ -446,7 +546,7 @@
     });
   }
 
-  window.SL = { niceRange, DEPTS, MODULES, byId, deptById, icon, refreshIcons, bind, canvas, loop, fmt, toast, modal, quiz, audio, clamp, lerp, deg, rad, cssVar, ptr, arrow, chart, renderMath, tex, tabs };
+  window.SL = { tour, runTour, niceRange, DEPTS, MODULES, byId, deptById, icon, refreshIcons, bind, canvas, loop, fmt, toast, modal, quiz, audio, clamp, lerp, deg, rad, cssVar, ptr, arrow, chart, renderMath, tex, tabs };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
 })();
