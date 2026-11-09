@@ -64,6 +64,9 @@
   .small-note{font-size:.78rem;color:var(--dim);margin-top:8px;line-height:1.45}
   .diag{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:10px;margin:12px 0}
   .diag svg{width:100%;height:auto;display:block}
+  /* keyboard focus always visible */
+  main :is(button,a,[tabindex],summary,select,input):focus-visible{outline:2px solid var(--accent)!important;outline-offset:2px}
+  .steplist li:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 </style>
 </head>
 <body data-page="dna-lab">
@@ -82,7 +85,7 @@
 
   <section class="lab wide-controls" style="padding-top:14px">
     <div class="stage" id="stage">
-      <canvas id="cv"></canvas>
+      <canvas id="cv" role="img" aria-label="Molecular biology stage for the selected station: DNA helix and base-pair ladder, transcription, splicing, translation or gene editing; live values appear in the readouts"></canvas>
       <div class="hud" id="hud"></div>
       <div class="tip" id="tip"></div>
     </div>
@@ -106,7 +109,7 @@
             <div class="panel-title">Both strands of this window</div>
             <div class="seqbox" id="dnaText"></div>
             <div class="panel-title">Build your own gene</div>
-            <textarea id="customSeq" rows="3" placeholder="Coding strand 5′→3′, e.g. ATGGCTAAAGGCTGA" spellcheck="false" style="font-family:var(--mono);font-size:.82rem"></textarea>
+            <textarea id="customSeq" aria-label="Custom coding strand sequence, 5′ to 3′" rows="3" placeholder="Coding strand 5′→3′, e.g. ATGGCTAAAGGCTGA" spellcheck="false" style="font-family:var(--mono);font-size:.82rem"></textarea>
             <div class="btn-row" style="margin-top:8px"><button class="btn sm" id="customGo"><i data-lucide="wand-2"></i> Use as gene</button><button class="btn sm" id="restoreGene"><i data-lucide="rotate-ccw"></i> Restore preset</button></div>
           </div>
           <div id="dnaForkCtl" style="display:none">
@@ -515,7 +518,7 @@ function beadRows(ctx, p, x, y, w, r, cmp, maxRows) {
     if (cc > 0) { ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(bx - step + r, by); ctx.lineTo(bx - r, by); ctx.stroke(); }
     bead(ctx, bx, by, r, p[i], cmp != null && cmp[i] !== p[i] ? '#ff4d6d' : null);
   }
-  if (p.length > rows * per) label(ctx, '+' + (p.length - rows * per) + ' more', x + w - 2, y + rows * step + 6, '#5f6d8a', 10, 'right');
+  if (p.length > rows * per) label(ctx, '+' + (p.length - rows * per) + ' more', x + w - 2, y + rows * step + 6, '#7d8aa6', 10, 'right');
   return rows * step;
 }
 
@@ -553,9 +556,9 @@ const FORK_STEPS = [
   ['pol1', 'DNA polymerase I', 'Removes each RNA primer with its 5′→3′ exonuclease and replaces it with DNA.'],
   ['lig', 'DNA ligase', 'Seals the nick between neighbouring fragments with a phosphodiester bond, using ATP (NAD⁺ in E. coli).'],
 ];
-$('#forkSteps').innerHTML = FORK_STEPS.map((s, i) => `<li data-i="${i}"><i>${i + 1}</i><span><b>${s[1]}</b>: ${s[2]}</span></li>`).join('');
-$$('#forkSteps li').forEach(li => li.addEventListener('click', () => { dna.step = +li.dataset.i; dna.narr = 0; forkStepUI(); }));
-function forkStepUI() { $$('#forkSteps li').forEach((li, i) => li.classList.toggle('on', i === dna.step)); }
+$('#forkSteps').innerHTML = FORK_STEPS.map((s, i) => `<li data-i="${i}" tabindex="0" role="button"><i>${i + 1}</i><span><b>${s[1]}</b>: ${s[2]}</span></li>`).join('');
+$$('#forkSteps li').forEach(li => { li.addEventListener('click', () => { dna.step = +li.dataset.i; dna.narr = 0; forkStepUI(); }); li.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); li.click(); } }); });
+function forkStepUI() { $$('#forkSteps li').forEach((li, i) => { li.classList.toggle('on', i === dna.step); li.setAttribute('aria-pressed', i === dna.step); }); }
 $('#forkPrev').onclick = () => { dna.step = (dna.step + 7) % 8; dna.narr = 0; forkStepUI(); };
 $('#forkNext').onclick = () => { dna.step = (dna.step + 1) % 8; dna.narr = 0; forkStepUI(); if (dna.step === 7) markDone('dna'); };
 $('#forkPlay').onclick = () => { dna.fplay = !dna.fplay; $('#forkPlay').innerHTML = dna.fplay ? '<i data-lucide="pause"></i> Pause' : '<i data-lucide="play"></i> Play'; SL.refreshIcons($('#forkPlay')); };
@@ -565,9 +568,9 @@ $$('#dnaMode button').forEach(b => b.onclick = () => { $$('#dnaMode button').for
 $('#dnaSpin').onchange = e => dna.spin = e.target.checked;
 $('#dnaHb').onchange = e => dna.hb = e.target.checked;
 SL.bind('#dnaOff', v => { dna.off = v | 0; dnaText(); }, v => { const g = S.gene; return g ? posLabel(v | 0) : v; });
-function posLabel(gi) { const r = gi - S.gene.tss; return r >= 0 ? '+' + (r + 1) : String(r); }
+function posLabel(gi) { const r = gi - S.gene.tss; return r >= 0 ? '+' + (r + 1) : '\u2212' + (-r); }
 function regionOf(gi) {
-  const g = S.gene; if (gi < g.tss) { if (gi >= TATA.s && gi < TATA.s + TATA.n) return ['TATA box', '#f5a524']; if (gi >= CAAT.s && gi < CAAT.s + CAAT.n) return ['CAAT box', '#fb923c']; return ['Promoter', '#5f6d8a']; }
+  const g = S.gene; if (gi < g.tss) { if (gi >= TATA.s && gi < TATA.s + TATA.n) return ['TATA box', '#f5a524']; if (gi >= CAAT.s && gi < CAAT.s + CAAT.n) return ['CAAT box', '#fb923c']; return ['Promoter', '#7d8aa6']; }
   const t = gi - g.tss; if (t >= g.pre.length) return ['Downstream', '#3b4660'];
   if (t >= g.cleave) return ['Transcribed, cleaved off', '#64748b'];
   const s = g.segs.find(s => t >= s.a && t < s.b);
@@ -619,7 +622,7 @@ function drawHelix(ctx, w, h, dt) {
   const { n, x0, ladY } = helixLayout(w, h); const tw = dna.tw; const seq = g.genomic.substr(dna.off, n);
   const cy = h * 0.31, R = Math.min(h * 0.16, 82, w * 0.13);
   // title
-  label(ctx, 'B-DNA · 10.5 bp per turn · 0.34 nm per bp', w - 14, h - 14, '#5f6d8a', 10.5, 'right');
+  label(ctx, 'B-DNA · 10.5 bp per turn · 0.34 nm per bp', w - 14, h - 14, '#7d8aa6', 10.5, 'right');
   // collect drawables
   const items = []; const OFF = 2.45;
   const P = (i, ph) => { const th = (dna.off + i) * PI2 / 10.5 + dna.rot + ph; return { x: x0 + tw / 2 + i * tw, y: cy - R * Math.cos(th), z: Math.sin(th) }; };
@@ -650,7 +653,7 @@ function drawHelix(ctx, w, h, dt) {
   const s2a = P(0, OFF), s2b = P(n - 1, OFF);
   label(ctx, '3′', x0 - 16, s2a.y, '#a78bfa', 12, 'center', 700); label(ctx, '5′', x0 + n * tw + 12, s2b.y, '#a78bfa', 12, 'center', 700);
   // groove labels
-  if (w > 600) { label(ctx, 'major groove', x0 + n * tw * .5, cy - R - 20, '#5f6d8a', 10, 'center'); }
+  if (w > 600) { label(ctx, 'major groove', x0 + n * tw * .5, cy - R - 20, '#7d8aa6', 10, 'center'); }
 
   // ladder
   const y1 = ladY + 26, y2 = y1 + tw + 18;
@@ -672,7 +675,7 @@ function drawHelix(ctx, w, h, dt) {
     for (let k = 0; k < nh; k++) { const xx = x + tw / 2 + (k - (nh - 1) / 2) * 4; ctx.setLineDash([2, 2]); ctx.beginPath(); ctx.moveTo(xx, y1 + tw + 2); ctx.lineTo(xx, y2 - 2); ctx.stroke(); }
     ctx.setLineDash([]);
     const gi = dna.off + i; const rel = gi - g.tss;
-    if ((rel >= 0 && (rel + 1) % 10 === 0) || rel === 0 || (rel < 0 && rel % 10 === 0)) label(ctx, posLabel(gi), x + tw / 2, y2 + tw + 12, '#5f6d8a', 9.5, 'center');
+    if ((rel >= 0 && (rel + 1) % 10 === 0) || rel === 0 || (rel < 0 && rel % 10 === 0)) label(ctx, posLabel(gi), x + tw / 2, y2 + tw + 12, '#7d8aa6', 9.5, 'center');
   }
   // reading frame: each codon of the coding sequence and the amino acid it encodes (codons split by an intron show in pieces)
   if (g.cdsG && g.cdsG.length) {
@@ -1120,7 +1123,7 @@ function drawSpAnim(ctx, w, h, dt) {
 function drawAlt(ctx, w, h) {
   const g = S.gene, pre = g.pre; const n = g.segs.length; const exs = g.exons;
   label(ctx, 'Alternative splicing · click an exon to include or skip it', 16, 22, '#e6ecf7', w < 560 ? 11.5 : 13, 'left', 700);
-  if (sp.isos.length) label(ctx, 'Saved isoforms appear below and in the side panel.', 16, 40, '#5f6d8a', 10.5, 'left');
+  if (sp.isos.length) label(ctx, 'Saved isoforms appear below and in the side panel.', 16, 40, '#7d8aa6', 10.5, 'left');
   const iw = Math.min(46, w * .06); const total = exs.reduce((s, e) => s + Math.sqrt(e.b - e.a), 0); const avail = w - 40 - (exs.length - 1) * iw; const y = 110;
   let x = 20; const boxes = [];
   exs.forEach((e, k) => { const bw = Math.max(36, avail * Math.sqrt(e.b - e.a) / total); boxes.push({ x, w: bw, e, k }); x += bw + iw; });
@@ -1435,7 +1438,7 @@ ST.mu = {
     const maxWin = Math.max(0, Math.ceil(nC / L.per) - L.rows); mu.rowOff = Math.min(Math.floor(mu.win / L.per), maxWin);
     const rp = mu.cls.rp, mp = mu.cls.mp; const marks = new Set(mu.marks);
     label(ctx, `Coding sequence: ${s.length} nt, ${nC} codons`, 14, 22, '#e6ecf7', 12.5, 'left', 700);
-    if (Math.ceil(nC / L.per) > L.rows) label(ctx, `rows ${mu.rowOff + 1}–${Math.min(mu.rowOff + L.rows, Math.ceil(nC / L.per))} of ${Math.ceil(nC / L.per)} · drag ↕ to scroll`, w < 560 ? 14 : w - 14, w < 560 ? 38 : 22, '#5f6d8a', 10.5, w < 560 ? 'left' : 'right');
+    if (Math.ceil(nC / L.per) > L.rows) label(ctx, `rows ${mu.rowOff + 1}–${Math.min(mu.rowOff + L.rows, Math.ceil(nC / L.per))} of ${Math.ceil(nC / L.per)} · drag ↕ to scroll`, w < 560 ? 14 : w - 14, w < 560 ? 38 : 22, '#7d8aa6', 10.5, w < 560 ? 'left' : 'right');
     for (let rr = 0; rr < L.rows; rr++) for (let cc = 0; cc < L.per; cc++) {
       const c = (mu.rowOff + rr) * L.per + cc; if (c >= nC) break;
       const x = 14 + cc * L.cw, y = L.top + rr * L.rowH; const cod = s.substr(3 * c, 3); const a = cod.length === 3 ? CODE[toRNA(cod)] : null;
@@ -1444,7 +1447,7 @@ ST.mu = {
       const inProt = c <= mp.length; const aa = c < mp.length ? mp[c] : (c === mp.length && mu.cls.complete ? '*' : null);
       if (aa) { const diff = aa !== (c < rp.length ? rp[c] : '*'); bead(ctx, x + 1.5 * L.ts, y + L.ts + 12, L.ts < 15 ? 6.5 : 9, aa, diff ? '#ff4d6d' : null); }
       else { label(ctx, '·', x + 1.5 * L.ts, y + L.ts + 11, '#3b4660', 10, 'center'); }
-      if (cc === 0) label(ctx, String(c + 1), x - 2, y - 5, '#5f6d8a', 9, 'left');
+      if (cc === 0) label(ctx, String(c + 1), x - 2, y - 5, '#7d8aa6', 9, 'left');
     }
     // protein comparison
     let y = L.top + L.rows * L.rowH + 10; const hA = (h - y - 60) / 2 - 10; const r0 = fitR(Math.max(rp.length, mp.length), w - 44, hA, 10);
@@ -1559,7 +1562,7 @@ ST.cr = {
       tile(ctx, x, yT + dyT, ts, b, { stroke: isPam ? '#22c55e' : changed ? '#fff' : null, lw: isPam || changed ? 2 : 1 });
       tile(ctx, x, yB + dyB, ts, COMP[b], { stroke: isPam ? '#22c55e' : null, lw: isPam ? 2 : 1 });
       if (!target || !unwind) { ctx.strokeStyle = 'rgba(230,236,247,.22)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + ts / 2, yT + ts + 2); ctx.lineTo(x + ts / 2, yB - 2); ctx.stroke(); }
-      const rel = gi - g.tss; if ((rel + 1) % 10 === 0 && rel >= 0) label(ctx, posLabel(gi), x + ts / 2, yB + ts + 30, '#5f6d8a', 9, 'center');
+      const rel = gi - g.tss; if ((rel + 1) % 10 === 0 && rel >= 0) label(ctx, posLabel(gi), x + ts / 2, yB + ts + 30, '#7d8aa6', 9, 'center');
     }
     label(ctx, '5′', x0 - 9, yT + ts / 2, '#22d3ee', 11, 'center', 700); label(ctx, '3′', x0 + n * ts + 9, yT + ts / 2, '#22d3ee', 11, 'center', 700);
     label(ctx, '3′', x0 - 9, yB + ts / 2, '#a78bfa', 11, 'center', 700); label(ctx, '5′', x0 + n * ts + 9, yB + ts / 2, '#a78bfa', 11, 'center', 700);

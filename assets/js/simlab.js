@@ -449,7 +449,7 @@
   function fmt(n, d = 2) {
     if (n === null || n === undefined || !isFinite(n)) return '—';
     const a = Math.abs(n);
-    if (a !== 0 && (a >= 1e6 || a < 1e-3)) return n.toExponential(Math.max(1, d - 1)).replace('e+', 'e').replace(/-/g, '\u2212');
+    if (a !== 0 && (a >= 1e6 || a < 1e-3)) { const [mm, ee] = n.toExponential(Math.max(1, d - 1)).split('e'); const sup = { '-': '\u207B', '+': '', 0: '\u2070', 1: '\u00B9', 2: '\u00B2', 3: '\u00B3', 4: '\u2074', 5: '\u2075', 6: '\u2076', 7: '\u2077', 8: '\u2078', 9: '\u2079' }; return mm.replace('-', '\u2212') + '\u00D710' + ee.split('').map(c => sup[c] ?? c).join(''); }
     return n.toLocaleString('en', { maximumFractionDigits: d, minimumFractionDigits: 0 }).replace(/^-/, '\u2212');
   }
 

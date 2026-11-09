@@ -53,13 +53,15 @@
   .numrow label{font-size:.72rem;color:var(--dim);font-family:var(--mono)}
   .diag{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:10px;margin:12px 0}
   .diag svg{width:100%;height:auto;display:block}
-  .tally{margin-top:10px;display:grid;gap:6px;font-size:.8rem;color:var(--muted)}
-  .tally .tr{display:grid;grid-template-columns:215px 1fr;align-items:center;gap:10px}
+  .tally{margin-top:14px;display:grid;gap:8px;font-size:.8rem;color:var(--muted);padding:12px 16px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r)}
+  .tally .tr{display:grid;grid-template-columns:260px 1fr;white-space:nowrap;align-items:center;gap:10px}
   .tally b{font-family:var(--mono);color:var(--text)} .tally em{font-style:normal;color:var(--dim);font-family:var(--mono);font-size:.72rem}
   .tally .tb{display:flex;height:12px;border-radius:7px;overflow:hidden;background:var(--line2);gap:2px}
   .tally .tb i{display:block;min-width:2px;transition:flex .5s ease}
   .tally .tk{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.74rem} .tally .tk i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
-  @media (max-width:560px){ .tally .tr{grid-template-columns:1fr;gap:4px} .al{height:36px;min-width:46px} }
+  @media (max-width:560px){ .tally .tr{grid-template-columns:1fr;gap:4px;white-space:normal} .al{height:36px;min-width:46px} }
+  /* keyboard focus always visible */
+  main :is(button,a,[tabindex],summary,select,input):focus-visible{outline:2px solid var(--accent)!important;outline-offset:2px}
 </style>
 </head>
 <body data-page="gene-mixer">
@@ -76,7 +78,7 @@
         <span class="chip" id="genChip">Generation P</span>
       </div>
       <div class="stage" id="stage">
-        <canvas id="cv"></canvas>
+        <canvas id="cv" role="img" aria-label="Cross stage: the two parent organisms with their genotypes and gametes, and the offspring of the latest batch"></canvas>
         <div class="hud" id="hud"></div>
         <div class="tip" id="tip"></div>
       </div>
@@ -108,7 +110,7 @@
         <div class="panel">
           <h3><i data-lucide="bar-chart-3"></i> Expected vs observed</h3>
           <div id="ratioTable"></div>
-          <canvas id="ratioCv"></canvas>
+          <canvas id="ratioCv" role="img" aria-label="Bar chart of expected and observed phenotype fractions for each class"></canvas>
           <div class="chi" id="chiBox">Mix to generate offspring and run a chi-square test.</div>
         </div>
       </div>
@@ -561,7 +563,7 @@ const PRESETS = {
   human: [['ABO: Iᴬi × Iᴮi', ['ABO'], { ABO: ['IA', 'i'] }, { ABO: ['IB', 'i'] }], ['ABO: AB × O', ['ABO'], { ABO: ['IA', 'IB'] }, { ABO: ['i', 'i'] }], ['Sickle: carrier × carrier', ['HB'], { HB: ['A', 'S'] }, { HB: ['A', 'S'] }], ['Colour blindness: carrier ♀ × normal ♂', ['CB'], { CB: ['B', 'b'] }, { CB: ['B', 'Y'] }], ['Colour-blind ♂ × normal ♀', ['CB'], { CB: ['B', 'B'] }, { CB: ['b', 'Y'] }], ['ABO + sickle', ['ABO', 'HB'], { ABO: ['IA', 'i'], HB: ['A', 'S'] }, { ABO: ['IB', 'i'], HB: ['A', 'S'] }]],
 };
 // organism cards with mini drawings
-$('#orgs').innerHTML = Object.values(ORGS).map(o => `<button data-o="${o.id}"><canvas width="76" height="76"></canvas><div><b>${o.name}</b><span><i>${o.latin}</i></span></div></button>`).join('');
+$('#orgs').innerHTML = Object.values(ORGS).map(o => `<button data-o="${o.id}"><canvas width="76" height="76" aria-hidden="true"></canvas><div><b>${o.name}</b><span><i>${o.latin}</i></span></div></button>`).join('');
 $$('#orgs button').forEach(b => { b.onclick = () => setOrg(b.dataset.o); });
 function drawOrgCards() {
   $$('#orgs button').forEach(b => { const c = b.querySelector('canvas'), ctx = c.getContext('2d'); ctx.setTransform(2, 0, 0, 2, 0, 0); ctx.clearRect(0, 0, 38, 38); const prev = S.org, prevT = S.track; S.org = ORGS[b.dataset.o]; S.track = []; const ind = { sex: 'F', g: {} }; S.org.genes.forEach(G => ind.g[G.id] = G.def.slice()); if (S.org.id === 'human') ind.g.ABO = ['IA', 'i']; drawOrg(ctx, ind, 19, 19, S.org.id === 'fly' ? 30 : 34, { noSex: true }); S.org = prev; S.track = prevT; });
@@ -644,8 +646,8 @@ function ratioUI() {
   const gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
   // simple integer ratio if possible
   let ratio = null; for (const d of [1, 2, 3, 4, 6, 8, 12, 16, 32, 64]) { const r = D.classes.map(c => c.p * d); if (r.every(x => Math.abs(x - Math.round(x)) < 1e-6)) { const ints = r.map(Math.round); const g = ints.reduce((a, b) => gcd(a, b), 0) || 1; ratio = ints.map(x => x / g); break; } } const ok = !!ratio;
-  $('#ratioTable').innerHTML = `<table class="ptab"><tr><th>Phenotype</th><th style="text-align:right">Exp.</th>${N ? '<th style="text-align:right">E</th><th style="text-align:right">O</th>' : ''}</tr>` + D.classes.map((c, k) => `<tr><td><i style="background:${c.col}"></i>${c.key}</td><td class="n">${ok ? Math.round(ratio[k]) : SL.fmt(c.p * 100, 1) + '%'}</td>${N ? `<td class="n">${SL.fmt(T.rows[k].E, 1)}</td><td class="n">${T.rows[k].O}</td>` : ''}</tr>`).join('') + `</table>` + (D.lethal > 0 ? `<p class="small-note">${SL.fmt(D.lethal * 100, 1)}% of zygotes are lethal (KK) and die as embryos${N ? `; ${S.dead} died in this batch` : ''}. Ratios are among survivors.</p>` : '') + (ok ? `<p class="small-note">Expected ratio ${ratio.map(r => Math.round(r)).join(' : ')}</p>` : '');
-  if (T) { const sig = T.p > 0.05; $('#chiBox').innerHTML = `χ² = <b>${SL.fmt(T.x2, 3)}</b> · df = <b>${T.df}</b> · p = <b>${fmtP(T.p)}</b><br>${T.df < 1 ? 'Only one phenotype class: no test needed.' : sig ? '<span style="color:var(--ok)">p &gt; 0.05: consistent with the expected ratio.</span>' : '<span style="color:var(--bad)">p ≤ 0.05: significant deviation (or chance, 1 time in 20).</span>'}${T.small ? `<br><span class="dim">${T.small} class(es) have E &lt; 5; use a bigger batch.</span>` : ''}${linkedPair() ? `<br>Recombinant offspring: <b>${SL.fmt(S.batch.filter(b => b.rec).length / N * 100, 1)}%</b> (gametes from a recombination event)` : ''}`; }
+  $('#ratioTable').innerHTML = `<table class="ptab"><tr><th>Phenotype</th><th style="text-align:right">Ratio</th>${N ? '<th style="text-align:right">Expected</th><th style="text-align:right">Observed</th>' : ''}</tr>` + D.classes.map((c, k) => `<tr><td><i style="background:${c.col}"></i>${c.key}</td><td class="n">${ok ? Math.round(ratio[k]) : SL.fmt(c.p * 100, 1) + '%'}</td>${N ? `<td class="n">${SL.fmt(T.rows[k].E, 1)}</td><td class="n">${T.rows[k].O}</td>` : ''}</tr>`).join('') + `</table>` + (D.lethal > 0 ? `<p class="small-note">${SL.fmt(D.lethal * 100, 1)}% of zygotes are lethal (KK) and die as embryos${N ? `; ${S.dead} died in this batch` : ''}. Ratios are among survivors.</p>` : '') + (ok ? `<p class="small-note">Expected ratio ${ratio.map(r => Math.round(r)).join(' : ')}</p>` : '');
+  if (T) { const sig = T.p > 0.05; $('#chiBox').innerHTML = `χ² = <b>${SL.fmt(T.x2, 3)}</b> · df = <b>${T.df}</b> · p = <b>${fmtP(T.p)}</b><br>${T.df < 1 ? 'Only one phenotype class: no test needed.' : sig ? '<span style="color:var(--ok)">p &gt; 0.05: consistent with the expected ratio.</span>' : '<span style="color:var(--bad)">p ≤ 0.05: significant deviation (or chance, 1 time in 20).</span>'}${T.small ? `<br><span class="dim">${T.small === 1 ? 'One class has' : T.small + ' classes have'} an expected count below 5; use a bigger batch.</span>` : ''}${linkedPair() ? `<br>Recombinant offspring: <b>${SL.fmt(S.batch.filter(b => b.rec).length / N * 100, 1)}%</b> (gametes from a recombination event)` : ''}`; }
   else $('#chiBox').innerHTML = 'Mix to generate offspring and run a chi-square test.';
   // expected vs observed as two proportion bars under the stage
   const bar = ws => `<div class="tb">${D.classes.map((c, k) => ws[k] > 0 ? `<i style="flex:${ws[k]};background:${c.col}" title="${c.key}"></i>` : '').join('')}</div>`;
@@ -657,8 +659,8 @@ function ratioUI() {
 }
 function drawRatio() {
   if (!S.dist) return; const { ctx, w, h } = rst; ctx.clearRect(0, 0, w, h); const D = S.dist, T = chiTest(); const n = D.classes.length; const bw = (w - 20) / n; const maxp = Math.max(...D.classes.map(c => c.p), ...(T ? T.rows.map(r => r.O / T.N) : [0])) * 1.1;
-  D.classes.forEach((c, k) => { const x = 10 + k * bw; const he = (h - 26) * c.p / maxp; ctx.fillStyle = c.col + '55'; ctx.strokeStyle = c.col; rrect(ctx, x + bw * .12, h - 16 - he, bw * .36, he, 3); ctx.fill(); ctx.stroke(); if (T) { const ho = (h - 26) * T.rows[k].O / T.N / maxp; ctx.fillStyle = c.col; rrect(ctx, x + bw * .52, h - 16 - ho, bw * .36, ho, 3); ctx.fill(); } label(ctx, String(k + 1), x + bw / 2, h - 7, '#5f6d8a', 9.5, 'center'); });
-  label(ctx, T ? 'left: expected · right: observed (fraction)' : 'expected fractions', 10, 8, '#5f6d8a', 9.5);
+  D.classes.forEach((c, k) => { const x = 10 + k * bw; const he = (h - 26) * c.p / maxp; ctx.fillStyle = c.col + '55'; ctx.strokeStyle = c.col; rrect(ctx, x + bw * .12, h - 16 - he, bw * .36, he, 3); ctx.fill(); ctx.stroke(); if (T) { const ho = (h - 26) * T.rows[k].O / T.N / maxp; ctx.fillStyle = c.col; rrect(ctx, x + bw * .52, h - 16 - ho, bw * .36, ho, 3); ctx.fill(); } label(ctx, String(k + 1), x + bw / 2, h - 7, '#7d8aa6', 9.5, 'center'); });
+  label(ctx, T ? 'left: expected · right: observed (fraction)' : 'expected fractions', 10, 8, '#7d8aa6', 9.5);
 }
 
 /* ================= Stage views ================= */
@@ -686,7 +688,7 @@ function drawCross(ctx, w, h, dt) {
   });
   const gRows = Math.max(Math.ceil(D.gm.length / (narrow ? 4 : 8)), Math.ceil(D.gf.length / (narrow ? 4 : 8)));
   label(ctx, S.org.sexual ? 'eggs' : 'ovules', lx, gy - 26, '#f472b6', 10.5, 'center', 600); label(ctx, S.org.sexual ? 'sperm' : 'pollen', rx, gy - 26, '#60a5fa', 10.5, 'center', 600);
-  if (!narrow) label(ctx, 'meiosis →  gametes', w / 2, gy - 4, '#5f6d8a', 10, 'center');
+  if (!narrow) label(ctx, 'meiosis →  gametes', w / 2, gy - 4, '#7d8aa6', 10, 'center');
   // offspring grid
   const oy = gy + gRows * ((narrow ? 13 : 19) * 2.3 + 10) + 16;
   ctx.strokeStyle = '#1e2a44'; ctx.beginPath(); ctx.moveTo(14, oy - 8); ctx.lineTo(w - 14, oy - 8); ctx.stroke();
@@ -769,7 +771,7 @@ function drawPedigree(ctx, w, h) {
   }
   const maxN = Math.max(...rows.map(r => r.length)); const sp = Math.min(84, (w - 70) / Math.max(1, maxN)); const rH = Math.min(130, (h - 90) / Math.max(1, rows.length)); const r = Math.min(15, sp * .28, rH * .16);
   const pos = new Map(); rows.forEach((row, d) => { const tw = (row.length - 1) * sp; row.forEach((id, k) => pos.set(id, { x: w / 2 - tw / 2 + k * sp + 20, y: 64 + d * rH })); });
-  label(ctx, `Pedigree · shading: ${S.shade}`, 14, 18, '#e6ecf7', w < 560 ? 11 : 12.5, 'left', 700); label(ctx, 'click the title area to change the shaded trait', 14, 36, '#5f6d8a', 10, 'left');
+  label(ctx, `Pedigree · shading: ${S.shade}`, 14, 18, '#e6ecf7', w < 560 ? 11 : 12.5, 'left', 700); label(ctx, 'click the title area to change the shaded trait', 14, 36, '#7d8aa6', 10, 'left');
   hitList.push({ x: 0, y: 0, w: w, h: 44, shadeBtn: true });
   // lines
   ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1.6;
@@ -783,7 +785,7 @@ function drawPedigree(ctx, w, h) {
     ctx.beginPath(); ctx.moveTo(mx, y + (a === b ? r * .8 : 0)); ctx.lineTo(mx, sy); const kx1 = Math.min(mx, ...kids.map(k => k.x)), kx2 = Math.max(mx, ...kids.map(k => k.x)); ctx.moveTo(kx1, sy); ctx.lineTo(kx2, sy); kids.forEach(k => { ctx.moveTo(k.x, sy); ctx.lineTo(k.x, k.y - r); }); ctx.stroke();
   });
   // symbols
-  rows.forEach((row, d) => { label(ctx, ROMAN[d] || String(d + 1), 14, 64 + d * rH, '#5f6d8a', 13, 'left', 700); row.forEach((id, k) => {
+  rows.forEach((row, d) => { label(ctx, ROMAN[d] || String(d + 1), 14, 64 + d * rH, '#7d8aa6', 13, 'left', 700); row.forEach((id, k) => {
     const ind = F.inds.get(id), p = pos.get(id); const ph = phen(ind); const t = ph.all.find(t => t.name === sTrait); const aff = t && t.v === sVal;
     // carrier: heterozygous for shading gene with one copy of the allele producing the shaded value
     let carrier = false; if (!aff && T && T.genes.length === 1) { const G = S.org.geneById[T.genes[0]]; const a = gt(ind, S.org)[G.id]; if (a[1] !== 'Y' && a[0] !== a[1]) { for (const al of a) { const test = G.chr === 'X' ? [al, 'Y'] : [al, al]; if (genePhen(G, test) === sVal) carrier = true; } } }
@@ -792,7 +794,7 @@ function drawPedigree(ctx, w, h) {
     if (carrier) { ctx.fillStyle = '#e6ecf7'; ctx.beginPath(); ctx.arc(p.x, p.y, r * .3, 0, PI2); ctx.fill(); }
     if (ind.tester) label(ctx, 'tester', p.x, p.y - r - 8, '#93a1bd', 9, 'center');
     label(ctx, `${ROMAN[d] || d + 1}-${k + 1}`, p.x, p.y + r + 10, '#93a1bd', 9.5, 'center', 600);
-    if (sp > 54) label(ctx, genoStr(ind, ''), p.x, p.y + r + 23, '#64748b', Math.min(10, sp / 8), 'center', 600, 'mono');
+    if (sp > 54) label(ctx, genoStr(ind, ''), p.x, p.y + r + 23, '#8a97b2', Math.min(10, sp / 8), 'center', 600, 'mono');
     hitList.push({ x: p.x - r - 4, y: p.y - r - 4, w: 2 * r + 8, h: 2 * r + 8, ind, ped: `${ROMAN[d] || d + 1}-${k + 1}` });
   }); });
   // legend
@@ -848,15 +850,15 @@ function drawPop(ctx, w, h, dt) {
   cats.forEach(([g, f, v, c], i) => { const x = bx + i * bw; const he = bh * v; rrect(ctx, x + bw * .15, 40 + bh - he, bw * (H.obs ? .32 : .7), he, 5); ctx.fillStyle = c + '88'; ctx.fill(); ctx.strokeStyle = c; ctx.stroke();
     if (H.obs) { const vo = H.obs[i] / H.n; const ho = bh * vo; rrect(ctx, x + bw * .53, 40 + bh - ho, bw * .32, ho, 5); ctx.fillStyle = c; ctx.fill(); }
     label(ctx, `${g}  ${f} = ${v.toFixed(3)}`, x + bw / 2, 40 + bh + 14, '#c7d2e5', narrow ? 10 : 11, 'center', 600, 'mono'); });
-  if (H.obs) label(ctx, 'light: expected · solid: observed', narrow ? 16 : w - 20, narrow ? 36 : 20, '#5f6d8a', 10, narrow ? 'left' : 'right');
+  if (H.obs) label(ctx, 'light: expected · solid: observed', narrow ? 16 : w - 20, narrow ? 36 : 20, '#7d8aa6', 10, narrow ? 'left' : 'right');
   // simulation chart
   const y0 = topH + 20, ch = h - y0 - 34, cx0 = 46, cw = w - cx0 - 18;
   label(ctx, PV.wAA === 1 && PV.wAa === 1 && PV.waa === 1 ? `Genetic drift: ${PV.popR} populations of N = ${PV.popN}` : `Selection + drift: w = ${PV.wAA.toFixed(2)} / ${PV.wAa.toFixed(2)} / ${PV.waa.toFixed(2)}, N = ${PV.popN}`, 16, y0 - 2, '#e6ecf7', narrow ? 11 : 12.5, 'left', 700);
   const X = g => cx0 + g / PV.popG * cw, Y = p => y0 + 14 + (1 - p) * ch;
-  ctx.font = '10px JetBrains Mono'; ctx.fillStyle = '#5f6d8a'; ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1;
+  ctx.font = '10px JetBrains Mono'; ctx.fillStyle = '#7d8aa6'; ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i++) { const p = i / 4, y = Y(p); ctx.beginPath(); ctx.moveTo(cx0, y); ctx.lineTo(cx0 + cw, y); ctx.stroke(); ctx.textAlign = 'right'; ctx.fillText(p.toFixed(2), cx0 - 6, y + 3); }
   for (let i = 0; i <= 5; i++) { const g = Math.round(PV.popG * i / 5); ctx.textAlign = 'center'; ctx.fillText(g, X(g), y0 + 14 + ch + 14); }
-  label(ctx, 'generation →', cx0 + cw, y0 + 14 + ch - 10, '#5f6d8a', 10, 'right'); label(ctx, 'p(A)', 8, y0 + 8, '#5f6d8a', 10, 'left');
+  label(ctx, 'generation →', cx0 + cw, y0 + 14 + ch - 10, '#7d8aa6', 10, 'right'); label(ctx, 'p(A)', 8, y0 + 8, '#7d8aa6', 10, 'left');
   if (!POP.lines.length) { label(ctx, 'Choose a preset or press Run.', cx0 + cw / 2, y0 + ch / 2, '#93a1bd', 12, 'center'); return; }
   POP.anim = Math.min(PV.popG, (POP.anim || 0) + dt * PV.popG / 2.2); const gmax = Math.floor(POP.anim);
   POP.lines.forEach((L, k) => { ctx.strokeStyle = PAL[k % PAL.length]; ctx.globalAlpha = .85; ctx.lineWidth = 1.6; ctx.beginPath(); for (let g = 0; g <= Math.min(gmax, L.length - 1); g++) { const x = X(g), y = Y(L[g]); g ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke(); });
