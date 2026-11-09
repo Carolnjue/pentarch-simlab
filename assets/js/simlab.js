@@ -259,6 +259,7 @@
     refreshIcons();
     renderMath();
     setTimeout(decorateProgress, 60);
+    setTimeout(stickyStages, 900);
     document.dispatchEvent(new CustomEvent('sl:ready'));
   }
 
@@ -399,26 +400,53 @@
     ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - hl * Math.cos(a - .4), y2 - hl * Math.sin(a - .4)); ctx.lineTo(x2 - hl * Math.cos(a + .4), y2 - hl * Math.sin(a + .4)); ctx.closePath(); ctx.fill(); ctx.restore();
   }
-  /** Simple line chart into a canvas state {ctx,w,h}: series=[{data:[[x,y]...], color, label}] */
+  /** Round axis ticks: returns {lo, hi, step} covering [a,b] with ~n steps of 1/2/2.5/5×10^k */
+  function niceRange(a, b, n) {
+    if (!isFinite(a) || !isFinite(b)) return { lo: 0, hi: 1, step: .2 };
+    if (a === b) { a -= 1; b += 1; }
+    const raw = (b - a) / (n || 5), mag = Math.pow(10, Math.floor(Math.log10(raw))), r = raw / mag;
+    const step = (r <= 1 ? 1 : r <= 2 ? 2 : r <= 2.5 ? 2.5 : r <= 5 ? 5 : 10) * mag;
+    return { lo: Math.floor(a / step + 1e-9) * step, hi: Math.ceil(b / step - 1e-9) * step, step };
+  }
+  /** Simple line chart into a canvas state {ctx,w,h}: series=[{data:[[x,y]...], color, label}]. Pass nice:false to keep exact limits. */
   function chart(st, series, o) {
-    o = Object.assign({ pad: [28, 14, 30, 46], grid: true, xlabel: '', ylabel: '' }, o || {});
+    o = Object.assign({ pad: [28, 14, 34, 50], grid: true, xlabel: '', ylabel: '', nice: true }, o || {});
     const { ctx, w, h } = st, [pt, pr, pb, pl] = o.pad;
-    let xs = [], ys = []; series.forEach(s => s.data.forEach(p => { xs.push(p[0]); ys.push(p[1]); }));
-    const xmin = o.xmin ?? Math.min(...xs), xmax = o.xmax ?? Math.max(...xs);
+    let xs = [], ys = []; series.forEach(s => s.data.forEach(p => { if (isFinite(p[0])) xs.push(p[0]); if (isFinite(p[1])) ys.push(p[1]); }));
+    let xmin = o.xmin ?? Math.min(...xs), xmax = o.xmax ?? Math.max(...xs);
     let ymin = o.ymin ?? Math.min(...ys), ymax = o.ymax ?? Math.max(...ys); if (ymin === ymax) { ymin -= 1; ymax += 1; }
+    let ystep = (ymax - ymin) / 4, xstep = (xmax - xmin) / 5;
+    if (o.nice) {
+      const ny = niceRange(ymin, ymax, 4); if (o.ymin === undefined) ymin = ny.lo; if (o.ymax === undefined) ymax = ny.hi; ystep = ny.step;
+      const nx = niceRange(xmin, xmax, 5); xstep = nx.step;
+    }
     const X = x => pl + (x - xmin) / (xmax - xmin || 1) * (w - pl - pr), Y = y => h - pb - (y - ymin) / (ymax - ymin) * (h - pt - pb);
+    const dec = s => Math.max(0, Math.min(4, -Math.floor(Math.log10(s) + 1e-9) + (s / Math.pow(10, Math.floor(Math.log10(s))) === 2.5 ? 1 : 0)));
     ctx.clearRect(0, 0, w, h);
     ctx.font = '11px JetBrains Mono, monospace'; ctx.fillStyle = '#5f6d8a'; ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = 1;
-    for (let i = 0; i <= 4; i++) { const yv = ymin + (ymax - ymin) * i / 4, y = Y(yv); ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(w - pr, y); ctx.stroke(); ctx.textAlign = 'right'; ctx.fillText(fmt(yv, 2), pl - 6, y + 4); }
-    for (let i = 0; i <= 5; i++) { const xv = xmin + (xmax - xmin) * i / 5, x = X(xv); ctx.textAlign = 'center'; ctx.fillText(fmt(xv, 2), x, h - pb + 15); }
-    if (o.xlabel) { ctx.textAlign = 'right'; ctx.fillText(o.xlabel, w - pr, h - 4); }
-    if (o.ylabel) { ctx.textAlign = 'left'; ctx.fillText(o.ylabel, pl, pt - 10); }
-    series.forEach(s => { ctx.strokeStyle = s.color || '#22d3ee'; ctx.lineWidth = s.width || 2; ctx.setLineDash(s.dash || []); ctx.beginPath(); s.data.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))); ctx.stroke(); ctx.setLineDash([]); });
+    const yd = dec(ystep), xd = dec(xstep);
+    for (let yv = Math.ceil(ymin / ystep - 1e-9) * ystep; yv <= ymax + ystep * 1e-6; yv += ystep) { const y = Y(yv); ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(w - pr, y); ctx.stroke(); ctx.textAlign = 'right'; ctx.fillText(fmt(Math.abs(yv) < ystep * 1e-6 ? 0 : yv, yd), pl - 6, y + 4); }
+    for (let xv = Math.ceil(xmin / xstep - 1e-9) * xstep; xv <= xmax + xstep * 1e-6; xv += xstep) { const x = X(xv); ctx.textAlign = 'center'; ctx.fillText(fmt(Math.abs(xv) < xstep * 1e-6 ? 0 : xv, xd), x, h - pb + 15); }
+    if (o.xlabel) { ctx.textAlign = 'center'; ctx.fillText(o.xlabel, pl + (w - pl - pr) / 2, h - 3); }
+    if (o.ylabel) { ctx.save(); ctx.translate(11, pt + (h - pt - pb) / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText(o.ylabel, 0, 0); ctx.restore(); }
+    ctx.save(); ctx.beginPath(); ctx.rect(pl, pt - 2, w - pl - pr, h - pt - pb + 4); ctx.clip();
+    series.forEach(s => { ctx.strokeStyle = s.color || '#22d3ee'; ctx.lineWidth = s.width || 2; ctx.setLineDash(s.dash || []); ctx.beginPath(); let pen = false; s.data.forEach(p => { if (!isFinite(p[0]) || !isFinite(p[1])) { pen = false; return; } pen ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1])); pen = true; }); ctx.stroke(); ctx.setLineDash([]); });
+    ctx.restore();
     let lx = w - pr; ctx.textAlign = 'left'; series.filter(s => s.label).reverse().forEach(s => { lx -= ctx.measureText(s.label).width + 30; ctx.fillStyle = s.color; ctx.fillRect(lx, pt - 16, 10, 3); ctx.fillStyle = '#93a1bd'; ctx.fillText(s.label, lx + 14, pt - 12); });
     return { X, Y };
   }
 
-  window.SL = { DEPTS, MODULES, byId, deptById, icon, refreshIcons, bind, canvas, loop, fmt, toast, modal, quiz, audio, clamp, lerp, deg, rad, cssVar, ptr, arrow, chart, renderMath, tex, tabs };
+  /** On desktop, keep the simulation in view while the student scrolls a long control column. */
+  function stickyStages() {
+    if (window.innerWidth < 981) return;
+    document.querySelectorAll('.lab').forEach(lab => {
+      const a = lab.children[0], b = lab.children[1]; if (!a || !b) return;
+      const ha = a.getBoundingClientRect().height, hb = b.getBoundingClientRect().height;
+      if (hb > ha + 120 && ha < window.innerHeight - 100) a.classList.add('sl-sticky');
+    });
+  }
+
+  window.SL = { niceRange, DEPTS, MODULES, byId, deptById, icon, refreshIcons, bind, canvas, loop, fmt, toast, modal, quiz, audio, clamp, lerp, deg, rad, cssVar, ptr, arrow, chart, renderMath, tex, tabs };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
 })();
