@@ -1,0 +1,891 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emergency Dispatch Centre · Pentarch SimLab</title>
+<meta name="description" content="Work a shift in a city emergency dispatch centre: answer calls, ask protocol questions, triage priorities, send ambulances, fire and police, and coach callers through CPR.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  #mapStage{height:640px}
+  #mapStage canvas{cursor:crosshair}
+  .tip{position:absolute;pointer-events:none;z-index:4;background:rgba(5,9,19,.92);border:1px solid var(--line2);border-radius:8px;padding:6px 9px;font:500 .74rem var(--mono);color:var(--text);max-width:240px;display:none}
+  .legend{position:absolute;left:12px;bottom:12px;display:flex;flex-wrap:wrap;gap:6px 10px;font:500 .7rem var(--mono);color:var(--muted);background:rgba(5,9,19,.78);border:1px solid var(--line2);border-radius:8px;padding:6px 9px;max-width:calc(100% - 24px)}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+  .ovl{position:absolute;inset:0;z-index:5;background:rgba(5,9,19,.95);overflow:auto;padding:26px;backdrop-filter:blur(4px)}
+  .ovl.hide{display:none}
+  .ovl .role{max-width:760px;margin:0 auto}
+  .role .badge{display:inline-flex;gap:7px;align-items:center;font:600 .7rem var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);padding:5px 10px;border-radius:99px}
+  .role .badge svg{width:14px;height:14px}
+  .role ul{padding-left:1.2em;font-size:.92rem;color:#cdd6e8}
+  .queue{display:grid;gap:6px}
+  .qcall{display:flex;align-items:center;gap:10px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:.82rem}
+  .qcall.ring{border-color:var(--bad);animation:ringb 1s infinite}
+  @keyframes ringb{50%{box-shadow:0 0 0 3px rgba(239,68,68,.25)}}
+  .qcall .grow{flex:1;min-width:0}
+  .qcall .mono{font-size:.72rem;color:var(--dim)}
+  .tx{background:#050913;border:1px solid var(--line);border-radius:10px;padding:10px;height:190px;overflow:auto;font-size:.83rem;display:flex;flex-direction:column;gap:6px}
+  .tx .c{align-self:flex-start;background:var(--panel2);border-radius:10px 10px 10px 3px;padding:6px 9px;max-width:90%}
+  .tx .d{align-self:flex-end;background:color-mix(in srgb,var(--accent) 22%,var(--panel2));border-radius:10px 10px 3px 10px;padding:6px 9px;max-width:90%}
+  .tx .s{align-self:center;font:500 .7rem var(--mono);color:var(--dim)}
+  .qgrid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:8px}
+  .qgrid .btn{justify-content:flex-start;font-weight:500;font-size:.77rem;padding:7px 9px}
+  .qgrid .btn.asked{opacity:.55}
+  .panic{font:600 .66rem var(--mono);letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;border-radius:5px}
+  .panic.p0{color:#86efac;background:rgba(34,197,94,.12)}.panic.p1{color:#fde68a;background:rgba(245,158,11,.14)}.panic.p2{color:#fca5a5;background:rgba(239,68,68,.16)}
+  .prio button[data-v="1"].on{background:#ef4444;color:#fff}.prio button[data-v="2"].on{background:#f59e0b}.prio button[data-v="3"].on{background:#eab308}.prio button[data-v="4"].on{background:#22c55e}
+  .assigned{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+  .assigned span{font:600 .7rem var(--mono);padding:3px 7px;border-radius:6px;border:1px solid var(--line2)}
+  .pai{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:8px}
+  .pai ol{margin:6px 0 0;padding-left:1.2em;font-size:.8rem}
+  .pai li{margin:3px 0;cursor:pointer;border-radius:6px;padding:2px 4px}
+  .pai li:hover{background:rgba(255,255,255,.05)}
+  .pai li.said{color:var(--dim);text-decoration:line-through}
+  .metro{display:flex;align-items:center;gap:10px;margin-top:8px}
+  .metro .tap{all:unset;cursor:pointer;width:64px;height:64px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 40% 35%,#fb7185,#be123c);color:#fff;font:700 .78rem var(--mono);box-shadow:0 0 0 4px rgba(251,113,133,.2);user-select:none;touch-action:manipulation}
+  .metro .tap:active{transform:scale(.94)}
+  .units{width:100%;border-collapse:collapse;font-size:.8rem}
+  .units td,.units th{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left}
+  .units th{font:600 .64rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+  .units tr.hl{background:color-mix(in srgb,var(--accent) 10%,transparent)}
+  .ut{font:700 .7rem var(--mono);padding:2px 6px;border-radius:5px;color:#06101f}
+  .sts{font:500 .7rem var(--mono)}
+  .grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:14px 0}
+  .grade .g{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px}
+  .grade .g .k{font:600 .64rem var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+  .grade .g .v{font:700 1.6rem var(--display)}
+  .gA{color:#4ade80}.gB{color:#a3e635}.gC{color:#facc15}.gD{color:#fb923c}.gE{color:#f87171}
+  .fb{font-size:.86rem;display:grid;gap:6px;margin:8px 0 16px}
+  .fb div{display:flex;gap:9px;align-items:flex-start;background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:8px 10px}
+  .fb .led{margin-top:6px;flex:none}
+  .tblwrap{overflow-x:auto}
+  .below{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:18px;margin-bottom:10px}
+  @media (max-width:980px){.below{grid-template-columns:1fr}#mapStage{height:520px}.ovl{padding:18px 16px}#mapStage:has(> .ovl:not(.hide)){height:760px}}
+  @media (max-width:520px){#mapStage{height:420px;min-height:0}#mapStage:has(> .ovl:not(.hide)){height:760px}.qgrid{grid-template-columns:1fr}}
+</style>
+</head>
+<body data-page="dispatch">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab wide-controls">
+    <div class="stage" id="mapStage">
+      <canvas id="cv"></canvas>
+      <div class="hud">
+        <span class="readout">Shift <b id="hClock">00:00</b></span>
+        <span class="readout">Left <b id="hLeft">60:00</b></span>
+        <span class="readout">Waiting <b id="hWait">0</b></span>
+        <span class="readout">Active <b id="hAct">0</b></span>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div class="tip" id="tip"></div>
+      <div class="ovl" id="ovl"></div>
+    </div>
+
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="headset"></i> Shift</h3>
+        <div class="seg" id="diffSeg"><button data-v="0">Quiet night</button><button data-v="1" class="on">Weekday</button><button data-v="2">Major event</button></div>
+        <div class="ctl"><label for="tc">Map time compression</label><output>×10</output><input type="range" id="tc" min="5" max="20" step="5" value="10"></div>
+        <div class="btn-row">
+          <button class="btn primary" id="btnStart"><i data-lucide="play"></i> Start</button>
+          <button class="btn" id="btnPause"><i data-lucide="pause"></i> Pause</button>
+          <button class="btn" id="btnEnd"><i data-lucide="flag"></i> End shift</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="phone-incoming"></i> Call queue</h3>
+        <div class="queue" id="queue"></div>
+      </div>
+      <div class="panel" id="console">
+        <h3><i data-lucide="phone-call"></i> Active call</h3>
+        <div id="callBox"></div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="below">
+    <div class="panel">
+      <h3><i data-lucide="truck"></i> Units board</h3>
+      <div class="tblwrap"><table class="units" id="units"></table></div>
+      <p class="small muted" style="margin:8px 0 0">With a call open and its address confirmed, click a unit here or on the map to dispatch it. ETA is calculated along the road network.</p>
+    </div>
+    <div class="panel">
+      <h3><i data-lucide="gauge"></i> Live metrics</h3>
+      <div class="stats" id="stats"></div>
+    </div>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="list-checks"></i> Call-taking protocol</button>
+      <button><i data-lucide="siren"></i> Triage priorities</button>
+      <button><i data-lucide="truck"></i> Resource management</button>
+      <button><i data-lucide="heart-pulse"></i> CPR & pre-arrival</button>
+      <button><i data-lucide="brain"></i> Stress & communication</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>The structured call</h3>
+      <p>Emergency call-takers follow a structured interrogation protocol (systems such as MPDS, CBD or locally developed criteria-based dispatch). The order matters: <b>location first</b>, because if the line drops you can still send help.</p>
+      <ol class="steps">
+        <li><b>Answer promptly.</b> International standards (e.g. NENA, NFPA 1225) aim for 90% of calls answered within 15 s and 95% within 20 s; many centres target 10 s.</li>
+        <li><b>Address / location.</b> Verify it: street, cross street, landmark, district. Read it back.</li>
+        <li><b>Call-back number.</b> So you can reconnect if the line drops.</li>
+        <li><b>"Tell me exactly what happened."</b> Let the caller describe the problem in their own words.</li>
+        <li><b>Key questions</b> for that complaint: Is the patient awake? Breathing normally? How many injured? Anyone trapped? Any hazards (fire, fuel, gas, wires, weapons)?</li>
+        <li><b>Assign a priority and dispatch.</b> Dispatch can happen in parallel with questioning as soon as the key facts are known.</li>
+        <li><b>Pre-arrival instructions.</b> Coach the caller: CPR, bleeding control, evacuation, staying safe.</li>
+        <li><b>Stay on the line</b> for critical calls until help arrives or the caller is safe.</li>
+      </ol>
+      <div class="callout"><i data-lucide="info"></i><div><b>Agonal breathing is not breathing.</b> Occasional gasps, snoring or gurgling in an unresponsive person are a sign of cardiac arrest. Callers often say "he's breathing" when they hear gasps, so ask "Is he breathing <i>normally</i>?"</div></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Priorities used in the simulator</h3>
+      <table class="data">
+        <tr><th>Priority</th><th>Meaning</th><th>Examples</th><th>Response target (sim)</th></tr>
+        <tr><td><b style="color:#ef4444">P1</b></td><td>Immediately life-threatening</td><td>Cardiac arrest, choking, severe bleeding, people trapped in fire, entrapment with fuel leak</td><td>8 min</td></tr>
+        <tr><td><b style="color:#f59e0b">P2</b></td><td>Serious, time-critical</td><td>Stroke (FAST), labour, burglary in progress, gas leak, confused diabetic</td><td>15 min</td></tr>
+        <tr><td><b style="color:#eab308">P3</b></td><td>Urgent but stable</td><td>Fracture with normal breathing, small fire already out</td><td>30 min</td></tr>
+        <tr><td><b style="color:#22c55e">P4</b></td><td>Non-urgent</td><td>Minor collision with no injuries, noise complaint</td><td>60 min</td></tr>
+      </table>
+      <p>Targets vary between services; the ambulance standard of reaching the most critical patients in about 7–8 minutes comes from cardiac arrest survival data. Over-triage (calling a P3 a P1) wastes scarce units and exposes crews to the risks of blue-light driving; under-triage costs lives.</p>
+      <h3>Why minutes matter</h3>
+      <p>For witnessed cardiac arrest, survival to hospital discharge falls by roughly 7–10% for each minute without CPR or defibrillation, and by about 3–4% per minute when bystanders perform CPR (Larsen et al., 1993; Valenzuela et al., 1997). The simulator uses a simple linear model:</p>
+      <div class="eq">$$S(t) = \max\big(0,\; S_0 - r\,t\big),\qquad r = \begin{cases}10\%/\text{min} & \text{no CPR}\\ 3.5\%/\text{min} & \text{with CPR}\end{cases}$$</div>
+      <p>with $S_0 \approx 70\%$ if defibrillated immediately. Starting dispatcher-assisted CPR at minute 2 and arriving at minute 8 gives $S = 70 - 10(2) - 3.5(6) = 29\%$, against $70 - 10(8) = 0\%$ (clamped) with no CPR.</p>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Matching resources to need</h3>
+      <div class="grid3">
+        <div class="card2" style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px"><b style="color:#f87171">ALS ambulance</b><br><span class="small muted">Advanced Life Support: paramedics, defibrillator, airway, drugs. For cardiac arrest, stroke, major trauma, choking, labour.</span></div>
+        <div class="card2" style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px"><b style="color:#f472b6">BLS ambulance</b><br><span class="small muted">Basic Life Support: EMTs, oxygen, splints, transport. For stable injuries and minor illness.</span></div>
+        <div class="card2" style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px"><b style="color:#fb923c">Fire engine</b><br><span class="small muted">Fire suppression, gas leaks, smoke, and often first responder with a defibrillator.</span></div>
+        <div class="card2" style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px"><b style="color:#facc15">Rescue unit</b><br><span class="small muted">Heavy rescue: cutting equipment for vehicle entrapment, water and rope rescue.</span></div>
+        <div class="card2" style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px"><b style="color:#60a5fa">Police</b><br><span class="small muted">Crime in progress, violence, traffic control and scene safety at collisions.</span></div>
+      </div>
+      <h3>Utilisation and queueing</h3>
+      <p>A fleet's <b>utilisation</b> is the fraction of time its units are committed:</p>
+      <div class="eq">$$\rho = \frac{\lambda\,\bar{T}_{\text{job}}}{c}$$</div>
+      <p>where $\lambda$ is the incident rate (per hour), $\bar T_{\text{job}}$ the mean time a unit is committed per incident (travel + scene + hospital + return, hours), and $c$ the number of units. As $\rho$ approaches 1 the chance that no suitable unit is free rises sharply (Erlang C), and response times explode. Planners usually keep ambulance utilisation well below 0.5–0.6 to protect coverage.</p>
+      <p>The <b>nearest available unit</b> is not always the right one: sending the only ALS unit in the east to a P3 fracture leaves the east uncovered for the next cardiac arrest. Good dispatchers think about coverage, not just the call in front of them.</p>
+      <h3>Travel time</h3>
+      <div class="eq">$$t_{\text{travel}} = \sum_{\text{road segments}} \frac{\ell_i}{v_i}$$</div>
+      <p>In the simulator each block is 500 m; minor roads are driven at 35 km/h under emergency conditions and arterial roads (highlighted) at 60 km/h. Units follow the fastest route found by Dijkstra's algorithm.</p>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Dispatcher-assisted CPR (adults)</h3>
+      <p>Current resuscitation guidelines (European Resuscitation Council 2021; AHA 2020; ILCOR) recommend that dispatchers recognise cardiac arrest quickly (unresponsive and not breathing normally) and coach untrained callers through <b>compression-only CPR</b>:</p>
+      <ol class="steps">
+        <li>Put the phone on speaker; kneel beside the person, who should be on their back on a firm surface.</li>
+        <li>Heel of one hand on the centre of the chest (lower half of the breastbone), other hand on top.</li>
+        <li>Push hard and fast: depth <b>5–6 cm</b> for an adult, rate <b>100–120 per minute</b>, allowing full recoil between compressions.</li>
+        <li>Count aloud with the caller to keep the rhythm. Send someone for an AED if one is nearby.</li>
+        <li>Do not stop until the ambulance crew takes over.</li>
+      </ol>
+      <div class="eq">$$\text{interval} = \frac{60\ \text{s}}{110\ \text{min}^{-1}} \approx 0.55\ \text{s per compression}$$</div>
+      <p>In the simulator, tap the metronome button in time with your counting. The console reports your rate from the last eight taps; keep it between 100 and 120.</p>
+      <h3>Choking (child over one year, adult)</h3>
+      <p>If the person cannot cough, speak or breathe: up to <b>5 back blows</b> between the shoulder blades, then up to <b>5 abdominal thrusts</b>, alternating. If they become unresponsive, start CPR.</p>
+      <h3>Severe bleeding</h3>
+      <p>Firm direct pressure on the wound with a cloth; do not lift it to look; add more cloth on top if it soaks through; keep the person lying down and warm.</p>
+      <div class="callout warn"><i data-lucide="alert-triangle"></i><div>This is a learning summary. Take an accredited first-aid course (e.g. Kenya Red Cross, St John Ambulance) to learn CPR on a manikin.</div></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Controlling the call</h3>
+      <p>Callers in crisis may scream, give fragments or no address. Techniques taught to call-takers:</p>
+      <ul>
+        <li><b>Repetitive persistence:</b> repeat the same calm request with the same words: "I need the address. Tell me the address."</li>
+        <li><b>Use their name</b> and give them a task: tasks reduce panic and buy time.</li>
+        <li><b>Lower your voice and slow down</b>; callers tend to mirror your pace.</li>
+        <li><b>Reassure honestly:</b> "Help is being arranged while we talk" (once it is).</li>
+      </ul>
+      <p>In the simulator, a hysterical caller gives only vague location clues until you reassure them; then they can give an exact address.</p>
+      <h3>Looking after yourself</h3>
+      <p>Dispatchers face repeated exposure to distress and high cognitive load, with no closure on most calls. Rates of burnout and post-traumatic stress symptoms are significant. Healthy centres build in breaks, peer support, defusing after critical calls and access to counselling. Recognise your own stress signs: tunnel vision, irritability, sleeplessness.</p>
+      <h3>Cognitive load</h3>
+      <p>Working memory holds only a handful of items. Protocols, checklists and on-screen prompts exist so dispatchers do not have to remember everything under pressure: follow the structure and it carries you.</p>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Worked example 1: travel time</h3>
+      <div class="worked">
+        <p>An ALS ambulance at City General must reach an incident 3 blocks east along the arterial highway and then 2 blocks north on minor roads.</p>
+        <div class="eq">$$t = \frac{3 \times 0.5\ \text{km}}{60\ \text{km/h}} + \frac{2 \times 0.5\ \text{km}}{35\ \text{km/h}} = 0.025\ \text{h} + 0.0286\ \text{h} = 0.0536\ \text{h} \approx 3.2\ \text{min}$$</div>
+        <p>Add a typical 1 min turnout (crew to vehicle) and the response is about 4.2 minutes: inside the 8-minute P1 target. The simulator shows ETAs computed exactly this way.</p>
+      </div>
+      <h3>Worked example 2: cardiac arrest survival</h3>
+      <div class="worked">
+        <p>Call answered at $t=0$. You confirm the address and "not breathing normally" at 0:40 and start CPR coaching at 1:30 (sim). The ALS unit arrives at 7:00.</p>
+        <div class="eq">$$S = 70 - 10(1.5) - 3.5(7.0 - 1.5) = 70 - 15 - 19.25 = 35.75\%$$</div>
+        <p>Without CPR coaching: $S = 70 - 10(7.0) = 0\%$. Telephone CPR more than doubles the chance of survival, which is why it is the most valuable thing a dispatcher does.</p>
+      </div>
+      <h3>Worked example 3: utilisation</h3>
+      <div class="worked">
+        <p>Five ambulances; 6 medical incidents per hour; each commits a unit for about 45 minutes (travel, scene, hospital, return).</p>
+        <div class="eq">$$\rho = \frac{6 \times 0.75}{5} = 0.9$$</div>
+        <p>At 90% utilisation there is very often no free ambulance. Either add units, shorten hospital handovers, or send BLS units to stable patients so ALS units stay free.</p>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Shift challenges</h3>
+      <p>Challenges are checked live and at the end of each shift.</p>
+      <ol class="steps" id="chList"></ol>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const fb = (k, t) => `<div><span class="led ${k}"></span><span>${t}</span></div>`;
+  const gradeOf = s => s >= 85 ? 'A' : s >= 70 ? 'B' : s >= 55 ? 'C' : s >= 40 ? 'D' : 'E';
+  const mmss = s => { s = Math.max(0, Math.round(s)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
+
+  /* ======================= CITY ======================= */
+  const NX = 12, NY = 8, BLOCK = 0.5; // km per block
+  const AVE = ['Mvule Ave', 'Mugumo Ave', 'Baobab Ave', 'Acacia Ave', 'Jacaranda Ave', 'Moi Avenue', 'Mango Ave', 'Cypress Ave', 'Bamboo Ave', 'Palm Ave', 'Neem Ave', 'Muhuhu Ave'];
+  const RD = ['Ridge Rd', 'Garden Rd', 'Lenana Rd', 'Uhuru Highway', 'Market Rd', 'Mbagathi Rd', 'Valley Rd', 'Southern Bypass'];
+  const MAJ_I = new Set([5]), MAJ_J = new Set([3, 7]);
+  const DIST = [
+    { n: 'Westlands', x0: 0, x1: 3, y0: 0, y1: 2.5 }, { n: 'Parklands', x0: 3, x1: 6, y0: 0, y1: 2.5 }, { n: 'Muthaiga', x0: 6, x1: 8.5, y0: 0, y1: 2.5 }, { n: 'Kasarani', x0: 8.5, x1: 11, y0: 0, y1: 2.5 },
+    { n: 'Kilimani', x0: 0, x1: 3, y0: 2.5, y1: 5 }, { n: 'CBD', x0: 3, x1: 6, y0: 2.5, y1: 5 }, { n: 'Eastleigh', x0: 6, x1: 8.5, y0: 2.5, y1: 5 }, { n: 'Embakasi', x0: 8.5, x1: 11, y0: 2.5, y1: 5 },
+    { n: 'Karen', x0: 0, x1: 3, y0: 5, y1: 7 }, { n: 'Langata', x0: 3, x1: 6, y0: 5, y1: 7 }, { n: 'South B', x0: 6, x1: 8.5, y0: 5, y1: 7 }, { n: 'Industrial Area', x0: 8.5, x1: 11, y0: 5, y1: 7 },
+  ];
+  const distOf = (i, j) => DIST.find(d => i >= d.x0 && i <= d.x1 && j >= d.y0 && j <= d.y1) || DIST[5];
+  const LANDMARKS = { '1,2': 'Jacaranda Mall', '3,1': 'the City Park gate', '7,1': 'Muthaiga roundabout', '10,1': 'Kasarani stadium', '2,4': 'Yaya-side shops', '5,3': 'the Kencom bus stage', '7,4': 'the big Eastleigh mosque', '10,3': 'the Embakasi flyover', '1,6': 'Karen shopping centre', '4,6': 'Langata cemetery', '7,6': 'South B market', '10,6': 'the Industrial Area depot', '8,2': 'the river bridge', '3,5': 'Nyayo roundabout' };
+  const FAC = [
+    { k: 'H', n: 'City General Hospital', i: 5, j: 4 }, { k: 'H', n: 'Westside Mission Hospital', i: 1, j: 1 }, { k: 'H', n: 'Eastlands Hospital', i: 9, j: 5 },
+    { k: 'F', n: 'Central Fire Station', i: 4, j: 3 }, { k: 'F', n: 'Westlands Fire Station', i: 2, j: 0 }, { k: 'F', n: 'Embakasi Fire Station', i: 10, j: 4 },
+    { k: 'P', n: 'Central Police Station', i: 6, j: 3 }, { k: 'P', n: 'Kilimani Police Post', i: 1, j: 4 }, { k: 'P', n: 'Kasarani Police Post', i: 9, j: 1 }, { k: 'P', n: 'Langata Police Post', i: 4, j: 6 },
+    { k: 'A', n: 'Kasarani Ambulance Base', i: 8, j: 1 },
+  ];
+  const TYPES = { ALS: { c: '#f87171', n: 'ALS ambulance' }, BLS: { c: '#f472b6', n: 'BLS ambulance' }, FIRE: { c: '#fb923c', n: 'Fire engine' }, RESCUE: { c: '#facc15', n: 'Rescue unit' }, POLICE: { c: '#60a5fa', n: 'Police car' } };
+  const UNIT_DEF = [
+    ['A1', 'ALS', 5, 4], ['A2', 'ALS', 9, 5], ['B1', 'BLS', 1, 1], ['B2', 'BLS', 5, 4], ['B3', 'BLS', 8, 1],
+    ['E1', 'FIRE', 4, 3], ['E2', 'FIRE', 2, 0], ['E3', 'FIRE', 10, 4], ['R1', 'RESCUE', 4, 3],
+    ['P1', 'POLICE', 6, 3], ['P2', 'POLICE', 1, 4], ['P3', 'POLICE', 9, 1], ['P4', 'POLICE', 4, 6],
+  ];
+  const SPEED_MIN = 35, SPEED_MAJ = 60; // km/h
+  const node = (i, j) => j * NX + i;
+  const edgeSpeed = (a, b) => { const ai = a % NX, aj = Math.floor(a / NX), bi = b % NX, bj = Math.floor(b / NX); return (aj === bj && MAJ_J.has(aj)) || (ai === bi && MAJ_I.has(ai)) ? SPEED_MAJ : SPEED_MIN; };
+  const edgeTime = (a, b) => BLOCK / edgeSpeed(a, b) * 3600; // s
+  function nbrs(n) { const i = n % NX, j = Math.floor(n / NX), r = []; if (i > 0) r.push(n - 1); if (i < NX - 1) r.push(n + 1); if (j > 0) r.push(n - NX); if (j < NY - 1) r.push(n + NX); return r; }
+  function route(from, to) {
+    const N = NX * NY, d = new Array(N).fill(Infinity), prev = new Array(N).fill(-1), done = new Array(N).fill(false);
+    d[from] = 0;
+    for (let k = 0; k < N; k++) {
+      let u = -1, best = Infinity; for (let v = 0; v < N; v++) if (!done[v] && d[v] < best) { best = d[v]; u = v; }
+      if (u < 0 || u === to) break; done[u] = true;
+      for (const v of nbrs(u)) { const nd = d[u] + edgeTime(u, v); if (nd < d[v]) { d[v] = nd; prev[v] = u; } }
+    }
+    const path = []; for (let v = to; v >= 0; v = prev[v]) { path.unshift(v); if (v === from) break; }
+    return { path, t: d[to] };
+  }
+
+  /* ======================= CALL TEMPLATES ======================= */
+  const T = [
+    { id: 'arrest', label: 'Cardiac arrest', prio: 1, need: [['ALS']], opt: ['FIRE'], pai: 'cpr', model: 'arrest', w: [1, 1.2, 1.4], scene: 15, hosp: true,
+      open: ['My husband has collapsed in the sitting room. He is not responding.', 'Please! My husband just fell down, he won\'t wake up!', 'HELP! He\'s dying! Come quickly, please, please!'],
+      a: { what: 'He was watching the news and just slumped over. He\'s 58.', conscious: 'No. I\'m shaking him and shouting. Nothing.', breathing: 'He\'s… making a gasping, snoring sound every few seconds. Is that breathing?', casualties: 'Just him.', hazards: 'No, nothing like that.', trapped: 'No.', weapons: 'No.' }, key: ['conscious', 'breathing'] },
+    { id: 'choke', label: 'Choking child', prio: 1, need: [['ALS']], opt: [], pai: 'choke', model: 'arrest', w: [.6, .6, .7], scene: 12, hosp: true,
+      open: ['My daughter is choking on a sweet, she can\'t breathe.', 'My baby is choking! She can\'t breathe!', 'SHE CAN\'T BREATHE! HELP ME!'],
+      a: { what: 'She put a hard sweet in her mouth and now she can\'t breathe. She\'s three.', conscious: 'Yes, she\'s awake but going blue around the lips.', breathing: 'She\'s not coughing properly, just making a squeaky noise.', casualties: 'Just her.', hazards: 'No.', trapped: 'No.', weapons: 'No.' }, key: ['conscious', 'breathing'] },
+    { id: 'rta', label: 'Road crash with entrapment', prio: 1, need: [['ALS', 'BLS'], ['RESCUE', 'FIRE'], ['POLICE']], opt: ['BLS', 'ALS'], pai: 'rta', model: 'trauma', w: [.7, 1, 1.3], scene: 25, hosp: true,
+      open: ['There\'s been an accident, a matatu hit a car. The car driver is stuck.', 'Accident! The driver is trapped, there\'s petrol everywhere!', 'They\'re trapped! Petrol is leaking, it\'s going to burn! HURRY!'],
+      a: { what: 'A matatu went through the junction and hit a saloon car. The car\'s door is crushed.', conscious: 'The driver is awake and screaming that his legs hurt.', breathing: 'Yes, he\'s breathing, he\'s talking.', casualties: 'The car driver is stuck and two matatu passengers are sitting on the road holding their heads.', hazards: 'Petrol is leaking onto the road and traffic is still going past.', trapped: 'Yes, the car driver. His legs are pinned.', weapons: 'No.' }, key: ['trapped', 'hazards', 'casualties'] },
+    { id: 'housefire', label: 'House fire, person inside', prio: 1, need: [['FIRE'], ['ALS', 'BLS']], opt: ['POLICE', 'RESCUE'], pai: 'fire', model: 'fire', w: [.6, .8, 1], scene: 30, hosp: true,
+      open: ['The flat next door is on fire. I think my neighbour is still inside.', 'Fire! Fire in the flats! The old lady hasn\'t come out!', 'EVERYTHING IS BURNING! She\'s still inside! HELP!'],
+      a: { what: 'Smoke is pouring out of the window of the second-floor flat. Flames in the kitchen.', conscious: 'I don\'t know, I can\'t see her. She\'s 80 and walks with a stick.', breathing: 'I don\'t know, she\'s inside.', casualties: 'One person may be inside. Everyone else is outside.', hazards: 'Thick black smoke on the stairs. There may be a gas cylinder in the kitchen.', trapped: 'I think she\'s trapped in her flat.', weapons: 'No.' }, key: ['trapped', 'hazards'] },
+    { id: 'kitchen', label: 'Small kitchen fire, out', prio: 3, need: [['FIRE']], opt: [], pai: 'fire', model: 'minor', w: [.8, .6, .5], scene: 12, hosp: false,
+      open: ['A pan caught fire in my kitchen. I covered it with a wet towel and it\'s out, but there\'s smoke.', 'There was a fire in my kitchen. I think it\'s out but I\'m not sure.', 'Fire! Fire! Oh, it\'s out, I think, but the smoke!'],
+      a: { what: 'Cooking oil caught fire. I put a damp towel over the pan and switched off the gas.', conscious: 'Everyone is fine and talking.', breathing: 'We\'re all breathing fine, we went outside.', casualties: 'Nobody is hurt.', hazards: 'Some smoke in the kitchen. The gas is switched off.', trapped: 'No, we\'re all outside.', weapons: 'No.' }, key: ['casualties', 'hazards'] },
+    { id: 'stroke', label: 'Stroke symptoms', prio: 2, need: [['ALS']], opt: [], pai: 'stroke', model: 'time', w: [1, 1, .9], scene: 15, hosp: true,
+      open: ['My mother\'s face looks droopy and her speech is slurred.', 'Something is wrong with my mum, she can\'t talk properly!', 'Mum is having a fit or something! Her face! Please come!'],
+      a: { what: 'About twenty minutes ago her face drooped on one side and she can\'t lift her right arm.', conscious: 'She\'s awake but confused.', breathing: 'Yes, normally.', casualties: 'Just her. She\'s 67.', hazards: 'No.', trapped: 'No.', weapons: 'No.' }, key: ['conscious', 'breathing'] },
+    { id: 'fall', label: 'Fall with leg injury', prio: 3, need: [['BLS', 'ALS']], opt: [], pai: 'trauma', model: 'minor', w: [1.2, 1, .8], scene: 15, hosp: true,
+      open: ['My son fell off a ladder and his leg looks broken.', 'My son fell! His leg is bent the wrong way!', 'His leg! Oh God, his leg! Come quickly!'],
+      a: { what: 'He was painting and fell about two metres. His lower leg is bent and swollen.', conscious: 'Yes, he\'s awake and talking, in a lot of pain.', breathing: 'Yes, breathing normally.', casualties: 'Just him. He\'s 24.', hazards: 'No.', trapped: 'No.', weapons: 'No.' }, key: ['conscious', 'breathing'] },
+    { id: 'burglary', label: 'Burglary in progress', prio: 2, need: [['POLICE']], opt: [], pai: 'hide', model: 'crime', w: [.8, 1, 1], scene: 20, hosp: false, weaponVar: true,
+      open: ['(whispering) Someone is breaking into my house. I can hear them downstairs.', '(whispering) There\'s someone in my house, please send police.', '(whispering, crying) They\'re in the house, they\'re going to find me…'],
+      a: { what: 'I heard the window break. Now someone is moving around in the living room.', conscious: 'I\'m fine, I\'m hiding upstairs.', breathing: 'I\'m fine.', casualties: 'Nobody is hurt yet. I\'m alone.', hazards: 'I don\'t know.', trapped: 'I\'m locked in the bedroom.', weapons: 'I didn\'t see a weapon.' }, key: ['weapons'] },
+    { id: 'stab', label: 'Stabbing, severe bleeding', prio: 1, need: [['ALS'], ['POLICE']], opt: ['BLS'], pai: 'bleed', model: 'trauma', w: [.6, .9, 1.3], scene: 20, hosp: true,
+      open: ['A man has been stabbed outside the bar. He\'s bleeding a lot.', 'Someone stabbed him! There\'s blood everywhere!', 'HE\'S BLEEDING TO DEATH! HELP!'],
+      a: { what: 'There was a fight and another man stabbed him in the thigh, then ran off.', conscious: 'He\'s awake but going pale and sleepy.', breathing: 'Yes, fast breathing.', casualties: 'One man stabbed.', hazards: 'The attacker ran towards the market. People are still shouting.', trapped: 'No.', weapons: 'The attacker had a knife. He ran away with it.' }, key: ['conscious', 'weapons'] },
+    { id: 'gas', label: 'Gas leak in building', prio: 2, need: [['FIRE']], opt: ['POLICE'], pai: 'gas', model: 'fire', w: [.6, .7, .8], scene: 20, hosp: false,
+      open: ['There\'s a strong smell of gas in our block of flats.', 'I can smell gas everywhere in the corridor!', 'Gas! It\'s going to explode! Help us!'],
+      a: { what: 'The corridor on the third floor smells strongly of gas, near a neighbour\'s door.', conscious: 'Everyone is fine.', breathing: 'Some people feel dizzy.', casualties: 'No one injured.', hazards: 'Strong gas smell. Children are playing in the corridor.', trapped: 'No.', weapons: 'No.' }, key: ['hazards'] },
+    { id: 'diabetic', label: 'Diabetic emergency', prio: 2, need: [['BLS', 'ALS']], opt: [], pai: 'sugar', model: 'time', w: [.8, .7, .6], scene: 15, hosp: true,
+      open: ['My dad is diabetic and he\'s very sweaty and confused.', 'My dad is diabetic and he\'s acting strange!', 'Dad isn\'t making sense! He\'s diabetic! Help!'],
+      a: { what: 'He took his insulin but skipped lunch. Now he\'s sweaty, shaky and confused.', conscious: 'He\'s awake but confused.', breathing: 'Yes, normally.', casualties: 'Just him. He\'s 61.', hazards: 'No.', trapped: 'No.', weapons: 'No.' }, key: ['conscious', 'breathing'] },
+    { id: 'flood', label: 'Person stranded in floodwater', prio: 1, need: [['RESCUE'], ['ALS', 'BLS']], opt: ['POLICE', 'FIRE'], pai: 'water', model: 'trauma', w: [.3, .5, .9], scene: 30, hosp: true,
+      open: ['A man is standing on the roof of his car in the flooded river.', 'A car is stuck in the river! The man is on the roof!', 'The water is taking him! HURRY!'],
+      a: { what: 'He tried to drive across the river crossing and the car got stuck. The water is rising.', conscious: 'Yes, he\'s waving and shouting.', breathing: 'Yes.', casualties: 'One man.', hazards: 'Fast-flowing brown water, rising quickly.', trapped: 'He\'s stuck on the car roof, he can\'t reach the bank.', weapons: 'No.' }, key: ['hazards', 'trapped'] },
+    { id: 'labour', label: 'Imminent childbirth', prio: 2, need: [['ALS']], opt: ['BLS'], pai: 'birth', model: 'time', w: [.5, .5, .4], scene: 20, hosp: true,
+      open: ['My wife is in labour, the contractions are very close.', 'The baby is coming! Now! What do I do?', 'THE BABY IS COMING! PLEASE!'],
+      a: { what: 'Contractions are two minutes apart and she says she needs to push.', conscious: 'Yes, she\'s awake.', breathing: 'Yes.', casualties: 'My wife. It\'s her second baby.', hazards: 'No.', trapped: 'No.', weapons: 'No.' }, key: ['conscious'] },
+    { id: 'bump', label: 'Minor collision, no injuries', prio: 4, need: [['POLICE']], opt: [], pai: null, model: 'minor', w: [1, .9, .7], scene: 15, hosp: false,
+      open: ['Someone reversed into my car at the market and won\'t give me their details.', 'A driver hit my car and is refusing to give insurance details!', 'This man hit my car and he\'s shouting at me!'],
+      a: { what: 'A pickup reversed into my car in the car park. Only the bumper is damaged.', conscious: 'Everyone\'s fine.', breathing: 'Yes, everyone\'s fine.', casualties: 'Nobody is hurt.', hazards: 'No, the cars are parked.', trapped: 'No.', weapons: 'No, he\'s just arguing.' }, key: ['casualties'] },
+    { id: 'noise', label: 'Noise complaint', prio: 4, need: [['POLICE']], opt: [], pai: null, model: 'minor', w: [1, .7, .5], scene: 10, hosp: false,
+      open: ['My neighbours have had very loud music since ten o\'clock.', 'The music next door is unbearable, I have work tomorrow!', 'I can\'t take this music anymore!'],
+      a: { what: 'A party next door with very loud music. It\'s been going for hours.', conscious: 'Nobody is hurt.', breathing: 'Yes.', casualties: 'Nobody is hurt.', hazards: 'No.', trapped: 'No.', weapons: 'No, it\'s just a party.' }, key: [] },
+  ];
+  const Q = [['address', 'map-pin', 'What is the address of the emergency?'], ['callback', 'phone', 'What number are you calling from?'], ['what', 'message-circle', 'Tell me exactly what happened.'], ['conscious', 'eye', 'Is the patient awake?'], ['breathing', 'wind', 'Is the patient breathing normally?'], ['casualties', 'users', 'How many people are hurt?'], ['hazards', 'flame', 'Are there any hazards: fire, fuel, gas, wires?'], ['trapped', 'lock', 'Is anyone trapped?'], ['weapons', 'swords', 'Are there any weapons involved?']];
+  const PAI = {
+    cpr: { t: 'CPR (adult, compression-only)', s: ['Put the phone on speaker and kneel beside him.', 'Lay him flat on his back on the floor.', 'Put the heel of one hand in the centre of his chest, the other hand on top.', 'Push down hard and fast, 5 to 6 centimetres, then let the chest come back up.', 'Count out loud with me: one, two, three, four… at 100 to 120 a minute.', 'Is there a defibrillator (AED) nearby? Send someone for it.', 'Don\'t stop until the ambulance crew takes over.'], metro: true },
+    choke: { t: 'Choking (child over 1 year)', s: ['Is she coughing? If she can\'t cough or breathe we will help her now.', 'Lean her forward and give up to 5 sharp blows between the shoulder blades with the heel of your hand.', 'If that doesn\'t work, stand behind her and give up to 5 abdominal thrusts: fist above the belly button, pull sharply in and up.', 'Keep alternating 5 back blows and 5 thrusts.', 'If she becomes unresponsive, lay her down and we will start CPR.'] },
+    rta: { t: 'Road crash safety', s: ['Stay off the road and keep well back from the traffic.', 'Don\'t let anyone smoke or start the cars: there is fuel on the road.', 'Don\'t move the trapped driver unless there is fire. Keep talking to him.', 'If you can, turn on hazard lights and warn oncoming traffic from a safe place.'] },
+    fire: { t: 'Fire safety', s: ['Get everyone out of the building now and close doors behind you.', 'Stay low under the smoke and use the stairs, not the lift.', 'Do not go back inside for anyone or anything.', 'Wait at a safe distance and tell the fire crew where she was last seen.'] },
+    stroke: { t: 'Suspected stroke', s: ['Note the exact time her symptoms started.', 'Keep her sitting or lying comfortably; don\'t leave her alone.', 'Don\'t give her anything to eat or drink.', 'Gather her medicines and unlock the door for the crew.'] },
+    trauma: { t: 'Injury care', s: ['Don\'t move him; keep the leg still in the position you found it.', 'Keep him warm with a blanket.', 'Nothing to eat or drink in case he needs surgery.', 'Tell me if anything changes.'] },
+    hide: { t: 'Personal safety', s: ['Stay where you are and keep the door locked.', 'Put your phone on silent and keep the line open.', 'Do not confront the intruder.', 'Tell me if you hear them coming towards you.'] },
+    bleed: { t: 'Severe bleeding', s: ['Get a clean cloth or clothing and press it firmly on the wound.', 'Keep pressing hard. Don\'t lift it to look.', 'If blood soaks through, put more cloth on top and keep pressing.', 'Lay him down and keep him warm. Tell me if he stops responding.'] },
+    gas: { t: 'Gas leak', s: ['Don\'t switch any lights or appliances on or off.', 'Don\'t use phones or lighters in the building.', 'If it\'s safe, open windows on your way out.', 'Get everyone out and wait away from the building.'] },
+    sugar: { t: 'Low blood sugar', s: ['Is he awake enough to swallow safely?', 'If yes, give him a sugary drink, juice or sweets.', 'Sit him down and stay with him.', 'If he becomes drowsy or stops responding, tell me immediately.'] },
+    water: { t: 'Water rescue', s: ['Don\'t go into the water: it is faster than it looks.', 'Keep your eyes on him and tell me if he moves.', 'If you have a rope or something that floats, throw it, don\'t go in.', 'Keep others back from the bank.'] },
+    birth: { t: 'Emergency childbirth', s: ['Help her lie down on a clean towel or sheet.', 'Get clean towels and a blanket ready.', 'Don\'t pull the baby; support the head as it comes.', 'When the baby is born, dry it and place it on her chest, skin to skin, and cover them both.'] },
+  };
+  const TARGET = { 1: 8, 2: 15, 3: 30, 4: 60 }; // sim minutes
+
+  /* ======================= STATE ======================= */
+  const DIFF = [{ n: 'Quiet night', gap: 330 }, { n: 'Weekday', gap: 240 }, { n: 'Major event', gap: 160 }]; // mean sim seconds between calls
+  const SHIFT = 3600; // sim seconds
+  let diff = 1, tc = 10, running = false, paused = false, ended = false;
+  let S;
+  function newShift() {
+    S = { t: 0, rt: 0, nextCall: 15, calls: [], active: null, units: [], incidents: [], busyTime: 0, idSeq: 1, log: [], taps: [], seed: 1 };
+    S.units = UNIT_DEF.map(([id, type, i, j]) => ({ id, type, base: node(i, j), pos: node(i, j), x: i, y: j, state: 'avail', path: null, seg: 0, prog: 0, inc: null, timer: 0, busy: 0 }));
+  }
+  const rnd = () => Math.random();
+  function pickTemplate() {
+    const ws = T.map(t => t.w[diff]); let r = rnd() * ws.reduce((a, b) => a + b, 0);
+    for (let k = 0; k < T.length; k++) { r -= ws[k]; if (r <= 0) return T[k]; } return T[0];
+  }
+  function newCall() {
+    const tp = pickTemplate();
+    const facNodes = new Set(FAC.map(f => node(f.i, f.j)));
+    let i, j, n; do { i = 1 + Math.floor(rnd() * (NX - 2)); j = Math.floor(rnd() * NY); n = node(i, j); } while (facNodes.has(n) || S.incidents.some(x => x.node === n));
+    const panic = Math.min(2, Math.floor(rnd() * (diff === 2 ? 3 : 2.6)));
+    const c = { id: S.idSeq++, tp, node: n, i, j, panic, ring: S.rt, ringSim: S.t, answered: null, asked: new Set(), tx: [], prio: null, units: [], firstDispatch: null, firstArrive: null, cprStart: null, paiSaid: new Set(), state: 'ring', addrKnown: false, reassured: 0, weapon: false, ended: false, outcome: null, dispatchNotes: [], addrFirst: null, abandoned: false };
+    if (tp.weaponVar && rnd() < .45) { c.weapon = true; c.prioEff = 1; } else c.prioEff = tp.prio;
+    S.calls.push(c);
+    try { const ac = SL.audio(); if (ac && ac.state === 'running') ringTone(ac); } catch (e) {}
+    renderQueue();
+  }
+  function ringTone(ac) { [0, .25].forEach(dt => { const o = ac.createOscillator(), g = ac.createGain(); o.type = 'sine'; o.frequency.value = 760; g.gain.value = .0001; o.connect(g).connect(ac.destination); const t0 = ac.currentTime + dt; g.gain.setValueAtTime(.0001, t0); g.gain.exponentialRampToValueAtTime(.05, t0 + .02); g.gain.exponentialRampToValueAtTime(.0001, t0 + .2); o.start(t0); o.stop(t0 + .22); }); }
+  const addrStr = c => `${AVE[c.i]} and ${RD[c.j]}, ${distOf(c.i, c.j).n}`;
+  function landmarkNear(c) { let best = null, bd = 99; for (const k in LANDMARKS) { const [a, b] = k.split(',').map(Number); const d = Math.abs(a - c.i) + Math.abs(b - c.j); if (d < bd) { bd = d; best = LANDMARKS[k]; } } return bd <= 2 ? best : null; }
+
+  /* ======================= CALL HANDLING ======================= */
+  function answer(id) {
+    const c = S.calls.find(x => x.id === id); if (!c || c.state !== 'ring') return;
+    if (S.active && !S.active.ended) { SL.toast('Finish or hold the current call first (End call).', 'warn'); return; }
+    c.state = 'live'; c.answered = S.rt; S.active = c;
+    c.tx.push(['s', `Call answered after ${Math.round(c.answered - c.ring)} s`]);
+    c.tx.push(['d', 'Emergency services. What is the address of your emergency?']);
+    const lm = landmarkNear(c);
+    c.tx.push(['c', c.tp.open[c.panic] + (lm && c.panic < 2 ? ` We're near ${lm}.` : '')]);
+    renderQueue(); renderCall();
+  }
+  function ask(k) {
+    const c = S.active; if (!c) return;
+    const qq = Q.find(x => x[0] === k);
+    c.tx.push(['d', qq[2]]);
+    if (!c.asked.size) c.addrFirst = k === 'address';
+    c.asked.add(k);
+    let ans;
+    if (k === 'address') {
+      if (c.panic >= 2) { ans = `I don't know! ${distOf(c.i, c.j).n}… near ${landmarkNear(c) || 'the main road'}! Just come!`; }
+      else { ans = `It's the corner of ${AVE[c.i]} and ${RD[c.j]}, in ${distOf(c.i, c.j).n}.`; c.addrKnown = true; c.tx.push(['c', ans]); c.tx.push(['s', 'Address verified · incident plotted on map']); renderCall(); return; }
+    } else if (k === 'callback') ans = `It's 07${String(10 + (c.id * 37) % 89)} ${String(100 + (c.id * 211) % 899)} ${String(100 + (c.id * 97) % 899)}.`;
+    else if (k === 'weapons' && c.weapon) ans = 'I saw him through the gap… he has a panga!';
+    else if (k === 'hazards' && c.tp.id === 'burglary' && c.weapon) ans = 'I think he has a panga, I saw it shine.';
+    else ans = c.tp.a[k] || 'I don\'t know.';
+    if (c.panic >= 2 && k !== 'address' && rnd() < .5) ans = 'Please just send someone! ' + ans;
+    c.tx.push(['c', ans]);
+    renderCall();
+  }
+  function reassure() {
+    const c = S.active; if (!c) return;
+    c.reassured++;
+    c.tx.push(['d', c.panic >= 2 ? 'Listen to me. I am going to help you. Take a breath. I need you to answer my questions so help can find you.' : 'You\'re doing well. Help is being arranged. Stay on the line with me.']);
+    if (c.panic > 0) c.panic--;
+    c.tx.push(['c', c.panic >= 1 ? '(breathing hard) Okay… okay.' : 'Okay. I\'m listening.']);
+    renderCall();
+  }
+  function setPrio(p) { const c = S.active; if (!c) return; c.prio = p; c.tx.push(['s', 'Priority set: P' + p]); renderCall(); }
+  function etaFor(u, n) { return route(u.pos, n).t + (u.state === 'avail' ? 60 : 0); }
+  function dispatch(uid) {
+    const c = S.active;
+    const u = S.units.find(x => x.id === uid);
+    if (!c) { SL.toast('Answer a call first.', 'warn'); return; }
+    if (!c.addrKnown) { SL.toast('Confirm the address before dispatching.', 'warn'); return; }
+    if (!c.prio) { SL.toast('Set a priority first (P1–P4).', 'warn'); return; }
+    if (!(u.state === 'avail' || u.state === 'return')) { SL.toast(`${u.id} is busy (${u.state}).`, 'warn'); return; }
+    if (c.units.includes(uid)) return;
+    // nearest-unit check
+    const acceptable = new Set(c.tp.need.flat().concat(c.tp.opt));
+    if (acceptable.has(u.type)) {
+      const slot = c.tp.need.find(s => s.includes(u.type)) || [u.type];
+      const myEta = etaFor(u, c.node);
+      const best = S.units.filter(x => slot.includes(x.type) && (x.state === 'avail' || x.state === 'return') && !c.units.includes(x.id)).reduce((m, x) => Math.min(m, etaFor(x, c.node)), Infinity);
+      if (myEta > best + 90) c.dispatchNotes.push(`${u.id} took ${mmss(myEta)} when a suitable unit could arrive in ${mmss(best)}.`);
+    }
+    const r = route(u.pos, c.node);
+    u.path = r.path; u.seg = 0; u.prog = 0; u.inc = c.id; u.timer = u.state === 'avail' ? 60 : 0; u.state = 'enroute';
+    c.units.push(uid);
+    if (c.firstDispatch === null) c.firstDispatch = S.rt;
+    c.tx.push(['s', `${u.id} (${TYPES[u.type].n}) dispatched · ETA ${mmss(r.t + u.timer)}`]);
+    if (c.tx.filter(x => x[0] === 'd' && /Help is on the way/.test(x[1])).length === 0) c.tx.push(['d', 'Help is on the way. Stay on the line.']);
+    if (!S.incidents.includes(c)) S.incidents.push(c);
+    renderCall(); renderUnits();
+  }
+  function sayPai(idx) {
+    const c = S.active; if (!c || !c.tp.pai) return;
+    const p = PAI[c.tp.pai];
+    c.paiSaid.add(idx);
+    c.tx.push(['d', p.s[idx]]);
+    const resp = idx === p.s.length - 1 ? 'Okay. I won\'t stop.' : ['Okay.', 'Yes, I\'m doing it.', 'Okay, okay.', 'Done.'][idx % 4];
+    c.tx.push(['c', resp]);
+    if (c.tp.pai === 'cpr' && idx >= 3 && c.cprStart === null) { c.cprStart = S.t; c.tx.push(['s', 'Compressions started']); }
+    if (c.tp.pai === 'choke' && idx >= 1 && c.cprStart === null) c.cprStart = S.t;
+    if (c.tp.pai !== 'cpr' && c.tp.pai !== 'choke' && c.cprStart === null && c.paiSaid.size >= 2) c.cprStart = S.t;
+    renderCall();
+  }
+  function tap() {
+    const now = performance.now(); S.taps.push(now); if (S.taps.length > 9) S.taps.shift();
+    const c = S.active; const el = $('#bpm');
+    if (S.taps.length >= 4) {
+      const iv = []; for (let k = 1; k < S.taps.length; k++) iv.push(S.taps[k] - S.taps[k - 1]);
+      const bpm = 60000 / (iv.reduce((a, b) => a + b, 0) / iv.length);
+      if (el) { el.textContent = Math.round(bpm) + ' /min'; el.style.color = bpm >= 100 && bpm <= 120 ? '#86efac' : '#fca5a5'; }
+      if (c) { c.bpm = bpm; if (bpm >= 100 && bpm <= 120 && S.taps.length >= 9) c.bpmOk = true; }
+    }
+    try { const ac = SL.audio(); if (ac) { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = 1200; g.gain.value = .04; o.connect(g).connect(ac.destination); o.start(); g.gain.exponentialRampToValueAtTime(.0001, ac.currentTime + .05); o.stop(ac.currentTime + .06); } } catch (e) {}
+  }
+  function endCall() {
+    const c = S.active; if (!c) return;
+    if (!c.units.length && !confirmNoDispatch) { confirmNoDispatch = true; SL.toast('No unit dispatched yet. Click End call again to close it without dispatch.', 'warn'); return; }
+    confirmNoDispatch = false;
+    c.ended = true; c.state = c.units.length ? 'dispatched' : 'closed';
+    c.tx.push(['s', 'Call ended']);
+    if (!c.units.length) c.outcome = { score: c.tp.prio === 4 ? 40 : 0, txt: 'No unit sent' };
+    S.active = null; renderQueue(); renderCall();
+  }
+  let confirmNoDispatch = false;
+
+  /* ======================= SIMULATION ======================= */
+  function nearestHospital(n) { let best = null, bt = Infinity; FAC.filter(f => f.k === 'H').forEach(f => { const t = route(n, node(f.i, f.j)).t; if (t < bt) { bt = t; best = f; } }); return best; }
+  function step(dtReal) {
+    const dt = dtReal * tc; S.t += dt; S.rt += dtReal;
+    // arrivals
+    if (S.t >= S.nextCall && S.t < SHIFT - 120) { newCall(); S.nextCall = S.t + DIFF[diff].gap * (0.45 + rnd() * 1.1); }
+    // queue escalation (real seconds)
+    S.calls.forEach(c => {
+      if (c.state === 'ring') {
+        const w = S.rt - c.ring;
+        if (w > 30 && !c.redial) { c.redial = true; c.panic = Math.min(2, c.panic + 1); SL.toast(`Caller ${c.id} hung up and redialled: more distressed.`, 'warn'); }
+        if (w > 75) { c.state = 'abandoned'; c.abandoned = true; c.outcome = { score: 0, txt: 'Call abandoned in queue' }; SL.toast(`Call ${c.id} abandoned after ${Math.round(w)} s in the queue.`, 'bad'); renderQueue(); }
+      }
+    });
+    // units
+    S.units.forEach(u => {
+      if (u.state !== 'avail') u.busy += dt;
+      if (u.timer > 0) { u.timer -= dt; return; }
+      if (u.path && u.path.length > 1 && u.seg < u.path.length - 1) {
+        let rem = dt;
+        while (rem > 0 && u.seg < u.path.length - 1) {
+          const a = u.path[u.seg], b = u.path[u.seg + 1], et = edgeTime(a, b);
+          const need = (1 - u.prog) * et;
+          if (rem >= need) { rem -= need; u.seg++; u.prog = 0; u.pos = b; } else { u.prog += rem / et; rem = 0; }
+        }
+        const a = u.path[u.seg], b = u.path[Math.min(u.seg + 1, u.path.length - 1)];
+        u.x = SL.lerp(a % NX, b % NX, u.prog); u.y = SL.lerp(Math.floor(a / NX), Math.floor(b / NX), u.prog);
+        if (u.seg >= u.path.length - 1) arrive(u);
+      } else if (u.path) arrive(u);
+    });
+    // incidents
+    S.incidents.forEach(c => {
+      if (c.resolved) return;
+      const ageMin = (S.t - c.ringSim) / 60;
+      if (c.tp.model === 'fire' && !c.escalated && ageMin > 10 && !c.units.some(id => { const u = S.units.find(x => x.id === id); return u.type === 'FIRE' && u.state === 'scene'; })) { c.escalated = true; SL.toast(`Incident ${c.id} (${c.tp.label}) has escalated: fire spread.`, 'bad'); }
+      if (c.tp.model === 'crime' && !c.escalated && ageMin > 12 && !c.units.some(id => S.units.find(x => x.id === id).state === 'scene')) { c.escalated = true; SL.toast(`Incident ${c.id}: suspect has left the scene.`, 'warn'); }
+    });
+    // pending calls not yet dispatched (in queue or live) also escalate fires
+    if (S.t >= SHIFT) endShift();
+  }
+  function arrive(u) {
+    const c = S.calls.find(x => x.id === u.inc);
+    u.path = null;
+    if (u.state === 'enroute' && c) {
+      u.state = 'scene'; u.timer = c.tp.scene * 60;
+      if (c.firstArrive === null) c.firstArrive = S.t;
+      const crit = c.tp.need[0];
+      if (crit.includes(u.type) && c.critArrive == null) { c.critArrive = S.t; computeOutcome(c); }
+      afterScene(u, c);
+    } else if (u.state === 'transport') { u.state = 'handover'; u.timer = 10 * 60; u.after = 'return'; }
+    else if (u.state === 'return') { u.state = 'avail'; u.inc = null; u.pos = u.base; u.x = u.base % NX; u.y = Math.floor(u.base / NX); }
+    renderUnits();
+  }
+  function afterScene(u, c) {
+    u.after = (u.type === 'ALS' || u.type === 'BLS') && c.tp.hosp && !c.transported ? 'transport' : 'return';
+    if (u.after === 'transport') c.transported = u.id;
+  }
+  function tickTimers() {
+    S.units.forEach(u => {
+      if (u.timer <= 0 && !u.path && (u.state === 'scene' || u.state === 'handover')) {
+        const c = S.calls.find(x => x.id === u.inc);
+        if (u.after === 'transport') { const h = nearestHospital(u.pos); const r = route(u.pos, node(h.i, h.j)); u.path = r.path; u.seg = 0; u.prog = 0; u.state = 'transport'; u.hosp = h.n; }
+        else { const r = route(u.pos, u.base); u.path = r.path; u.seg = 0; u.prog = 0; u.state = 'return'; if (r.path.length <= 1) arrive(u); }
+        if (c && c.units.every(id => { const x = S.units.find(y => y.id === id); return x.state !== 'enroute' && x.state !== 'scene'; })) { c.resolved = true; if (!c.outcome) computeOutcome(c); }
+        renderUnits();
+      }
+    });
+  }
+  function computeOutcome(c) {
+    const arr = c.critArrive != null ? c.critArrive : (c.firstArrive != null ? c.firstArrive : S.t);
+    const resp = (arr - c.ringSim) / 60;
+    const tgt = TARGET[c.tp.prio];
+    if (c.tp.model === 'arrest') {
+      const cpr = c.cprStart != null ? Math.max(0, (c.cprStart - c.ringSim) / 60) : null;
+      let s = 70;
+      if (c.tp.id === 'choke') { s = 95; s -= cpr != null ? 6 * Math.min(cpr, resp) + 1.5 * Math.max(0, resp - cpr) : 6 * resp; }
+      else s -= cpr != null && cpr < resp ? 10 * cpr + 3.5 * (resp - cpr) : 10 * resp;
+      s = SL.clamp(s, 0, 100);
+      c.outcome = { score: c.tp.id === 'choke' ? s : SL.clamp(s / 70 * 100, 0, 100), txt: c.tp.id === 'choke' ? `Airway outcome: ${Math.round(s)}% chance of full recovery` : `Estimated survival ${Math.round(s)}% (crew arrived at ${SL.fmt(resp, 1)} min${cpr != null ? ', CPR from ' + SL.fmt(cpr, 1) + ' min' : ', no CPR'})`, surv: s };
+    } else {
+      let sc = resp <= tgt ? 100 : Math.max(10, 100 - (resp - tgt) / tgt * 80);
+      if (c.escalated) sc -= 30;
+      const covered = c.tp.need.every(slot => c.units.some(id => slot.includes(S.units.find(x => x.id === id).type)));
+      if (!covered) sc -= 25;
+      c.outcome = { score: SL.clamp(sc, 0, 100), txt: `${c.escalated ? (c.tp.model === 'crime' ? 'Suspect escaped. ' : 'Incident escalated. ') : ''}First critical unit on scene at ${SL.fmt(resp, 1)} min (target ${tgt})${covered ? '' : '; required resources incomplete'}` };
+    }
+  }
+
+  /* ======================= RENDER: MAP ======================= */
+  const cv = $('#cv');
+  let st = null, G = { ox: 0, oy: 0, bs: 40 };
+  st = SL.canvas(cv, (w, h) => layout(w, h));
+  function layout(w, h) { const narrow = w < 560, mx = narrow ? 22 : 34, my = narrow ? 88 : 50, mb = narrow ? 70 : 56; const bs = Math.min((w - 2 * mx) / (NX - 1), (h - my - mb) / (NY - 1)); G = { bs, ox: (w - bs * (NX - 1)) / 2, oy: my + ((h - my - mb) - bs * (NY - 1)) / 2 }; }
+  const P = (i, j) => [G.ox + i * G.bs, G.oy + j * G.bs];
+  let hover = null, pulse = 0;
+  function draw(time) {
+    if (!st) return;
+    const { ctx, w, h } = st;
+    ctx.clearRect(0, 0, w, h);
+    const g = ctx.createRadialGradient(w / 2, h / 2, 50, w / 2, h / 2, Math.max(w, h)); g.addColorStop(0, '#0a1326'); g.addColorStop(1, '#050913'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    // districts
+    DIST.forEach((d, k) => { const [x0, y0] = P(d.x0, d.y0), [x1, y1] = P(d.x1, d.y1); ctx.fillStyle = k % 2 ? 'rgba(96,165,250,.035)' : 'rgba(251,113,133,.035)'; ctx.fillRect(x0, y0, x1 - x0, y1 - y0); ctx.fillStyle = 'rgba(147,161,189,.32)'; ctx.font = `600 ${Math.max(9, Math.min(12, G.bs * .26))}px JetBrains Mono, monospace`; ctx.textAlign = 'center'; ctx.fillText(d.n.toUpperCase(), (x0 + x1) / 2, (y0 + y1) / 2 + 4); });
+    // river (decorative) across Muthaiga
+    ctx.strokeStyle = 'rgba(34,211,238,.25)'; ctx.lineWidth = Math.max(3, G.bs * .12); ctx.beginPath();
+    for (let k = 0; k <= 40; k++) { const fx = -0.5 + k / 40 * 12, fy = 2.0 + .35 * Math.sin(fx * 1.3); const [x, y] = P(fx, fy); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+    // roads
+    for (let j = 0; j < NY; j++) { const [x0, y] = P(0, j), [x1] = P(NX - 1, j); const maj = MAJ_J.has(j); ctx.strokeStyle = maj ? 'rgba(251,113,133,.55)' : 'rgba(147,161,189,.22)'; ctx.lineWidth = maj ? 4 : 1.6; if (maj) { ctx.shadowColor = '#fb7185'; ctx.shadowBlur = 8; } ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.shadowBlur = 0; }
+    for (let i = 0; i < NX; i++) { const [x, y0] = P(i, 0), [, y1] = P(i, NY - 1); const maj = MAJ_I.has(i); ctx.strokeStyle = maj ? 'rgba(251,113,133,.55)' : 'rgba(147,161,189,.22)'; ctx.lineWidth = maj ? 4 : 1.6; if (maj) { ctx.shadowColor = '#fb7185'; ctx.shadowBlur = 8; } ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke(); ctx.shadowBlur = 0; }
+    ctx.font = '500 10px JetBrains Mono, monospace'; ctx.fillStyle = 'rgba(251,113,133,.75)'; ctx.textAlign = 'left';
+    if (G.bs > 34) { const [, y3] = P(0, 3); ctx.fillText('UHURU HWY', G.ox + 4, y3 - 6); const [, y7] = P(0, 7); ctx.fillText('SOUTHERN BYPASS', G.ox + 4, y7 - 6); const [x5, y0] = P(5, 0); ctx.save(); ctx.translate(x5 + 12, y0 + 4); ctx.rotate(Math.PI / 2); ctx.fillText('MOI AVENUE', 0, 0); ctx.restore(); }
+    // facilities
+    FAC.forEach(f => { const [x, y] = P(f.i, f.j); const s = Math.max(9, G.bs * .2); ctx.save(); ctx.translate(x - s * 1.25, y - s * 1.25);
+      if (f.k === 'H') { ctx.fillStyle = '#fff'; rr(ctx, -s / 2, -s / 2, s, s, 3); ctx.fill(); ctx.fillStyle = '#ef4444'; ctx.fillRect(-s * .12, -s * .35, s * .24, s * .7); ctx.fillRect(-s * .35, -s * .12, s * .7, s * .24); }
+      else if (f.k === 'F') { ctx.fillStyle = '#fb923c'; ctx.beginPath(); ctx.moveTo(0, -s * .6); ctx.quadraticCurveTo(s * .6, 0, 0, s * .55); ctx.quadraticCurveTo(-s * .6, 0, 0, -s * .6); ctx.fill(); }
+      else if (f.k === 'P') { ctx.fillStyle = '#3b82f6'; ctx.beginPath(); ctx.moveTo(0, -s * .55); ctx.lineTo(s * .5, -s * .3); ctx.lineTo(s * .4, s * .25); ctx.lineTo(0, s * .55); ctx.lineTo(-s * .4, s * .25); ctx.lineTo(-s * .5, -s * .3); ctx.closePath(); ctx.fill(); }
+      else { ctx.fillStyle = '#f472b6'; rr(ctx, -s / 2, -s / 2, s, s, 3); ctx.fill(); ctx.fillStyle = '#06101f'; ctx.font = `700 ${s * .7}px JetBrains Mono`; ctx.textAlign = 'center'; ctx.fillText('A', 0, s * .25); }
+      ctx.restore(); });
+    if (!S) return;
+    // routes
+    S.units.forEach(u => { if (!u.path || u.seg >= u.path.length - 1) return; ctx.strokeStyle = TYPES[u.type].c; ctx.globalAlpha = .55; ctx.setLineDash([5, 5]); ctx.lineDashOffset = -time * 20; ctx.lineWidth = 2; ctx.beginPath(); const [sx, sy] = P(u.x, u.y); ctx.moveTo(sx, sy); for (let k = u.seg + 1; k < u.path.length; k++) { const [x, y] = P(u.path[k] % NX, Math.floor(u.path[k] / NX)); ctx.lineTo(x, y); } ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; });
+    // incidents (dispatched or live with address)
+    const shown = S.calls.filter(c => (c.addrKnown && !c.resolved && c.state !== 'abandoned'));
+    shown.forEach(c => {
+      const [x, y] = P(c.i, c.j); const col = c.prio ? ['#ef4444', '#f59e0b', '#eab308', '#22c55e'][c.prio - 1] : '#e6ecf7';
+      const ph = (time * 1.4 + c.id * .3) % 1;
+      ctx.strokeStyle = col; ctx.globalAlpha = 1 - ph; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 6 + ph * G.bs * .6, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+      ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 12; ctx.beginPath(); ctx.moveTo(x, y - 9); ctx.lineTo(x + 8, y + 6); ctx.lineTo(x - 8, y + 6); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+      ctx.fillStyle = '#06101f'; ctx.font = '700 9px JetBrains Mono'; ctx.textAlign = 'center'; ctx.fillText('!', x, y + 4);
+      ctx.font = '600 10px JetBrains Mono'; ctx.fillStyle = '#e6ecf7'; ctx.fillText(`#${c.id} ${c.prio ? 'P' + c.prio : ''}`, x, y + 19);
+      if (S.active === c) { ctx.strokeStyle = '#fff'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(x, y, 16, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+    });
+    // vague location for unknown address of active call
+    if (S.active && !S.active.addrKnown) { const d = distOf(S.active.i, S.active.j); const [x0, y0] = P(d.x0, d.y0), [x1, y1] = P(d.x1, d.y1); ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.setLineDash([6, 4]); ctx.strokeRect(x0 + 2, y0 + 2, x1 - x0 - 4, y1 - y0 - 4); ctx.setLineDash([]); ctx.fillStyle = 'rgba(255,255,255,.04)'; ctx.fillRect(x0, y0, x1 - x0, y1 - y0); }
+    // units
+    S.units.forEach(u => {
+      const [x, y] = P(u.x, u.y); const s = Math.max(15, Math.min(22, G.bs * .42));
+      const off = u.state === 'avail' ? unitOffset(u) : [0, 0];
+      const X = x + off[0], Y = y + off[1];
+      ctx.fillStyle = TYPES[u.type].c; ctx.globalAlpha = u.state === 'avail' ? 1 : .95;
+      if (u.state === 'enroute') { ctx.shadowColor = TYPES[u.type].c; ctx.shadowBlur = 12 + 6 * Math.sin(time * 10); }
+      rr(ctx, X - s / 2, Y - s / 2.6, s, s / 1.3, 4); ctx.fill(); ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+      ctx.strokeStyle = { avail: '#22c55e', enroute: '#fff', scene: '#ef4444', transport: '#a78bfa', handover: '#a78bfa', return: '#60a5fa' }[u.state]; ctx.lineWidth = u.state === 'avail' ? 1.5 : 2; rr(ctx, X - s / 2, Y - s / 2.6, s, s / 1.3, 4); ctx.stroke();
+      ctx.fillStyle = '#06101f'; ctx.font = `700 ${s * .48}px JetBrains Mono`; ctx.textAlign = 'center'; ctx.fillText(u.id, X, Y + s * .17);
+      if (u.state === 'enroute' && Math.sin(time * 12) > 0) { ctx.fillStyle = u.type === 'POLICE' ? '#3b82f6' : '#ef4444'; ctx.beginPath(); ctx.arc(X, Y - s / 2.6 - 2, 2.5, 0, 7); ctx.fill(); }
+      u._hx = X; u._hy = Y;
+      if (hover && hover.u === u && S.active && S.active.addrKnown && (u.state === 'avail' || u.state === 'return')) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(X, Y, s * .9, 0, 7); ctx.stroke(); }
+    });
+  }
+  function unitOffset(u) { const same = S.units.filter(v => v.state === 'avail' && v.pos === u.pos); const k = same.indexOf(u); const n = same.length; if (n <= 1) return [G.bs * .28, -G.bs * .22]; const s = Math.max(15, Math.min(22, G.bs * .42)); return [G.bs * .28 + (k - (n - 1) / 2) * (s + 3), -G.bs * .22 - (k % 2 ? 0 : 0)]; }
+  function rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+  function hit(px, py) {
+    if (!S) return null;
+    for (const u of S.units) if (u._hx != null && Math.hypot(px - u._hx, py - u._hy) < 14) return { u };
+    for (const f of FAC) { const [x, y] = P(f.i, f.j); if (Math.hypot(px - (x - G.bs * .25), py - (y - G.bs * .25)) < 12) return { f }; }
+    const c = S.calls.find(c => c.addrKnown && !c.resolved && (() => { const [x, y] = P(c.i, c.j); return Math.hypot(px - x, py - y) < 14; })()); if (c) return { c };
+    const i = Math.round((px - G.ox) / G.bs), j = Math.round((py - G.oy) / G.bs);
+    if (i >= 0 && i < NX && j >= 0 && j < NY && Math.hypot(px - P(i, j)[0], py - P(i, j)[1]) < 10) return { n: [i, j] };
+    return null;
+  }
+  const tip = $('#tip');
+  cv.addEventListener('pointermove', e => {
+    const p = SL.ptr(e, cv); hover = hit(p.x, p.y);
+    if (!hover) { tip.style.display = 'none'; return; }
+    let html = '';
+    if (hover.u) { const u = hover.u; html = `<b>${u.id}</b> ${TYPES[u.type].n}<br>${u.state}${u.hosp && u.state === 'transport' ? ' → ' + u.hosp : ''}`; if (S.active && S.active.addrKnown && (u.state === 'avail' || u.state === 'return')) html += `<br>ETA to #${S.active.id}: <b>${mmss(etaFor(u, S.active.node))}</b><br><span style="color:#86efac">Click to dispatch</span>`; }
+    else if (hover.f) html = `<b>${hover.f.n}</b>`;
+    else if (hover.c) html = `<b>#${hover.c.id} ${hover.c.tp.label}</b><br>${addrStr(hover.c)}<br>${hover.c.prio ? 'P' + hover.c.prio : 'no priority'} · units: ${hover.c.units.join(', ') || 'none'}`;
+    else if (hover.n) html = `${AVE[hover.n[0]]} / ${RD[hover.n[1]]}<br>${distOf(hover.n[0], hover.n[1]).n}`;
+    tip.innerHTML = html; tip.style.display = 'block';
+    const r = cv.getBoundingClientRect(); tip.style.left = Math.min(p.x + 14, r.width - 200) + 'px'; tip.style.top = Math.min(p.y + 14, r.height - 80) + 'px';
+  });
+  cv.addEventListener('pointerleave', () => { tip.style.display = 'none'; hover = null; });
+  cv.addEventListener('pointerdown', e => { const p = SL.ptr(e, cv); const h = hit(p.x, p.y); if (h && h.u) { if (S.active) dispatch(h.u.id); else SL.toast(`${h.u.id}: ${TYPES[h.u.type].n}, ${h.u.state}. Answer a call to dispatch.`, '', 2200); } });
+
+  /* ======================= RENDER: PANELS ======================= */
+  function renderQueue() {
+    const q = S.calls.filter(c => c.state === 'ring');
+    const live = S.calls.filter(c => c.state === 'live');
+    $('#queue').innerHTML = (live.map(c => `<div class="qcall" style="border-color:var(--accent)"><span class="led on"></span><div class="grow"><b>Call ${c.id}</b> · on the line<div class="mono">${c.addrKnown ? esc(addrStr(c)) : 'Location not yet confirmed'}</div></div></div>`).join('') +
+      q.map(c => `<div class="qcall ring"><span class="led bad"></span><div class="grow"><b>Call ${c.id}</b> · ringing<div class="mono" data-wait="${c.id}">waiting ${Math.round(S.rt - c.ring)} s</div></div><button class="btn sm primary" data-ans="${c.id}"><i data-lucide="phone"></i> Answer</button></div>`).join('')) || '<p class="small muted" style="margin:0">No calls waiting.</p>';
+    SL.refreshIcons($('#queue'));
+  }
+  function renderCall() {
+    const box = $('#callBox'), c = S.active;
+    if (!c) { box.innerHTML = '<p class="small muted" style="margin:0">No active call. Answer the next call in the queue.</p>'; return; }
+    const pai = c.tp.pai ? PAI[c.tp.pai] : null;
+    const showPai = pai && (c.asked.has('what') || c.asked.size >= 2);
+    box.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b>Call ${c.id}</b><span class="panic p${c.panic}">${['calm', 'anxious', 'hysterical'][c.panic]}</span></div>
+      <div class="tx" id="tx">${c.tx.map(([k, t]) => `<div class="${k}">${esc(t)}</div>`).join('')}</div>
+      <div class="qgrid">${Q.map(([k, ic, txt]) => `<button class="btn sm ${c.asked.has(k) ? 'asked' : ''}" data-q="${k}" title="${esc(txt)}"><i data-lucide="${ic}"></i> ${{ address: 'Address', callback: 'Call-back no.', what: 'What happened?', conscious: 'Awake?', breathing: 'Breathing normally?', casualties: 'How many hurt?', hazards: 'Hazards?', trapped: 'Anyone trapped?', weapons: 'Weapons?' }[k]}</button>`).join('')}
+        <button class="btn sm" data-reassure style="grid-column:1/-1;justify-content:center"><i data-lucide="hand-heart"></i> Reassure and calm the caller</button></div>
+      <div class="panel-title">Priority</div>
+      <div class="seg prio" id="prioSeg">${[1, 2, 3, 4].map(p => `<button data-v="${p}" class="${c.prio === p ? 'on' : ''}">P${p}</button>`).join('')}</div>
+      <div class="panel-title">Dispatched</div>
+      <div class="assigned">${c.units.map(id => { const u = S.units.find(x => x.id === id); return `<span style="border-color:${TYPES[u.type].c};color:${TYPES[u.type].c}">${id} · ${u.state}</span>`; }).join('') || '<span class="small muted" style="border:0;padding:0">None yet: click units on the map or the units board.</span>'}</div>
+      ${showPai ? `<div class="pai"><b class="small"><i data-lucide="heart-pulse" style="width:14px;height:14px;vertical-align:-2px;color:var(--accent)"></i> Pre-arrival: ${pai.t}</b><ol>${pai.s.map((s, k) => `<li data-pai="${k}" class="${c.paiSaid.has(k) ? 'said' : ''}">${esc(s)}</li>`).join('')}</ol>
+        ${pai.metro ? `<div class="metro"><button class="tap" id="tapBtn">TAP</button><div class="small">Tap in time as you count with the caller.<br>Rate: <b id="bpm" class="mono">${c.bpm ? Math.round(c.bpm) + ' /min' : '—'}</b> <span class="muted">(target 100–120)</span></div></div>` : ''}</div>` : ''}
+      <div class="btn-row" style="margin-top:10px"><button class="btn sm danger" id="endCall"><i data-lucide="phone-off"></i> End call</button></div>`;
+    SL.refreshIcons(box);
+    const tx = $('#tx'); tx.scrollTop = tx.scrollHeight;
+    renderUnits();
+  }
+  $('#queue').addEventListener('click', e => { const b = e.target.closest('[data-ans]'); if (b && running) answer(+b.dataset.ans); else if (b) SL.toast('Start the shift first.', 'warn'); });
+  $('#callBox').addEventListener('click', e => {
+    if (!running || paused) return;
+    const q = e.target.closest('[data-q]'); if (q) return ask(q.dataset.q);
+    if (e.target.closest('[data-reassure]')) return reassure();
+    const p = e.target.closest('#prioSeg button'); if (p) return setPrio(+p.dataset.v);
+    const pi = e.target.closest('[data-pai]'); if (pi) return sayPai(+pi.dataset.pai);
+    if (e.target.closest('#tapBtn')) return tap();
+    if (e.target.closest('#endCall')) return endCall();
+  });
+  function renderUnits() {
+    const c = S.active;
+    $('#units').innerHTML = `<tr><th>Unit</th><th>Type</th><th>Status</th><th>${c && c.addrKnown ? 'ETA #' + c.id : 'Location'}</th><th></th></tr>` + S.units.map(u => {
+      const free = u.state === 'avail' || u.state === 'return';
+      const eta = c && c.addrKnown && free ? mmss(etaFor(u, c.node)) : '';
+      const loc = distOf(Math.round(u.x), Math.round(u.y)).n;
+      return `<tr class="${c && c.units.includes(u.id) ? 'hl' : ''}"><td class="mono"><b>${u.id}</b></td><td><span class="ut" style="background:${TYPES[u.type].c}">${u.type}</span></td><td class="sts" style="color:${{ avail: '#86efac', enroute: '#fff', scene: '#fca5a5', transport: '#c4b5fd', handover: '#c4b5fd', return: '#93c5fd' }[u.state]}">${u.state}</td><td class="mono">${c && c.addrKnown ? eta : loc}</td><td>${c && c.addrKnown && free && !c.units.includes(u.id) ? `<button class="btn sm" data-disp="${u.id}">Send</button>` : ''}</td></tr>`;
+    }).join('');
+  }
+  $('#units').addEventListener('click', e => { const b = e.target.closest('[data-disp]'); if (b && running) dispatch(b.dataset.disp); });
+  function stats() {
+    const ans = S.calls.filter(c => c.answered != null), disp = S.calls.filter(c => c.firstDispatch != null), arr = S.calls.filter(c => c.firstArrive != null);
+    const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN;
+    const aT = avg(ans.map(c => c.answered - c.ring)), dT = avg(disp.map(c => c.firstDispatch - c.answered)), rT = avg(arr.map(c => ((c.critArrive ?? c.firstArrive) - c.ringSim) / 60));
+    const prioN = S.calls.filter(c => c.prio), prioOk = prioN.filter(c => c.prio === c.prioEff).length;
+    const resN = S.calls.filter(c => c.units.length), resOk = resN.filter(resourceOk).length;
+    const util = S.t > 0 ? S.units.reduce((s, u) => s + u.busy, 0) / (S.units.length * S.t) * 100 : 0;
+    $('#stats').innerHTML = `<div class="stat"><div class="k">Calls</div><div class="v">${S.calls.length}</div></div>
+      <div class="stat"><div class="k">Avg answer</div><div class="v">${isNaN(aT) ? '—' : SL.fmt(aT, 1)}<small>s</small></div></div>
+      <div class="stat"><div class="k">Avg to dispatch</div><div class="v">${isNaN(dT) ? '—' : SL.fmt(dT, 0)}<small>s</small></div></div>
+      <div class="stat"><div class="k">Avg response</div><div class="v">${isNaN(rT) ? '—' : SL.fmt(rT, 1)}<small>min</small></div></div>
+      <div class="stat"><div class="k">Priority correct</div><div class="v">${prioN.length ? Math.round(prioOk / prioN.length * 100) : '—'}<small>%</small></div></div>
+      <div class="stat"><div class="k">Resources correct</div><div class="v">${resN.length ? Math.round(resOk / resN.length * 100) : '—'}<small>%</small></div></div>
+      <div class="stat"><div class="k">Utilisation</div><div class="v">${SL.fmt(util, 0)}<small>%</small></div></div>
+      <div class="stat"><div class="k">Units free</div><div class="v">${S.units.filter(u => u.state === 'avail').length}<small>/ ${S.units.length}</small></div></div>`;
+    $('#hClock').textContent = mmss(S.t); $('#hLeft').textContent = mmss(SHIFT - S.t);
+    $('#hWait').textContent = S.calls.filter(c => c.state === 'ring').length; $('#hAct').textContent = S.calls.filter(c => c.units.length && !c.resolved).length;
+    document.querySelectorAll('[data-wait]').forEach(el => { const c = S.calls.find(x => x.id === +el.dataset.wait); if (c) el.textContent = `waiting ${Math.round(S.rt - c.ring)} s`; });
+  }
+  function resourceOk(c) {
+    const types = c.units.map(id => S.units.find(x => x.id === id).type);
+    const covered = c.tp.need.every(slot => types.some(t => slot.includes(t)));
+    const allowed = new Set(c.tp.need.flat().concat(c.tp.opt));
+    const extra = types.filter(t => !allowed.has(t));
+    return covered && !extra.length;
+  }
+  $('#legend').innerHTML = Object.entries(TYPES).map(([k, v]) => `<span><i style="background:${v.c}"></i>${k}</span>`).join('') + '<span>▲ incident</span><span style="color:#fb7185">━ arterial</span>';
+
+  /* ======================= SCORE ======================= */
+  function scoreShift() {
+    const calls = S.calls.filter(c => c.state !== 'ring' || true);
+    calls.forEach(c => { if (!c.outcome && c.units.length) computeOutcome(c); });
+    const n = { take: [], tri: [], res: [], resp: [], care: [], out: [] };
+    const handled = calls.filter(c => c.answered != null);
+    const abandoned = calls.filter(c => c.abandoned).length, unanswered = calls.filter(c => c.state === 'ring').length;
+    // call taking
+    let take = 100;
+    const aT = handled.map(c => c.answered - c.ring);
+    const within10 = aT.filter(x => x <= 10).length;
+    if (handled.length) { take = within10 / handled.length * 60 + 40; n.take.push([within10 / handled.length >= .9 ? 'on' : 'warn', `${within10} of ${handled.length} calls answered within 10 s (standard: 90%).`]); } else take = 0;
+    if (abandoned) { take -= 15 * abandoned; n.take.push(['bad', `${abandoned} caller${abandoned > 1 ? 's' : ''} abandoned in the queue. Every abandoned call is a person who did not get help.`]); }
+    if (unanswered) n.take.push(['warn', `${unanswered} call${unanswered > 1 ? 's were' : ' was'} still ringing at the end of the shift.`]);
+    const af = handled.filter(c => c.addrFirst === true).length;
+    if (handled.length) { n.take.push([af / handled.length >= .8 ? 'on' : 'warn', `Asked for the address first on ${af} of ${handled.length} calls. Location first means you can send help even if the line drops.`]); take = take * .7 + af / handled.length * 30; }
+    const keyMiss = []; handled.forEach(c => c.tp.key.forEach(k => { if (!c.asked.has(k)) keyMiss.push(`#${c.id} ${c.tp.label}: "${Q.find(q => q[0] === k)[2]}"`); }));
+    if (keyMiss.length) { take -= Math.min(30, keyMiss.length * 5); n.take.push(['warn', 'Key protocol questions missed: ' + keyMiss.slice(0, 5).map(esc).join('; ') + (keyMiss.length > 5 ? '…' : '')]); }
+    // triage
+    const pr = handled.filter(c => c.prio);
+    let tri = pr.length ? 0 : 0;
+    pr.forEach(c => { const d = Math.abs(c.prio - c.prioEff); tri += d === 0 ? 100 : d === 1 ? 50 : 0; if (d) n.tri.push([c.prio > c.prioEff ? 'bad' : 'warn', `#${c.id} ${esc(c.tp.label)}: you chose P${c.prio}, correct is P${c.prioEff}. ${c.prio > c.prioEff ? 'Under-triage delays life-saving care.' : 'Over-triage ties up units and exposes crews to unnecessary blue-light risk.'}${c.tp.id === 'arrest' ? ' Gasping is agonal breathing: treat as cardiac arrest.' : ''}${c.tp.id === 'burglary' && c.weapon ? ' A weapon makes this immediately life-threatening.' : ''}`]); else n.tri.push(['on', `#${c.id} ${esc(c.tp.label)}: P${c.prio} correct.`]); });
+    tri = pr.length ? tri / pr.length : 0;
+    // resources
+    const rs = handled.filter(c => c.units.length);
+    let res = rs.length ? rs.filter(resourceOk).length / rs.length * 100 : 0;
+    rs.forEach(c => { const types = c.units.map(id => S.units.find(x => x.id === id).type); const missing = c.tp.need.filter(slot => !types.some(t => slot.includes(t))); const allowed = new Set(c.tp.need.flat().concat(c.tp.opt)); const extra = types.filter(t => !allowed.has(t));
+      if (missing.length) n.res.push(['bad', `#${c.id} ${esc(c.tp.label)}: missing ${missing.map(s => s.join(' or ')).join(', ')}.`]);
+      if (extra.length) n.res.push(['warn', `#${c.id} ${esc(c.tp.label)}: ${extra.join(', ')} not needed; it was unavailable for other calls.`]);
+      if (types.includes('ALS') && c.tp.need[0][0] === 'BLS' && c.tp.prio >= 3) n.res.push(['warn', `#${c.id}: an ALS unit on a stable P${c.tp.prio} reduces ALS coverage. BLS was enough.`]);
+      c.dispatchNotes.forEach(t => n.res.push(['warn', `#${c.id}: ${esc(t)}`]));
+      if (!missing.length && !extra.length && !c.dispatchNotes.length) n.res.push(['on', `#${c.id} ${esc(c.tp.label)}: right resources (${types.join(' + ')}).`]); });
+    res = SL.clamp(res - rs.reduce((s, c) => s + c.dispatchNotes.length * 8, 0) / Math.max(1, rs.length), 0, 100);
+    // response
+    const dts = rs.map(c => c.firstDispatch - c.answered);
+    const arrd = rs.filter(c => c.firstArrive != null);
+    let resp = 0;
+    arrd.forEach(c => { const rt = ((c.critArrive ?? c.firstArrive) - c.ringSim) / 60, tg = TARGET[c.tp.prio]; resp += rt <= tg ? 100 : Math.max(0, 100 - (rt - tg) / tg * 100); });
+    resp = arrd.length ? resp / arrd.length : 0;
+    if (dts.length) { const avgD = dts.reduce((a, b) => a + b, 0) / dts.length; n.resp.push([avgD <= 60 ? 'on' : 'warn', `Average time from answer to first dispatch: ${Math.round(avgD)} s (aim for under 60 s on P1/P2 calls; dispatch as soon as the address and key facts are known).`]); }
+    arrd.forEach(c => { const rt = ((c.critArrive ?? c.firstArrive) - c.ringSim) / 60, tg = TARGET[c.tp.prio]; if (rt > tg) n.resp.push(['warn', `#${c.id} ${esc(c.tp.label)}: first critical unit at ${SL.fmt(rt, 1)} min against a ${tg} min target.`]); });
+    if (arrd.length && !n.resp.some(x => x[0] === 'warn')) n.resp.push(['on', 'Every response met its target time.']);
+    // pre-arrival
+    const needPai = handled.filter(c => c.tp.pai && c.prioEff <= 2);
+    let care = needPai.length ? 0 : 100;
+    needPai.forEach(c => { const p = PAI[c.tp.pai]; const frac = c.paiSaid.size / p.s.length; care += frac * 100; if (frac < .5) n.care.push(['warn', `#${c.id} ${esc(c.tp.label)}: pre-arrival instructions (${p.t}) were ${c.paiSaid.size ? 'incomplete' : 'not given'}.`]); else n.care.push(['on', `#${c.id}: ${p.t} instructions given.`]); if (c.tp.pai === 'cpr') { if (c.bpmOk) n.care.push(['on', `#${c.id}: compression rate coached within 100–120/min.`]); else n.care.push(['warn', `#${c.id}: compression rate not coached in the 100–120/min range (use the metronome).`]); } });
+    care = needPai.length ? care / needPai.length : care;
+    // outcomes
+    const oc = handled.filter(c => c.outcome);
+    let out = oc.length ? oc.reduce((s, c) => s + c.outcome.score, 0) / oc.length : 0;
+    oc.forEach(c => n.out.push([c.outcome.score >= 70 ? 'on' : c.outcome.score >= 40 ? 'warn' : 'bad', `#${c.id} ${esc(c.tp.label)}: ${esc(c.outcome.txt)}.`]));
+    const util = S.t > 0 ? S.units.reduce((s, u) => s + u.busy, 0) / (S.units.length * S.t) * 100 : 0;
+    n.out.push(['', `Fleet utilisation over the shift: ${SL.fmt(util, 0)}%.`]);
+    const parts = [['Call-taking', SL.clamp(take, 0, 100), 'take', .2], ['Triage', tri, 'tri', .2], ['Resources', res, 'res', .15], ['Response times', resp, 'resp', .15], ['Pre-arrival care', care, 'care', .15], ['Outcomes', out, 'out', .15]];
+    return { parts, notes: n, overall: parts.reduce((s, p) => s + p[1] * p[3], 0), calls: handled, util };
+  }
+
+  /* ======================= OVERLAYS ======================= */
+  const ovl = $('#ovl');
+  function briefing() {
+    ovl.classList.remove('hide');
+    ovl.innerHTML = `<div class="role"><span class="badge"><i data-lucide="headset"></i> Role briefing</span>
+      <h2 style="margin-top:12px">You are the duty dispatcher</h2>
+      <p class="muted">City Emergency Communications Centre, ${DIFF[diff].n.toLowerCase()} shift. One hour of map time. You take every 999/112 call for a stylised city of twelve districts, with ${UNIT_DEF.length} units: ALS and BLS ambulances, fire engines, a heavy rescue unit and police cars.</p>
+      <ul>
+        <li><b>Answer</b> ringing calls fast. Callers who wait redial in distress; after 75 s they give up.</li>
+        <li><b>Ask</b> protocol questions. Address first. A hysterical caller needs calming before they can give a clear address.</li>
+        <li><b>Triage</b> P1–P4, then <b>dispatch</b> the right unit types by clicking them on the map or the units board. Watch their ETAs.</li>
+        <li><b>Coach</b> the caller with pre-arrival instructions. For cardiac arrest, tap the metronome at 100–120 per minute.</li>
+        <li>End the call to take the next one. Units drive the roads in real time, treat on scene, transport to hospital and return.</li>
+      </ul>
+      <p class="small muted">Map time runs ×${tc} (change it in the Shift panel). Answer and dispatch times are measured in real seconds; response times in map minutes.</p>
+      <button class="btn primary" id="ovlGo"><i data-lucide="play"></i> Start the shift</button></div>`;
+    SL.refreshIcons(ovl); $('#ovlGo').onclick = start;
+  }
+  function endShift() {
+    if (ended) return; ended = true; running = false;
+    const r = scoreShift(); checkCh(r);
+    ovl.classList.remove('hide');
+    const g = gradeOf(r.overall);
+    ovl.innerHTML = `<div class="role"><span class="badge"><i data-lucide="clipboard-check"></i> Shift summary</span>
+      <h2 style="margin-top:12px">Shift grade: <span class="g${g}">${g}</span> <span class="muted" style="font-size:.6em">${Math.round(r.overall)}/100</span></h2>
+      <p class="muted">${S.calls.length} calls in ${mmss(S.t)} of map time. Fleet utilisation ${SL.fmt(r.util, 0)}%.</p>
+      <div class="grade">${r.parts.map(p => `<div class="g"><div class="k">${p[0]}</div><div class="v g${gradeOf(p[1])}">${gradeOf(p[1])}</div><div class="small muted">${Math.round(p[1])}/100</div></div>`).join('')}</div>
+      <div class="tblwrap"><table class="data"><tr><th>#</th><th>Incident</th><th>Prio (you / correct)</th><th>Units</th><th>Answer</th><th>Dispatch</th><th>Response</th></tr>${r.calls.map(c => `<tr><td>${c.id}</td><td>${esc(c.tp.label)}</td><td>${c.prio ? 'P' + c.prio : '—'} / P${c.prioEff}</td><td class="mono">${c.units.join(' ') || '—'}</td><td class="num">${Math.round(c.answered - c.ring)} s</td><td class="num">${c.firstDispatch != null ? Math.round(c.firstDispatch - c.answered) + ' s' : '—'}</td><td class="num">${c.firstArrive != null ? SL.fmt(((c.critArrive ?? c.firstArrive) - c.ringSim) / 60, 1) + ' min' : '—'}</td></tr>`).join('')}</table></div>
+      ${r.parts.map(p => r.notes[p[2]].length ? `<h4 style="margin-top:16px">${p[0]}</h4><div class="fb">${r.notes[p[2]].map(([k, t]) => fb(k, t)).join('')}</div>` : '').join('')}
+      <div class="btn-row"><button class="btn primary" id="ovlAgain"><i data-lucide="rotate-ccw"></i> New shift</button><button class="btn" id="ovlClose"><i data-lucide="map"></i> Review the map</button></div></div>`;
+    SL.refreshIcons(ovl); ovl.scrollTop = 0;
+    $('#ovlAgain').onclick = reset; $('#ovlClose').onclick = () => ovl.classList.add('hide');
+  }
+  function start() { ovl.classList.add('hide'); running = true; paused = false; ended = false; try { SL.audio(); } catch (e) {} }
+  function reset() { running = false; ended = false; paused = false; newShift(); renderQueue(); renderCall(); renderUnits(); stats(); briefing(); }
+  document.querySelectorAll('#diffSeg button').forEach(b => b.onclick = () => { diff = +b.dataset.v; document.querySelectorAll('#diffSeg button').forEach(x => x.classList.toggle('on', x === b)); if (!running) briefing(); });
+  SL.bind('#tc', v => { tc = v; }, v => '×' + v);
+  $('#btnStart').onclick = () => { if (running) return; if (ended) reset(); start(); };
+  $('#btnPause').onclick = () => { if (!running) return; paused = !paused; $('#btnPause').innerHTML = paused ? '<i data-lucide="play"></i> Resume' : '<i data-lucide="pause"></i> Pause'; SL.refreshIcons($('#btnPause')); };
+  $('#btnEnd').onclick = () => { if (running) endShift(); };
+
+  /* ======================= CHALLENGES ======================= */
+  const CH = [
+    { id: 'c1', t: 'Answer five calls in a row within 10 seconds each.', live: () => { const a = S.calls.filter(c => c.answered != null).slice(-5); return a.length === 5 && a.every(c => c.answered - c.ring <= 10); } },
+    { id: 'c2', t: 'Dispatch an ALS unit to a cardiac arrest within 60 s of answering.', live: () => S.calls.some(c => c.tp.id === 'arrest' && c.firstDispatch != null && c.firstDispatch - c.answered <= 60 && c.units.some(id => S.units.find(u => u.id === id).type === 'ALS')) },
+    { id: 'c3', t: 'Coach compression-only CPR with a tapped rate between 100 and 120 per minute.', live: () => S.calls.some(c => c.bpmOk) },
+    { id: 'c4', t: 'Calm a hysterical caller and obtain a verified address.', live: () => S.calls.some(c => c.reassured && c.addrKnown && c.tx.some(x => /hysterical|I don't know!/.test(x[1]))) },
+    { id: 'c5', t: 'Finish a shift with priority accuracy of 80% or more and no abandoned calls.', end: r => r.parts[1][1] >= 80 && !S.calls.some(c => c.abandoned) && r.calls.length >= 3 },
+    { id: 'c6', t: 'Finish a Major event shift with an overall grade of B or better.', end: r => diff === 2 && r.overall >= 70 },
+  ];
+  const done = new Set();
+  function renderCh() { $('#chList').innerHTML = CH.map(c => `<li>${done.has(c.id) ? '<b style="color:var(--ok)">Done:</b> ' : ''}${c.t}</li>`).join(''); }
+  function checkCh(r) { CH.forEach(c => { if (done.has(c.id)) return; const ok = r ? (c.end ? c.end(r) : c.live && c.live()) : (c.live && c.live()); if (ok) { done.add(c.id); SL.toast('Challenge complete: ' + c.t, 'ok', 5000); } }); renderCh(); }
+
+  /* ======================= LOOP ======================= */
+  let ui = 0, chT = 0;
+  const loop = SL.loop((dt, t) => {
+    if (running && !paused) { step(dt); tickTimers(); }
+    pulse = t; draw(t);
+    ui += dt; chT += dt;
+    if (ui > .3) { ui = 0; stats(); if (S.active) { const as = $('#callBox .assigned'); if (as) as.innerHTML = S.active.units.map(id => { const u = S.units.find(x => x.id === id); return `<span style="border-color:${TYPES[u.type].c};color:${TYPES[u.type].c}">${id} · ${u.state}</span>`; }).join('') || '<span class="small muted" style="border:0;padding:0">None yet: click units on the map or the units board.</span>'; } }
+    if (chT > 1) { chT = 0; if (running) { checkCh(null); renderUnits(); } }
+  });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) loop.stop(); else loop.start(); });
+
+  SL.quiz('#quiz', [
+    { q: 'What is the first thing a call-taker should establish on an emergency call?', options: ['The caller\'s name', 'The location of the emergency', 'Whether the caller has insurance', 'The patient\'s medical history'], answer: 1, why: 'If the line drops, a verified location still lets you send help. Protocols put address first.' },
+    { q: 'A caller says the collapsed man is "making snoring, gasping sounds every few seconds". What does this most likely indicate?', options: ['He is asleep', 'Normal breathing', 'Agonal breathing: treat as cardiac arrest', 'A mild faint'], answer: 2, why: 'Agonal gasps are common in the first minutes of cardiac arrest. Unresponsive + not breathing normally = start CPR.' },
+    { q: 'For adult compression-only CPR, which rate and depth do current guidelines recommend?', options: ['60–80/min, 2–3 cm', '100–120/min, 5–6 cm', '140–160/min, 7–8 cm', '30/min, as deep as possible'], answer: 1, why: 'ERC 2021 and AHA 2020: 100–120 compressions per minute, 5–6 cm deep, full recoil between compressions.' },
+    { q: 'About how much does survival from cardiac arrest fall per minute without CPR or defibrillation?', options: ['1%', '3–4%', '7–10%', '25%'], answer: 2, why: 'Roughly 7–10% per minute without intervention; bystander CPR slows the fall to about 3–4% per minute.' },
+    { q: 'A burglary caller whispers that the intruder has a panga. How should the priority change?', options: ['Stay P2', 'Upgrade to P1: weapon and immediate threat to life', 'Downgrade to P3', 'Ask the caller to confront him'], answer: 1, why: 'A weapon with an occupant at home is an immediate threat to life.' },
+    { q: 'Which combination is right for a crash with a driver trapped and fuel leaking?', options: ['One BLS ambulance', 'Police only', 'Ambulance + rescue (or fire) + police', 'Fire engine only'], answer: 2, why: 'Patient care, extrication and fire risk management, and traffic control/scene safety are all needed.' },
+    { q: 'Five ambulances, 6 incidents per hour, each committing a unit for 45 minutes. What is the utilisation ρ?', options: ['0.3', '0.6', '0.9', '1.5'], answer: 2, why: 'ρ = λT/c = 6 × 0.75 / 5 = 0.9: dangerously high; there will often be no free unit.' },
+    { q: 'A hysterical caller cannot give an address. What technique works best?', options: ['Hang up and wait for a calmer caller', 'Shout to be heard', 'Repetitive persistence: calmly repeat the same request, give reassurance and a task', 'Send every unit to the district'], answer: 2, why: 'Calm, repeated, specific instructions help callers regain control. Reassurance is a key call-taking skill.' },
+    { q: 'Why might sending the nearest ALS ambulance to a stable P3 fracture be a poor choice?', options: ['ALS crews cannot treat fractures', 'It leaves that area without ALS cover for the next life-threatening call', 'It is illegal', 'BLS units are always faster'], answer: 1, why: 'Dispatchers manage coverage, not just the call in front of them. A BLS unit is sufficient for a stable fracture.' },
+  ]);
+  renderCh();
+  newShift(); renderQueue(); renderCall(); renderUnits(); stats(); briefing();
+  loop.start();
+  window.__dp = { get S() { return S; }, answer, ask, setPrio, dispatch, sayPai, tap, endCall, reassure, newCall, endShift, scoreShift, step, tickTimers, route, start, get tc() { return tc; } };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,932 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Air Traffic Control · Pentarch SimLab</title>
+<meta name="description" content="Work an approach radar: vector arrivals onto the ILS, launch departures to their exit points, keep 3 NM or 1,000 ft separation and wake spacing, using standard ICAO phraseology.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  #scope{height:720px;background:#020805}
+  #scope canvas{cursor:pointer;touch-action:none}
+  .stage .hud .readout b{color:#4ade80}
+  .stage .hud .readout{border-color:#14532d;background:rgba(2,8,5,.8)}
+  .stca{position:absolute;left:50%;top:14px;transform:translateX(-50%);font:700 .8rem var(--mono);letter-spacing:.12em;color:#fff;background:#b91c1c;border:1px solid #ef4444;padding:5px 12px;border-radius:7px;display:none;animation:blink 1s infinite;z-index:3}
+  .zoom{position:absolute;right:12px;bottom:12px;display:flex;gap:6px;z-index:3}
+  .ovl{position:absolute;inset:0;z-index:5;background:rgba(2,8,5,.95);overflow:auto;padding:26px;backdrop-filter:blur(4px)}
+  .ovl.hide{display:none}
+  .ovl .role{max-width:760px;margin:0 auto}
+  .role .badge{display:inline-flex;gap:7px;align-items:center;font:600 .7rem var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);padding:5px 10px;border-radius:99px}
+  .role .badge svg{width:14px;height:14px}
+  .role ul{padding-left:1.2em;font-size:.92rem;color:#cdd6e8}
+  .sel-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  .sel-h b{font:700 1.15rem var(--mono);color:#4ade80}
+  .sel-h span{font:500 .78rem var(--mono);color:var(--muted)}
+  .ac-state{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0}
+  .ac-state div{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font:500 .72rem var(--mono);color:var(--dim)}
+  .ac-state div b{display:block;font-size:.95rem;color:var(--text)}
+  .cmdrow{display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center;margin:6px 0}
+  .cmdrow label{font-size:.78rem;color:var(--muted);min-width:62px}
+  .cmdrow input,.cmdrow select{padding:6px 8px;font-family:var(--mono)}
+  .cmdgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+  .cmdgrid .btn{font-size:.78rem;padding:7px 8px}
+  .cli{display:flex;gap:6px;margin-top:10px}
+  .cli input{font-family:var(--mono);text-transform:uppercase}
+  .rt{height:250px;overflow:auto;background:#020805;border:1px solid #14532d;border-radius:10px;padding:8px 10px;font:500 .78rem/1.45 var(--mono)}
+  .rt div{margin-bottom:5px}
+  .rt .atc{color:#4ade80}.rt .plt{color:#fde68a}.rt .sys{color:#5f6d8a}.rt .alr{color:#fca5a5}
+  .strips{display:grid;gap:5px;max-height:250px;overflow:auto}
+  .strip{all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:72px 1fr auto;gap:8px;align-items:center;font:500 .74rem var(--mono);padding:6px 9px;border-radius:7px;border-left:4px solid #60a5fa;background:#0b1424;border-top:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .strip.arr{border-left-color:#f59e0b}
+  .strip.sel{background:#14231a;outline:1px solid #4ade80}
+  .strip b{font-size:.82rem;color:var(--text)}
+  .strip small{color:var(--dim)}
+  .below{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;margin-bottom:10px}
+  .grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:14px 0}
+  .grade .g{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px}
+  .grade .g .k{font:600 .64rem var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+  .grade .g .v{font:700 1.6rem var(--display)}
+  .gA{color:#4ade80}.gB{color:#a3e635}.gC{color:#facc15}.gD{color:#fb923c}.gE{color:#f87171}
+  .fb{font-size:.86rem;display:grid;gap:6px;margin:8px 0 16px}
+  .fb div{display:flex;gap:9px;align-items:flex-start;background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:8px 10px}
+  .fb .led{margin-top:6px;flex:none}
+  .phon{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;font-size:.84rem}
+  .phon div{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 9px}
+  .phon b{font-family:var(--mono);color:var(--accent);margin-right:6px}
+  @media (max-width:980px){#scope{height:560px}.below{grid-template-columns:1fr}.ovl{padding:18px 16px}#scope:has(> .ovl:not(.hide)){height:760px}}
+  @media (max-width:520px){#scope{height:440px;min-height:0}#scope:has(> .ovl:not(.hide)){height:780px}}
+</style>
+</head>
+<body data-page="air-traffic">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab wide-controls">
+    <div class="stage" id="scope">
+      <canvas id="cv"></canvas>
+      <div class="hud">
+        <span class="readout">UTC <b id="hTime">12:00:00</b></span>
+        <span class="readout">Wind <b id="hWind">060/12</b></span>
+        <span class="readout">RWY <b id="hRwy">06</b></span>
+        <span class="readout">QNH <b>1021</b></span>
+        <span class="readout">Score <b id="hScore">0</b></span>
+      </div>
+      <div class="stca" id="stca">STCA</div>
+      <div class="zoom"><button class="btn sm" id="zOut" aria-label="Zoom out"><i data-lucide="zoom-out"></i></button><button class="btn sm" id="zIn" aria-label="Zoom in"><i data-lucide="zoom-in"></i></button></div>
+      <div class="ovl" id="ovl"></div>
+    </div>
+
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="radar"></i> Session</h3>
+        <div class="seg" id="diffSeg"><button data-v="0">Trainee</button><button data-v="1" class="on">Standard</button><button data-v="2">Rush hour</button></div>
+        <div class="panel-title">Time</div>
+        <div class="seg" id="accSeg"><button data-v="0">Pause</button><button data-v="1" class="on">1×</button><button data-v="2">2×</button><button data-v="4">4×</button></div>
+        <div class="btn-row" style="margin-top:12px"><button class="btn primary" id="btnStart"><i data-lucide="play"></i> Start</button><button class="btn" id="btnEnd"><i data-lucide="flag"></i> End session</button></div>
+      </div>
+      <div class="panel" id="selPanel">
+        <h3><i data-lucide="plane"></i> Selected aircraft</h3>
+        <div id="selBox"></div>
+        <div class="cli"><input type="text" id="cli" placeholder="e.g. KQA310 L240 D80 S210" aria-label="Command line" autocomplete="off" spellcheck="false"><button class="btn sm primary" id="cliGo"><i data-lucide="send"></i></button></div>
+        <p class="small muted" style="margin:6px 0 0">Shorthand: <code>L240</code>/<code>R090</code>/<code>H180</code> heading, <code>D80</code>/<code>C150</code> altitude (hundreds of ft), <code>S180</code> speed, <code>ILS</code>, <code>LAND</code>, <code>LU</code>, <code>TO</code>, <code>DCT KAPTI</code>, <code>HOLD KAPTI</code>, <code>GA</code>, <code>HO</code>. Plain phrases also work.</p>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="gauge"></i> Live results</h3>
+        <div class="stats" id="stats"></div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="below">
+    <div class="panel">
+      <h3><i data-lucide="radio"></i> Radio transcript</h3>
+      <div class="rt" id="rt"></div>
+    </div>
+    <div class="panel">
+      <h3><i data-lucide="layout-list"></i> Flight progress strips</h3>
+      <div class="strips" id="strips"></div>
+    </div>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="building-2"></i> ATC units</button>
+      <button><i data-lucide="mic"></i> Phraseology</button>
+      <button><i data-lucide="ruler"></i> Separation</button>
+      <button><i data-lucide="plane-landing"></i> ILS</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Who controls what</h3>
+      <p>A flight passes through several air traffic control units, each responsible for a block of airspace. Control is handed from one to the next by a <b>handoff</b> (radar transfer plus a frequency change).</p>
+      <svg viewBox="0 0 640 210" style="width:100%;max-width:640px;display:block;margin:10px 0">
+        <defs><linearGradient id="sky" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#0b2a1a"/><stop offset="1" stop-color="#020805"/></linearGradient></defs>
+        <rect x="0" y="0" width="640" height="210" rx="12" fill="url(#sky)"/>
+        <line x1="20" y1="180" x2="620" y2="180" stroke="#2a3a5c" stroke-width="2"/>
+        <rect x="270" y="176" width="100" height="6" fill="#93a1bd"/>
+        <path d="M30 40 L230 40 L300 120 L320 176" fill="none" stroke="#4ade80" stroke-width="2" stroke-dasharray="6 4"/>
+        <path d="M330 176 L360 120 L430 40 L620 40" fill="none" stroke="#60a5fa" stroke-width="2" stroke-dasharray="6 4"/>
+        <rect x="20" y="16" width="600" height="40" rx="8" fill="none" stroke="#f59e0b" stroke-opacity=".5"/>
+        <text x="320" y="31" fill="#fbbf24" font-size="12" font-family="Inter" text-anchor="middle">Area control centre (ACC): en route, typically above FL150–FL245</text>
+        <rect x="170" y="62" width="300" height="80" rx="8" fill="none" stroke="#4ade80" stroke-opacity=".6"/>
+        <text x="320" y="80" fill="#4ade80" font-size="12" font-family="Inter" text-anchor="middle">Approach (APP): terminal area, ~30–50 NM</text>
+        <rect x="255" y="146" width="130" height="28" rx="6" fill="none" stroke="#f472b6" stroke-opacity=".7"/>
+        <text x="320" y="164" fill="#f9a8d4" font-size="11" font-family="Inter" text-anchor="middle">Tower (TWR): runway, CTR</text>
+        <text x="40" y="200" fill="#5f6d8a" font-size="10" font-family="JetBrains Mono">ARRIVAL →</text><text x="560" y="200" fill="#5f6d8a" font-size="10" font-family="JetBrains Mono">→ DEPARTURE</text>
+      </svg>
+      <ul>
+        <li><b>Ground</b> (GND): aircraft and vehicles on taxiways and aprons.</li>
+        <li><b>Tower</b> (TWR, aerodrome control): the runways and the control zone. Issues line-up, take-off and landing clearances.</li>
+        <li><b>Approach</b> (APP, terminal radar): sequences arrivals onto final approach and climbs departures out. Uses radar vectors (headings, altitudes, speeds).</li>
+        <li><b>Area / en route</b> (ACC): cruise traffic over large regions. In Kenya, Nairobi ACC covers the Nairobi Flight Information Region.</li>
+      </ul>
+      <p>In this simulator you work a <b>combined approach and tower</b> position, as small units often do at quiet times: you vector arrivals, clear them to land, clear departures for take-off and hand them to Nairobi Control.</p>
+      <div class="callout"><i data-lucide="info"></i><div>The airport is <b>HKJK-style</b>: a single runway 06/24, about 4.1 km long, at an elevation of about 5,330 ft. Fixes, procedures and traffic are fictional, simplified for learning, and must never be used for real navigation.</div></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Standard phraseology (ICAO Doc 9432 / Annex 10)</h3>
+      <p>Radio calls are short, unambiguous and always read back. Numbers are spoken digit by digit, except whole hundreds and thousands. The callsign comes first from the controller and last in the pilot's readback.</p>
+      <table class="data">
+        <tr><th>Instruction</th><th>Controller says</th><th>Pilot reads back</th></tr>
+        <tr><td>Heading</td><td>Kenya 310, turn left heading two four zero</td><td>Left heading two four zero, Kenya 310</td></tr>
+        <tr><td>Flight level</td><td>Kenya 310, descend flight level one two zero</td><td>Descending flight level one two zero, Kenya 310</td></tr>
+        <tr><td>Altitude</td><td>Kenya 310, descend to altitude eight thousand feet, QNH one zero two one</td><td>Descending eight thousand feet, QNH one zero two one, Kenya 310</td></tr>
+        <tr><td>Speed</td><td>Kenya 310, reduce speed one eight zero knots</td><td>Reducing one eight zero knots, Kenya 310</td></tr>
+        <tr><td>Approach</td><td>Kenya 310, cleared ILS approach runway zero six</td><td>Cleared ILS runway zero six, Kenya 310</td></tr>
+        <tr><td>Landing</td><td>Kenya 310, wind zero six zero degrees one two knots, runway zero six, cleared to land</td><td>Cleared to land runway zero six, Kenya 310</td></tr>
+        <tr><td>Take-off</td><td>Kenya 432, wind zero six zero degrees one two knots, runway zero six, cleared for take-off</td><td>Cleared for take-off runway zero six, Kenya 432</td></tr>
+        <tr><td>Handoff</td><td>Kenya 432, contact Nairobi Control one two five decimal three</td><td>One two five decimal three, Kenya 432</td></tr>
+      </table>
+      <p>"Take-off" is used <i>only</i> for the take-off clearance itself; at other times controllers say "departure". This rule exists because of the 1977 Tenerife disaster, where an ambiguous "OK… at take-off" contributed to the deadliest accident in aviation history.</p>
+      <h3>The ICAO phonetic alphabet</h3>
+      <div class="phon" id="phon"></div>
+      <p class="small muted" style="margin-top:8px">Digits: 3 is "tree", 5 is "fife", 9 is "niner", 1,000 is "tousand", and the decimal point is "decimal".</p>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Separation minima used here</h3>
+      <p>Two aircraft under radar control must keep at least one of these apart:</p>
+      <ul>
+        <li><b>Vertical:</b> 1,000 ft (below FL290, and above it in RVSM airspace).</li>
+        <li><b>Horizontal (radar):</b> 3 NM within a terminal area with suitable radar (5 NM is common en route).</li>
+      </ul>
+      <p>A <b>loss of separation</b> occurs when both are infringed at once:</p>
+      <div class="eq">$$d_h < 3\ \text{NM} \quad\text{and}\quad |\Delta h| < 1000\ \text{ft}$$</div>
+      <h3>Wake turbulence</h3>
+      <p>Wings shed counter-rotating vortices that can roll a following aircraft. ICAO PANS-ATM (Doc 4444) sets radar minima behind heavier aircraft on approach and departure:</p>
+      <table class="data"><tr><th>Leader ↓ / Follower →</th><th>Heavy (H)</th><th>Medium (M)</th><th>Light (L)</th></tr>
+        <tr><td><b>Super (J), e.g. A380</b></td><td class="num">6 NM</td><td class="num">7 NM</td><td class="num">8 NM</td></tr>
+        <tr><td><b>Heavy (H), e.g. B787, B777, A330</b></td><td class="num">4 NM</td><td class="num">5 NM</td><td class="num">6 NM</td></tr>
+        <tr><td><b>Medium (M), e.g. B737, E190, Dash 8</b></td><td class="num">3 NM</td><td class="num">3 NM</td><td class="num">5 NM</td></tr>
+        <tr><td><b>Light (L), e.g. Cessna Caravan, King Air</b></td><td class="num">3 NM</td><td class="num">3 NM</td><td class="num">3 NM</td></tr></table>
+      <p>Categories by maximum take-off mass: L ≤ 7,000 kg; M 7,000–136,000 kg; H ≥ 136,000 kg; J is the A380. (Many regions now use the more detailed RECAT-EU or RECAT-US schemes.)</p>
+      <h3>Conflict prediction (STCA)</h3>
+      <p>Short Term Conflict Alert extrapolates each track. For two aircraft with relative position $\mathbf r$ and relative velocity $\mathbf v$, the time and distance of closest approach are:</p>
+      <div class="eq">$$t_{\text{CPA}} = -\frac{\mathbf r\cdot\mathbf v}{|\mathbf v|^2}, \qquad d_{\text{CPA}} = \big|\mathbf r + \mathbf v\,t_{\text{CPA}}\big|$$</div>
+      <p>The simulator alerts (amber) when the predicted horizontal distance falls below 3 NM with less than 1,000 ft vertically within the next 90 s, allowing for climbs and descents, and shows a red STCA when separation is actually lost.</p>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>The Instrument Landing System</h3>
+      <p>An ILS gives a precise approach path with two radio beams: the <b>localiser</b> (lateral guidance along the runway centreline, VHF 108–112 MHz) and the <b>glide path</b> (vertical guidance, UHF 329–335 MHz, normally 3°). Marker beacons or DME provide range.</p>
+      <svg viewBox="0 0 640 200" style="width:100%;max-width:640px;display:block;margin:10px 0">
+        <rect width="640" height="200" rx="12" fill="#020805"/>
+        <line x1="30" y1="170" x2="620" y2="170" stroke="#2a3a5c" stroke-width="2"/>
+        <rect x="520" y="166" width="90" height="8" fill="#93a1bd"/>
+        <line x1="520" y1="168" x2="60" y2="40" stroke="#4ade80" stroke-width="2"/>
+        <line x1="520" y1="168" x2="60" y2="28" stroke="#4ade80" stroke-opacity=".25"/><line x1="520" y1="168" x2="60" y2="52" stroke="#4ade80" stroke-opacity=".25"/>
+        <line x1="60" y1="104" x2="290" y2="104" stroke="#e6ecf7" stroke-width="2"/><text x="66" y="96" fill="#e6ecf7" font-size="11" font-family="Inter">Level at 8,000 ft on the localiser</text>
+        <circle cx="290" cy="104" r="5" fill="#fbbf24"/><text x="298" y="122" fill="#fbbf24" font-size="11" font-family="JetBrains Mono">FAF 8.4 NM: glide path captured from below</text>
+        <text x="150" y="60" fill="#4ade80" font-size="12" font-family="Inter">3° glide path ≈ 318 ft/NM</text>
+        <text x="565" y="190" fill="#93a1bd" font-size="11" font-family="Inter" text-anchor="middle">RWY 06</text>
+        <line x1="290" y1="104" x2="290" y2="170" stroke="#fbbf24" stroke-dasharray="3 3"/>
+        <text x="300" y="160" fill="#fbbf24" font-size="10" font-family="JetBrains Mono">2,670 ft AGL</text>
+      </svg>
+      <h3>Glide path height</h3>
+      <div class="eq">$$h_{\text{AGL}} = d \cdot 6076\ \text{ft/NM} \cdot \tan 3^\circ \approx 318\,d\ \text{ft}\quad(d \text{ in NM})$$</div>
+      <p>The airport is 5,330 ft above sea level, so an aircraft levelled at 8,000 ft QNH (2,670 ft above the threshold) meets the glide path at $d = 2670/318 \approx 8.4$ NM. That is the final approach fix (FAF) drawn on the scope.</p>
+      <h3>Vectoring to the localiser</h3>
+      <ul>
+        <li>Give an intercept heading of <b>30° or less</b> to the final approach course (ICAO allows up to 45°); larger angles cause overshoots.</li>
+        <li>Intercept at least 2 NM before the glide path intercept, level at or below the glide path: aircraft capture the glide slope <b>from below</b>.</li>
+        <li>Clear the aircraft for the ILS with the intercept heading: "turn right heading 030, cleared ILS approach runway 06".</li>
+        <li>Slow arrivals to 180–160 kt by 8–10 NM so the sequence is stable, then let them fly their own approach speed.</li>
+      </ul>
+      <h3>Wind correction</h3>
+      <p>To track the localiser in a crosswind, pilots point slightly into the wind. The wind correction angle is</p>
+      <div class="eq">$$\text{WCA} = \arcsin\!\left(\frac{V_w \sin\theta}{V_{\text{TAS}}}\right)$$</div>
+      <p>where $\theta$ is the angle between wind and course. Aircraft in the simulator apply this automatically once established.</p>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Worked example 1: turn radius</h3>
+      <div class="worked">
+        <p>A Rate One turn is 3°/s, so a full circle takes 120 s. At a true airspeed of 210 kt:</p>
+        <div class="eq">$$r = \frac{V}{\omega} = \frac{210\ \text{NM/h}}{(3^\circ/\text{s})(3600\ \text{s/h})\,\frac{\pi}{180^\circ}} = \frac{210}{188.5} \approx 1.11\ \text{NM}$$</div>
+        <p>A 90° turn onto the localiser therefore needs about 1.1 NM of lead, which is why intercepts at 30° are smoother: the aircraft only needs to turn 30°.</p>
+      </div>
+      <h3>Worked example 2: true airspeed at altitude</h3>
+      <div class="worked">
+        <p>Rule of thumb: TAS rises about 2% per 1,000 ft above sea level. At 8,000 ft with 210 kt indicated:</p>
+        <div class="eq">$$\text{TAS} \approx 210\,(1 + 0.02 \times 8) = 243.6\ \text{kt}$$</div>
+        <p>With a 12 kt headwind on final, groundspeed is about 232 kt. The simulator's data block shows groundspeed in tens of knots ("23").</p>
+      </div>
+      <h3>Worked example 3: wake spacing and runway capacity</h3>
+      <div class="worked">
+        <p>A Medium follows a Heavy on final: minimum 5 NM. At a final approach groundspeed of 140 kt:</p>
+        <div class="eq">$$t = \frac{5\ \text{NM}}{140\ \text{kt}} \times 3600 = 129\ \text{s}$$</div>
+        <p>Two Mediums at 3 NM need only 77 s. If every arrival were Medium-behind-Heavy, the runway could take at most $3600/129 \approx 28$ landings an hour instead of about 46. Sequencing similar types together increases capacity.</p>
+      </div>
+      <h3>Worked example 4: descent planning</h3>
+      <div class="worked">
+        <p>An arrival at FL150 (≈15,000 ft) must be at 8,000 ft by the 14 NM intercept fix. At 2,000 ft/min and 250 kt groundspeed:</p>
+        <div class="eq">$$t = \frac{15000 - 8000}{2000} = 3.5\ \text{min}, \qquad d = 250 \times \frac{3.5}{60} \approx 14.6\ \text{NM}$$</div>
+        <p>So start the descent at least about 29 NM from the airport (14.6 NM before the 14 NM fix), earlier if you also want to slow down: aircraft cannot easily descend and decelerate at once.</p>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Controller challenges</h3>
+      <p>Checked automatically while you work. Completed challenges are ticked and announced.</p>
+      <ol class="steps" id="chList"></ol>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const fb = (k, t) => `<div><span class="led ${k}"></span><span>${t}</span></div>`;
+  const gradeOf = s => s >= 85 ? 'A' : s >= 70 ? 'B' : s >= 55 ? 'C' : s >= 40 ? 'D' : 'E';
+  const R = SL.rad, D = SL.deg;
+  const norm360 = a => ((a % 360) + 360) % 360;
+  const angDiff = (a, b) => { let d = norm360(b - a); if (d > 180) d -= 360; return d; }; // signed b-a
+
+  /* ======================= AIRSPACE ======================= */
+  const ELEV = 5330, QNH = 1021, TA = 12000, GSFT = 318.4, MVA = 7000, TCH = 50;
+  const FIXES = {
+    GILMA: [320, 45], OKUTA: [30, 45], ROTSA: [85, 45], TAVEK: [150, 45], MASUL: [225, 45], NIBAS: [262, 45],
+    ULTEK: [290, 45], NOREB: [355, 45], PEMAS: [120, 45], ARKUD: [190, 45],
+  };
+  const ENTRY = ['GILMA', 'OKUTA', 'ROTSA', 'TAVEK', 'MASUL', 'NIBAS'], EXITS = ['ULTEK', 'NOREB', 'PEMAS', 'ARKUD'];
+  const fixXY = n => { if (n === 'KAPTI' || n === 'TELOS') return IF(n); const [b, d] = FIXES[n]; return [d * Math.sin(R(b)), d * Math.cos(R(b))]; };
+  const NGONG = [[205, 11], [222, 10], [232, 15], [226, 21], [208, 20], [200, 15]].map(([b, d]) => [d * Math.sin(R(b)), d * Math.cos(R(b))]);
+  let rwy = '06';
+  function RW() { const c = rwy === '06' ? 60 : 240; const u = [Math.sin(R(c)), Math.cos(R(c))]; const n = [Math.cos(R(c)), -Math.sin(R(c))]; return { c, u, n, thr: [-1.1 * u[0], -1.1 * u[1]], end: [1.1 * u[0], 1.1 * u[1]], name: rwy, hold: [-1.1 * u[0] - 0.12 * n[0] * 1, -1.1 * u[1] - .12 * n[1]] }; }
+  function IF(n) { const r = RW(); return [r.thr[0] - 14 * r.u[0], r.thr[1] - 14 * r.u[1]]; }
+  const ifName = () => rwy === '06' ? 'KAPTI' : 'TELOS';
+  function inPoly(p, poly) { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if (((yi > p[1]) !== (yj > p[1])) && (p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi)) c = !c; } return c; }
+  const mvaAt = p => inPoly(p, NGONG) ? 9000 : MVA;
+
+  /* ======================= TYPES & CALLSIGNS ======================= */
+  const TYPES = {
+    C208: { w: 'L', vapp: 95, vr: 70, vmax: 175, clb: 900, des: 1000, acc: 2.5, burn: 200 },
+    BE20: { w: 'L', vapp: 110, vr: 95, vmax: 240, clb: 1500, des: 1500, acc: 3, burn: 280 },
+    DH8D: { w: 'M', vapp: 125, vr: 115, vmax: 280, clb: 1800, des: 1800, acc: 3.5, burn: 800 },
+    E190: { w: 'M', vapp: 135, vr: 135, vmax: 300, clb: 2200, des: 2000, acc: 4, burn: 2000 },
+    B738: { w: 'M', vapp: 145, vr: 150, vmax: 300, clb: 2200, des: 2000, acc: 4, burn: 2400 },
+    A333: { w: 'H', vapp: 140, vr: 160, vmax: 300, clb: 1800, des: 2000, acc: 3.2, burn: 5800 },
+    B788: { w: 'H', vapp: 145, vr: 160, vmax: 300, clb: 2000, des: 2000, acc: 3.4, burn: 5000 },
+    B77W: { w: 'H', vapp: 150, vr: 170, vmax: 300, clb: 1800, des: 2000, acc: 3, burn: 7000 },
+    A388: { w: 'J', vapp: 145, vr: 165, vmax: 300, clb: 1600, des: 1800, acc: 2.8, burn: 11000 },
+  };
+  const OPS = [
+    ['KQA', 'Kenya', ['B738', 'E190', 'B788']], ['ETH', 'Ethiopian', ['B788', 'DH8D']], ['UAE', 'Emirates', ['B77W', 'A388']], ['QTR', 'Qatari', ['B77W', 'B788']],
+    ['RWD', 'Rwandair', ['A333', 'B738']], ['BAW', 'Speedbird', ['B788']], ['KLM', 'KLM', ['B77W']], ['SFL', 'Safari', ['C208', 'DH8D']], ['PNT', 'Pentarch', ['BE20']],
+  ];
+  const WAKE = { J: { J: 0, H: 6, M: 7, L: 8 }, H: { H: 4, M: 5, L: 6 }, M: { L: 5 }, L: {} };
+  const wakeMin = (lead, fol) => Math.max(3, (WAKE[lead] || {})[fol] || 0);
+
+  /* ======================= PHRASEOLOGY ======================= */
+  const DIG = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'niner'];
+  const digits = s => String(s).split('').map(c => c === '.' ? 'decimal' : DIG[+c]).join(' ');
+  const hdgW = h => digits(String(Math.round(h) % 360 || 360).padStart(3, '0'));
+  function altW(ft) {
+    if (ft > TA) return 'flight level ' + digits(String(Math.round(ft / 100)).padStart(3, '0'));
+    const th = Math.floor(ft / 1000), hu = Math.round((ft % 1000) / 100);
+    return (th >= 10 ? digits(th) : DIG[th]) + ' thousand' + (hu ? ' ' + DIG[hu] + ' hundred' : '') + ' feet';
+  }
+  const altShort = ft => ft > TA ? 'FL' + String(Math.round(ft / 100)).padStart(3, '0') : SL.fmt(ft, 0) + ' ft';
+  const spoken = a => a.op + ' ' + digits(a.num);
+  const windW = () => `wind ${digits(String(W.dir).padStart(3, '0'))} degrees ${digits(W.spd)} knots`;
+
+  /* ======================= STATE ======================= */
+  const DIFFS = [
+    { n: 'Trainee', gap: 170, max: 4, wind: [60, 8], heavy: .15, dep: .35 },
+    { n: 'Standard', gap: 105, max: 7, wind: [60, 12], heavy: .3, dep: .4 },
+    { n: 'Rush hour', gap: 70, max: 10, wind: [40, 18], heavy: .4, dep: .45 },
+  ];
+  const SESSION = 1500; // s of sim time (25 min)
+  let diff = 1, acc = 1, running = false, ended = false, sel = null, range = 50;
+  let W = { dir: 60, spd: 12 };
+  let G;
+  function newGame() {
+    const d = DIFFS[diff]; W = { dir: d.wind[0], spd: d.wind[1] };
+    rwy = Math.abs(angDiff(W.dir, 60)) <= 90 ? '06' : '24';
+    G = { t: 0, ac: [], next: 5, seq: 0, score: 0, landed: 0, departed: 0, los: 0, wake: 0, ga: 0, msaw: 0, lost: 0, handoffs: 0, badExit: 0, noHo: 0, delays: [], fuel: 0, events: [], pairs: {}, stca: new Set(), conflicts: [], spawned: { arr: 0, dep: 0 }, steep: 0, used: new Set(), log: [] };
+    sel = null;
+    $('#rt').innerHTML = ''; sys(`Session opened. Runway ${rwy} in use, ${windW()}, QNH ${digits(QNH)}.`);
+  }
+  function rtLine(cls, txt) { const el = document.createElement('div'); el.className = cls; el.textContent = txt; const rt = $('#rt'); rt.appendChild(el); while (rt.children.length > 120) rt.firstChild.remove(); rt.scrollTop = rt.scrollHeight; }
+  const sys = t => rtLine('sys', `[${clock()}] ${t}`), alr = t => rtLine('alr', `[${clock()}] ${t}`);
+  const clock = () => { const s = 12 * 3600 + Math.floor(G ? G.t : 0); return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map(v => String(v).padStart(2, '0')).join(':'); };
+
+  function spawn(kind) {
+    const d = DIFFS[diff];
+    let op, type;
+    for (let k = 0; k < 20; k++) { op = OPS[Math.floor(Math.random() * OPS.length)]; type = op[2][Math.floor(Math.random() * op[2].length)]; const w = TYPES[type].w; if ((w === 'H' || w === 'J') && Math.random() > d.heavy * 1.6) continue; break; }
+    let num; do { num = String(Math.floor(100 + Math.random() * 800)); } while (G.ac.some(a => a.num === num && a.op === op[1]));
+    const T = TYPES[type];
+    const a = { id: ++G.seq, icao: op[0], op: op[1], num, cs: op[0] + num, type, T, wake: T.w, hist: [], spawnT: G.t, fuel: 0, cleared: {}, flags: {}, ho: false };
+    if (kind === 'arr') {
+      const fixes = ENTRY.slice().sort(() => Math.random() - .5);
+      let ok = null, alt = 0;
+      for (const f of fixes) { const p = fixXY(f); for (const al of [17000, 16000, 15000, 14000]) { if (!G.ac.some(b => Math.hypot(b.x - p[0], b.y - p[1]) < 12 && Math.abs(b.alt - al) < 2000)) { ok = f; alt = al; break; } } if (ok) break; }
+      if (!ok) return;
+      const p = fixXY(ok);
+      Object.assign(a, { arr: true, x: p[0] * .98, y: p[1] * .98, alt, tAlt: alt, ias: Math.min(T.vmax, 280), tIas: Math.min(T.vmax, 280), mode: 'dct', fix: ifName(), limit: true, entry: ok });
+      a.hdg = brg([a.x, a.y], fixXY(a.fix)); a.tHdg = a.hdg;
+      const dist = Math.hypot(a.x - RW().thr[0], a.y - RW().thr[1]);
+      a.nominal = dist / 230 * 3600 + 150;
+      G.ac.push(a); G.spawned.arr++;
+      rtLine('plt', `[${clock()}] ${spoken(a)}: Nairobi Approach, ${spoken(a)}, ${altW(alt)}, inbound ${ok}, information Bravo.`);
+    } else {
+      if (G.ac.some(b => b.mode === 'ground' || b.mode === 'lineup')) { if (G.ac.filter(b => b.mode === 'ground').length >= 2) return; }
+      const r = RW(), exit = EXITS[Math.floor(Math.random() * EXITS.length)];
+      const queued = G.ac.filter(b => b.mode === 'ground').length;
+      Object.assign(a, { arr: false, x: r.thr[0] - r.n[0] * (.18 + queued * .12) - r.u[0] * .05, y: r.thr[1] - r.n[1] * (.18 + queued * .12) - r.u[1] * .05, alt: ELEV, tAlt: 9000, ias: 0, tIas: 0, hdg: r.c, tHdg: r.c, mode: 'ground', exit, reqFL: 15000 + 1000 * Math.floor(Math.random() * 6) });
+      a.nominal = 60 + 45 / 250 * 3600;
+      G.ac.push(a); G.spawned.dep++;
+      rtLine('plt', `[${clock()}] ${spoken(a)}: Nairobi Tower, ${spoken(a)}, holding point runway ${digits(rwy)}, ready for departure, ${a.exit} departure.`);
+    }
+  }
+  const brg = (p, q) => norm360(D(Math.atan2(q[0] - p[0], q[1] - p[1])));
+
+  /* ======================= COMMANDS ======================= */
+  function say(a, atcTxt, pltTxt) { rtLine('atc', `[${clock()}] ATC: ${spoken(a)}, ${atcTxt}.`); rtLine('plt', `[${clock()}] ${spoken(a)}: ${pltTxt}, ${spoken(a)}.`); }
+  function cmd(a, c) {
+    if (!a) return false;
+    const onGround = a.mode === 'ground' || a.mode === 'lineup' || a.mode === 'roll' || a.mode === 'rollout';
+    const parts = [], reads = [];
+    if (c.hdg != null) {
+      if (onGround) return refuse(a, 'unable, we are on the ground');
+      const h = norm360(c.hdg) || 360; a.tHdg = h; a.turn = c.dir || null; if (['dct', 'hold', 'loc'].includes(a.mode)) { if (a.mode === 'loc') { a.cleared.ils = false; a.gs = false; } a.mode = 'hdg'; } a.limit = false;
+      parts.push(c.dir ? `turn ${c.dir} heading ${hdgW(h)}` : `fly heading ${hdgW(h)}`); reads.push(c.dir ? `${c.dir === 'left' ? 'Left' : 'Right'} heading ${hdgW(h)}` : `Heading ${hdgW(h)}`);
+    }
+    if (c.alt != null) {
+      if (a.mode === 'ground' || a.mode === 'lineup') { a.tAlt = c.alt; parts.push(`after departure climb ${c.alt > TA ? '' : 'to altitude '}${altW(c.alt)}`); reads.push(`After departure climbing ${altW(c.alt)}`); }
+      else {
+        const up = c.alt > a.alt + 50; a.tAlt = c.alt;
+        if (a.mode === 'loc' && a.gs) return refuse(a, 'unable, established on the glide path');
+        const qnh = c.alt <= TA ? `, QNH ${digits(QNH)}` : '';
+        parts.push(`${up ? 'climb' : 'descend'} ${c.alt <= TA ? 'to altitude ' : ''}${altW(c.alt)}${qnh}`); reads.push(`${up ? 'Climbing' : 'Descending'} ${altW(c.alt)}${qnh}`);
+        if (c.alt < mvaAt([a.x, a.y]) && a.arr) alr(`Warning: ${altShort(c.alt)} is below the minimum vectoring altitude here (${altShort(mvaAt([a.x, a.y]))}).`);
+      }
+    }
+    if (c.spd != null) {
+      if (onGround) return refuse(a, 'unable on the ground');
+      const s = SL.clamp(c.spd, a.T.vapp + 15, a.T.vmax); a.tIas = s; a.spdHold = true;
+      parts.push(`${s < a.ias ? 'reduce' : 'increase'} speed ${digits(s)} knots`); reads.push(`${s < a.ias ? 'Reducing' : 'Increasing'} ${digits(s)} knots`);
+      if (s !== c.spd) sys(`${a.cs}: speed limited to the aircraft's range (${a.T.vapp + 15}–${a.T.vmax} kt).`);
+    }
+    if (c.dct) {
+      if (onGround) return refuse(a, 'unable on the ground');
+      a.mode = 'dct'; a.fix = c.dct; a.limit = false; parts.push(`proceed direct ${c.dct}`); reads.push(`Direct ${c.dct}`);
+    }
+    if (c.hold) {
+      if (onGround) return refuse(a, 'unable on the ground');
+      a.mode = 'hold'; a.fix = c.hold; a.holdPh = 'to'; parts.push(`hold at ${c.hold} as published, expect further clearance in one zero minutes`); reads.push(`Holding at ${c.hold}`);
+    }
+    if (c.ils) {
+      if (!a.arr) return refuse(a, 'negative, we are a departure');
+      if (onGround) return false;
+      a.cleared.ils = true; parts.push(`cleared ILS approach runway ${digits(rwy)}`); reads.push(`Cleared ILS runway ${digits(rwy)}`);
+      if (a.mode === 'dct' || a.mode === 'hold') sys(`${a.cs} will intercept the localiser only from a heading: give a vector of 30° or less to the final approach course.`);
+    }
+    if (c.land) {
+      if (!a.arr) return refuse(a, 'negative, we are a departure');
+      a.cleared.land = true; parts.push(`${windW()}, runway ${digits(rwy)}, cleared to land`); reads.push(`Cleared to land runway ${digits(rwy)}`);
+    }
+    if (c.ga) {
+      if (a.mode !== 'loc' && a.mode !== 'hdg' && a.mode !== 'dct') return false;
+      goAround(a, 'instructed by ATC', true); return true;
+    }
+    if (c.lu) {
+      if (a.mode !== 'ground') return refuse(a, 'unable');
+      if (G.ac.some(b => b !== a && (b.mode === 'lineup' || b.mode === 'roll' || b.mode === 'rollout'))) alr(`Runway ${rwy} is occupied: lining up ${a.cs} creates a runway incursion risk.`);
+      lineUp(a); parts.push(`runway ${digits(rwy)}, line up and wait`); reads.push(`Lining up and waiting runway ${digits(rwy)}`);
+    }
+    if (c.to) {
+      if (a.mode !== 'ground' && a.mode !== 'lineup') return refuse(a, 'unable');
+      if (G.ac.some(b => b !== a && (b.mode === 'roll' || b.mode === 'rollout' || (b.mode === 'lineup')))) { alr(`Runway occupied: take-off clearance withheld for ${a.cs}.`); return false; }
+      const fin = G.ac.filter(b => b.mode === 'loc' && b.dAlong < 2.5);
+      if (fin.length) alr(`${a.cs} cleared for take-off with ${fin[0].cs} on ${SL.fmt(fin[0].dAlong, 1)} NM final.`);
+      if (a.mode === 'ground') lineUp(a);
+      a.mode = 'roll'; a.toT = G.t; parts.push(`${windW()}, runway ${digits(rwy)}, cleared for take-off`); reads.push(`Cleared for take-off runway ${digits(rwy)}`);
+      if (!a.flags.climbSet) a.tAlt = Math.max(a.tAlt, 9000);
+    }
+    if (c.ho) {
+      if (a.arr) { if (a.mode === 'loc') { parts.push('contact Tower one one eight decimal seven'); reads.push('One one eight decimal seven'); a.ho = true; } else return refuse(a, 'say again, we are still under your control for the approach'); }
+      else { if (onGround) return refuse(a, 'unable, not airborne'); a.ho = true; G.handoffs++; parts.push('contact Nairobi Control one two five decimal three, good day'); reads.push('One two five decimal three, good day'); }
+    }
+    if (!parts.length) return false;
+    if (c.alt != null && !onGround) a.flags.climbSet = true;
+    say(a, parts.join(', '), reads.map((r, i) => i ? r[0].toLowerCase() + r.slice(1) : r).join(', '));
+    G.used.add(Object.keys(c).filter(k => c[k] != null && c[k] !== false).join(','));
+    renderSel(); renderStrips();
+    return true;
+  }
+  function refuse(a, why) { rtLine('plt', `[${clock()}] ${spoken(a)}: ${why}, ${spoken(a)}.`); return false; }
+  function lineUp(a) { const r = RW(); a.x = r.thr[0] + r.u[0] * .05; a.y = r.thr[1] + r.u[1] * .05; a.hdg = r.c; a.mode = 'lineup'; a.luT = G.t; }
+  function goAround(a, why, atc) {
+    const r = RW();
+    a.mode = 'hdg'; a.tHdg = r.c; a.turn = null; a.tAlt = 9000; a.tIas = Math.min(a.T.vmax, 200); a.cleared = {}; a.gs = false; a.spdHold = false; a.limit = false;
+    G.ga++; G.score -= 40; a.gaN = (a.gaN || 0) + 1;
+    if (atc) say(a, `go around, fly runway heading, climb to altitude ${altW(9000)}`, `Going around, runway heading, climbing ${altW(9000)}`);
+    else { rtLine('plt', `[${clock()}] ${spoken(a)}: going around, ${why}, ${spoken(a)}.`); }
+    alr(`${a.cs} GO-AROUND: ${why}.`);
+    G.events.push(['ga', a.cs, why]);
+  }
+  function parseCLI(txt) {
+    let s = txt.trim().toUpperCase().replace(/,/g, ' ');
+    if (!s) return;
+    let a = sel;
+    const m = s.match(/^([A-Z]{3})\s?(\d{2,4})\b/);
+    if (m) { const f = G.ac.find(x => x.icao === m[1] && x.num === m[2]); if (f) { a = f; s = s.slice(m[0].length); } }
+    const m2 = s.match(/^([A-Z]+)\s+(\d{2,4})\b/);
+    if (!m && m2) { const f = G.ac.find(x => x.op.toUpperCase() === m2[1] && x.num === m2[2]); if (f) { a = f; s = s.slice(m2[0].length); } }
+    if (!a) { SL.toast('Select an aircraft or start the command with its callsign (e.g. KQA310).', 'warn'); return; }
+    sel = a;
+    const c = {};
+    const num = r => { const x = s.match(r); return x ? x : null; };
+    let x;
+    if ((x = num(/\b(?:TURN\s+)?LEFT\s+(?:HEADING\s+)?(\d{1,3})\b/)) || (x = num(/\bL\s?(\d{3})\b/))) { c.hdg = +x[1]; c.dir = 'left'; }
+    else if ((x = num(/\b(?:TURN\s+)?RIGHT\s+(?:HEADING\s+)?(\d{1,3})\b/)) || (x = num(/\bR\s?(\d{3})\b/))) { c.hdg = +x[1]; c.dir = 'right'; }
+    else if ((x = num(/\b(?:FLY\s+)?HEADING\s+(\d{1,3})\b/)) || (x = num(/\bH\s?(\d{3})\b/))) c.hdg = +x[1];
+    if ((x = num(/\b(?:FLIGHT\s+LEVEL|FL)\s?(\d{2,3})\b/))) c.alt = +x[1] * 100;
+    else if ((x = num(/\b(?:CLIMB|DESCEND|MAINTAIN)(?:\s+(?:TO|AND MAINTAIN))?(?:\s+ALTITUDE)?\s+(\d{3,5})\b/))) c.alt = +x[1] >= 1000 ? +x[1] : +x[1] * 100;
+    else if ((x = num(/\b[CDA]\s?(\d{2,3})\b/))) c.alt = +x[1] * 100;
+    if ((x = num(/\b(?:REDUCE|INCREASE|MAINTAIN)?\s*SPEED\s+(\d{2,3})\b/)) || (x = num(/\bS\s?(\d{2,3})\b/))) c.spd = +x[1];
+    if (/\bILS\b|CLEARED\s+(?:ILS|APPROACH)/.test(s)) c.ils = true;
+    if (/\bLAND\b|CLEARED\s+TO\s+LAND|\bCTL\b/.test(s)) c.land = true;
+    if (/\bLU\b|LINE\s*UP/.test(s)) c.lu = true;
+    if (/\bTO\b|\bCTO\b|TAKE-?\s?OFF/.test(s)) c.to = true;
+    if (/\bGA\b|GO\s*AROUND/.test(s)) c.ga = true;
+    if (/\bHO\b|CONTACT|HANDOFF|HAND OFF/.test(s)) c.ho = true;
+    if ((x = num(/\b(?:DCT|DIRECT)\s+([A-Z]{5})\b/))) { if (validFix(x[1])) c.dct = x[1]; else SL.toast('Unknown fix ' + x[1], 'warn'); }
+    if ((x = num(/\bHOLD(?:\s+AT)?\s+([A-Z]{5})\b/))) { if (validFix(x[1])) c.hold = x[1]; else SL.toast('Unknown fix ' + x[1], 'warn'); }
+    if (c.hdg != null && (c.hdg < 1 || c.hdg > 360)) { SL.toast('Heading must be 001–360.', 'warn'); delete c.hdg; }
+    if (!Object.keys(c).length) { SL.toast('Command not understood. Try L240, D80, S180, ILS, LAND, TO.', 'warn'); return; }
+    if (c.alt != null && (c.alt < 6000 || c.alt > 24000)) { SL.toast('Altitude must be between 6,000 ft and FL240 in this sector.', 'warn'); delete c.alt; }
+    const ok = cmd(a, c);
+    if (ok) $('#cli').value = '';
+  }
+  const validFix = f => f === 'KAPTI' || f === 'TELOS' || FIXES[f];
+
+  /* ======================= PHYSICS ======================= */
+  function windVec() { const r = R(W.dir); return [-W.spd * Math.sin(r), -W.spd * Math.cos(r)]; }
+  function tas(a) { return a.ias * (1 + 0.02 * a.alt / 1000); }
+  function gvel(a) { const t = tas(a), h = R(a.hdg), w = windVec(); return [t * Math.sin(h) + w[0], t * Math.cos(h) + w[1]]; } // kt
+  function locGeom(a) { const r = RW(); const rel = [a.x - r.thr[0], a.y - r.thr[1]]; const along = rel[0] * r.u[0] + rel[1] * r.u[1]; const cross = rel[0] * r.n[0] + rel[1] * r.n[1]; return { along, cross, d: -along, r }; }
+  const gsAlt = d => ELEV + TCH + d * GSFT;
+  function stepAc(a, dt) {
+    const T = a.T;
+    // fuel
+    let ff = T.burn * (a.mode === 'ground' || a.mode === 'lineup' ? .15 : (a.alt < 15000 ? 1 + .4 * (15000 - a.alt) / 10000 : 1));
+    if (!a.arr && a.alt < a.tAlt - 100 && a.mode !== 'ground') ff *= 1.5;
+    const f = ff * dt / 3600; a.fuel += f; G.fuel += f;
+    if (a.mode === 'ground') return;
+    if (a.mode === 'lineup') { a.luDur = G.t - a.luT; return; }
+    const r = RW();
+    if (a.mode === 'roll') {
+      a.ias = Math.min(a.ias + T.acc * dt, T.vr + 5);
+      const gs = a.ias + 0; a.x += r.u[0] * gs * dt / 3600; a.y += r.u[1] * gs * dt / 3600; a.hdg = r.c;
+      if (a.ias >= T.vr) { a.mode = 'hdg'; a.tHdg = r.c; a.tIas = Math.min(T.vmax, 250); a.airT = G.t; rtLine('plt', `[${clock()}] ${spoken(a)}: airborne, passing ${altW(Math.round((ELEV + 300) / 100) * 100)}, climbing ${altW(a.tAlt)}, ${spoken(a)}.`); }
+      return;
+    }
+    if (a.mode === 'rollout') {
+      a.ias = Math.max(0, a.ias - 5 * dt); a.x += r.u[0] * a.ias * dt / 3600; a.y += r.u[1] * a.ias * dt / 3600;
+      if (a.ias < 25) { a.done = 'landed'; }
+      return;
+    }
+    // lateral guidance
+    let want = a.tHdg, dir = a.turn;
+    if (a.mode === 'dct' || (a.mode === 'hold' && a.holdPh === 'to')) {
+      const fp = fixXY(a.fix); const dist = Math.hypot(fp[0] - a.x, fp[1] - a.y);
+      want = brg([a.x, a.y], fp); dir = null;
+      if (dist < 1.2) {
+        if (a.mode === 'hold' || a.limit) { a.mode = 'hold'; a.holdPh = 'out'; a.holdT = 0; a.inb = a.hdg; if (!a.holdLogged) { a.holdLogged = true; rtLine('plt', `[${clock()}] ${spoken(a)}: entering the hold at ${a.fix}, ${altW(a.alt)}, ${spoken(a)}.`); } }
+        else { a.mode = 'hdg'; a.tHdg = a.hdg; }
+      }
+    }
+    if (a.mode === 'hold' && a.holdPh !== 'to') {
+      if (a.holdPh === 'out') { want = norm360(a.inb + 180); dir = 'right'; a.holdT += Math.abs(angDiff(a.hdg, want)) < 3 ? dt : 0; if (a.holdT >= 60) { a.holdPh = 'to'; } }
+      a.holdTime = (a.holdTime || 0) + dt;
+    }
+    if (a.mode === 'loc') {
+      const g = locGeom(a); a.dAlong = g.d;
+      const t = tas(a), w = windVec(); const wPerp = w[0] * r.n[0] + w[1] * r.n[1];
+      const wca = D(Math.asin(SL.clamp(wPerp / t, -.5, .5)));
+      const gsNmS = Math.max(.02, (t - (w[0] * r.u[0] + w[1] * r.u[1]) * -1) / 3600);
+      const desired = -g.cross / 18; const th = D(Math.asin(SL.clamp(desired / gsNmS, -.5, .5)));
+      want = norm360(r.c - wca + th); dir = null;
+    }
+    const dh = angDiff(a.hdg, want);
+    let turnAmt = 3 * dt;
+    if (dir === 'left' && Math.abs(dh) > 1 && dh > 0 && a.mode === 'hdg') { a.hdg = norm360(a.hdg - Math.min(turnAmt, 360 - dh)); }
+    else if (dir === 'right' && Math.abs(dh) > 1 && dh < 0 && a.mode === 'hdg') { a.hdg = norm360(a.hdg + Math.min(turnAmt, 360 + dh)); }
+    else if (dir === 'right' && a.mode === 'hold' && dh < 0) { a.hdg = norm360(a.hdg + Math.min(turnAmt, 360 + dh)); }
+    else { if (Math.abs(dh) <= turnAmt) { a.hdg = want; if (a.mode === 'hdg') a.turn = null; } else a.hdg = norm360(a.hdg + Math.sign(dh) * turnAmt); }
+    // ILS capture
+    if (a.cleared.ils && a.mode === 'hdg') {
+      const g = locGeom(a);
+      const hd = Math.abs(angDiff(a.hdg, r.c));
+      const v = gvel(a); const crossRate = (v[0] * r.n[0] + v[1] * r.n[1]) / 3600;
+      if (g.d > 1.5 && g.d < 30 && hd < 100 && (Math.abs(g.cross) < .25 || (Math.abs(g.cross) < 1.4 && g.cross * crossRate < 0 && Math.abs(g.cross) < Math.abs(crossRate) * 30 + .3))) {
+        a.mode = 'loc'; a.estT = G.t; a.intAng = hd; a.dAlong = g.d;
+        if (hd > 45) { G.steep++; sys(`${a.cs} intercepted at ${Math.round(hd)}°: larger than 45°; expect an overshoot. Aim for 30° or less.`); }
+        rtLine('plt', `[${clock()}] ${spoken(a)}: established localiser runway ${digits(rwy)}, ${spoken(a)}.`);
+      }
+    }
+    // vertical
+    if (a.mode === 'loc') {
+      const ga = gsAlt(a.dAlong);
+      if (!a.gs && a.alt <= ga + 100) a.gs = true;
+      if (a.gs) { a.tAlt = ga; }
+      if (a.dAlong < 6 && a.gs && !a.spdHold2) { a.tIas = a.T.vapp; }
+      if (a.dAlong < 4 && a.spdHold) { a.spdHold = false; a.tIas = a.T.vapp; }
+      // go-around checks
+      if (a.dAlong < 3 && (!a.gs || a.alt > ga + 400)) { goAround(a, 'unstable approach, too high'); return; }
+      if (a.dAlong < 1.8 && a.ias > a.T.vapp + 30) { goAround(a, 'unstable approach, too fast'); return; }
+      if (a.dAlong < 1.0 && !a.cleared.land) { goAround(a, 'no landing clearance'); return; }
+      if (a.dAlong < .6 && G.ac.some(b => b !== a && (b.mode === 'lineup' || b.mode === 'roll' || b.mode === 'rollout'))) { goAround(a, 'runway occupied'); return; }
+      if (a.dAlong <= .05) { a.mode = 'rollout'; a.alt = ELEV; a.x = r.thr[0] + r.u[0] * .05; a.y = r.thr[1] + r.u[1] * .05; a.landT = G.t; rtLine('sys', `[${clock()}] ${a.cs} landed runway ${rwy}.`); return; }
+    }
+    const rate = (a.tAlt > a.alt ? T.clb : T.des) / 60 * (a.mode === 'loc' && a.gs ? 1.6 : 1);
+    if (Math.abs(a.tAlt - a.alt) <= rate * dt) a.alt = a.tAlt; else a.alt += Math.sign(a.tAlt - a.alt) * rate * dt;
+    // speed
+    let tI = a.tIas; if (a.alt < 10000 + ELEV * 0 && tI > 250 && !a.spdHold) tI = 250;
+    const dv = tI - a.ias; const accl = dv > 0 ? 1.5 : 1; a.ias += SL.clamp(dv, -accl * dt, accl * dt);
+    // move
+    const v = gvel(a); a.x += v[0] * dt / 3600; a.y += v[1] * dt / 3600; a.gs_ = Math.hypot(v[0], v[1]);
+    if (a.mode === 'loc') a.dAlong = locGeom(a).d;
+  }
+  function physics(dt) {
+    G.t += dt;
+    // spawning
+    const d = DIFFS[diff];
+    if (G.t >= G.next && G.t < SESSION - 240) {
+      const active = G.ac.filter(a => !a.done).length;
+      if (active < d.max) spawn(Math.random() < d.dep ? 'dep' : 'arr');
+      G.next = G.t + d.gap * (.6 + Math.random() * .8);
+    }
+    G.ac.forEach(a => { if (!a.done) stepAc(a, dt); });
+    // runway vacate & exits
+    G.ac.forEach(a => {
+      if (a.done === 'landed' && !a.counted) {
+        a.counted = true; G.landed++; const delay = Math.max(0, (G.t - a.spawnT) - a.nominal); G.delays.push(delay); const pts = Math.max(40, 100 - delay / 60 * 4); G.score += Math.round(pts);
+        sys(`${a.cs} vacated runway ${rwy}. +${Math.round(pts)} (${delay > 30 ? 'delay ' + SL.fmt(delay / 60, 1) + ' min' : 'no delay'}).`);
+        if (a === sel) sel = null;
+      }
+      if (!a.done && a.mode !== 'ground' && Math.hypot(a.x, a.y) > 47) {
+        if (!a.arr) {
+          const fp = fixXY(a.exit), off = Math.hypot(a.x - fp[0], a.y - fp[1]);
+          let pts = 80; const notes = [];
+          if (off > 8) { pts -= 30; G.badExit++; notes.push(`left ${SL.fmt(off, 0)} NM from ${a.exit}`); }
+          if (!a.ho) { pts -= 30; G.noHo++; notes.push('no handoff'); }
+          if (a.alt < 13000) { pts -= 20; notes.push('too low (' + altShort(a.alt) + ')'); }
+          G.departed++; G.score += pts; G.delays.push(Math.max(0, (G.t - a.spawnT) - a.nominal));
+          sys(`${a.cs} left the sector via ${off <= 8 ? a.exit : 'the wrong exit'}. +${pts}${notes.length ? ' (' + notes.join(', ') + ')' : ''}.`);
+          a.done = 'exited';
+        } else { a.done = 'lost'; G.lost++; G.score -= 200; alr(`${a.cs} has left controlled airspace without landing! −200.`); G.events.push(['lost', a.cs]); }
+        if (a === sel) sel = null;
+      }
+      if (a.mode === 'ground') a.waitT = G.t - a.spawnT;
+    });
+    // separation
+    separation();
+    // history
+    G.ac.forEach(a => { if (a.done || a.mode === 'ground') return; if (!a.lastH || G.t - a.lastH >= 4) { a.lastH = G.t; a.hist.unshift([a.x, a.y]); if (a.hist.length > 6) a.hist.pop(); } });
+    G.ac = G.ac.filter(a => !(a.done && G.t - (a.landT || 0) > 0 && (a.done === 'exited' || a.done === 'lost' || a.done === 'landed')));
+    if (G.t >= SESSION) endSession();
+  }
+  function airborne(a) { return !a.done && !['ground', 'lineup', 'roll', 'rollout'].includes(a.mode); }
+  function predictAlt(a, t) { const rate = (a.tAlt > a.alt ? a.T.clb : a.T.des) / 60; const dz = a.tAlt - a.alt; return Math.abs(dz) <= rate * t ? a.tAlt : a.alt + Math.sign(dz) * rate * t; }
+  function separation() {
+    const air = G.ac.filter(airborne);
+    G.conflicts = []; let alert = false;
+    for (let i = 0; i < air.length; i++) for (let j = i + 1; j < air.length; j++) {
+      const a = air[i], b = air[j], key = a.id + '-' + b.id;
+      const dh = Math.hypot(a.x - b.x, a.y - b.y), dv = Math.abs(a.alt - b.alt);
+      const bothLoc = a.mode === 'loc' && b.mode === 'loc';
+      const p = G.pairs[key] || (G.pairs[key] = { los: false, wake: false });
+      // actual LoS
+      const nearRwy = (Math.hypot(a.x, a.y) < 2.5 && a.alt < ELEV + 1200) && (Math.hypot(b.x, b.y) < 2.5 && b.alt < ELEV + 1200);
+      if (dh < 3 && dv < 1000 && !nearRwy) {
+        alert = true; G.conflicts.push({ a, b, kind: 'los' });
+        if (!p.los) { p.los = true; G.los++; G.score -= 150; alr(`LOSS OF SEPARATION ${a.cs} / ${b.cs}: ${SL.fmt(dh, 1)} NM, ${Math.round(dv)} ft. −150.`); G.events.push(['los', a.cs, b.cs]); }
+      } else if (p.los && (dh > 3.3 || dv > 1100)) p.los = false;
+      // wake on final
+      if (bothLoc && dv < 1000) {
+        const [lead, fol] = a.dAlong < b.dAlong ? [a, b] : [b, a];
+        const wm = wakeMin(lead.wake, fol.wake);
+        if (dh < wm && dh >= 3) {
+          G.conflicts.push({ a: lead, b: fol, kind: 'wake', wm });
+          if (!p.wake) { p.wake = true; G.wake++; G.score -= 60; alr(`WAKE: ${fol.cs} (${fol.wake}) is ${SL.fmt(dh, 1)} NM behind ${lead.cs} (${lead.wake}); minimum ${wm} NM. −60.`); G.events.push(['wake', lead.cs, fol.cs]); }
+        } else if (p.wake && dh > wm + .3) p.wake = false;
+      }
+      // prediction
+      if (!(dh < 3 && dv < 1000)) {
+        const va = gvel(a), vb = gvel(b);
+        for (let t = 5; t <= 90; t += 5) {
+          const ax = a.x + va[0] * t / 3600, ay = a.y + va[1] * t / 3600, bx = b.x + vb[0] * t / 3600, by = b.y + vb[1] * t / 3600;
+          if (Math.hypot(ax - bx, ay - by) < 3 && Math.abs(predictAlt(a, t) - predictAlt(b, t)) < 1000) { if (!(bothLoc)) G.conflicts.push({ a, b, kind: 'pred', t, pa: [ax, ay], pb: [bx, by] }); break; }
+        }
+      }
+    }
+    // MSAW
+    air.forEach(a => {
+      const m = mvaAt([a.x, a.y]); const dAp = Math.hypot(a.x, a.y);
+      const exempt = a.mode === 'loc' || (!a.arr && dAp < 10) || (a.arr && dAp < 3);
+      if (!exempt && a.alt < m - 100) { a.msaw = true; if (!a.msawLogged) { a.msawLogged = true; G.msaw++; G.score -= 50; alr(`MSAW ${a.cs}: ${altShort(a.alt)} below minimum ${altShort(m)}${m > MVA ? ' over the Ngong Hills' : ''}. −50.`); G.events.push(['msaw', a.cs]); } }
+      else { a.msaw = false; if (a.alt >= m) a.msawLogged = false; }
+    });
+    $('#stca').style.display = alert ? 'block' : 'none';
+    if (alert) $('#stca').textContent = 'STCA ' + G.conflicts.filter(c => c.kind === 'los').map(c => c.a.cs + '/' + c.b.cs).join('  ');
+  }
+
+  /* ======================= DRAW ======================= */
+  const cv = $('#cv'); let st = null;
+  st = SL.canvas(cv, () => {});
+  let sweep = 0;
+  function scale() { const { w, h } = st; return Math.min(w, h) / 2 / range * .96; }
+  function toS(x, y) { const { w, h } = st; const s = scale(); return [w / 2 + x * s, h / 2 - y * s]; }
+  function draw(dtR) {
+    if (!st) return;
+    const { ctx, w, h } = st; const s = scale();
+    ctx.fillStyle = '#020805'; ctx.fillRect(0, 0, w, h);
+    const g = ctx.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, Math.max(w, h) * .7); g.addColorStop(0, 'rgba(20,83,45,.28)'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    const [cx, cy] = toS(0, 0);
+    // rings
+    ctx.font = '500 10px JetBrains Mono, monospace'; ctx.textAlign = 'left';
+    for (let r = 10; r <= 60; r += 10) { ctx.strokeStyle = r % 50 === 0 ? 'rgba(74,222,128,.28)' : 'rgba(74,222,128,.12)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, r * s, 0, 7); ctx.stroke(); ctx.fillStyle = 'rgba(74,222,128,.4)'; ctx.fillText(r + '', cx + Math.sin(R(100)) * r * s + 3, cy - Math.cos(R(100)) * r * s + 11); }
+    // compass ticks
+    for (let b = 0; b < 360; b += 10) { const a = R(b), r0 = 47 * s, r1 = (b % 30 ? 48 : 49.5) * s; ctx.strokeStyle = 'rgba(74,222,128,.3)'; ctx.beginPath(); ctx.moveTo(cx + Math.sin(a) * r0, cy - Math.cos(a) * r0); ctx.lineTo(cx + Math.sin(a) * r1, cy - Math.cos(a) * r1); ctx.stroke(); if (b % 30 === 0) { ctx.fillStyle = 'rgba(74,222,128,.45)'; ctx.textAlign = 'center'; ctx.fillText(String(b).padStart(3, '0'), cx + Math.sin(a) * 51.5 * s, cy - Math.cos(a) * 51.5 * s + 3); } }
+    // sector boundary
+    ctx.setLineDash([8, 6]); ctx.strokeStyle = 'rgba(96,165,250,.35)'; ctx.beginPath(); ctx.arc(cx, cy, 47 * s, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+    // terrain
+    ctx.beginPath(); NGONG.forEach((p, i) => { const [x, y] = toS(p[0], p[1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); ctx.fillStyle = 'rgba(245,158,11,.06)'; ctx.fill(); ctx.strokeStyle = 'rgba(245,158,11,.45)'; ctx.setLineDash([3, 4]); ctx.stroke(); ctx.setLineDash([]);
+    { const c = NGONG.reduce((m, p) => [m[0] + p[0] / NGONG.length, m[1] + p[1] / NGONG.length], [0, 0]); const [x, y] = toS(c[0], c[1]); ctx.fillStyle = 'rgba(245,158,11,.7)'; ctx.textAlign = 'center'; ctx.fillText('NGONG HILLS', x, y - 2); ctx.fillText('MVA 9000', x, y + 10); }
+    // extended centreline
+    const r = RW();
+    ctx.strokeStyle = 'rgba(74,222,128,.35)'; ctx.lineWidth = 1;
+    { const [x0, y0] = toS(r.thr[0], r.thr[1]), [x1, y1] = toS(r.thr[0] - r.u[0] * 20, r.thr[1] - r.u[1] * 20); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); }
+    // feather
+    { const half = R(2.5), l = 18; ctx.fillStyle = 'rgba(74,222,128,.05)'; ctx.beginPath(); const [x0, y0] = toS(r.thr[0], r.thr[1]); ctx.moveTo(x0, y0); [-1, 1].forEach(sg => { const ang = R(r.c + 180) + sg * half; const [x, y] = toS(r.thr[0] + Math.sin(ang) * l, r.thr[1] + Math.cos(ang) * l); ctx.lineTo(x, y); }); ctx.closePath(); ctx.fill(); }
+    for (let d = 1; d <= 20; d++) { const px = r.thr[0] - r.u[0] * d, py = r.thr[1] - r.u[1] * d; const [x, y] = toS(px, py); const L = d % 5 === 0 ? 5 : 2.5; ctx.strokeStyle = 'rgba(74,222,128,.45)'; ctx.beginPath(); ctx.moveTo(x - r.n[0] * L, y + r.n[1] * L); ctx.lineTo(x + r.n[0] * L, y - r.n[1] * L); ctx.stroke(); }
+    { const [x, y] = toS(r.thr[0] - r.u[0] * 8.4, r.thr[1] - r.u[1] * 8.4); ctx.strokeStyle = '#fbbf24'; ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.stroke(); ctx.fillStyle = 'rgba(251,191,36,.8)'; ctx.textAlign = 'left'; ctx.fillText('FAF', x + 6, y + 10); }
+    // runway
+    { const [x0, y0] = toS(r.thr[0], r.thr[1]), [x1, y1] = toS(r.end[0], r.end[1]); ctx.strokeStyle = '#e6ecf7'; ctx.lineWidth = Math.max(3, s * .12); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.lineWidth = 1; ctx.fillStyle = '#e6ecf7'; ctx.textAlign = 'center'; const [lx, ly] = toS(r.thr[0] - r.n[0] * 1.2 - r.u[0] * .5, r.thr[1] - r.n[1] * 1.2 - r.u[1] * .5); ctx.fillText(rwy, lx, ly); }
+    // fixes
+    const fixList = [...ENTRY, ...EXITS, ifName()];
+    fixList.forEach(n => { const p = fixXY(n); const [x, y] = toS(p[0], p[1]); const ex = EXITS.includes(n); ctx.strokeStyle = ex ? 'rgba(96,165,250,.8)' : 'rgba(74,222,128,.75)'; ctx.beginPath(); ctx.moveTo(x, y - 5); ctx.lineTo(x + 4.5, y + 3.5); ctx.lineTo(x - 4.5, y + 3.5); ctx.closePath(); ctx.stroke(); ctx.fillStyle = ex ? 'rgba(147,197,253,.85)' : 'rgba(134,239,172,.85)'; ctx.textAlign = 'left'; ctx.fillText(n, x + 7, y + 4); });
+    // sweep
+    sweep = (sweep + dtR * 90) % 360;
+    { const a = R(sweep) - Math.PI / 2; const len = 60 * s; for (let k = 0; k < 24; k++) { ctx.fillStyle = `rgba(74,222,128,${.16 * Math.pow(1 - k / 24, 1.6)})`; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, len, a - R((k + 1) * 1.5), a - R(k * 1.5)); ctx.closePath(); ctx.fill(); } ctx.strokeStyle = 'rgba(134,239,172,.55)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * len, cy + Math.sin(a) * len); ctx.stroke(); ctx.lineWidth = 1; }
+    if (!G) return;
+    // conflicts lines
+    G.conflicts.forEach(c => {
+      const [ax, ay] = toS(c.a.x, c.a.y), [bx, by] = toS(c.b.x, c.b.y);
+      ctx.strokeStyle = c.kind === 'los' ? '#ef4444' : c.kind === 'wake' ? '#f472b6' : '#f59e0b'; ctx.setLineDash(c.kind === 'pred' ? [5, 4] : []); ctx.lineWidth = c.kind === 'los' ? 2 : 1.5;
+      if (c.kind === 'pred') { const [pax, pay] = toS(c.pa[0], c.pa[1]), [pbx, pby] = toS(c.pb[0], c.pb[1]); ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(pax, pay); ctx.moveTo(bx, by); ctx.lineTo(pbx, pby); ctx.stroke(); ctx.beginPath(); ctx.arc((pax + pbx) / 2, (pay + pby) / 2, 3 * s / 2, 0, 7); ctx.stroke(); ctx.fillStyle = '#f59e0b'; ctx.textAlign = 'center'; ctx.fillText(Math.round(c.t) + 's', (pax + pbx) / 2, (pay + pby) / 2 - 3 * s / 2 - 3); }
+      else { ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.fillStyle = ctx.strokeStyle; ctx.textAlign = 'center'; ctx.fillText(c.kind === 'wake' ? `WAKE ${c.wm}NM` : SL.fmt(Math.hypot(c.a.x - c.b.x, c.a.y - c.b.y), 1) + 'NM', (ax + bx) / 2, (ay + by) / 2 - 4); }
+      ctx.setLineDash([]); ctx.lineWidth = 1;
+    });
+    const conflicted = new Set(); G.conflicts.forEach(c => { if (c.kind !== 'pred') { conflicted.add(c.a); conflicted.add(c.b); } });
+    const predicted = new Set(); G.conflicts.forEach(c => { if (c.kind === 'pred') { predicted.add(c.a); predicted.add(c.b); } });
+    // aircraft
+    const blink = Math.sin(performance.now() / 160) > 0;
+    G.ac.forEach(a => {
+      if (a.done) return;
+      const [x, y] = toS(a.x, a.y);
+      const isSel = a === sel, bad = conflicted.has(a) || a.msaw, warn = predicted.has(a);
+      let col = a.mode === 'ground' || a.mode === 'lineup' ? '#93c5fd' : a.ho ? 'rgba(74,222,128,.45)' : '#4ade80';
+      if (warn) col = '#f59e0b'; if (bad) col = blink ? '#ef4444' : '#fca5a5'; if (isSel) col = bad ? col : '#fde047';
+      // history
+      a.hist.forEach((p, i) => { const [hx, hy] = toS(p[0], p[1]); ctx.fillStyle = `rgba(74,222,128,${.5 - i * .07})`; ctx.beginPath(); ctx.arc(hx, hy, 1.8, 0, 7); ctx.fill(); });
+      // vector 1 min
+      if (airborne(a)) { const v = gvel(a); const [vx, vy] = toS(a.x + v[0] / 60, a.y + v[1] / 60); ctx.strokeStyle = col; ctx.globalAlpha = .7; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(vx, vy); ctx.stroke(); ctx.globalAlpha = 1; }
+      // symbol
+      ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 10; ctx.strokeStyle = col; ctx.lineWidth = 1.6;
+      if (a.mode === 'ground' || a.mode === 'lineup') { ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 7); ctx.stroke(); }
+      else { ctx.strokeRect(x - 4, y - 4, 8, 8); if (a.arr) { ctx.beginPath(); ctx.moveTo(x - 4, y - 4); ctx.lineTo(x + 4, y + 4); ctx.stroke(); } }
+      ctx.restore();
+      // data block
+      if (a.mode === 'ground' || a.mode === 'lineup') {
+        const gi = G.ac.filter(b => !b.done && (b.mode === 'ground' || b.mode === 'lineup')).indexOf(a);
+        const tag = `${a.cs} ${a.wake} ${a.mode === 'lineup' ? 'LINED UP' : 'READY'} ${a.exit}`;
+        ctx.font = '600 11px JetBrains Mono, monospace'; const tw = ctx.measureText(tag).width;
+        const tx = x + 16, ty = y + 22 + gi * 15;
+        ctx.strokeStyle = col; ctx.globalAlpha = .5; ctx.beginPath(); ctx.moveTo(x + 3, y + 3); ctx.lineTo(tx - 2, ty - 4); ctx.stroke(); ctx.globalAlpha = 1;
+        if (isSel) { ctx.fillStyle = 'rgba(253,224,71,.1)'; ctx.fillRect(tx - 3, ty - 11, tw + 6, 15); }
+        ctx.fillStyle = col; ctx.textAlign = 'left'; ctx.fillText(tag, tx, ty);
+        a._sx = x; a._sy = y; a._bx = tx; a._by = ty - 11; return;
+      }
+      const off = a.dbOff || [18, -30];
+      const bx = x + off[0], by = y + off[1];
+      ctx.strokeStyle = col; ctx.globalAlpha = .6; ctx.beginPath(); ctx.moveTo(x + Math.sign(off[0]) * 5, y + Math.sign(off[1]) * 5); ctx.lineTo(bx - 2, by + 14); ctx.stroke(); ctx.globalAlpha = 1;
+      const fl = String(Math.round(a.alt / 100)).padStart(3, '0'), cfl = String(Math.round(a.tAlt / 100)).padStart(3, '0');
+      const trend = Math.abs(a.tAlt - a.alt) < 50 ? ' ' : a.tAlt > a.alt ? '↑' : '↓';
+      const l1 = `${a.cs} ${a.wake}${a.ho ? ' ✓' : ''}`;
+      const l2 = `${fl}${trend}${trend !== ' ' ? cfl : ''}${a.mode === 'loc' ? ' LOC' + (a.gs ? '/GS' : '') : a.mode === 'hold' ? ' HLD' : ''}`;
+      const l3 = `${String(Math.round((a.gs_ || a.ias) / 10)).padStart(2, '0')} ${a.type} ${a.arr ? (a.cleared.land ? 'CL' : a.cleared.ils ? 'ILS' : 'JK') : a.exit}`;
+      ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'left';
+      if (isSel) { ctx.fillStyle = 'rgba(253,224,71,.08)'; ctx.fillRect(bx - 3, by - 2, 96, 40); }
+      ctx.fillStyle = col; ctx.fillText(l1, bx, by + 9); ctx.font = '500 11px JetBrains Mono, monospace'; ctx.fillText(l2, bx, by + 21); ctx.fillText(l3, bx, by + 33);
+      a._sx = x; a._sy = y; a._bx = bx; a._by = by;
+    });
+  }
+  function hitAc(px, py) { let best = null, bd = 22; G.ac.forEach(a => { if (a.done || a._sx == null) return; const d1 = Math.hypot(px - a._sx, py - a._sy); const inBlk = px >= a._bx - 4 && px <= a._bx + 96 && py >= a._by - 4 && py <= a._by + 38; const d = inBlk ? 0 : d1; if (d < bd) { bd = d; best = a; } }); return best; }
+  cv.addEventListener('pointerdown', e => { if (!G) return; const p = SL.ptr(e, cv); const a = hitAc(p.x, p.y); if (a) { sel = a; renderSel(); renderStrips(); } });
+  cv.addEventListener('wheel', e => { e.preventDefault(); zoom(e.deltaY > 0 ? 1 : -1); }, { passive: false });
+  function zoom(d) { const steps = [20, 30, 40, 50, 60]; const i = steps.indexOf(range); range = steps[SL.clamp(i + d, 0, steps.length - 1)]; }
+  $('#zIn').onclick = () => zoom(-1); $('#zOut').onclick = () => zoom(1);
+
+  /* ======================= PANELS ======================= */
+  const ALT_OPTS = [7000, 8000, 9000, 10000, 11000, 12000, 13000, 14000, 15000, 16000, 17000, 18000, 19000, 20000, 22000, 24000];
+  const SPD_OPTS = [140, 160, 170, 180, 190, 200, 210, 220, 230, 250, 280];
+  function renderSel() {
+    const box = $('#selBox');
+    if (!sel || sel.done) { sel = null; box.innerHTML = '<p class="small muted" style="margin:0">Click an aircraft symbol or data block on the scope, or a flight strip.</p>'; return; }
+    const a = sel, gr = a.mode === 'ground' || a.mode === 'lineup';
+    const status = { ground: 'At holding point', lineup: 'Lined up, waiting', roll: 'Take-off roll', rollout: 'Landing roll', hdg: 'Radar vectors', dct: 'Direct ' + a.fix + (a.limit ? ' (clearance limit)' : ''), hold: 'Holding at ' + a.fix, loc: 'Established localiser' + (a.gs ? ' + glide slope' : '') }[a.mode];
+    box.innerHTML = `<div class="sel-h"><b>${a.cs}</b><span>${a.op} ${a.num} · ${a.type} · wake ${a.wake} · ${a.arr ? 'arrival from ' + a.entry : 'departure via ' + a.exit + ', requests ' + altShort(a.reqFL)}</span></div>
+      <div class="small" style="color:#86efac;margin-top:4px">${status}${a.cleared.ils ? ' · cleared ILS' : ''}${a.cleared.land ? ' · cleared to land' : ''}${a.ho ? ' · handed off' : ''}</div>
+      <div class="ac-state"><div>HDG<b>${String(Math.round(a.hdg)).padStart(3, '0')}${a.mode === 'hdg' && Math.round(a.tHdg) !== Math.round(a.hdg) ? '→' + String(Math.round(a.tHdg)).padStart(3, '0') : ''}</b></div><div>ALT<b>${Math.round(a.alt / 100) * 100 > TA ? 'FL' + Math.round(a.alt / 100) : SL.fmt(Math.round(a.alt / 100) * 100, 0)}${Math.abs(a.tAlt - a.alt) > 50 ? '→' + (a.tAlt > TA ? 'FL' + a.tAlt / 100 : a.tAlt / 1000 + 'k') : ''}</b></div><div>IAS<b>${Math.round(a.ias)}${Math.abs(a.tIas - a.ias) > 2 ? '→' + Math.round(a.tIas) : ''}</b></div></div>
+      ${gr ? `<div class="cmdrow"><label>Initial</label><select id="selAlt">${ALT_OPTS.map(v => `<option value="${v}" ${v === a.tAlt ? 'selected' : ''}>${altShort(v)}</option>`).join('')}</select><button class="btn sm" data-c="alt">Set</button></div>
+        <div class="cmdgrid"><button class="btn sm" data-c="lu"><i data-lucide="move-right"></i> Line up and wait</button><button class="btn sm primary" data-c="to"><i data-lucide="plane-takeoff"></i> Cleared take-off</button></div>` :
+      `<div class="cmdrow"><label>Heading</label><input type="number" id="selHdg" min="1" max="360" value="${String(Math.round(a.tHdg) || 360).padStart(3, '0')}"><span class="btn-row" style="gap:4px"><button class="btn sm" data-c="L">L</button><button class="btn sm" data-c="R">R</button></span></div>
+        <div class="cmdrow"><label>Altitude</label><select id="selAlt">${ALT_OPTS.map(v => `<option value="${v}" ${v === Math.round(a.tAlt / 1000) * 1000 ? 'selected' : ''}>${altShort(v)}</option>`).join('')}</select><button class="btn sm" data-c="alt">Set</button></div>
+        <div class="cmdrow"><label>Speed</label><select id="selSpd">${SPD_OPTS.map(v => `<option value="${v}" ${v === Math.round(a.tIas / 10) * 10 ? 'selected' : ''}>${v} kt</option>`).join('')}</select><button class="btn sm" data-c="spd">Set</button></div>
+        <div class="cmdrow"><label>Fix</label><select id="selFix">${[ifName(), ...ENTRY, ...EXITS].map(f => `<option ${f === (a.arr ? ifName() : a.exit) ? 'selected' : ''}>${f}</option>`).join('')}</select><span class="btn-row" style="gap:4px"><button class="btn sm" data-c="dct">Direct</button><button class="btn sm" data-c="hold">Hold</button></span></div>
+        <div class="cmdgrid">${a.arr ? `<button class="btn sm" data-c="ils"><i data-lucide="plane-landing"></i> Cleared ILS ${rwy}</button><button class="btn sm primary" data-c="land"><i data-lucide="check"></i> Cleared to land</button><button class="btn sm" data-c="ga"><i data-lucide="rotate-ccw"></i> Go around</button>` : `<button class="btn sm primary" data-c="ho"><i data-lucide="radio-tower"></i> Contact Nairobi Control</button>`}</div>`}`;
+    SL.refreshIcons(box);
+  }
+  $('#selBox').addEventListener('click', e => {
+    const b = e.target.closest('[data-c]'); if (!b || !sel || !running) { if (b && !running) SL.toast('Start the session first.', 'warn'); return; }
+    const k = b.dataset.c, a = sel;
+    if (k === 'L' || k === 'R') { const h = +$('#selHdg').value; if (!(h >= 1 && h <= 360)) return SL.toast('Heading 001–360', 'warn'); cmd(a, { hdg: h, dir: k === 'L' ? 'left' : 'right' }); }
+    if (k === 'alt') cmd(a, { alt: +$('#selAlt').value });
+    if (k === 'spd') cmd(a, { spd: +$('#selSpd').value });
+    if (k === 'dct') cmd(a, { dct: $('#selFix').value });
+    if (k === 'hold') cmd(a, { hold: $('#selFix').value });
+    if (['ils', 'land', 'ga', 'lu', 'to', 'ho'].includes(k)) cmd(a, { [k]: true });
+  });
+  $('#cliGo').onclick = () => { if (running) parseCLI($('#cli').value); };
+  $('#cli').addEventListener('keydown', e => { if (e.key === 'Enter' && running) parseCLI($('#cli').value); });
+  function renderStrips() {
+    const list = G.ac.filter(a => !a.done).sort((a, b) => (a.arr - b.arr) || a.spawnT - b.spawnT);
+    $('#strips').innerHTML = list.map(a => `<button class="strip ${a.arr ? 'arr' : ''} ${a === sel ? 'sel' : ''}" data-id="${a.id}"><span><b>${a.cs}</b><br><small>${a.type}/${a.wake}</small></span><span>${a.arr ? a.entry + ' → ' + rwy : rwy + ' → ' + a.exit}<br><small>${altShort(Math.round(a.alt / 100) * 100)} · ${{ ground: 'holding point', lineup: 'lined up', roll: 'rolling', rollout: 'landed', hdg: 'vectors', dct: 'direct ' + a.fix, hold: 'holding', loc: 'on ILS' }[a.mode]}</small></span><small>${a.arr ? 'ARR' : 'DEP'}</small></button>`).join('') || '<p class="small muted" style="margin:0">No traffic.</p>';
+  }
+  $('#strips').addEventListener('click', e => { const b = e.target.closest('.strip'); if (!b) return; sel = G.ac.find(a => a.id === +b.dataset.id); renderSel(); renderStrips(); });
+  function stats() {
+    const avgDelay = G.delays.length ? G.delays.reduce((a, b) => a + b, 0) / G.delays.length / 60 : 0;
+    $('#stats').innerHTML = `<div class="stat"><div class="k">Landed</div><div class="v">${G.landed}</div></div><div class="stat"><div class="k">Departed</div><div class="v">${G.departed}</div></div>
+      <div class="stat"><div class="k">Separation lost</div><div class="v" style="color:${G.los ? '#fca5a5' : ''}">${G.los}</div></div><div class="stat"><div class="k">Wake / MSAW</div><div class="v">${G.wake} / ${G.msaw}</div></div>
+      <div class="stat"><div class="k">Go-arounds</div><div class="v">${G.ga}</div></div><div class="stat"><div class="k">Avg delay</div><div class="v">${SL.fmt(avgDelay, 1)}<small>min</small></div></div>
+      <div class="stat"><div class="k">Fuel burnt</div><div class="v">${SL.fmt(G.fuel / 1000, 1)}<small>t</small></div></div><div class="stat"><div class="k">In sector</div><div class="v">${G.ac.filter(a => !a.done).length}</div></div>`;
+    $('#hTime').textContent = clock(); $('#hScore').textContent = Math.round(G.score); $('#hWind').textContent = String(W.dir).padStart(3, '0') + '/' + W.spd; $('#hRwy').textContent = rwy;
+  }
+
+  /* ======================= SCORE / OVERLAYS ======================= */
+  function report() {
+    const n = { safe: [], thr: [], eff: [], proc: [] };
+    let safe = 100 - 30 * G.los - 15 * G.wake - 10 * G.msaw - 25 * G.lost;
+    if (!G.los && !G.wake && !G.msaw && !G.lost) n.safe.push(['on', 'No losses of separation, wake infringements or terrain warnings. Safety is the first job of ATC.']);
+    G.events.filter(e => e[0] === 'los').forEach(e => n.safe.push(['bad', `Loss of separation between ${e[1]} and ${e[2]}: less than 3 NM and 1,000 ft. Use the amber prediction lines to act early: a level change of 1,000 ft or a 30° turn usually resolves it.`]));
+    G.events.filter(e => e[0] === 'wake').forEach(e => n.safe.push(['warn', `${e[2]} followed ${e[1]} too closely on final for its wake category. Use speed control (e.g. 160 kt until 4 NM) and longer vectors behind heavies.`]));
+    G.events.filter(e => e[0] === 'msaw').forEach(e => n.safe.push(['bad', `${e[1]} was descended below the minimum vectoring altitude. Terrain clearance is the controller's responsibility while vectoring.`]));
+    G.events.filter(e => e[0] === 'lost').forEach(e => n.safe.push(['bad', `${e[1]} flew out of your airspace without landing.`]));
+    const offered = G.spawned.arr + G.spawned.dep;
+    const inProg = G.ac.filter(a => !a.done && (a.mode === 'loc' || (!a.arr && airborne(a)))).length;
+    let thr = offered ? (G.landed + G.departed + .5 * inProg) / offered * 100 : 0;
+    n.thr.push([thr >= 70 ? 'on' : 'warn', `${G.landed} landing${G.landed === 1 ? '' : 's'} and ${G.departed} departure${G.departed === 1 ? '' : 's'} from ${offered} aircraft offered${inProg ? ` (${inProg} well under way at the end)` : ''}.`]);
+    const waitDeps = G.ac.filter(a => !a.done && a.mode === 'ground' && G.t - a.spawnT > 180);
+    if (waitDeps.length) n.thr.push(['warn', `${waitDeps.length} departure${waitDeps.length > 1 ? 's' : ''} waited more than 3 minutes at the holding point. Gaps of about 2 minutes between arrivals let you release departures.`]);
+    const avgDelay = G.delays.length ? G.delays.reduce((a, b) => a + b, 0) / G.delays.length / 60 : 0;
+    let eff = 100 - avgDelay * 10;
+    const holdT = G.ac.concat().reduce((s, a) => s + (a.holdTime || 0), 0);
+    n.eff.push([avgDelay < 3 ? 'on' : 'warn', `Average delay ${SL.fmt(avgDelay, 1)} min against an unimpeded route. Fuel burnt: ${SL.fmt(G.fuel / 1000, 2)} t, about ${SL.fmt(G.fuel * 3.16 / 1000, 1)} t of CO₂ (3.16 kg CO₂ per kg of jet fuel).`]);
+    if (holdT > 120) n.eff.push(['warn', `Aircraft spent ${SL.fmt(holdT / 60, 1)} min in holding patterns. Holding is safe but burns fuel at low level; vector arrivals before they reach the clearance limit.`]);
+    let proc = 100 - 12 * G.ga - 12 * G.noHo - 12 * G.badExit - 5 * G.steep;
+    G.events.filter(e => e[0] === 'ga').forEach(e => n.proc.push(['warn', `${e[1]} went around: ${e[2]}. ${/clearance/.test(e[2]) ? 'Issue the landing clearance by about 4 NM.' : /occupied/.test(e[2]) ? 'Do not clear a departure for take-off when an arrival is inside about 3 NM.' : /high/.test(e[2]) ? 'Aircraft must intercept the glide slope from below: level at 8,000 ft by the FAF.' : /fast/.test(e[2]) ? 'Reduce to 160–180 kt by 8 NM so pilots can slow to approach speed.' : ''}`]));
+    if (G.noHo) n.proc.push(['warn', `${G.noHo} departure${G.noHo > 1 ? 's' : ''} left without a handoff to Nairobi Control.`]);
+    if (G.badExit) n.proc.push(['warn', `${G.badExit} departure${G.badExit > 1 ? 's' : ''} left the sector away from the filed exit point. Use "proceed direct" to the exit fix.`]);
+    if (G.steep) n.proc.push(['warn', `${G.steep} localiser intercept${G.steep > 1 ? 's were' : ' was'} steeper than 45°.`]);
+    if (G.handoffs && !G.noHo) n.proc.push(['on', 'All departures handed off to Nairobi Control.']);
+    if (!G.ga && G.landed) n.proc.push(['on', 'No go-arounds: stable approaches with timely landing clearances.']);
+    const parts = [['Safety', SL.clamp(safe, 0, 100), 'safe', .4], ['Throughput', SL.clamp(thr, 0, 100), 'thr', .2], ['Efficiency', SL.clamp(eff, 0, 100), 'eff', .2], ['Procedures', SL.clamp(proc, 0, 100), 'proc', .2]];
+    return { parts, notes: n, overall: parts.reduce((s, p) => s + p[1] * p[3], 0) };
+  }
+  const ovl = $('#ovl');
+  function briefing() {
+    ovl.classList.remove('hide');
+    const d = DIFFS[diff];
+    ovl.innerHTML = `<div class="role"><span class="badge"><i data-lucide="radar"></i> Role briefing</span>
+      <h2 style="margin-top:12px">You are Nairobi Approach (combined with Tower)</h2>
+      <p class="muted">Embakasi International (HKJK-style), elevation 5,330 ft, single runway 06/24. Wind ${String(W.dir).padStart(3, '0')}° at ${W.spd} kt, so runway <b>${rwy}</b> is in use. Traffic level: <b>${d.n}</b>, up to ${d.max} aircraft at once over a ${SESSION / 60}-minute session.</p>
+      <ul>
+        <li><b>Arrivals</b> (amber strips, crossed squares) enter at FL140–FL170 and fly direct to <b>${ifName()}</b>, their clearance limit, where they will hold if you do nothing. Descend them to 8,000 ft, slow them to 160–180 kt, vector them to intercept the localiser at 30° or less, clear them for the ILS, then clear them to land.</li>
+        <li><b>Departures</b> (blue) wait at the holding point. Line up, clear for take-off when the runway and short final are clear, climb to at least FL150, send direct to their exit fix, and hand off to Nairobi Control.</li>
+        <li><b>Separation:</b> 3 NM or 1,000 ft; wake spacing on final behind Heavy (H) and Super (J). Amber dashed lines predict conflicts within 90 s; red means separation is lost.</li>
+        <li>Terrain: stay at or above 7,000 ft, and 9,000 ft over the Ngong Hills, unless established on the ILS.</li>
+      </ul>
+      <p class="small muted">Click an aircraft to select it, then use the buttons or type commands (e.g. <code>L240 D80 S180</code>). The radio transcript shows each instruction in ICAO phraseology with the pilot's readback. Use 2× or 4× time when it is quiet.</p>
+      <button class="btn primary" id="ovlGo"><i data-lucide="play"></i> Open the position</button></div>`;
+    SL.refreshIcons(ovl); $('#ovlGo').onclick = start;
+  }
+  function endSession() {
+    if (ended) return; ended = true; running = false; sel = null; renderSel();
+    const r = report(); checkCh(r, true);
+    const g = gradeOf(r.overall);
+    ovl.classList.remove('hide');
+    ovl.innerHTML = `<div class="role"><span class="badge"><i data-lucide="clipboard-check"></i> Session debrief</span>
+      <h2 style="margin-top:12px">Controller grade: <span class="g${g}">${g}</span> <span class="muted" style="font-size:.6em">${Math.round(r.overall)}/100 · score ${Math.round(G.score)}</span></h2>
+      <p class="muted">${SL.fmt(G.t / 60, 1)} minutes on position. ${G.landed} landed, ${G.departed} departed, ${G.los} loss${G.los === 1 ? '' : 'es'} of separation, ${G.ga} go-around${G.ga === 1 ? '' : 's'}.</p>
+      <div class="grade">${r.parts.map(p => `<div class="g"><div class="k">${p[0]}</div><div class="v g${gradeOf(p[1])}">${gradeOf(p[1])}</div><div class="small muted">${Math.round(p[1])}/100 · weight ${p[3] * 100}%</div></div>`).join('')}</div>
+      ${r.parts.map(p => r.notes[p[2]].length ? `<h4>${p[0]}</h4><div class="fb">${r.notes[p[2]].map(([k, t]) => fb(k, t)).join('')}</div>` : '').join('')}
+      <div class="btn-row"><button class="btn primary" id="ovlAgain"><i data-lucide="rotate-ccw"></i> New session</button><button class="btn" id="ovlClose"><i data-lucide="radar"></i> Review the scope</button></div></div>`;
+    SL.refreshIcons(ovl); ovl.scrollTop = 0;
+    $('#ovlAgain').onclick = reset; $('#ovlClose').onclick = () => ovl.classList.add('hide');
+  }
+  function start() { ovl.classList.add('hide'); running = true; ended = false; if (acc === 0) setAcc(1); spawn('arr'); G.next = 40; renderStrips(); renderSel(); }
+  function reset() { running = false; ended = false; newGame(); renderSel(); renderStrips(); stats(); briefing(); }
+  function setAcc(v) { acc = v; document.querySelectorAll('#accSeg button').forEach(b => b.classList.toggle('on', +b.dataset.v === v)); }
+  document.querySelectorAll('#accSeg button').forEach(b => b.onclick = () => setAcc(+b.dataset.v));
+  document.querySelectorAll('#diffSeg button').forEach(b => b.onclick = () => { if (running) { SL.toast('End the session to change traffic level.', 'warn'); return; } diff = +b.dataset.v; document.querySelectorAll('#diffSeg button').forEach(x => x.classList.toggle('on', x === b)); reset(); });
+  $('#btnStart').onclick = () => { if (running) return; if (ended) reset(); start(); };
+  $('#btnEnd').onclick = () => { if (running) endSession(); };
+  document.addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return; if (e.code === 'Space' && running && document.activeElement === document.body) { e.preventDefault(); setAcc(acc ? 0 : 1); } });
+
+  /* ======================= CHALLENGES ======================= */
+  const CH = [
+    { id: 'c1', t: 'Land your first aircraft.', ok: () => G.landed >= 1 },
+    { id: 'c2', t: 'Hand off a departure to Nairobi Control at FL150 or above, leaving via its exit fix.', ok: () => G.departed - G.badExit - G.noHo >= 1 && G.handoffs >= 1 },
+    { id: 'c3', t: 'Land three aircraft in a row without a go-around or loss of separation.', ok: () => G.landed >= 3 && !G.ga && !G.los },
+    { id: 'c4', t: 'Have two aircraft established on the localiser at the same time, correctly wake-spaced.', ok: () => { const l = G.ac.filter(a => a.mode === 'loc' && !a.done); return l.length >= 2 && !G.conflicts.some(c => c.kind === 'wake' || c.kind === 'los'); } },
+    { id: 'c5', t: 'Finish a Standard or Rush hour session with Safety grade A and at least six movements.', end: r => diff >= 1 && r.parts[0][1] >= 85 && G.landed + G.departed >= 6 },
+    { id: 'c6', t: 'Use typed phraseology: issue a heading, altitude and speed in one command line.', ok: () => [...G.used].some(u => /hdg/.test(u) && /alt/.test(u) && /spd/.test(u)) },
+  ];
+  const done = new Set();
+  function renderCh() { $('#chList').innerHTML = CH.map(c => `<li>${done.has(c.id) ? '<b style="color:var(--ok)">Done:</b> ' : ''}${c.t}</li>`).join(''); }
+  function checkCh(r, end) { CH.forEach(c => { if (done.has(c.id)) return; const ok = end ? (c.end ? c.end(r) : c.ok()) : (c.ok && c.ok()); if (ok) { done.add(c.id); SL.toast('Challenge complete: ' + c.t, 'ok', 5000); } }); renderCh(); }
+
+  /* ======================= LOOP ======================= */
+  let ui = 0, chT = 0, lastSel = null;
+  const loop = SL.loop((dt) => {
+    if (running && acc > 0) { let simDt = dt * acc; while (simDt > 0) { const h = Math.min(.5, simDt); physics(h); simDt -= h; if (!running) break; } }
+    draw(dt);
+    ui += dt; chT += dt;
+    if (ui > .4) { ui = 0; stats(); if (running) { renderStrips(); if ((sel || lastSel) && (sel !== lastSel || !$('#selBox').contains(document.activeElement))) { renderSel(); } lastSel = sel; } }
+    if (chT > 1) { chT = 0; if (running) checkCh(); }
+  });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) loop.stop(); else loop.start(); });
+
+  $('#phon').innerHTML = 'Alfa Bravo Charlie Delta Echo Foxtrot Golf Hotel India Juliett Kilo Lima Mike November Oscar Papa Quebec Romeo Sierra Tango Uniform Victor Whiskey X-ray Yankee Zulu'.split(' ').map(w => `<div><b>${w[0]}</b>${w}</div>`).join('');
+  SL.quiz('#quiz', [
+    { q: 'What is the standard minimum radar separation used in this terminal area?', options: ['1 NM or 500 ft', '3 NM or 1,000 ft', '5 NM or 2,000 ft', '10 NM or 1,000 ft'], answer: 1, why: 'Terminal radar separation is commonly 3 NM horizontally; vertical separation is 1,000 ft below FL290 (and in RVSM airspace).' },
+    { q: 'A Medium aircraft follows a Heavy on final approach. What is the ICAO wake turbulence radar minimum?', options: ['3 NM', '4 NM', '5 NM', '6 NM'], answer: 2, why: 'Doc 4444: Heavy followed by Medium = 5 NM. Heavy–Heavy is 4 NM, Heavy–Light 6 NM.' },
+    { q: 'How should "Kenya 310, descend flight level 120" be read back?', options: ['"Roger"', '"Wilco, Kenya 310"', '"Descending flight level one two zero, Kenya 310"', '"Kenya 310, one two zero"'], answer: 2, why: 'Level and heading instructions must be read back in full, with the callsign at the end.' },
+    { q: 'Why do controllers say "departure" rather than "take-off" except when issuing a take-off clearance?', options: ['It is shorter', 'To avoid ambiguity that could cause an unauthorised take-off, as at Tenerife in 1977', 'Because pilots prefer it', 'ICAO has no such rule'], answer: 1, why: 'After the Tenerife collision, "take-off" was reserved for the clearance itself so it can never be misheard.' },
+    { q: 'A 3° glide path descends about how many feet per nautical mile?', options: ['100 ft', '318 ft', '500 ft', '1,000 ft'], answer: 1, why: '6,076 ft × tan 3° ≈ 318 ft per NM: the familiar "300 ft per mile" rule of thumb.' },
+    { q: 'What is the maximum recommended intercept angle to a localiser for a smooth capture?', options: ['10°', '30°', '60°', '90°'], answer: 1, why: 'Controllers aim for 30° or less (ICAO allows up to 45°). Steeper intercepts make the aircraft overshoot the centreline.' },
+    { q: 'At a Rate One turn (3°/s) and 240 kt TAS, the turn radius is approximately:', options: ['0.3 NM', '1.3 NM', '3 NM', '6 NM'], answer: 1, why: 'r = V/ω = 240/(3 × 3600 × π/180) = 240/188.5 ≈ 1.27 NM.' },
+    { q: 'An arrival is established on the localiser at 10,000 ft QNH, 6 NM from the threshold of a 5,330 ft airport. What happens?', options: ['It captures the glide slope normally', 'It is far above the glide path (about 7,290 ft) and will likely make an unstable approach and go around', 'It is below the glide path', 'Nothing: altitude does not matter on an ILS'], answer: 1, why: 'Glide path altitude at 6 NM ≈ 5,330 + 50 + 6 × 318 ≈ 7,290 ft. At 10,000 ft it is ~2,700 ft high. Glide slopes should be captured from below.' },
+    { q: 'Which unit is normally responsible for issuing take-off and landing clearances?', options: ['Area control centre', 'Approach control', 'Aerodrome control (Tower)', 'Ground control'], answer: 2, why: 'Tower controls the runway. In this simulator you work a combined approach and tower position.' },
+    { q: 'What does an amber dashed line between two aircraft on the scope mean?', options: ['They are in formation', 'Predicted loss of separation within 90 s if nothing changes', 'One has been handed off', 'Radar failure'], answer: 1, why: 'Short Term Conflict Alert extrapolates both tracks and vertical profiles; act now with a heading or level change.' },
+  ]);
+  renderCh();
+  newGame(); renderSel(); renderStrips(); stats(); briefing();
+  loop.start();
+  window.__atc = { get G() { return G; }, get sel() { return sel; }, set sel(a) { sel = a; }, cmd, parseCLI, physics, spawn, endSession, report, start, setAcc, locGeom, RW, gsAlt, ifName, fixXY };
+})();
+</script>
+</body>
+</html>

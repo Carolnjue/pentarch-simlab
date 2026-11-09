@@ -266,6 +266,7 @@
   function canvas(cv, onResize) {
     const ctx = cv.getContext('2d');
     const state = { ctx, w: 0, h: 0, dpr: 1 };
+    let first = true;
     const fit = () => {
       const r = cv.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -273,7 +274,9 @@
       if (w === state.w && h === state.h && dpr === state.dpr) return;
       cv.width = w * dpr; cv.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       Object.assign(state, { w, h, dpr });
-      onResize && onResize(w, h);
+      if (!onResize) return;
+      // First call is deferred so code like `const st = SL.canvas(cv, () => draw(st))` is safe.
+      if (first) { first = false; Promise.resolve().then(() => onResize(state.w, state.h)); } else onResize(w, h);
     };
     if ('ResizeObserver' in window) new ResizeObserver(fit).observe(cv); else window.addEventListener('resize', fit);
     fit();
