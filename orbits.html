@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orbits &amp; Rocket Launch · Pentarch SimLab</title>
+<meta name="description" content="Fly a satellite with Newtonian gravity, see Kepler's laws, perform Hohmann transfers, launch a two-stage rocket from the equator and explore the solar system to scale.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .stage.orb{height:620px;touch-action:none}
+  @media (max-width:640px){.stage.orb{height:470px;min-height:0}.stage .readout{font-size:.68rem;padding:4px 7px}}
+  .seg.full{display:flex}.seg.full button{flex:1;text-align:center}
+  .grp{display:none}.grp.show{display:block}
+  .stat .k{text-transform:none;letter-spacing:.02em;font-size:.72rem}
+  .chal{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
+  .chal .led{margin-top:6px;flex:none}.chal b{display:block}.chal p{margin:2px 0 0;color:var(--muted);font-size:.9rem}
+  .mini{width:100%;height:150px;display:block;background:#050913;border:1px solid var(--line);border-radius:10px;margin-top:10px}
+  .mini.grp:not(.show){display:none}
+  .pinfo{font:500 .8rem var(--mono);color:var(--muted);line-height:1.6}
+  .pinfo b{color:var(--text)}
+  .planet-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+  .hohmann{font:500 .8rem var(--mono);color:var(--muted);line-height:1.7;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:8px}
+  .hohmann b{color:var(--text)}
+  .modes{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .modes button{all:unset;cursor:pointer;text-align:center;padding:9px 4px;border-radius:9px;border:1px solid var(--line2);background:var(--bg2);font-size:.78rem;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px}
+  .modes button svg{width:18px;height:18px}
+  .modes button.on{border-color:var(--accent);color:var(--text);background:color-mix(in srgb,var(--accent) 14%,var(--bg2))}
+</style>
+</head>
+<body data-page="orbits">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab" id="lab">
+    <div style="min-width:0">
+      <div class="stage orb" id="stage">
+        <canvas id="cv" aria-label="Orbit stage"></canvas>
+        <div class="hud" id="hud"></div>
+        <div class="stage-toolbar">
+          <button class="btn sm" id="zoomIn" title="Zoom in"><i data-lucide="zoom-in"></i></button>
+          <button class="btn sm" id="zoomOut" title="Zoom out"><i data-lucide="zoom-out"></i></button>
+          <button class="btn sm" id="playBtn" title="Pause or play"><i data-lucide="pause"></i></button>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:14px">
+        <h3><i data-lucide="gauge"></i> <span id="statsTitle">Orbital elements</span></h3>
+        <div class="stats" id="stats"></div>
+        <canvas class="mini grp" data-g="rocket" id="mini"></canvas>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <div class="modes" id="modeSeg">
+          <button data-m="sandbox" class="on"><i data-lucide="orbit"></i>Orbit sandbox</button>
+          <button data-m="rocket"><i data-lucide="rocket"></i>Rocket launch</button>
+          <button data-m="solar"><i data-lucide="sun"></i>Solar system</button>
+        </div>
+      </div>
+
+      <!-- SANDBOX -->
+      <div class="grp" data-g="sandbox">
+        <div class="panel">
+          <h3><i data-lucide="satellite"></i> Satellite</h3>
+          <p class="small muted" style="margin:0 0 8px">Drag the satellite to move it; drag the tip of its yellow arrow to set the velocity.</p>
+          <div class="btn-row">
+            <button class="btn sm" data-preset="circ">Circular</button><button class="btn sm" data-preset="ell">Ellipse</button>
+            <button class="btn sm" data-preset="esc">Escape</button><button class="btn sm" data-preset="hyp">Hyperbola</button>
+            <button class="btn sm" data-preset="iss">ISS orbit</button><button class="btn sm" data-preset="geo">GEO</button>
+          </div>
+          <div class="panel-title">Time warp</div>
+          <div class="seg full" id="warpSeg"><button data-w="100">100×</button><button data-w="500">500×</button><button class="on" data-w="1000">1k×</button><button data-w="3000">3k×</button><button data-w="10000">10k×</button></div>
+          <label class="toggle" style="margin-top:6px">Kepler's 2nd law: swept areas<input type="checkbox" id="kep" checked></label>
+          <label class="toggle">Show predicted orbit<input type="checkbox" id="conic" checked></label>
+        </div>
+        <div class="panel">
+          <h3><i data-lucide="flame"></i> Engine burns</h3>
+          <div class="ctl"><label for="dv">Burn size Δv</label><output></output><input type="range" id="dv" min="10" max="3000" step="1" value="500"></div>
+          <div class="btn-row"><button class="btn sm primary" data-burn="pro"><i data-lucide="chevrons-up"></i> Prograde</button><button class="btn sm" data-burn="retro"><i data-lucide="chevrons-down"></i> Retrograde</button><button class="btn sm" data-burn="out">Radial out</button><button class="btn sm" data-burn="in">Radial in</button></div>
+          <div class="panel-title">Or arm a prograde burn at the next…</div>
+          <div class="btn-row"><button class="btn sm" id="armApo"><i data-lucide="timer"></i> Apoapsis</button><button class="btn sm" id="armPeri"><i data-lucide="timer"></i> Periapsis</button><button class="btn sm" id="armRetro" title="Arm the next burn retrograde instead">Retro</button></div>
+          <div class="panel-title">Target orbit (dashed ring)</div>
+          <div class="ctl"><label for="tgt">Target radius</label><output></output><input type="range" id="tgt" min="8000" max="100000" step="1" value="42164"></div>
+          <div class="hohmann" id="hoh"></div>
+          <button class="btn sm" id="dvReset" style="margin-top:8px"><i data-lucide="rotate-ccw"></i> Reset Δv counter</button>
+        </div>
+      </div>
+
+      <!-- ROCKET -->
+      <div class="grp" data-g="rocket">
+        <div class="panel">
+          <h3><i data-lucide="rocket"></i> Two-stage launcher</h3>
+          <div class="ctl"><label for="pay">Payload</label><output></output><input type="range" id="pay" min="100" max="3000" step="50" value="500"></div>
+          <div class="ctl"><label for="kick">Pitch-over (gravity turn) angle</label><output></output><input type="range" id="kick" min="0.5" max="12" step="0.25" value="3"></div>
+          <div class="ctl"><label for="talt">Target orbit altitude</label><output></output><input type="range" id="talt" min="160" max="800" step="10" value="250"></div>
+          <label class="toggle">Autopilot (gravity turn + circularise)<input type="checkbox" id="auto" checked></label>
+          <div id="manualBox" style="display:none">
+            <div class="ctl"><label for="mpitch">Pitch from vertical</label><output></output><input type="range" id="mpitch" min="0" max="100" step="0.5" value="0"></div>
+            <div class="ctl"><label for="mthr">Throttle</label><output></output><input type="range" id="mthr" min="0" max="100" step="1" value="100"></div>
+            <div class="btn-row"><button class="btn sm" id="stageBtn"><i data-lucide="layers"></i> Stage</button><button class="btn sm" id="progBtn">Point prograde</button></div>
+          </div>
+          <div class="btn-row" style="margin-top:10px"><button class="btn primary" id="launchBtn"><i data-lucide="rocket"></i> Launch</button><button class="btn" id="rReset"><i data-lucide="rotate-ccw"></i> Reset</button></div>
+          <div class="panel-title">Time warp</div>
+          <div class="seg full" id="rwarpSeg"><button data-w="1">1×</button><button data-w="5">5×</button><button class="on" data-w="10">10×</button><button data-w="30">30×</button><button data-w="100">100×</button></div>
+          <p class="small muted" style="margin:10px 0 0" id="rStatus">On the pad at Malindi (2.9° S), Kenya.</p>
+        </div>
+        <div class="panel">
+          <h3><i data-lucide="info"></i> Vehicle data</h3>
+          <table class="data" style="font-size:.78rem"><thead><tr><th></th><th>Stage 1</th><th>Stage 2</th></tr></thead><tbody>
+            <tr><td>Dry mass</td><td class="num">4 000 kg</td><td class="num">900 kg</td></tr>
+            <tr><td>Propellant</td><td class="num">40 000 kg</td><td class="num">9 000 kg</td></tr>
+            <tr><td>Thrust (vac)</td><td class="num">820 kN</td><td class="num">130 kN</td></tr>
+            <tr><td>I<sub>sp</sub> sea level / vac</td><td class="num">282 / 311 s</td><td class="num">— / 345 s</td></tr>
+          </tbody></table>
+          <p class="small muted" style="margin:8px 0 0">A generic small kerosene/LOX launcher. Δv (vacuum): <b id="dvBudget" style="color:var(--text)"></b></p>
+        </div>
+      </div>
+
+      <!-- SOLAR -->
+      <div class="grp" data-g="solar">
+        <div class="panel">
+          <h3><i data-lucide="sun"></i> Solar system</h3>
+          <div class="seg full" id="zoneSeg" style="margin-bottom:8px"><button class="on" data-z="2">Inner</button><button data-z="6">To Jupiter</button><button data-z="32">All</button></div>
+          <label class="toggle">Distances to scale (off = compressed √r)<input type="checkbox" id="lin" checked></label>
+          <label class="toggle">Planet sizes to scale (with distances)<input type="checkbox" id="trueSize"></label>
+          <div class="ctl"><label for="dps">Speed</label><output></output><input type="range" id="dps" min="0" max="4" step="0.01" value="1.5"></div>
+          <div class="btn-row"><button class="btn sm" id="today"><i data-lucide="calendar"></i> Today</button><button class="btn sm" id="solPlay"><i data-lucide="pause"></i> Pause</button></div>
+        </div>
+        <div class="panel">
+          <h3><i data-lucide="circle-dot"></i> <span id="pName">Click a planet</span></h3>
+          <div class="pinfo" id="pInfo">Click or tap a planet to see its orbit data.</div>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button><i data-lucide="table"></i> Kepler's 3rd law</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. Newton's law of gravitation</h3>
+      <p>Every mass attracts every other with a force along the line joining them:</p>
+      <div class="eq">$$\vec F = -\frac{G M m}{r^2}\,\hat r, \qquad \mu \equiv GM_\oplus = 3.986\times10^{14}\ \text{m}^3\,\text{s}^{-2}$$</div>
+      <p>For a satellite the mass $m$ cancels, so its acceleration is $\ddot{\vec r} = -\mu\,\vec r/r^3$. The lab integrates this with the <b>velocity Verlet</b> method (a symplectic integrator: it does not let the energy drift away systematically, so orbits stay closed over many revolutions).</p>
+      <div class="eq">$$\begin{gathered}\vec v_{n+1/2} = \vec v_n + \tfrac12\vec a(\vec r_n)\,\Delta t, \qquad \vec r_{n+1} = \vec r_n + \vec v_{n+1/2}\,\Delta t\\ \vec v_{n+1} = \vec v_{n+1/2} + \tfrac12\vec a(\vec r_{n+1})\,\Delta t\end{gathered}$$</div>
+      <h3>2. Circular orbits and escape</h3>
+      <p>For a circle, gravity supplies exactly the centripetal force, $\mu m/r^2 = m v^2/r$:</p>
+      <div class="eq">$$v_c = \sqrt{\frac{\mu}{r}}, \qquad T = 2\pi\sqrt{\frac{r^3}{\mu}}, \qquad v_{esc} = \sqrt{\frac{2\mu}{r}} = \sqrt2\,v_c$$</div>
+      <p>An object in orbit is falling all the time; it just moves sideways fast enough that the ground curves away beneath it. At the escape speed the total energy is zero and the path becomes a parabola.</p>
+      <h3>3. Conic sections and orbital elements</h3>
+      <p>Every two-body orbit is a conic with the planet at one focus:</p>
+      <div class="eq">$$r(\nu) = \frac{p}{1 + e\cos\nu}, \qquad p = \frac{h^2}{\mu}, \qquad \vec e = \frac{(v^2 - \mu/r)\,\vec r - (\vec r\cdot\vec v)\,\vec v}{\mu}$$</div>
+      <p>Here $h = |\vec r\times\vec v|$ is the specific angular momentum and $\nu$ the true anomaly (angle from periapsis). The eccentricity sets the shape: $e = 0$ circle, $0 &lt; e &lt; 1$ ellipse, $e = 1$ parabola, $e &gt; 1$ hyperbola. The specific orbital energy fixes the semi-major axis:</p>
+      <div class="eq">$$\varepsilon = \frac{v^2}{2} - \frac{\mu}{r} = -\frac{\mu}{2a}, \qquad r_p = a(1-e), \quad r_a = a(1+e)$$</div>
+      <h3>4. The vis-viva equation</h3>
+      <p>Rearranging the energy equation gives the speed anywhere on an orbit, the most useful single equation in astrodynamics:</p>
+      <div class="eq">$$v^2 = \mu\left(\frac{2}{r} - \frac{1}{a}\right)$$</div>
+      <h3>5. Kepler's laws</h3>
+      <ol>
+        <li><b>Ellipses.</b> Planets move on ellipses with the Sun at one focus (generally: conics).</li>
+        <li><b>Equal areas in equal times.</b> The line from the Sun sweeps area at the constant rate $dA/dt = h/2$; this is conservation of angular momentum. The coloured sectors in the sandbox each take the same time, so they have the same area: long and thin near apoapsis, short and fat near periapsis.</li>
+        <li><b>Harmonic law.</b> $T^2 = \dfrac{4\pi^2}{\mu}a^3$, so $T^2/a^3$ is the same for everything orbiting the same body (1 yr²/AU³ for the Sun's planets).</li>
+      </ol>
+      <h3>6. Changing orbits: the Hohmann transfer</h3>
+      <p>Burning prograde at one point raises the opposite side of the orbit. The most fuel-efficient two-burn transfer between circular orbits $r_1$ and $r_2$ uses an ellipse that touches both (semi-major axis $a_t = (r_1 + r_2)/2$):</p>
+      <div class="eq">$$\begin{gathered}\Delta v_1 = \sqrt{\frac{\mu}{r_1}}\left(\sqrt{\frac{2r_2}{r_1 + r_2}} - 1\right), \qquad \Delta v_2 = \sqrt{\frac{\mu}{r_2}}\left(1 - \sqrt{\frac{2r_1}{r_1 + r_2}}\right)\\ t_{transfer} = \pi\sqrt{\frac{a_t^3}{\mu}}\end{gathered}$$</div>
+      <h3>7. The rocket equation and getting to orbit</h3>
+      <p>A rocket gains speed by throwing mass backwards at exhaust speed $v_e = I_{sp}g_0$. Integrating momentum conservation gives Tsiolkovsky's equation for each stage:</p>
+      <div class="eq">$$\Delta v = I_{sp}\,g_0 \ln\frac{m_0}{m_f}, \qquad \dot m = \frac{F}{I_{sp}g_0}$$</div>
+      <p>Low Earth orbit needs about 7.8 km/s of orbital speed, but a real launch needs roughly 9.3–9.5 km/s of Δv because of <b>gravity losses</b> (thrust spent holding the rocket up, about $g\sin\gamma$ per second where $\gamma$ is the flight-path angle) and <b>drag losses</b>. A <b>gravity turn</b> minimises both: after a short vertical climb the rocket is tipped slightly east (the pitch-over) and then simply follows its velocity vector, so gravity bends the path towards horizontal with no sideways loads. Staging throws away empty tank mass so later stages accelerate less dead weight.</p>
+      <div class="callout"><i data-lucide="map-pin"></i><div><b>Why launch from the equator?</b> Earth's surface at the equator moves east at $\omega_\oplus R_\oplus = 465$ m/s, a free boost for eastward launches, and an equatorial site can reach a 0° inclination orbit (such as geostationary) without an expensive plane change. Kenya hosts a real example: the <b>Luigi Broglio Space Centre</b> (San Marco platforms) off the coast near Malindi at about 2.9° S, operated by Italy. Scout rockets launched from it between 1967 and 1988, including NASA's Uhuru X-ray satellite in December 1970, named in honour of Kenya's independence.</div></div>
+      <div class="callout warn"><i data-lucide="info"></i><div><b>Model limits.</b> All motion is in a single plane. Earth is a perfect sphere (no $J_2$ oblateness), the atmosphere is exponential with an 8.5 km scale height, drag uses a fixed $C_d$, burns in the sandbox are instantaneous, and the solar-system view uses Keplerian ellipses from mean J2000 elements ignoring inclinations and planetary perturbations, so planet positions are approximate.</div></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Example 1: the ISS orbit</h3>
+      <div class="worked">
+        <p>The ISS orbits about 420 km above Earth ($R_\oplus = 6371$ km). Find its speed and period.</p>
+        <ol class="steps">
+          <li>$r = 6371 + 420 = 6791$ km $= 6.791\times10^6$ m.</li>
+          <li>$v_c = \sqrt{3.986\times10^{14}/6.791\times10^6} = 7661$ m/s $\approx 7.66$ km/s (about 27 600 km/h).</li>
+          <li>$T = 2\pi r/v = 2\pi(6.791\times10^6)/7661 = 5570$ s $= 92.8$ minutes: about 15.5 orbits a day.</li>
+        </ol>
+        <button class="btn sm" data-load="iss"><i data-lucide="play"></i> Load in the lab</button>
+      </div>
+      <h3>Example 2: escape speed</h3>
+      <div class="worked">
+        <ol class="steps">
+          <li>At Earth's surface: $v_{esc} = \sqrt{2\mu/R_\oplus} = \sqrt{2(3.986\times10^{14})/6.371\times10^6} = 11.19$ km/s.</li>
+          <li>From a 12 000 km circular orbit, $v_c = 5.763$ km/s and $v_{esc} = 8.151$ km/s, so the escape burn is $(\sqrt2 - 1)v_c = 2.387$ km/s.</li>
+        </ol>
+        <button class="btn sm" data-load="escape"><i data-lucide="play"></i> Load in the lab</button>
+      </div>
+      <h3>Example 3: Hohmann transfer to geostationary orbit</h3>
+      <div class="worked">
+        <p>Transfer from a circular orbit of radius $r_1 = 12\,000$ km to GEO, $r_2 = 42\,164$ km.</p>
+        <ol class="steps">
+          <li>$v_1 = \sqrt{\mu/r_1} = 5763$ m/s. Transfer ellipse $a_t = 27\,082$ km. Vis-viva at $r_1$: $v_p = \sqrt{\mu(2/r_1 - 1/a_t)} = 7191$ m/s, so $\Delta v_1 = 1428$ m/s.</li>
+          <li>At $r_2$: $v_a = \sqrt{\mu(2/r_2 - 1/a_t)} = 2047$ m/s, while $v_2 = \sqrt{\mu/r_2} = 3075$ m/s, so $\Delta v_2 = 1028$ m/s.</li>
+          <li>Total $\Delta v = 2456$ m/s. Transfer time $= \pi\sqrt{a_t^3/\mu} = 6.16$ h. Check the GEO period: $2\pi\sqrt{r_2^3/\mu} = 23.93$ h, one sidereal day.</li>
+          <li>In the lab: choose <i>Circular</i>, set Δv to 1428 m/s and burn prograde, then arm a 1028 m/s burn at apoapsis.</li>
+        </ol>
+        <button class="btn sm" data-load="hohmann"><i data-lucide="play"></i> Load in the lab</button>
+      </div>
+      <h3>Example 4: the rocket equation for the upper stage</h3>
+      <div class="worked">
+        <ol class="steps">
+          <li>Stage 2 with a 500 kg payload: $m_0 = 900 + 9000 + 500 = 10\,400$ kg, $m_f = 1400$ kg.</li>
+          <li>$\Delta v = 345 \times 9.807 \times \ln(10\,400/1400) = 3383 \times 2.005 = 6785$ m/s.</li>
+          <li>Stage 1 carries the rest: $m_0 = 54\,400$ kg, $m_f = 14\,400$ kg, $\Delta v = 311 \times 9.807 \times \ln 3.778 = 4054$ m/s (vacuum; less at sea level).</li>
+          <li>Total about 10.8 km/s, plus 0.46 km/s from Earth's rotation, against roughly 9.4 km/s needed. Doubling the payload costs about 1 km/s.</li>
+        </ol>
+      </div>
+      <h3>Example 5: the equatorial bonus</h3>
+      <div class="worked">
+        <p>Eastward surface speed $= \omega_\oplus R_\oplus\cos\phi$ with $\omega_\oplus = 7.292\times10^{-5}$ rad/s and $R_\oplus = 6378$ km (equatorial):</p>
+        <table class="data"><thead><tr><th>Site</th><th>Latitude</th><th>Surface speed</th></tr></thead><tbody>
+          <tr><td>Malindi, Kenya (San Marco)</td><td class="num">2.9° S</td><td class="num">464 m/s</td></tr>
+          <tr><td>Kourou, French Guiana</td><td class="num">5.2° N</td><td class="num">463 m/s</td></tr>
+          <tr><td>Cape Canaveral, USA</td><td class="num">28.5° N</td><td class="num">409 m/s</td></tr>
+          <tr><td>Baikonur, Kazakhstan</td><td class="num">45.6° N</td><td class="num">325 m/s</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <p>Challenges are checked automatically.</p>
+      <div id="chalList"></div>
+      <h3>Open experiments</h3>
+      <ol class="steps">
+        <li><b>Prograde at periapsis.</b> On an ellipse, compare a 200 m/s prograde burn at periapsis with the same burn at apoapsis. Which raises the energy more? (This is the Oberth effect: $\Delta\varepsilon \approx v\,\Delta v$.)</li>
+        <li><b>Radial burns.</b> A radial burn rotates the ellipse rather than enlarging it much. Try it and watch the periapsis marker move.</li>
+        <li><b>Gravity turn.</b> Launch with pitch-over angles of 2°, 6° and 12°. Compare maximum dynamic pressure, how much stage 2 propellant is left and whether you reach orbit at all.</li>
+        <li><b>Inner and outer planets.</b> Watch for a year in the Inner view, then switch to All. Use the planet panel to confirm that $T^2/a^3$ is the same for every planet.</li>
+      </ol>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Kepler's third law with real planetary data</h3>
+      <p>Periods $T$ (in years) and semi-major axes $a$ (in AU). The final column is very close to 1 for every planet. The small departures for the giant planets come from their own masses (Jupiter has 0.1% of the Sun's mass, and strictly $T^2 = 4\pi^2a^3/G(M_\odot + m)$) and from the planets perturbing one another, which shifts their averaged orbital elements slightly.</p>
+      <div style="overflow-x:auto"><table class="data" id="k3"></table></div>
+      <canvas id="k3plot" style="width:100%;max-width:640px;height:260px;display:block;margin-top:14px;background:#050913;border:1px solid var(--line);border-radius:12px"></canvas>
+      <p class="small muted">Vertical axis: $\log_{10} T$ (years). On log–log axes $T \propto a^{3/2}$ is a straight line of gradient 1.5.</p>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const MU = 3.986004418e14, RE = 6.371e6, G0 = 9.80665, OMEGA = 7.2921159e-5;
+  let mode = 'sandbox', running = true;
+  const st = SL.canvas($('#cv'));
+  const stars = Array.from({ length: 260 }, () => [Math.random(), Math.random(), Math.random() * 1.4 + .2, Math.random()]);
+  const fmtKm = m => SL.fmt(m / 1000, Math.abs(m) < 1e7 ? 1 : 0);
+  const fmtT = s => !isFinite(s) ? '∞' : s < 120 ? SL.fmt(s, 1) + ' s' : s < 7200 ? SL.fmt(s / 60, 1) + ' min' : s < 172800 ? SL.fmt(s / 3600, 2) + ' h' : SL.fmt(s / 86400, 2) + ' d';
+  const stat = (k, v, u) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u ? `<small>${u}</small>` : ''}</div></div>`;
+  const done = {};
+
+  /* ======================= shared orbit maths ======================= */
+  function elements(r, v, mu) {
+    const rr = Math.hypot(r[0], r[1]), vv = Math.hypot(v[0], v[1]);
+    const h = r[0] * v[1] - r[1] * v[0], rv = r[0] * v[0] + r[1] * v[1];
+    const ex = ((vv * vv - mu / rr) * r[0] - rv * v[0]) / mu, ey = ((vv * vv - mu / rr) * r[1] - rv * v[1]) / mu;
+    const e = Math.hypot(ex, ey), eps = vv * vv / 2 - mu / rr, a = -mu / (2 * eps), p = h * h / mu;
+    const rp = p / (1 + e), ra = e < 1 ? p / (1 - e) : Infinity;
+    const T = e < 1 ? 2 * Math.PI * Math.sqrt(a * a * a / mu) : Infinity;
+    return { r: rr, v: vv, h, rv, e, ex, ey, eps, a, p, rp, ra, T, w: Math.atan2(ey, ex), dir: Math.sign(h) || 1 };
+  }
+  function conicPts(el, rmax, n) {
+    const pts = []; const N = n || 360;
+    let lo = -Math.PI, hi = Math.PI;
+    if (el.e >= 1) { const nu = Math.acos(-1 / el.e) - 1e-3; lo = -nu; hi = nu; }
+    for (let i = 0; i <= N; i++) {
+      const nu = lo + (hi - lo) * i / N, rr = el.p / (1 + el.e * Math.cos(nu));
+      if (rr < 0 || rr > rmax) { pts.push(null); continue; }
+      const ang = el.w + nu * el.dir; pts.push([rr * Math.cos(ang), rr * Math.sin(ang)]);
+    }
+    return pts;
+  }
+  function drawStars(ctx, w, h, a) {
+    ctx.fillStyle = '#fff'; stars.forEach(s => { ctx.globalAlpha = a * (.25 + .6 * s[3]); ctx.fillRect(s[0] * w, s[1] * h, s[2], s[2]); }); ctx.globalAlpha = 1;
+  }
+  function polyline(ctx, pts, X, Y) { ctx.beginPath(); let pen = false; pts.forEach(p => { if (!p) { pen = false; return; } if (pen) ctx.lineTo(X(p[0]), Y(p[1])); else { ctx.moveTo(X(p[0]), Y(p[1])); pen = true; } }); ctx.stroke(); }
+  function tag(ctx, s, x, y, c) { ctx.font = '600 11px JetBrains Mono, monospace'; const w = ctx.measureText(s).width + 10; const bx = SL.clamp(x - w / 2, 4, st.w - w - 4), by = SL.clamp(y, 18, st.h - 6); ctx.fillStyle = 'rgba(5,9,19,.85)'; ctx.strokeStyle = c; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx, by - 14, w, 19, 5) : ctx.rect(bx, by - 14, w, 19); ctx.fill(); ctx.stroke(); ctx.fillStyle = c; ctx.textAlign = 'left'; ctx.fillText(s, bx + 5, by); }
+  function earthDisc(ctx, cx, cy, rpx) {
+    const g = ctx.createRadialGradient(cx - rpx * .35, cy - rpx * .35, rpx * .05, cx, cy, rpx);
+    g.addColorStop(0, '#5fb4ff'); g.addColorStop(.55, '#1d5fa8'); g.addColorStop(1, '#0a1f45');
+    ctx.save(); ctx.shadowColor = '#3b82f6'; ctx.shadowBlur = 30; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, rpx, 0, 7); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, rpx, 0, 7); ctx.clip(); ctx.fillStyle = 'rgba(52,211,153,.35)';
+    [[-.3, -.2, .35, .22], [.25, .1, .28, .35], [-.1, .45, .2, .12], [.4, -.45, .22, .14]].forEach(([x, y, a, b]) => { ctx.beginPath(); ctx.ellipse(cx + x * rpx, cy + y * rpx, a * rpx, b * rpx, x * 2, 0, 7); ctx.fill(); });
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(125,211,252,.35)'; ctx.lineWidth = Math.max(1.5, rpx * .03); ctx.beginPath(); ctx.arc(cx, cy, rpx * 1.015, 0, 7); ctx.stroke();
+  }
+
+  /* ======================= MODE A: sandbox ======================= */
+  const A = { r: [12e6, 0], v: [0, 6.5e3], t: 0, warp: 1000, VR: 5.2e7, VRt: 5.2e7, dvUsed: 0, armed: null, armDir: 'pro', sectors: [], cur: null, crashed: false, trail: [], kep: true, conic: true, tgt: 42164e3, startR: null, dvSize: 500 };
+  const sX = x => st.w / 2 + x * (Math.min(st.w, st.h) / 2) / A.VR, sY = y => st.h / 2 - y * (Math.min(st.w, st.h) / 2) / A.VR;
+  const sScale = () => (Math.min(st.w, st.h) / 2) / A.VR;
+  const VSCALE = () => (st.w < 500 ? 9 : 13) / 1000; // px per (m/s)
+  const accel = r => { const d = Math.hypot(r[0], r[1]), k = -MU / (d * d * d); return [k * r[0], k * r[1]]; };
+  function resetSectors() { A.sectors = []; A.cur = null; }
+  function setSat(r, v, keepDv) { A.r = r.slice(); A.v = v.slice(); A.crashed = false; A.trail = []; resetSectors(); if (!keepDv) { A.dvUsed = 0; const el = elements(A.r, A.v, MU); A.startR = el.e < 0.01 ? el.a : null; } }
+  function preset(k) {
+    const rr = { circ: 12e6, ell: 12e6, esc: 12e6, hyp: 12e6, iss: RE + 420e3, geo: 42164e3 }[k], vc = Math.sqrt(MU / rr);
+    const f = { circ: 1, ell: 1.2, esc: Math.SQRT2, hyp: 1.6, iss: 1, geo: 1 }[k];
+    setSat([0, -rr], [vc * f, 0]);
+    A.VRt = k === 'iss' ? 1.4e7 : k === 'geo' ? 5.5e7 : k === 'hyp' || k === 'esc' ? 9e7 : 5.2e7;
+    running = true; setPlay();
+  }
+  function stepA(dtSim) {
+    let left = dtSim, n = 0;
+    while (left > 0 && n++ < 20000 && !A.crashed) {
+      const d = Math.hypot(A.r[0], A.r[1]);
+      let dt = Math.min(left, 0.002 * Math.sqrt(d * d * d / MU), 30);
+      const el = A.kep ? elements(A.r, A.v, MU) : null;
+      if (A.kep && el.e < 0.97) { if (!A.cur) A.cur = { t0: A.t, area: 0, pts: [A.r.slice()], dur: el.T / 16 }; dt = Math.min(dt, A.cur.t0 + A.cur.dur - A.t); dt = Math.max(dt, 1e-3); }
+      const rvBefore = A.r[0] * A.v[0] + A.r[1] * A.v[1];
+      const a0 = accel(A.r);
+      const vh = [A.v[0] + .5 * a0[0] * dt, A.v[1] + .5 * a0[1] * dt];
+      const rn = [A.r[0] + vh[0] * dt, A.r[1] + vh[1] * dt];
+      const a1 = accel(rn);
+      const vn = [vh[0] + .5 * a1[0] * dt, vh[1] + .5 * a1[1] * dt];
+      if (A.cur) A.cur.area += 0.5 * Math.abs(A.r[0] * rn[1] - A.r[1] * rn[0]);
+      A.r = rn; A.v = vn; A.t += dt; left -= dt;
+      if (A.cur) { if (A.t - A.cur.t0 >= A.cur.dur - 1e-6) { A.cur.pts.push(A.r.slice()); A.sectors.push(A.cur); if (A.sectors.length > 16) A.sectors.shift(); A.cur = null; checkKepler(); } }
+      const rvAfter = A.r[0] * A.v[0] + A.r[1] * A.v[1];
+      if (A.armed === 'apo' && rvBefore > 0 && rvAfter <= 0) { burn(A.armDir); A.armed = null; armUI(); SL.toast('Burn executed at apoapsis.'); }
+      if (A.armed === 'peri' && rvBefore < 0 && rvAfter >= 0) { burn(A.armDir); A.armed = null; armUI(); SL.toast('Burn executed at periapsis.'); }
+      if (Math.hypot(A.r[0], A.r[1]) < RE) { A.crashed = true; SL.toast('The satellite hit the Earth. Choose a preset or drag it to try again.', 'bad'); }
+    }
+    if (A.cur && A.kep) { const last = A.cur.pts[A.cur.pts.length - 1]; if (Math.hypot(last[0] - A.r[0], last[1] - A.r[1]) * sScale() > 2) A.cur.pts.push(A.r.slice()); }
+    const lt = A.trail[A.trail.length - 1]; if (!lt || Math.hypot(lt[0] - A.r[0], lt[1] - A.r[1]) * sScale() > 3) { A.trail.push(A.r.slice()); if (A.trail.length > 600) A.trail.shift(); }
+  }
+  function burn(kind, dvOverride) {
+    const dv = dvOverride ?? A.dvSize, v = Math.hypot(A.v[0], A.v[1]), u = [A.v[0] / v, A.v[1] / v], rr = Math.hypot(A.r[0], A.r[1]), ru = [A.r[0] / rr, A.r[1] / rr];
+    const d = kind === 'pro' ? u : kind === 'retro' ? [-u[0], -u[1]] : kind === 'out' ? ru : [-ru[0], -ru[1]];
+    A.v = [A.v[0] + d[0] * dv, A.v[1] + d[1] * dv]; A.dvUsed += dv; resetSectors(); A.trail = [];
+    checkOrbitChallenges();
+  }
+  function drawA() {
+    const { ctx, w, h } = st; A.VR *= Math.pow(A.VRt / A.VR, 0.12);
+    ctx.fillStyle = '#03050c'; ctx.fillRect(0, 0, w, h); drawStars(ctx, w, h, 1);
+    const s = sScale(), cx = sX(0), cy = sY(0);
+    // range rings
+    ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.lineWidth = 1; ctx.font = '10px JetBrains Mono, monospace'; ctx.fillStyle = 'rgba(230,236,247,.3)'; ctx.textAlign = 'left';
+    const step = Math.pow(10, Math.floor(Math.log10(A.VR / 1.5))); for (let r = step; r < A.VR * 1.6; r += step) { ctx.beginPath(); ctx.arc(cx, cy, r * s, 0, 7); ctx.stroke(); ctx.fillText(SL.fmt(r / 1000, 0) + ' km', cx + r * s * .707 + 3, cy - r * s * .707 - 3); }
+    // target ring
+    ctx.setLineDash([6, 6]); ctx.strokeStyle = 'rgba(52,211,153,.55)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(cx, cy, A.tgt * s, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(52,211,153,.8)'; ctx.fillText('target ' + SL.fmt(A.tgt / 1000, 0) + ' km', cx - A.tgt * s * .707 - 4, cy + A.tgt * s * .707 + 14);
+    // sectors (Kepler 2)
+    if (A.kep) {
+      const all = A.sectors.concat(A.cur ? [A.cur] : []);
+      all.forEach((sec, i) => { const idx = (A.sectors.length - all.length + i + 64) % 2; ctx.fillStyle = idx ? 'rgba(244,114,182,.2)' : 'rgba(34,211,238,.2)'; ctx.strokeStyle = idx ? 'rgba(244,114,182,.5)' : 'rgba(34,211,238,.5)'; ctx.beginPath(); ctx.moveTo(cx, cy); sec.pts.forEach(p => ctx.lineTo(sX(p[0]), sY(p[1]))); if (sec === A.cur) ctx.lineTo(sX(A.r[0]), sY(A.r[1])); ctx.closePath(); ctx.fill(); ctx.lineWidth = .8; ctx.stroke(); });
+    }
+    earthDisc(ctx, cx, cy, RE * s);
+    const el = elements(A.r, A.v, MU);
+    if (A.conic && !A.crashed) {
+      ctx.strokeStyle = el.e < 1 ? 'rgba(250,204,21,.75)' : 'rgba(249,115,22,.8)'; ctx.lineWidth = 1.6; ctx.setLineDash(el.e < 1 ? [] : [8, 5]);
+      polyline(ctx, conicPts(el, A.VR * 4, 720), sX, sY); ctx.setLineDash([]);
+      // apsides
+      const pa = [el.rp * Math.cos(el.w), el.rp * Math.sin(el.w)];
+      ctx.fillStyle = '#22d3ee'; ctx.beginPath(); ctx.arc(sX(pa[0]), sY(pa[1]), 5, 0, 7); ctx.fill(); tag(ctx, 'Pe ' + fmtKm(el.rp - RE) + ' km', sX(pa[0]), sY(pa[1]) - 10, '#22d3ee');
+      if (el.e < 1) { const aa = [-el.ra * Math.cos(el.w), -el.ra * Math.sin(el.w)]; ctx.fillStyle = '#f472b6'; ctx.beginPath(); ctx.arc(sX(aa[0]), sY(aa[1]), 5, 0, 7); ctx.fill(); tag(ctx, 'Ap ' + fmtKm(el.ra - RE) + ' km', sX(aa[0]), sY(aa[1]) - 10, '#f472b6');
+        ctx.setLineDash([2, 5]); ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.beginPath(); ctx.moveTo(sX(pa[0]), sY(pa[1])); ctx.lineTo(sX(aa[0]), sY(aa[1])); ctx.stroke(); ctx.setLineDash([]); }
+    }
+    // trail
+    if (A.trail.length > 1) { ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1; polyline(ctx, A.trail, sX, sY); }
+    // satellite
+    const x = sX(A.r[0]), y = sY(A.r[1]);
+    if (!A.crashed) {
+      const vs = VSCALE(); SL.arrow(ctx, x, y, x + A.v[0] * vs, y - A.v[1] * vs, '#facc15', 2.5, 10);
+      ctx.fillStyle = 'rgba(250,204,21,.25)'; ctx.beginPath(); ctx.arc(x + A.v[0] * vs, y - A.v[1] * vs, 9, 0, 7); ctx.fill();
+      const g = accel(A.r), gm = Math.hypot(g[0], g[1]); SL.arrow(ctx, x, y, x + g[0] / gm * 30, y - g[1] / gm * 30, 'rgba(249,115,22,.8)', 1.5, 7);
+      ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2(-A.v[1], A.v[0])); ctx.fillStyle = '#cbd5e1'; ctx.fillRect(-4, -4, 8, 8); ctx.fillStyle = '#3b82f6'; ctx.fillRect(-3, -13, 6, 8); ctx.fillRect(-3, 5, 6, 8); ctx.restore();
+      ctx.shadowColor = '#fff'; ctx.shadowBlur = 10; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 2, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+    }
+    if (A.armed) tag(ctx, `armed: ${A.armDir === 'pro' ? 'prograde' : 'retrograde'} ${A.dvSize} m/s at ${A.armed === 'apo' ? 'apoapsis' : 'periapsis'}`, w / 2, h - 16, '#facc15');
+    return el;
+  }
+  function uiA(el) {
+    const type = el.e < 0.005 ? 'circle' : el.e < 1 ? 'ellipse' : Math.abs(el.e - 1) < 0.005 ? 'parabola' : 'hyperbola';
+    $('#hud').innerHTML = `<span class="readout">t <b>${fmtT(A.t)}</b></span><span class="readout">alt <b>${fmtKm(el.r - RE)}</b> km</span><span class="readout">v <b>${SL.fmt(el.v / 1000, 3)}</b> km/s</span><span class="readout">Δv used <b>${SL.fmt(A.dvUsed, 0)}</b> m/s</span>`;
+    const visviva = el.e < 1 ? Math.sqrt(MU * (2 / el.r - 1 / el.a)) : Math.sqrt(MU * (2 / el.r - 1 / el.a));
+    let areaTxt = '—';
+    if (A.sectors.length >= 3) { const ar = A.sectors.map(s => s.area), m = ar.reduce((a, b) => a + b) / ar.length, sp = (Math.max(...ar) - Math.min(...ar)) / m * 100; areaTxt = SL.fmt(m / 1e12, 3) + ' ×10⁶ km² ±' + SL.fmt(sp / 2, 2) + '%'; }
+    $('#stats').innerHTML = stat('Orbit type', type) + stat('Eccentricity e', SL.fmt(el.e, 4)) + stat('Semi-major axis a', el.e < 1 ? fmtKm(el.a) : fmtKm(el.a), 'km') + stat('Period T', fmtT(el.T)) +
+      stat('Periapsis alt', fmtKm(el.rp - RE), 'km') + stat('Apoapsis alt', el.e < 1 ? fmtKm(el.ra - RE) : '∞', el.e < 1 ? 'km' : '') + stat('Energy ε', SL.fmt(el.eps / 1e6, 3), 'MJ/kg') + stat('Vis-viva v', SL.fmt(visviva / 1000, 3), 'km/s') +
+      stat('Circular v here', SL.fmt(Math.sqrt(MU / el.r) / 1000, 3), 'km/s') + stat('Escape v here', SL.fmt(Math.sqrt(2 * MU / el.r) / 1000, 3), 'km/s') + stat('Sector area (T/16)', areaTxt);
+  }
+  function hohmannUI() {
+    const el = elements(A.r, A.v, MU), r1 = el.e < 0.05 ? el.a : el.r, r2 = A.tgt, at = (r1 + r2) / 2;
+    const d1 = Math.sqrt(MU / r1) * (Math.sqrt(2 * r2 / (r1 + r2)) - 1), d2 = Math.sqrt(MU / r2) * (1 - Math.sqrt(2 * r1 / (r1 + r2)));
+    $('#hoh').innerHTML = `Hohmann from r₁ = <b>${SL.fmt(r1 / 1000, 0)} km</b>${el.e >= 0.05 ? ' <span style="color:var(--warn)">(orbit not circular)</span>' : ''}<br>Δv₁ = <b>${SL.fmt(d1, 0)} m/s</b> ${d1 >= 0 ? 'prograde' : ''} · Δv₂ = <b>${SL.fmt(d2, 0)} m/s</b><br>total <b>${SL.fmt(Math.abs(d1) + Math.abs(d2), 0)} m/s</b> · transfer time <b>${fmtT(Math.PI * Math.sqrt(at ** 3 / MU))}</b>`;
+  }
+  function armUI() { $('#armApo').classList.toggle('on', A.armed === 'apo'); $('#armPeri').classList.toggle('on', A.armed === 'peri'); $('#armRetro').classList.toggle('on', A.armDir === 'retro'); }
+
+  // dragging
+  let drag = null;
+  const cv = $('#cv');
+  cv.addEventListener('pointerdown', e => {
+    const p = SL.ptr(e, cv);
+    if (mode === 'sandbox') {
+      const x = sX(A.r[0]), y = sY(A.r[1]), vs = VSCALE(), tx = x + A.v[0] * vs, ty = y - A.v[1] * vs;
+      if (Math.hypot(p.x - tx, p.y - ty) < 22) drag = 'vel'; else if (Math.hypot(p.x - x, p.y - y) < 22) drag = 'pos';
+      if (drag) { cv.setPointerCapture(e.pointerId); e.preventDefault(); }
+    } else if (mode === 'solar') pickPlanet(p);
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!drag) return; const p = SL.ptr(e, cv), s = sScale();
+    if (drag === 'vel') { const x = sX(A.r[0]), y = sY(A.r[1]), vs = VSCALE(); A.v = [(p.x - x) / vs, -(p.y - y) / vs]; }
+    else { const r = [(p.x - st.w / 2) / s, -(p.y - st.h / 2) / s]; if (Math.hypot(r[0], r[1]) > RE * 1.01) A.r = r; }
+    setSat(A.r, A.v);
+  });
+  const endDrag = () => { if (drag) { drag = null; setSat(A.r, A.v); } };
+  cv.addEventListener('pointerup', endDrag); cv.addEventListener('pointercancel', endDrag);
+
+  /* ======================= MODE B: rocket ======================= */
+  const STAGES = [{ dry: 4000, prop: 40000, F: 820e3, ispSL: 282, ispV: 311 }, { dry: 900, prop: 9000, F: 130e3, ispSL: 300, ispV: 345 }];
+  const RK = { payload: 500, kick: 6, talt: 250e3, auto: true, warp: 10, mpitch: 0, mthr: 1 };
+  let R = null;
+  const SITE_LAT = -2.94;
+  function newRocket() {
+    const surf = OMEGA * RE * Math.cos(SL.rad(SITE_LAT));
+    R = { r: [0, RE], v: [surf, 0], t: 0, stage: 0, prop: [STAGES[0].prop, STAGES[1].prop], phase: 'pad', thr: 0, pitch: 0, maxQ: 0, q: 0, acc: 0, dvUsed: 0, path: [], debris: [], events: [], VH: 3e3, cam: [0, RE], log: [], ended: false, sepT: null, dragLoss: 0, gravLoss: 0, circStarted: false };
+    $('#rStatus').textContent = 'On the pad at Malindi (2.9° S), Kenya. Press Launch.';
+  }
+  const mass = () => { let m = RK.payload + STAGES[1].dry + R.prop[1]; if (R.stage === 0) m += STAGES[0].dry + R.prop[0]; return m; };
+  const alt = r => Math.hypot(r[0], r[1]) - RE;
+  const rho = h => h > 150e3 ? 0 : 1.225 * Math.exp(-h / 8500);
+  const upv = r => { const d = Math.hypot(r[0], r[1]); return [r[0] / d, r[1] / d]; };
+  const eastv = r => { const u = upv(r); return [u[1], -u[0]]; };
+  const atmV = r => { const e = eastv(r), d = Math.hypot(r[0], r[1]); return [e[0] * OMEGA * d, e[1] * OMEGA * d]; };
+  function dvBudget() {
+    const p = RK.payload, m2 = STAGES[1].dry + STAGES[1].prop + p;
+    const d1 = STAGES[0].ispV * G0 * Math.log((m2 + STAGES[0].dry + STAGES[0].prop) / (m2 + STAGES[0].dry)), d2 = STAGES[1].ispV * G0 * Math.log(m2 / (STAGES[1].dry + p));
+    return [d1, d2];
+  }
+  function guidance() {
+    const h = alt(R.r), el = elements(R.r, R.v, MU), u = upv(R.r), e = eastv(R.r);
+    const va = atmV(R.r), vrel = [R.v[0] - va[0], R.v[1] - va[1]];
+    const pitchOf = vec => Math.atan2(vec[0] * e[0] + vec[1] * e[1], vec[0] * u[0] + vec[1] * u[1]); // from vertical toward east
+    const vr = el.rv / el.r, vh = Math.abs(el.h) / el.r, g = MU / (el.r * el.r);
+    if (R.phase === 'ascent') {
+      const tk = 10;
+      if (R.t < tk) R.pitch = 0;
+      else if (R.t < tk + 8) R.pitch = SL.rad(RK.kick) * (R.t - tk) / 8;
+      else { const f = SL.clamp((h - 30e3) / 40e3, 0, 1), ps = pitchOf(vrel), pi = pitchOf(R.v); R.pitch = (1 - f) * ps + f * pi; }
+      R.pitch = SL.clamp(R.pitch, 0, SL.rad(95));
+      R.thr = 1;
+      if ((el.ra - RE >= RK.talt && h > 40e3) || R.stage === 1 || h > 90e3) { R.phase = 'insert'; note(R.stage === 1 ? 'Stage 2 closed-loop guidance: steering towards the target altitude while building horizontal speed.' : 'Apoapsis at target: pitching over to build orbital speed while holding altitude.'); }
+    } else if (R.phase === 'insert') {
+      // closed-loop insertion: command a vertical speed that steers towards the target altitude, put the rest of the thrust horizontal
+      const aT = STAGES[R.stage].F / mass();
+      const dh = RK.talt - h, tgo = Math.max(0, Math.sqrt(MU / el.r) - vh) / aT, vrDes = SL.clamp(dh / 60, -250, 250) * SL.clamp(tgo / 60, 0, 1), avCmd = 0.3 * (vrDes - vr);
+      const c = SL.clamp((avCmd + g - vh * vh / el.r) / aT, -0.25, 1);
+      R.pitch = Math.acos(c); R.thr = 1;
+      if ((el.rp - RE > 150e3 && el.rp - RE >= Math.min(RK.talt, h) - 25e3) || el.e < 0.002) { R.thr = 0; R.phase = 'done'; note('Engine shutdown: orbit insertion complete.'); }
+    } else if (R.phase === 'done') { R.thr = 0; R.pitch = pitchOf(R.v); }
+  }
+  function note(s) { $('#rStatus').textContent = s; R.events.push([R.t, s]); }
+  function stepRocket(dtReal) {
+    if (!R || R.phase === 'pad' || R.ended) { if (R) R.debris.forEach(stepDebris.bind(null, 0)); return; }
+    let left = dtReal * RK.warp, n = 0;
+    while (left > 0 && n++ < 20000 && !R.ended) {
+      const h0 = alt(R.r);
+      if (RK.auto) guidance(); else { R.thr = RK.mthr; R.pitch = SL.rad(RK.mpitch); }
+      const st0 = STAGES[R.stage];
+      if (R.prop[R.stage] <= 0) R.thr = 0;
+      const powered = R.thr > 0 || h0 < 120e3;
+      let dt = Math.min(left, powered ? 0.05 : 2);
+      const forces = (r, v) => {
+        const h = alt(r), m = mass(), g = accel(r), u = upv(r), e = eastv(r);
+        const pr = Math.exp(-Math.max(0, h) / 8500), isp = st0.ispV - (st0.ispV - st0.ispSL) * pr;
+        const mdot = R.thr * st0.F / (st0.ispV * G0), F = mdot * isp * G0;
+        const dirv = [Math.cos(R.pitch) * u[0] + Math.sin(R.pitch) * e[0], Math.cos(R.pitch) * u[1] + Math.sin(R.pitch) * e[1]];
+        const va = atmV(r), vr = [v[0] - va[0], v[1] - va[1]], sp = Math.hypot(vr[0], vr[1]), rh = rho(h), Cd = 0.35, Ar = Math.PI * 1.1 * 1.1;
+        const D = 0.5 * rh * sp * sp * Cd * Ar;
+        const ax = g[0] + (F * dirv[0] - (sp > 0 ? D * vr[0] / sp : 0)) / m, ay = g[1] + (F * dirv[1] - (sp > 0 ? D * vr[1] / sp : 0)) / m;
+        return { a: [ax, ay], mdot, F, D, q: 0.5 * rh * sp * sp, m };
+      };
+      // velocity-Verlet style step (forces re-evaluated at the new position with the half-step velocity)
+      const f0 = forces(R.r, R.v);
+      const vh = [R.v[0] + .5 * f0.a[0] * dt, R.v[1] + .5 * f0.a[1] * dt];
+      const rn = [R.r[0] + vh[0] * dt, R.r[1] + vh[1] * dt];
+      const f1 = forces(rn, vh);
+      R.v = [vh[0] + .5 * f1.a[0] * dt, vh[1] + .5 * f1.a[1] * dt]; R.r = rn; R.t += dt; left -= dt;
+      const dm = f0.mdot * dt; if (dm > 0) { const used = Math.min(dm, R.prop[R.stage]); R.dvUsed += f0.F / f0.m * dt * (used / dm); R.prop[R.stage] -= used; }
+      R.q = f0.q; R.acc = f0.F / f0.m / G0; if (R.q > R.maxQ) R.maxQ = R.q;
+      // staging
+      if (R.stage === 0 && R.prop[0] <= 0 && R.sepT === null) { R.sepT = R.t; R.debris.push({ r: R.r.slice(), v: R.v.slice(), dead: false, t: 0 }); R.stage = 1; note('Stage 1 burnout and separation. Stage 2 ignition.'); }
+      if (R.stage === 1 && R.prop[1] <= 0 && !R.outNoted) { R.outNoted = true; note('Stage 2 propellant exhausted.'); }
+      if (R.q > 75e3 && !R.ended) { R.ended = true; R.fail = true; const up = (R.r[0] * R.v[0] + R.r[1] * R.v[1]) > 0; note(up ? 'Vehicle broke up: dynamic pressure exceeded 75 kPa. Use a gentler pitch-over.' : 'The vehicle fell back into the atmosphere and broke up: not enough speed for orbit.'); SL.toast(up ? 'Structural failure at ' + SL.fmt(R.q / 1000, 0) + ' kPa. Try a smaller pitch-over angle.' : 'Suborbital: the rocket fell back and broke up on re-entry. Try a smaller payload or a different pitch-over.', 'bad', 5000); }
+      if (alt(R.r) < 0 && R.t > 2) { R.ended = true; R.fail = true; note('Impact. The rocket did not reach orbit.'); SL.toast('The rocket came down. Try a smaller payload or a different pitch-over angle.', 'bad', 5000); }
+      R.debris.forEach(d => stepDebris(dt, d));
+    }
+    const lp = R.path[R.path.length - 1]; if (!lp || Math.hypot(lp[0] - R.r[0], lp[1] - R.r[1]) > R.VH / 150) R.path.push([R.r[0], R.r[1], R.stage]);
+    if (!R.lastLog || R.t - R.lastLog > 2) { R.lastLog = R.t; R.log.push([R.t, alt(R.r) / 1000, Math.hypot(R.v[0], R.v[1]) / 1000]); }
+    // success
+    const el = elements(R.r, R.v, MU);
+    if (!R.ended && R.thr === 0 && el.rp - RE > 140e3 && el.e < 1) {
+      R.ended = true; R.success = true;
+      note(`Orbit achieved: ${SL.fmt((el.rp - RE) / 1000, 0)} × ${SL.fmt((el.ra - RE) / 1000, 0)} km with ${RK.payload} kg payload.`);
+      SL.toast(`<b>Orbit!</b> ${SL.fmt((el.rp - RE) / 1000, 0)} × ${SL.fmt((el.ra - RE) / 1000, 0)} km, ${SL.fmt(R.prop[1], 0)} kg propellant left, max-Q ${SL.fmt(R.maxQ / 1000, 1)} kPa.`, 'ok', 6000);
+      rocketChallenges(el);
+    }
+  }
+  function stepDebris(dt, d) {
+    if (d.dead || !dt) return; let left = dt;
+    while (left > 0) { const h = Math.min(left, 0.2); const g = accel(d.r), va = atmV(d.r), vr = [d.v[0] - va[0], d.v[1] - va[1]], sp = Math.hypot(vr[0], vr[1]), k = 0.5 * rho(alt(d.r)) * 1.0 * Math.PI * 1.2 / STAGES[0].dry; d.v[0] += (g[0] - k * sp * vr[0]) * h; d.v[1] += (g[1] - k * sp * vr[1]) * h; d.r[0] += d.v[0] * h; d.r[1] += d.v[1] * h; left -= h; if (alt(d.r) < 0) { d.dead = true; break; } }
+  }
+  function drawRocket() {
+    const { ctx, w, h } = st; if (!R) newRocket();
+    const hR = alt(R.r), el = elements(R.r, R.v, MU);
+    const down = Math.hypot(R.r[0], R.r[1] - RE);
+    let VHt = Math.max(2.5e3, hR * 1.6, down * 0.75);
+    if (hR > 60e3) VHt = Math.max(VHt, Math.min(Math.max(hR, isFinite(el.ra) ? el.ra - RE : 4 * RE) * 1.3 + 0.25 * RE, 4 * RE));
+    R.VH = Math.exp(Math.log(R.VH) + (Math.log(VHt) - Math.log(R.VH)) * 0.08);
+    const f = SL.clamp((R.VH - 0.15 * RE) / (0.9 * RE), 0, 1);
+    const ru = upv(R.r), tgtCam = [R.r[0] * (1 - f) + ru[0] * 0.18 * R.VH * f, R.r[1] * (1 - f) + ru[1] * 0.18 * R.VH * f];
+    R.cam = [R.cam[0] + (tgtCam[0] - R.cam[0]) * .15, R.cam[1] + (tgtCam[1] - R.cam[1]) * .15];
+    const s = (h / 2) / R.VH, X = x => w / 2 + (x - R.cam[0]) * s, Y = y => h / 2 - (y - R.cam[1]) * s;
+    // sky: blue near ground, black in space
+    const skyA = SL.clamp(1 - Math.max(0, hR) / 60e3, 0, 1) * (1 - f);
+    ctx.fillStyle = '#02040a'; ctx.fillRect(0, 0, w, h); drawStars(ctx, w, h, 1 - skyA * .9);
+    if (skyA > 0.01) { const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, `rgba(30,80,150,${skyA})`); g.addColorStop(1, `rgba(120,180,230,${skyA})`); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h); }
+    // Earth as polygon near camera
+    const ang0 = Math.atan2(R.cam[1], R.cam[0]), span = Math.min(Math.PI, 2.5 * R.VH * (w / h) / RE + 0.02);
+    const atmo = 100e3;
+    if (f > 0.02) { ctx.fillStyle = 'rgba(96,165,250,.12)'; ctx.beginPath(); ctx.arc(X(0), Y(0), (RE + atmo) * s, 0, 7); ctx.fill(); }
+    if (f > 0.97) earthDisc(ctx, X(0), Y(0), RE * s);
+    else {
+      ctx.beginPath(); for (let i = 0; i <= 240; i++) { const a = ang0 - span + 2 * span * i / 240; const px = X(RE * Math.cos(a)), py = Y(RE * Math.sin(a)); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
+      ctx.lineTo(X(0), Y(0)); ctx.closePath();
+      const gg = ctx.createRadialGradient(X(0), Y(0), RE * s * .98, X(0), Y(0), RE * s); gg.addColorStop(0, '#071a38'); gg.addColorStop(0.985, '#174f8c'); gg.addColorStop(1, '#2f7fc7');
+      ctx.fillStyle = gg; ctx.fill(); ctx.strokeStyle = 'rgba(125,211,252,.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+      if (hR < 20e3) { // sea to the east of Malindi
+        ctx.save(); ctx.clip(); ctx.fillStyle = '#1f6b46'; ctx.fillRect(0, 0, X(4e3), h); ctx.fillStyle = '#1d5fa8'; ctx.fillRect(X(4e3), 0, w, h); ctx.restore();
+      }
+    }
+    // launch site marker
+    const sx = X(0), sy = Y(RE);
+    ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx - 5, sy + 10); ctx.lineTo(sx + 5, sy + 10); ctx.fill();
+    if (R.VH < 4e5) { ctx.font = '11px JetBrains Mono, monospace'; ctx.fillStyle = 'rgba(250,204,21,.85)'; const lbl = 'Malindi · Luigi Broglio Space Centre', lw = ctx.measureText(lbl).width; ctx.textAlign = 'left'; ctx.fillText(lbl, SL.clamp(sx - lw / 2, 8, w - lw - 8), sy + 24); }
+    // predicted orbit
+    if (hR > 20e3) { ctx.strokeStyle = el.rp > RE + 140e3 ? 'rgba(34,197,94,.8)' : 'rgba(250,204,21,.6)'; ctx.lineWidth = 1.4; ctx.setLineDash([6, 5]); polyline(ctx, conicPts(el, 8 * RE, 720).map(p => p && Math.hypot(p[0], p[1]) >= RE ? p : null), X, Y); ctx.setLineDash([]);
+      if (el.e < 1 && el.ra > RE) { const aa = [-el.ra * Math.cos(el.w), -el.ra * Math.sin(el.w)]; ctx.fillStyle = '#f472b6'; ctx.beginPath(); ctx.arc(X(aa[0]), Y(aa[1]), 4, 0, 7); ctx.fill(); tag(ctx, 'Ap ' + SL.fmt((el.ra - RE) / 1000, 0) + ' km', X(aa[0]), Y(aa[1]) - 10, '#f472b6'); }
+      if (el.rp > RE) { const pa = [el.rp * Math.cos(el.w), el.rp * Math.sin(el.w)]; ctx.fillStyle = '#22d3ee'; ctx.beginPath(); ctx.arc(X(pa[0]), Y(pa[1]), 4, 0, 7); ctx.fill(); tag(ctx, 'Pe ' + SL.fmt((el.rp - RE) / 1000, 0) + ' km', X(pa[0]), Y(pa[1]) + 22, '#22d3ee'); }
+    }
+    // path
+    if (R.path.length > 1) { ctx.lineWidth = 2; for (let i = 1; i < R.path.length; i++) { ctx.strokeStyle = R.path[i][2] ? 'rgba(34,211,238,.9)' : 'rgba(249,115,22,.9)'; ctx.beginPath(); ctx.moveTo(X(R.path[i - 1][0]), Y(R.path[i - 1][1])); ctx.lineTo(X(R.path[i][0]), Y(R.path[i][1])); ctx.stroke(); } }
+    R.debris.forEach(d => { ctx.fillStyle = d.dead ? '#64748b' : '#94a3b8'; ctx.fillRect(X(d.r[0]) - 2, Y(d.r[1]) - 4, 4, 8); });
+    // rocket sprite
+    const u = upv(R.r), e = eastv(R.r), dir = R.phase === 'pad' ? u : [Math.cos(R.pitch) * u[0] + Math.sin(R.pitch) * e[0], Math.cos(R.pitch) * u[1] + Math.sin(R.pitch) * e[1]];
+    const rx = X(R.r[0]), ry = Y(R.r[1]), ang = Math.atan2(-dir[1], dir[0]);
+    ctx.save(); ctx.translate(rx, ry); ctx.rotate(ang + Math.PI / 2);
+    const L = R.stage === 0 ? 26 : 13;
+    if (R.thr > 0 && !R.ended) { const fl = 10 + 14 * R.thr * (0.8 + 0.4 * Math.random()); const fg = ctx.createLinearGradient(0, 0, 0, fl); fg.addColorStop(0, '#fff7ae'); fg.addColorStop(.4, '#f97316'); fg.addColorStop(1, 'rgba(239,68,68,0)'); ctx.fillStyle = fg; ctx.beginPath(); ctx.moveTo(-3.5, 0); ctx.lineTo(3.5, 0); ctx.lineTo(0, fl); ctx.fill(); }
+    ctx.fillStyle = '#e2e8f0'; ctx.fillRect(-3.5, -L, 7, L); ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.moveTo(-3.5, -L); ctx.lineTo(3.5, -L); ctx.lineTo(0, -L - 8); ctx.fill();
+    if (R.stage === 0) { ctx.fillStyle = '#334155'; ctx.fillRect(-3.5, -13, 7, 1.5); ctx.fillStyle = '#94a3b8'; ctx.beginPath(); ctx.moveTo(-3.5, 0); ctx.lineTo(-7, 3); ctx.lineTo(-3.5, -6); ctx.fill(); ctx.beginPath(); ctx.moveTo(3.5, 0); ctx.lineTo(7, 3); ctx.lineTo(3.5, -6); ctx.fill(); }
+    ctx.restore();
+    // scale bar
+    const bar = Math.pow(10, Math.floor(Math.log10(R.VH / 2))); ctx.strokeStyle = 'rgba(230,236,247,.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(14, h - 18); ctx.lineTo(14 + bar * s, h - 18); ctx.stroke(); ctx.fillStyle = 'rgba(230,236,247,.6)'; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText(bar >= 1000 ? SL.fmt(bar / 1000, 0) + ' km' : bar + ' m', 14, h - 24);
+    return el;
+  }
+  function uiRocket(el) {
+    const hR = alt(R.r), va = atmV(R.r), vs = Math.hypot(R.v[0] - va[0], R.v[1] - va[1]), vr = (R.r[0] * R.v[0] + R.r[1] * R.v[1]) / Math.hypot(R.r[0], R.r[1]);
+    const down = RE * Math.abs(Math.atan2(R.r[0], R.r[1]));
+    $('#hud').innerHTML = `<span class="readout">T+ <b>${SL.fmt(R.t, 0)}</b> s</span><span class="readout">alt <b>${SL.fmt(hR / 1000, 1)}</b> km</span><span class="readout">v <b>${SL.fmt(el.v, 0)}</b> m/s</span><span class="readout">stage <b>${R.stage + 1}</b> ${R.thr > 0 ? '· burning' : ''}</span>`;
+    const [d1, d2] = dvBudget(), st0 = STAGES[R.stage], m = mass(), dvLeft = (R.stage === 0 ? STAGES[0].ispV * G0 * Math.log(m / (m - R.prop[0])) : 0) + STAGES[1].ispV * G0 * Math.log((RK.payload + STAGES[1].dry + R.prop[1]) / (RK.payload + STAGES[1].dry));
+    $('#stats').innerHTML = stat('Altitude', SL.fmt(hR / 1000, 2), 'km') + stat('Inertial speed', SL.fmt(el.v, 0), 'm/s') + stat('Surface speed', SL.fmt(vs, 0), 'm/s') + stat('Vertical speed', SL.fmt(vr, 0), 'm/s') +
+      stat('Downrange', SL.fmt(down / 1000, 0), 'km') + stat('Dynamic pressure q', SL.fmt(R.q / 1000, 1), 'kPa') + stat('Max-Q', SL.fmt(R.maxQ / 1000, 1), 'kPa') + stat('Acceleration', SL.fmt(R.acc, 2), 'g') +
+      stat('Mass', SL.fmt(m, 0), 'kg') + stat('Pitch from vertical', SL.fmt(SL.deg(R.pitch), 1), '°') + stat('Δv remaining', SL.fmt(dvLeft, 0), 'm/s') + stat('Apoapsis / periapsis', `${SL.fmt((el.ra - RE) / 1000, 0)} / ${SL.fmt((el.rp - RE) / 1000, 0)}`, 'km');
+    if (R.log.length > 1) { const mini = miniSt; SL.chart(mini, [{ data: R.log.map(p => [p[0], p[1]]), color: '#22d3ee', label: 'altitude (km)' }, { data: R.log.map(p => [p[0], p[2] * 30]), color: '#f472b6', label: 'speed (km/s × 30)' }], { xlabel: 't (s)', ymin: 0, pad: [24, 10, 24, 44] }); }
+  }
+  const miniSt = SL.canvas($('#mini'));
+  function rocketChallenges(el) {
+    winC('orbit', `Reached ${SL.fmt((el.rp - RE) / 1000, 0)} × ${SL.fmt((el.ra - RE) / 1000, 0)} km.`);
+    if (RK.payload >= 1000) winC('heavy', `${RK.payload} kg delivered.`);
+    if (R.maxQ < 30e3) winC('gentle', `Max-Q was ${SL.fmt(R.maxQ / 1000, 1)} kPa.`);
+  }
+
+  /* ======================= MODE C: solar system ======================= */
+  const PL = [
+    { n: 'Mercury', a: 0.38710, e: 0.20563, w: 77.456, L: 252.251, T: 87.969, r: 2440, c: '#a8a29e' },
+    { n: 'Venus', a: 0.72333, e: 0.00677, w: 131.53, L: 181.980, T: 224.701, r: 6052, c: '#fcd34d' },
+    { n: 'Earth', a: 1.00000, e: 0.01671, w: 102.94, L: 100.464, T: 365.256, r: 6371, c: '#60a5fa' },
+    { n: 'Mars', a: 1.52368, e: 0.09340, w: 336.04, L: 355.453, T: 686.980, r: 3390, c: '#f87171' },
+    { n: 'Jupiter', a: 5.20260, e: 0.04849, w: 14.75, L: 34.404, T: 4332.59, r: 69911, c: '#fdba74' },
+    { n: 'Saturn', a: 9.55491, e: 0.05551, w: 92.43, L: 49.944, T: 10759.22, r: 58232, c: '#fde68a' },
+    { n: 'Uranus', a: 19.2184, e: 0.04630, w: 170.96, L: 313.232, T: 30685.4, r: 25362, c: '#99f6e4' },
+    { n: 'Neptune', a: 30.1104, e: 0.00899, w: 44.97, L: 304.880, T: 60189, r: 24622, c: '#818cf8' },
+  ];
+  const AU = 1.495978707e11, GMS = 1.32712440018e20;
+  const J2000 = Date.UTC(2000, 0, 1, 12);
+  const SC = { d: (Date.now() - J2000) / 864e5, zone: 2, Z: 2, lin: true, trueSize: false, dps: 30, play: true, sel: 2 };
+  function plPos(p, d) {
+    const M = SL.rad(((p.L - p.w) + 360 / p.T * d) % 360); let E = M; for (let i = 0; i < 12; i++) E -= (E - p.e * Math.sin(E) - M) / (1 - p.e * Math.cos(E));
+    const xp = p.a * (Math.cos(E) - p.e), yp = p.a * Math.sqrt(1 - p.e * p.e) * Math.sin(E), w = SL.rad(p.w);
+    return [xp * Math.cos(w) - yp * Math.sin(w), xp * Math.sin(w) + yp * Math.cos(w)];
+  }
+  function solXY(x, y) { const r = Math.hypot(x, y), R0 = (Math.min(st.w, st.h) / 2 - 24); let rr = SC.lin ? r / SC.Z : Math.sqrt(r / SC.Z); const k = r > 0 ? rr * R0 / r : 0; return [st.w / 2 + x * k, st.h / 2 - y * k]; }
+  function drawSolar(dt) {
+    const { ctx, w, h } = st; if (SC.play) SC.d += dt * SC.dps;
+    SC.Z += (SC.zone - SC.Z) * .1;
+    ctx.fillStyle = '#02030a'; ctx.fillRect(0, 0, w, h); drawStars(ctx, w, h, .9);
+    const c = solXY(0, 0), R0 = Math.min(w, h) / 2 - 24, pxPerAU = R0 / SC.Z;
+    // orbits
+    PL.forEach((p, i) => { ctx.strokeStyle = i === SC.sel ? 'rgba(255,255,255,.45)' : 'rgba(255,255,255,.13)'; ctx.lineWidth = i === SC.sel ? 1.4 : 1; ctx.beginPath(); for (let k = 0; k <= 180; k++) { const q = plPos(Object.assign({}, p, { L: p.w + k * 2, T: 1e12 }), 0); const s = solXY(q[0], q[1]); k ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]); } ctx.stroke(); });
+    // sun
+    const sunR = SC.trueSize && SC.lin ? Math.max(0.6, 696000e3 / AU * pxPerAU) : 9;
+    const sg = ctx.createRadialGradient(c[0], c[1], 1, c[0], c[1], sunR * 4 + 10); sg.addColorStop(0, '#fff7cc'); sg.addColorStop(.25, 'rgba(250,204,21,.8)'); sg.addColorStop(1, 'rgba(250,204,21,0)');
+    ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(c[0], c[1], sunR * 4 + 10, 0, 7); ctx.fill(); ctx.fillStyle = '#fff7cc'; ctx.beginPath(); ctx.arc(c[0], c[1], sunR, 0, 7); ctx.fill();
+    SC.screen = [];
+    PL.forEach((p, i) => {
+      const q = plPos(p, SC.d), s = solXY(q[0], q[1]);
+      const r = SC.trueSize && SC.lin ? Math.max(0.5, p.r * 1e3 / AU * pxPerAU) : 3 + Math.cbrt(p.r / 2440) * 2.6;
+      if (Math.hypot(s[0] - w / 2, s[1] - h / 2) > Math.max(w, h)) return;
+      SC.screen.push([i, s[0], s[1]]);
+      ctx.save(); ctx.shadowColor = p.c; ctx.shadowBlur = 10; ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(s[0], s[1], r, 0, 7); ctx.fill(); ctx.restore();
+      if (p.n === 'Saturn' && !SC.trueSize) { ctx.strokeStyle = 'rgba(253,230,138,.7)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.ellipse(s[0], s[1], r * 1.9, r * .6, -.4, 0, 7); ctx.stroke(); }
+      if (i === SC.sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(s[0], s[1], r + 6, 0, 7); ctx.stroke(); }
+      ctx.fillStyle = 'rgba(230,236,247,.8)'; ctx.font = '11px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText(p.n, s[0] + r + 5, s[1] - 4);
+    });
+    // scale
+    const bar = SC.lin ? (SC.Z > 10 ? 10 : 1) : null;
+    if (bar) { ctx.strokeStyle = 'rgba(230,236,247,.5)'; ctx.beginPath(); ctx.moveTo(14, h - 18); ctx.lineTo(14 + bar * pxPerAU, h - 18); ctx.stroke(); ctx.fillStyle = 'rgba(230,236,247,.6)'; ctx.font = '10px JetBrains Mono, monospace'; ctx.fillText(bar + ' AU', 14, h - 24); }
+    else { ctx.fillStyle = 'rgba(230,236,247,.5)'; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText('compressed: screen distance ∝ √r', 14, h - 18); }
+    if (SC.trueSize) { ctx.fillStyle = 'rgba(250,204,21,.8)'; ctx.textAlign = 'center'; ctx.fillText('True sizes: the planets are smaller than a pixel. Space is mostly empty.', w / 2, 24 + 40); }
+  }
+  function uiSolar() {
+    const date = new Date(J2000 + SC.d * 864e5);
+    $('#hud').innerHTML = `<span class="readout">date <b>${date.toISOString().slice(0, 10)}</b></span><span class="readout">speed <b>${SL.fmt(SC.dps, SC.dps < 10 ? 1 : 0)}</b> days/s</span>`;
+    const p = PL[SC.sel], q = plPos(p, SC.d), r = Math.hypot(q[0], q[1]), e = plPos(PL[2], SC.d), dE = Math.hypot(q[0] - e[0], q[1] - e[1]);
+    const v = Math.sqrt(GMS * (2 / (r * AU) - 1 / (p.a * AU))), Ty = p.T / 365.256;
+    $('#pName').innerHTML = `<span class="planet-dot" style="background:${p.c}"></span>${p.n}`;
+    $('#pInfo').innerHTML = `a = <b>${p.a} AU</b> · e = <b>${p.e}</b><br>Period <b>${SL.fmt(Ty, 3)} yr</b> (${SL.fmt(p.T, 1)} d)<br>T²/a³ = <b>${SL.fmt(Ty * Ty / p.a ** 3, 4)}</b> yr²/AU³<br>Distance from Sun now <b>${SL.fmt(r, 3)} AU</b><br>Speed now (vis-viva) <b>${SL.fmt(v / 1000, 2)} km/s</b><br>${p.n !== 'Earth' ? `Distance from Earth <b>${SL.fmt(dE, 3)} AU</b> (light time ${SL.fmt(dE * AU / 2.998e8 / 60, 1)} min)<br>` : ''}Perihelion <b>${SL.fmt(p.a * (1 - p.e), 3)}</b> · aphelion <b>${SL.fmt(p.a * (1 + p.e), 3)} AU</b>`;
+    $('#stats').innerHTML = PL.slice(0, 8).map(pp => { const qq = plPos(pp, SC.d); return stat(pp.n, SL.fmt(Math.hypot(qq[0], qq[1]), 2), 'AU from Sun'); }).join('');
+  }
+  function pickPlanet(p) { let best = null, bd = 30; (SC.screen || []).forEach(([i, x, y]) => { const d = Math.hypot(p.x - x, p.y - y); if (d < bd) { bd = d; best = i; } }); if (best !== null) { SC.sel = best; uiSolar(); } }
+
+  /* ======================= challenges ======================= */
+  const CHALS = [
+    { id: 'circ', t: 'Circularise', d: 'Starting from the Ellipse preset, use burns to make the orbit circular ($e &lt; 0.01$).' },
+    { id: 'hoh', t: 'Hohmann to GEO', d: 'From a circular orbit, reach the target ring ($e &lt; 0.01$, radius within 1%) using no more than 5% above the ideal Hohmann Δv. Use the armed apoapsis burn.' },
+    { id: 'esc', t: 'Escape efficiently', d: 'From a circular orbit, reach escape ($e \\ge 1$) with a single prograde burn within 2% of the minimum $(\\sqrt2-1)v_c$.' },
+    { id: 'k2', t: 'Equal areas', d: 'On an orbit with $e &gt; 0.5$ and swept areas on, record 8 sectors and see that their areas agree.' },
+    { id: 'orbit', t: 'Reach orbit from Kenya', d: 'Launch the rocket and reach a stable orbit with periapsis above 140 km.' },
+    { id: 'heavy', t: 'Heavy lifter', d: 'Reach orbit with a payload of 1000 kg or more. You will need an efficient trajectory.' },
+    { id: 'gentle', t: 'Smooth ride', d: 'Reach orbit with maximum dynamic pressure below 30 kPa.' },
+  ];
+  $('#chalList').innerHTML = CHALS.map(c => `<div class="chal" id="ch-${c.id}"><span class="led"></span><div><b>${c.t}</b><p>${c.d}</p></div></div>`).join('');
+  function winC(id, msg) { if (done[id]) return; done[id] = true; $('#ch-' + id + ' .led').classList.add('on'); SL.toast(`<b>Challenge complete:</b> ${CHALS.find(c => c.id === id).t}${msg ? '<br>' + msg : ''}`, 'ok', 6000); }
+  function checkOrbitChallenges() {
+    const el = elements(A.r, A.v, MU);
+    if (el.e < 0.01 && A.dvUsed > 0) winC('circ', `e = ${SL.fmt(el.e, 4)} using ${SL.fmt(A.dvUsed, 0)} m/s.`);
+    if (A.startR && el.e < 0.01 && Math.abs(el.a - A.tgt) / A.tgt < 0.01) {
+      const r1 = A.startR, r2 = A.tgt, ideal = Math.abs(Math.sqrt(MU / r1) * (Math.sqrt(2 * r2 / (r1 + r2)) - 1)) + Math.abs(Math.sqrt(MU / r2) * (1 - Math.sqrt(2 * r1 / (r1 + r2))));
+      if (A.dvUsed <= ideal * 1.05) winC('hoh', `Used ${SL.fmt(A.dvUsed, 0)} m/s against an ideal ${SL.fmt(ideal, 0)} m/s.`);
+      else SL.toast(`Target orbit reached with ${SL.fmt(A.dvUsed, 0)} m/s; the ideal Hohmann transfer needs ${SL.fmt(ideal, 0)} m/s.`, 'warn');
+    }
+    if (A.startR && el.e >= 1) { const min = (Math.SQRT2 - 1) * Math.sqrt(MU / A.startR); if (A.dvUsed <= 1.02 * min) winC('esc', `Δv ${SL.fmt(A.dvUsed, 0)} m/s, minimum ${SL.fmt(min, 0)} m/s.`); }
+  }
+  function checkKepler() { const el = elements(A.r, A.v, MU); if (el.e > 0.5 && A.sectors.length >= 8) { const ar = A.sectors.slice(-8).map(s => s.area), m = ar.reduce((a, b) => a + b) / 8, sp = (Math.max(...ar) - Math.min(...ar)) / m; if (sp < 0.01) winC('k2', `8 sectors agree to ${SL.fmt(sp * 100, 2)}%.`); } }
+
+  /* ======================= controls ======================= */
+  document.querySelectorAll('.grp').forEach(g => g.classList.toggle('show', g.dataset.g === mode));
+  function setMode(m) {
+    mode = m; document.querySelectorAll('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+    document.querySelectorAll('.grp').forEach(g => g.classList.toggle('show', g.dataset.g === m));
+    $('#statsTitle').textContent = m === 'sandbox' ? 'Orbital elements' : m === 'rocket' ? 'Flight data' : 'Distances from the Sun';
+    $('#zoomIn').style.display = $('#zoomOut').style.display = m === 'rocket' ? 'none' : '';
+    if (m === 'rocket' && !R) newRocket();
+    running = true; setPlay();
+  }
+  $('#modeSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.m); });
+  const segPick = (sel, cb) => $(sel).addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $(sel).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); cb(b); });
+  segPick('#warpSeg', b => A.warp = +b.dataset.w);
+  segPick('#rwarpSeg', b => RK.warp = +b.dataset.w);
+  segPick('#zoneSeg', b => SC.zone = +b.dataset.z);
+  document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => preset(b.dataset.preset));
+  document.querySelectorAll('[data-burn]').forEach(b => b.onclick = () => { if (!A.crashed) burn(b.dataset.burn); });
+  $('#armApo').onclick = () => { A.armed = A.armed === 'apo' ? null : 'apo'; armUI(); };
+  $('#armPeri').onclick = () => { A.armed = A.armed === 'peri' ? null : 'peri'; armUI(); };
+  $('#armRetro').onclick = () => { A.armDir = A.armDir === 'pro' ? 'retro' : 'pro'; armUI(); };
+  $('#dvReset').onclick = () => { A.dvUsed = 0; const el = elements(A.r, A.v, MU); A.startR = el.e < 0.01 ? el.a : null; };
+  SL.bind('#dv', v => A.dvSize = v, v => v + ' m/s');
+  SL.bind('#tgt', v => A.tgt = v * 1000, v => SL.fmt(v, 0) + ' km');
+  SL.bind('#kep', v => { A.kep = v; resetSectors(); }); SL.bind('#conic', v => A.conic = v);
+  $('#zoomIn').onclick = () => { if (mode === 'sandbox') A.VRt = Math.max(8e6, A.VRt / 1.5); else SC.zone = Math.max(0.6, SC.zone / 1.5); };
+  $('#zoomOut').onclick = () => { if (mode === 'sandbox') A.VRt = Math.min(6e8, A.VRt * 1.5); else SC.zone = Math.min(40, SC.zone * 1.5); };
+  function setPlay() { $('#playBtn').innerHTML = `<i data-lucide="${running ? 'pause' : 'play'}"></i>`; SL.refreshIcons($('#playBtn')); }
+  $('#playBtn').onclick = () => { running = !running; setPlay(); };
+  // rocket
+  SL.bind('#pay', v => { RK.payload = v; const [a, b] = dvBudget(); $('#dvBudget').textContent = `${SL.fmt(a, 0)} + ${SL.fmt(b, 0)} = ${SL.fmt(a + b, 0)} m/s`; }, v => SL.fmt(v, 0) + ' kg');
+  SL.bind('#kick', v => RK.kick = v, v => v + '°');
+  SL.bind('#talt', v => RK.talt = v * 1000, v => v + ' km');
+  SL.bind('#auto', v => { RK.auto = v; $('#manualBox').style.display = v ? 'none' : 'block'; if (!v && R && R.phase !== 'pad') { $('#mpitch').value = SL.deg(R.pitch).toFixed(1); $('#mpitch').dispatchEvent(new Event('input')); } });
+  SL.bind('#mpitch', v => RK.mpitch = v, v => v + '°'); SL.bind('#mthr', v => RK.mthr = v / 100, v => v + '%');
+  $('#launchBtn').onclick = () => { if (!R || R.phase !== 'pad') newRocket(); R.phase = 'ascent'; R.thr = 1; running = true; setPlay(); note('Lift-off! Vertical climb, then pitch-over at T+10 s.'); };
+  $('#rReset').onclick = () => newRocket();
+  $('#stageBtn').onclick = () => { if (R && R.stage === 0 && R.phase !== 'pad') { R.prop[0] = 0; R.sepT = R.t; R.debris.push({ r: R.r.slice(), v: R.v.slice(), dead: false }); R.stage = 1; note('Manual staging.'); } };
+  $('#progBtn').onclick = () => { if (!R) return; const u = upv(R.r), e = eastv(R.r); const p = SL.deg(Math.atan2(R.v[0] * e[0] + R.v[1] * e[1], R.v[0] * u[0] + R.v[1] * u[1])); $('#mpitch').value = SL.clamp(p, 0, 100).toFixed(1); $('#mpitch').dispatchEvent(new Event('input')); };
+  // solar
+  SL.bind('#lin', v => SC.lin = v); SL.bind('#trueSize', v => SC.trueSize = v);
+  SL.bind('#dps', v => SC.dps = Math.round(Math.pow(10, v) * 10) / 10, v => SL.fmt(Math.pow(10, v), Math.pow(10, v) < 10 ? 1 : 0) + ' days/s');
+  $('#today').onclick = () => SC.d = (Date.now() - J2000) / 864e5;
+  $('#solPlay').onclick = () => { SC.play = !SC.play; $('#solPlay').innerHTML = `<i data-lucide="${SC.play ? 'pause' : 'play'}"></i> ${SC.play ? 'Pause' : 'Play'}`; SL.refreshIcons($('#solPlay')); };
+  // worked example loaders
+  const LOADS = {
+    iss: () => { setMode('sandbox'); preset('iss'); },
+    escape: () => { setMode('sandbox'); preset('circ'); setRange('dv', 2387); },
+    hohmann: () => { setMode('sandbox'); preset('circ'); setRange('tgt', 42164); setRange('dv', 1428); },
+  };
+  const setRange = (id, v) => { const el = $('#' + id); el.value = v; el.dispatchEvent(new Event('input')); };
+  document.querySelectorAll('[data-load]').forEach(b => b.addEventListener('click', () => { LOADS[b.dataset.load](); $('#lab').scrollIntoView({ behavior: 'smooth' }); }));
+
+  /* ======================= Kepler 3 table ======================= */
+  $('#k3').innerHTML = `<thead><tr><th>Planet</th><th>a (AU)</th><th>T (yr)</th><th>a³</th><th>T²</th><th>T²/a³</th></tr></thead><tbody>${PL.map(p => { const T = p.T / 365.256; return `<tr><td><span class="planet-dot" style="background:${p.c}"></span>${p.n}</td><td class="num">${p.a}</td><td class="num">${SL.fmt(T, 4)}</td><td class="num">${SL.fmt(p.a ** 3, 3)}</td><td class="num">${SL.fmt(T * T, 3)}</td><td class="num">${SL.fmt(T * T / p.a ** 3, 4)}</td></tr>`; }).join('')}</tbody>`;
+  const k3 = SL.canvas($('#k3plot'));
+  function drawK3() {
+    const d = PL.map(p => [Math.log10(p.a), Math.log10(p.T / 365.256)]);
+    const r = SL.chart(k3, [{ data: [[-0.5, -0.75], [1.6, 2.4]], color: 'rgba(250,204,21,.6)', label: 'gradient 1.5', dash: [5, 4] }], { xmin: -0.5, xmax: 1.6, ymin: -0.8, ymax: 2.4, xlabel: 'log₁₀ a (AU)', pad: [30, 14, 30, 46] });
+    d.forEach((q, i) => { k3.ctx.fillStyle = PL[i].c; k3.ctx.beginPath(); k3.ctx.arc(r.X(q[0]), r.Y(q[1]), 5, 0, 7); k3.ctx.fill(); k3.ctx.fillStyle = 'rgba(230,236,247,.75)'; k3.ctx.font = '10px JetBrains Mono, monospace'; k3.ctx.textAlign = 'left'; k3.ctx.fillText(PL[i].n, r.X(q[0]) + 7, r.Y(q[1]) + 12); });
+  }
+  document.querySelector('[data-tabs]').addEventListener('tab', e => { if (e.detail === 3) setTimeout(drawK3, 50); });
+
+  /* ======================= quiz ======================= */
+  SL.quiz('#quiz', [
+    { q: 'A satellite in a circular orbit is moved to a circular orbit of four times the radius. Its orbital speed becomes:', options: ['Four times larger', 'Twice as large', 'Half as large', 'A quarter as large'], answer: 2, why: '$v_c = \\sqrt{\\mu/r}$, so quadrupling $r$ halves $v$. Higher orbits are slower.' },
+    { q: 'By Kepler\'s third law, the period of that higher orbit is:', options: ['2 times longer', '4 times longer', '8 times longer', '16 times longer'], answer: 2, why: '$T \\propto r^{3/2}$, and $4^{3/2} = 8$.' },
+    { q: 'Where on an elliptical orbit does a satellite move fastest?', options: ['At apoapsis', 'At periapsis', 'At the ends of the minor axis', 'Speed is constant'], answer: 1, why: 'Equal areas in equal times (angular momentum conservation) and vis-viva both say speed is highest closest to the planet.' },
+    { q: 'What is the escape speed from a circular orbit compared with the orbital speed there?', options: ['The same', '$\\sqrt2$ times larger', '2 times larger', '$\\pi$ times larger'], answer: 1, why: '$v_{esc} = \\sqrt{2\\mu/r} = \\sqrt2\\,v_c$, so the extra burn is about 41% of $v_c$.' },
+    { q: 'To raise the far side of an orbit most efficiently, you should burn:', options: ['Radially outward', 'Prograde (along the velocity)', 'Retrograde', 'Towards the planet'], answer: 1, why: 'Prograde burns add most to the orbital energy ($\\Delta\\varepsilon = \\vec v\\cdot\\Delta\\vec v$), raising the opposite side of the orbit.' },
+    { q: 'In a Hohmann transfer from a low to a high circular orbit, the second burn happens:', options: ['Immediately after the first', 'At the periapsis of the transfer orbit', 'At the apoapsis of the transfer orbit', 'Halfway between them'], answer: 2, why: 'The transfer ellipse touches the target orbit at its apoapsis; a prograde burn there circularises.' },
+    { q: 'A stage has $I_{sp} = 300$ s and a mass ratio $m_0/m_f = e \\approx 2.718$. Its Δv is about:', options: ['300 m/s', '2.9 km/s', '8.2 km/s', '30 km/s'], answer: 1, why: '$\\Delta v = I_{sp}g_0\\ln(m_0/m_f) = 300 \\times 9.81 \\times 1 = 2.94$ km/s.' },
+    { q: 'Why is an equatorial site such as Malindi attractive for launching into geostationary orbit?', options: ['Gravity is stronger there', 'Earth\'s rotation gives about 465 m/s eastward and no plane change is needed for a 0° inclination', 'The air is thinner', 'Rockets burn fuel more efficiently in warm air'], answer: 1, why: 'The surface moves fastest at the equator, and launching from 0° latitude can reach an equatorial orbit directly.' },
+    { q: 'An orbit has specific energy $\\varepsilon > 0$. Its shape is:', options: ['A circle', 'An ellipse', 'A parabola', 'A hyperbola'], answer: 3, why: 'Positive energy means the object is unbound: $e > 1$, a hyperbola. Zero energy is the parabolic boundary.' },
+  ]);
+
+  /* ======================= main loop ======================= */
+  let uiAcc = 0;
+  const loop = SL.loop(dt => {
+    let el = null;
+    if (mode === 'sandbox') { if (running && !drag) stepA(dt * A.warp); el = drawA(); }
+    else if (mode === 'rocket') { if (running) stepRocket(dt); el = drawRocket(); }
+    else drawSolar(running ? dt : 0);
+    uiAcc += dt; if (uiAcc > 0.15) { uiAcc = 0; if (mode === 'sandbox') { uiA(el); hohmannUI(); } else if (mode === 'rocket') uiRocket(el); else uiSolar(); }
+  }).start();
+  document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
+  preset('ell'); A.VR = A.VRt;
+  window.__orb = { A, RK, get R() { return R; }, elements, stepA, stepRocket, newRocket, setMode, preset, burn, PL, plPos, SC, MU, RE };
+})();
+</script>
+</body>
+</html>

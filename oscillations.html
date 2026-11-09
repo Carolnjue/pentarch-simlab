@@ -1,0 +1,767 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Springs, Pendulums &amp; Resonance · Pentarch SimLab</title>
+<meta name="description" content="Mass–spring systems, exact and small-angle pendulums, the chaotic double pendulum, coupled oscillators and driven damped resonance with live plots.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .stage.osc{height:440px;touch-action:none}
+  @media (max-width:640px){.stage.osc{height:380px;min-height:0}.stage .readout{font-size:.7rem;padding:4px 7px}}
+  .plots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
+  .plots .plot{background:#050913;border:1px solid var(--line);border-radius:12px;padding:8px 8px 4px;min-width:0}
+  .plots .plot.span2{grid-column:span 2}
+  .plots .plot h4{font:600 .68rem var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:2px 4px 2px;display:flex;justify-content:space-between;gap:6px}
+  .plots .plot h4 span{color:var(--muted);letter-spacing:0;text-transform:none;font-weight:500}
+  .plots canvas{display:block;width:100%;height:170px}
+  @media (max-width:820px){.plots{grid-template-columns:1fr 1fr}.plots .plot.span2{grid-column:span 2}}
+  @media (max-width:520px){.plots{grid-template-columns:1fr}.plots .plot.span2{grid-column:auto}}
+  .modeseg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:4px}
+  .modeseg button{all:unset;cursor:pointer;text-align:center;padding:8px 4px;border-radius:9px;border:1px solid var(--line2);background:var(--bg2);font-size:.78rem;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px}
+  .modeseg button svg{width:17px;height:17px}
+  .modeseg button.on{border-color:var(--accent);color:var(--text);background:color-mix(in srgb,var(--accent) 14%,var(--bg2))}
+  .grp{display:none}.grp.show{display:block}
+  .seg.full{display:flex}.seg.full button{flex:1;text-align:center}
+  .regime{font:600 .78rem var(--mono);padding:3px 8px;border-radius:6px;background:var(--bg2);border:1px solid var(--line2)}
+  .chal{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
+  .chal .led{margin-top:6px;flex:none}.chal b{display:block}.chal p{margin:2px 0 0;color:var(--muted);font-size:.9rem}
+  .stat .k{text-transform:none;letter-spacing:.02em;font-size:.72rem}
+  .rw{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .rw h4{display:flex;gap:8px;align-items:center}.rw h4 svg{width:18px;height:18px;color:var(--accent)}
+  .rw p{color:var(--muted);font-size:.92rem;margin:0}
+</style>
+</head>
+<body data-page="oscillations">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab" id="lab">
+    <div style="min-width:0">
+      <div class="stage osc" id="stage">
+        <canvas id="cv" aria-label="Oscillator stage: drag the mass or bob to set the starting position"></canvas>
+        <div class="hud" id="hud"></div>
+        <div class="stage-toolbar">
+          <button class="btn sm" id="playBtn" title="Pause or play"><i data-lucide="pause"></i></button>
+          <button class="btn sm" id="resetBtn" title="Reset"><i data-lucide="rotate-ccw"></i></button>
+        </div>
+      </div>
+      <div class="plots">
+        <div class="plot"><h4 id="p1t">Displacement x(t)</h4><canvas id="p1"></canvas></div>
+        <div class="plot"><h4 id="p2t">Velocity v(t)</h4><canvas id="p2"></canvas></div>
+        <div class="plot"><h4 id="p3t">Phase portrait</h4><canvas id="p3"></canvas></div>
+        <div class="plot"><h4>Energy <span>KE · PE · total</span></h4><canvas id="p4"></canvas></div>
+        <div class="plot span2"><h4 id="p5t">Resonance curve</h4><canvas id="p5"></canvas></div>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="layers"></i> Oscillator</h3>
+        <div class="modeseg" id="modeSeg">
+          <button data-m="spring" class="on"><i data-lucide="arrow-down-up"></i>Spring</button>
+          <button data-m="pendulum"><i data-lucide="git-commit-vertical"></i>Pendulum</button>
+          <button data-m="double"><i data-lucide="spline"></i>Double</button>
+          <button data-m="coupled"><i data-lucide="link-2"></i>Coupled</button>
+          <button data-m="driven"><i data-lucide="audio-waveform"></i>Driven</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="sliders-horizontal"></i> Parameters</h3>
+        <!-- spring + driven -->
+        <div class="grp" data-g="spring driven">
+          <div class="seg full grp" data-g="spring" id="orientSeg" style="margin-bottom:6px"><button class="on" data-o="h">Horizontal</button><button data-o="v">Vertical</button></div>
+          <div class="ctl"><label for="m">Mass m</label><output></output><input type="range" id="m" min="0.1" max="5" step="0.01" value="1"></div>
+          <div class="ctl"><label for="k">Spring constant k</label><output></output><input type="range" id="k" min="1" max="200" step="0.5" value="20"></div>
+          <div class="ctl"><label for="b">Damping b</label><output></output><input type="range" id="b" min="0" max="40" step="0.05" value="0.5"></div>
+          <div class="btn-row" style="margin:2px 0 6px"><button class="btn sm" data-z="0">None</button><button class="btn sm" data-z="0.1">Under</button><button class="btn sm" data-z="1">Critical</button><button class="btn sm" data-z="2.5">Over</button></div>
+          <div class="grp" data-g="spring"><button class="btn sm" id="pullBtn"><i data-lucide="move-horizontal"></i> Pull 0.2 m and release</button></div>
+          <div class="grp" data-g="driven">
+            <div class="ctl"><label for="F0">Driving amplitude F₀</label><output></output><input type="range" id="F0" min="0" max="10" step="0.1" value="1"></div>
+            <div class="ctl"><label for="wd">Driving frequency ω<sub>d</sub></label><output></output><input type="range" id="wd" min="0.2" max="30" step="0.01" value="3"></div>
+            <div class="btn-row"><button class="btn sm" id="sweepBtn"><i data-lucide="scan-line"></i> Sweep ω<sub>d</sub></button><button class="btn sm" id="clearSweep"><i data-lucide="eraser"></i> Clear points</button></div>
+          </div>
+        </div>
+        <!-- pendulum -->
+        <div class="grp" data-g="pendulum">
+          <div class="ctl"><label for="L">Length L</label><output></output><input type="range" id="L" min="0.1" max="5" step="0.01" value="1"></div>
+          <div class="ctl"><label for="th0">Release angle θ₀</label><output></output><input type="range" id="th0" min="1" max="179" step="0.5" value="60"></div>
+          <div class="ctl"><label for="pb">Damping b</label><output></output><input type="range" id="pb" min="0" max="2" step="0.01" value="0"></div>
+          <div class="seg full" id="gSeg" style="margin:4px 0 8px"><button class="on" data-g="9.81">Earth</button><button data-g="1.62">Moon</button><button data-g="3.71">Mars</button></div>
+          <label class="toggle">Show small-angle model (ghost)<input type="checkbox" id="ghost" checked></label>
+          <button class="btn sm" id="relBtn" style="margin-top:4px"><i data-lucide="play"></i> Release from θ₀</button>
+        </div>
+        <!-- double -->
+        <div class="grp" data-g="double">
+          <div class="ctl"><label for="m1">m₁</label><output></output><input type="range" id="m1" min="0.2" max="5" step="0.1" value="1"></div>
+          <div class="ctl"><label for="m2">m₂</label><output></output><input type="range" id="m2" min="0.2" max="5" step="0.1" value="1"></div>
+          <div class="ctl"><label for="L1">L₁</label><output></output><input type="range" id="L1" min="0.3" max="2" step="0.05" value="1"></div>
+          <div class="ctl"><label for="L2">L₂</label><output></output><input type="range" id="L2" min="0.3" max="2" step="0.05" value="1"></div>
+          <div class="ctl"><label for="dt1">Start θ₁</label><output></output><input type="range" id="dt1" min="-180" max="180" step="1" value="120"></div>
+          <div class="ctl"><label for="dt2">Start θ₂</label><output></output><input type="range" id="dt2" min="-180" max="180" step="1" value="-20"></div>
+          <label class="toggle">Twin pendulum (θ₁ + 0.001 rad)<input type="checkbox" id="twin" checked></label>
+          <label class="toggle">Trail<input type="checkbox" id="trail" checked></label>
+          <button class="btn sm" id="dRel"><i data-lucide="play"></i> Release</button>
+        </div>
+        <!-- coupled -->
+        <div class="grp" data-g="coupled">
+          <div class="ctl"><label for="cm">Each mass m</label><output></output><input type="range" id="cm" min="0.2" max="5" step="0.05" value="1"></div>
+          <div class="ctl"><label for="ck">Outer springs k</label><output></output><input type="range" id="ck" min="1" max="100" step="0.5" value="20"></div>
+          <div class="ctl"><label for="ckc">Coupling spring k<sub>c</sub></label><output></output><input type="range" id="ckc" min="0" max="60" step="0.05" value="2"></div>
+          <div class="ctl"><label for="cb">Damping b</label><output></output><input type="range" id="cb" min="0" max="5" step="0.01" value="0"></div>
+          <div class="btn-row"><button class="btn sm" data-cm="1">Mode 1 (in phase)</button><button class="btn sm" data-cm="2">Mode 2 (opposite)</button><button class="btn sm" data-cm="beat">Beats (push one)</button></div>
+        </div>
+        <div class="panel-title">Simulation speed</div>
+        <div class="seg full" id="speedSeg"><button data-s="0.25">¼×</button><button data-s="0.5">½×</button><button class="on" data-s="1">1×</button><button data-s="2">2×</button><button data-s="5">5×</button></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="gauge"></i> Live results</h3>
+        <div class="stats" id="stats"></div>
+        <p class="small muted" id="note" style="margin:10px 0 0"></p>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button><i data-lucide="building-2"></i> Real world</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. Simple harmonic motion</h3>
+      <p>An oscillator has a stable equilibrium and a <b>restoring force</b> that pulls it back. If the force is proportional to the displacement (Hooke's law, $F = -kx$), Newton's second law gives the SHM equation:</p>
+      <div class="eq">$$m\ddot x = -kx \quad\Longrightarrow\quad \ddot x = -\omega_0^2 x, \qquad \omega_0 = \sqrt{\frac{k}{m}}$$</div>
+      <p>Its solution is a sinusoid whose frequency does not depend on the amplitude (the motion is <i>isochronous</i>):</p>
+      <div class="eq">$$\begin{gathered}x(t) = A\cos(\omega_0 t + \phi), \qquad v(t) = -A\omega_0\sin(\omega_0 t + \phi)\\ T = \frac{2\pi}{\omega_0} = 2\pi\sqrt{\frac{m}{k}}, \qquad f = \frac{1}{T}\end{gathered}$$</div>
+      <p>Energy sloshes between kinetic and potential, with a constant total $E = \tfrac12 kA^2 = \tfrac12 m v_{max}^2$, so $v_{max} = A\omega_0$. In the phase portrait ($x$ against $v$) undamped SHM traces an ellipse; damping turns it into an inward spiral.</p>
+      <p><b>Vertical springs.</b> Hanging a mass stretches the spring by $mg/k$ to a new equilibrium. Measured from that equilibrium, the motion is identical SHM with the same $\omega_0$: gravity only shifts the centre. (The lab's potential energy for the vertical spring is measured from that equilibrium, combining spring and gravitational terms.)</p>
+
+      <h3>2. The pendulum: exact and small-angle</h3>
+      <p>For a bob of mass $m$ on a light rod of length $L$, the torque about the pivot gives</p>
+      <div class="eq">$$\ddot\theta = -\frac{g}{L}\sin\theta - \frac{b}{m}\dot\theta$$</div>
+      <p>This is <b>nonlinear</b>. For small angles $\sin\theta \approx \theta$ (θ in radians), which turns it into SHM with</p>
+      <div class="eq">$$T_0 = 2\pi\sqrt{\frac{L}{g}}$$</div>
+      <p>The exact period grows with amplitude $\theta_0$. It can be written with the complete elliptic integral $K$, or computed quickly using the arithmetic–geometric mean (which is what the lab uses), and has a useful series:</p>
+      <div class="eq">$$\begin{gathered}T = \frac{2\pi\sqrt{L/g}}{\operatorname{AGM}\!\left(1,\cos\frac{\theta_0}{2}\right)} = 4\sqrt{\frac{L}{g}}\,K\!\left(\sin\tfrac{\theta_0}{2}\right)\\ T \approx T_0\left(1 + \frac{\theta_0^2}{16} + \frac{11\,\theta_0^4}{3072} + \dots\right)\end{gathered}$$</div>
+      <p>The small-angle formula is 1% too short at about 23° and 5% too short at about 50°. Switch on the ghost pendulum in the lab to watch the two drift apart.</p>
+
+      <h3>3. Damping</h3>
+      <p>A velocity-proportional drag $-b\dot x$ (a good model for a dashpot or viscous fluid) gives</p>
+      <div class="eq">$$\ddot x + 2\zeta\omega_0\dot x + \omega_0^2 x = 0, \qquad \zeta = \frac{b}{2\sqrt{km}} = \frac{b}{b_c}, \qquad Q = \frac{1}{2\zeta}$$</div>
+      <ul>
+        <li><b>Underdamped</b> ($\zeta &lt; 1$): oscillates at $\omega_d = \omega_0\sqrt{1-\zeta^2}$ inside a decaying envelope $Ae^{-\zeta\omega_0 t}$.</li>
+        <li><b>Critically damped</b> ($\zeta = 1$, $b = b_c = 2\sqrt{km}$): returns to equilibrium fastest without overshooting.</li>
+        <li><b>Overdamped</b> ($\zeta &gt; 1$): returns without oscillating, but more slowly than critical.</li>
+      </ul>
+      <p>The <b>quality factor</b> $Q$ is roughly the number of radians of oscillation for the energy to fall by a factor $e$; equivalently $Q \approx 2\pi \times$ (energy stored)/(energy lost per cycle) for light damping.</p>
+
+      <h3>4. Driven oscillations and resonance</h3>
+      <p>Add a periodic force $F_0\cos\omega_d t$. After the transient decays, the system oscillates at the <i>driving</i> frequency with amplitude and phase lag</p>
+      <div class="eq">$$\begin{gathered}A(\omega_d) = \frac{F_0/m}{\sqrt{(\omega_0^2-\omega_d^2)^2 + (2\zeta\omega_0\omega_d)^2}}\\ \tan\delta = \frac{2\zeta\omega_0\omega_d}{\omega_0^2-\omega_d^2}\end{gathered}$$</div>
+      <p>The amplitude peaks at $\omega_r = \omega_0\sqrt{1-2\zeta^2}$ (just below $\omega_0$), where $A_{max} = \dfrac{F_0}{2m\zeta\omega_0^2\sqrt{1-\zeta^2}}$. For light damping the peak is about $Q$ times the static deflection $F_0/k$, and its width at half power is $\Delta\omega \approx \omega_0/Q$. At resonance the displacement lags the force by 90°, so the force is in phase with the velocity and pumps in energy most efficiently.</p>
+
+      <h3>5. Coupled oscillators and normal modes</h3>
+      <p>Two equal masses joined to walls by springs $k$ and to each other by $k_c$:</p>
+      <div class="eq">$$\begin{gathered}m\ddot x_1 = -kx_1 - k_c(x_1 - x_2)\\ m\ddot x_2 = -kx_2 - k_c(x_2 - x_1)\end{gathered}$$</div>
+      <p>Trying $x_i = a_i\cos\omega t$ gives an eigenvalue problem with two <b>normal modes</b>, patterns in which everything moves at one frequency:</p>
+      <div class="eq">$$\begin{gathered}\text{in phase } (a_1 = a_2): \quad \omega_1 = \sqrt{k/m}\\ \text{opposite } (a_1 = -a_2): \quad \omega_2 = \sqrt{(k + 2k_c)/m}\end{gathered}$$</div>
+      <p>Any motion is a superposition of the two. Displacing just one mass excites both equally, and energy flows back and forth between the masses with beat period $T_{beat} = 2\pi/(\omega_2-\omega_1)$. In the $x_1$–$x_2$ plot a pure mode is a straight line along a diagonal.</p>
+
+      <h3>6. Chaos: the double pendulum</h3>
+      <p>A pendulum hanging from a pendulum has two degrees of freedom and strongly nonlinear coupling. Its equations (solved in the lab with RK4) are deterministic, yet for large energies nearby starting points separate roughly exponentially, $|\delta\theta| \sim \delta_0 e^{\lambda t}$, where $\lambda$ is the largest Lyapunov exponent. The twin pendulum starts just 0.001 rad away: watch the separation plot climb in a straight line on its logarithmic axis, then saturate. At small amplitudes the system is almost linear and the twins stay together: chaos needs enough energy.</p>
+      <div class="callout"><i data-lucide="info"></i><div><b>Numerical notes.</b> All modes are integrated with fourth-order Runge–Kutta at 1.2 kHz. Watch the total energy in the undamped double pendulum: it stays constant to a tiny fraction of a percent, which is a good check on the integrator. Masses are point masses on massless rods; springs are massless and ideal.</div></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Example 1: a mass on a spring</h3>
+      <div class="worked">
+        <p>A 0.50 kg mass on a spring with $k = 50$ N/m is pulled 0.10 m and released (no damping).</p>
+        <ol class="steps">
+          <li>$\omega_0 = \sqrt{50/0.5} = 10.0$ rad/s, so $f = 10/2\pi = 1.59$ Hz and $T = 0.628$ s.</li>
+          <li>Maximum speed $v_{max} = A\omega_0 = 0.10 \times 10 = 1.00$ m/s, at the equilibrium position.</li>
+          <li>Total energy $E = \tfrac12 kA^2 = \tfrac12(50)(0.10)^2 = 0.25$ J $= \tfrac12(0.5)(1.00)^2$. ✓</li>
+          <li>Critical damping would need $b_c = 2\sqrt{km} = 2\sqrt{25} = 10$ kg/s.</li>
+        </ol>
+        <button class="btn sm" data-load="ex1"><i data-lucide="play"></i> Load in the lab</button>
+      </div>
+      <h3>Example 2: when is the small-angle formula good enough?</h3>
+      <div class="worked">
+        <p>A 1.00 m pendulum on Earth is released from 60°.</p>
+        <ol class="steps">
+          <li>Small-angle period: $T_0 = 2\pi\sqrt{1.00/9.81} = 2.006$ s.</li>
+          <li>Exact: $\cos 30^\circ = 0.8660$, and $\operatorname{AGM}(1, 0.8660) = 0.9318$, so $T = 2.006/0.9318 = 2.153$ s.</li>
+          <li>The series gives $T_0(1 + 1.047^2/16 + 11(1.047)^4/3072) = 2.006 \times 1.0723 = 2.151$ s, already close.</li>
+          <li>So the simple formula is 7.3% too short at 60°. After five swings the ghost pendulum is about a third of a cycle ahead.</li>
+        </ol>
+        <button class="btn sm" data-load="ex2"><i data-lucide="play"></i> Load in the lab</button>
+      </div>
+      <h3>Example 3: damping and resonance</h3>
+      <div class="worked">
+        <p>$m = 1.0$ kg, $k = 20$ N/m, $b = 1.0$ kg/s, driven by $F_0 = 1.0$ N.</p>
+        <ol class="steps">
+          <li>$\omega_0 = \sqrt{20} = 4.472$ rad/s; $\zeta = 1/(2\sqrt{20}) = 0.112$; $Q = 1/(2\zeta) = 4.47$.</li>
+          <li>Free (undriven) oscillation frequency $\omega_d = \omega_0\sqrt{1-\zeta^2} = 4.444$ rad/s; the amplitude halves every $\ln 2/(b/2m) = 1.39$ s.</li>
+          <li>Resonance peak at $\omega_r = \omega_0\sqrt{1-2\zeta^2} = 4.416$ rad/s.</li>
+          <li>Peak amplitude $A_{max} = \dfrac{1.0}{2(1.0)(0.112)(20)\sqrt{1-0.0125}} = 0.225$ m, which is 4.5 times the static deflection $F_0/k = 0.05$ m (close to $Q$).</li>
+        </ol>
+        <button class="btn sm" data-load="ex3"><i data-lucide="play"></i> Load in the lab (driven at ω<sub>r</sub>)</button>
+      </div>
+      <h3>Example 4: beats between coupled oscillators</h3>
+      <div class="worked">
+        <p>Two 1.0 kg masses, outer springs $k = 20$ N/m, coupling $k_c = 2.0$ N/m. Mass 1 is pushed, mass 2 is at rest.</p>
+        <ol class="steps">
+          <li>$\omega_1 = \sqrt{20/1} = 4.472$ rad/s; $\omega_2 = \sqrt{(20 + 4)/1} = 4.899$ rad/s.</li>
+          <li>Beat period $T_{beat} = 2\pi/(4.899 - 4.472) = 14.7$ s: after 7.4 s mass 1 is (momentarily) still and mass 2 has all the energy.</li>
+          <li>A weaker coupling gives slower energy exchange; with $k_c = 0$ there is no exchange at all.</li>
+        </ol>
+        <button class="btn sm" data-load="ex4"><i data-lucide="play"></i> Load in the lab</button>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <p>Challenges are checked automatically while the lab runs.</p>
+      <div id="chalList"></div>
+      <h3>Open experiments</h3>
+      <ol class="steps">
+        <li><b>Isochronism.</b> In Spring mode, pull the mass by 0.05 m and then 0.4 m. Does the period change? Now try the pendulum at 10° and 120°.</li>
+        <li><b>Q from the plot.</b> Set an underdamped spring and count the oscillations until the amplitude falls to about 4% ($e^{-\pi}$). That count is roughly $Q$.</li>
+        <li><b>Phase lag.</b> In Driven mode compare the displacement with the driving force (dashed) below, at and above resonance. The lag goes from about 0° to 90° to 180°.</li>
+        <li><b>Gravity and the pendulum.</b> Time a 1 m pendulum on Earth, the Moon and Mars. Use $T_0 = 2\pi\sqrt{L/g}$ to work back to each $g$.</li>
+      </ol>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Oscillations in the real world</h3>
+      <div class="grid2">
+        <div class="rw"><h4><i data-lucide="wind"></i> Tacoma Narrows Bridge, 1940</h4><p>Often wrongly given as a textbook case of resonance. The deck was not driven by a periodic force at its natural frequency: a fairly steady wind of about 19 m/s produced <b>aeroelastic flutter</b>, a self-excited torsional oscillation in which the twisting deck changed the aerodynamic forces in a way that fed energy into the motion (effectively negative damping). Modern bridges are wind-tunnel tested for flutter.</p></div>
+        <div class="rw"><h4><i data-lucide="footprints"></i> London Millennium Bridge, 2000</h4><p>On opening day the footbridge swayed sideways. Pedestrians adjusted their gait to the small lateral motion, which synchronised their footfalls and increased the push: a feedback effect. It was fixed by fitting viscous dampers and tuned mass dampers, raising the damping rather than changing the structure's stiffness.</p></div>
+        <div class="rw"><h4><i data-lucide="building"></i> Tuned mass dampers</h4><p>Taipei 101 hangs a steel ball of about 660 tonnes near its top. It is a second oscillator tuned near the building's sway frequency, a coupled-oscillator system: the damper swings out of phase with the building and its dashpots remove energy.</p></div>
+        <div class="rw"><h4><i data-lucide="car"></i> Car suspension</h4><p>Shock absorbers add damping to the spring-on-wheel system. Passenger cars are deliberately underdamped, typically $\zeta \approx 0.2$–$0.4$, as a compromise between comfort and road holding. Worn dampers lower $\zeta$ and the car keeps bouncing after a speed bump.</p></div>
+        <div class="rw"><h4><i data-lucide="watch"></i> Clocks and crystals</h4><p>A pendulum clock relies on small-amplitude isochronism: a 0.994 m "seconds pendulum" has $T = 2$ s on Earth. Quartz watches use a crystal tuning fork at 32 768 Hz with $Q$ in the tens of thousands, so its frequency is very sharply defined.</p></div>
+        <div class="rw"><h4><i data-lucide="mountain"></i> Earthquakes and buildings</h4><p>In the 1985 Mexico City earthquake, soft lake-bed sediments amplified ground shaking with periods near 2 s. Buildings of roughly 6 to 15 storeys, whose natural periods were close to that, suffered most: a destructive case of near-resonant driving.</p></div>
+      </div>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const C = { a: '#22d3ee', b: '#f472b6', c: '#facc15', d: '#a78bfa', ke: '#22d3ee', pe: '#a78bfa', E: '#e6ecf7', ok: '#22c55e' };
+  const P = { m: 1, k: 20, b: 0.5, orient: 'h', F0: 1, wd: 3, L: 1, th0: 60, pb: 0, g: 9.81, ghost: true,
+    m1: 1, m2: 1, L1: 1, L2: 1, dt1: 120, dt2: -20, twin: true, trail: true, cm: 1, ck: 20, ckc: 2, cb: 0 };
+  let mode = 'spring', y = [0.2, 0], simT = 0, running = true, speed = 1, drag = null;
+  let hist = [], trail = [], sweepPts = [], sweep = null, sepHist = [];
+  const amp = { max: -1e9, min: 1e9, t0: 0, val: 0, n: 0 };
+  const done = {};
+
+  /* ---------- physics ---------- */
+  const w0 = () => Math.sqrt(P.k / P.m), bc = () => 2 * Math.sqrt(P.k * P.m), zeta = () => P.b / bc();
+  const agm = (a, b) => { for (let i = 0; i < 25; i++) { const t = (a + b) / 2; b = Math.sqrt(a * b); a = t; } return a; };
+  const pendT = th => 2 * Math.PI * Math.sqrt(P.L / P.g) / agm(1, Math.cos(th / 2));
+  function respAmp(w, F0) { const W = w0(), z = zeta(); return (F0 / P.m) / Math.sqrt((W * W - w * w) ** 2 + (2 * z * W * w) ** 2); }
+  function deriv(s, t) {
+    switch (mode) {
+      case 'spring': return [s[1], (-P.k * s[0] - P.b * s[1]) / P.m];
+      case 'driven': return [s[1], (-P.k * s[0] - P.b * s[1] + P.F0 * Math.cos(P.wd * t)) / P.m];
+      case 'pendulum': { const q = P.g / P.L, d = P.pb / P.m; return [s[1], -q * Math.sin(s[0]) - d * s[1], s[3], -q * s[2] - d * s[3]]; }
+      case 'double': { const out = dp(s, 0); return s.length > 4 ? out.concat(dp(s, 4)) : out; }
+      case 'coupled': { const a1 = (-P.ck * s[0] - P.ckc * (s[0] - s[1]) - P.cb * s[2]) / P.cm, a2 = (-P.ck * s[1] - P.ckc * (s[1] - s[0]) - P.cb * s[3]) / P.cm; return [s[2], s[3], a1, a2]; }
+    }
+  }
+  function dp(s, o) {
+    const t1 = s[o], t2 = s[o + 1], w1 = s[o + 2], w2 = s[o + 3], m1 = P.m1, m2 = P.m2, L1 = P.L1, L2 = P.L2, g = 9.81;
+    const d = t1 - t2, den = 2 * m1 + m2 - m2 * Math.cos(2 * d);
+    const a1 = (-g * (2 * m1 + m2) * Math.sin(t1) - m2 * g * Math.sin(t1 - 2 * t2) - 2 * Math.sin(d) * m2 * (w2 * w2 * L2 + w1 * w1 * L1 * Math.cos(d))) / (L1 * den);
+    const a2 = (2 * Math.sin(d) * (w1 * w1 * L1 * (m1 + m2) + g * (m1 + m2) * Math.cos(t1) + w2 * w2 * L2 * m2 * Math.cos(d))) / (L2 * den);
+    return [w1, w2, a1, a2];
+  }
+  function rk4(s, t, h) {
+    const k1 = deriv(s, t), n = s.length, tmp = new Array(n);
+    for (let i = 0; i < n; i++) tmp[i] = s[i] + h / 2 * k1[i]; const k2 = deriv(tmp, t + h / 2);
+    for (let i = 0; i < n; i++) tmp[i] = s[i] + h / 2 * k2[i]; const k3 = deriv(tmp, t + h / 2);
+    for (let i = 0; i < n; i++) tmp[i] = s[i] + h * k3[i]; const k4 = deriv(tmp, t + h);
+    const o = new Array(n); for (let i = 0; i < n; i++) o[i] = s[i] + h / 6 * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]); return o;
+  }
+  function energy(s) {
+    switch (mode) {
+      case 'spring': case 'driven': return [0.5 * P.m * s[1] * s[1], 0.5 * P.k * s[0] * s[0]];
+      case 'pendulum': return [0.5 * P.m * P.L * P.L * s[1] * s[1], P.m * P.g * P.L * (1 - Math.cos(s[0]))];
+      case 'double': { const [t1, t2, w1, w2] = s, { m1, m2, L1, L2 } = P, g = 9.81;
+        const ke = 0.5 * m1 * L1 * L1 * w1 * w1 + 0.5 * m2 * (L1 * L1 * w1 * w1 + L2 * L2 * w2 * w2 + 2 * L1 * L2 * w1 * w2 * Math.cos(t1 - t2));
+        const pe = (m1 + m2) * g * L1 * (1 - Math.cos(t1)) + m2 * g * L2 * (1 - Math.cos(t2)); return [ke, pe]; }
+      case 'coupled': return [0.5 * P.cm * (s[2] * s[2] + s[3] * s[3]), 0.5 * P.ck * (s[0] * s[0] + s[1] * s[1]) + 0.5 * P.ckc * (s[0] - s[1]) ** 2];
+    }
+  }
+  const obs = s => { // [a, b] observables for time plots, plus phase coords
+    switch (mode) {
+      case 'spring': case 'driven': return { a: s[0], b: s[1], px: s[0], py: s[1], g: mode === 'driven' ? P.F0 * Math.cos(P.wd * simT) : null };
+      case 'pendulum': return { a: SL.deg(s[0]), b: s[1], px: SL.deg(s[0]), py: s[1], g: P.ghost ? SL.deg(s[2]) : null };
+      case 'double': return { a: SL.deg(s[0]), b: SL.deg(s[1]), px: SL.deg(wrap(s[1])), py: s[3], g: null, va: s[2], vb: s[3] };
+      case 'coupled': return { a: s[0], b: s[1], px: s[0], py: s[1], va: s[2], vb: s[3] };
+    }
+  };
+  const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+
+  /* ---------- state init ---------- */
+  function resetState(kind) {
+    simT = 0; hist = []; trail = []; sepHist = []; amp.max = -1e9; amp.min = 1e9; amp.t0 = 0; amp.val = 0; amp.n = 0;
+    switch (mode) {
+      case 'spring': y = [kind === 'zero' ? 0 : 0.2, 0]; break;
+      case 'driven': y = [0, 0]; break;
+      case 'pendulum': { const a = SL.rad(P.th0); y = [a, 0, a, 0]; break; }
+      case 'double': { const a = SL.rad(P.dt1), b = SL.rad(P.dt2); y = [a, b, 0, 0]; if (P.twin) y = y.concat([a + 0.001, b, 0, 0]); break; }
+      case 'coupled': y = kind === 'm1' ? [0.15, 0.15, 0, 0] : kind === 'm2' ? [0.15, -0.15, 0, 0] : [0.2, 0, 0, 0]; break;
+    }
+  }
+
+  /* ---------- canvases ---------- */
+  const stage = SL.canvas($('#cv'));
+  const plots = ['p1', 'p2', 'p3', 'p4', 'p5'].map(id => SL.canvas($('#' + id)));
+
+  /* ---------- drawing helpers ---------- */
+  function spring(ctx, x1, y1, x2, y2, coils, wd, color) {
+    const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy), ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+    const lead = Math.min(14, L * .12);
+    ctx.save(); ctx.strokeStyle = color || '#cbd5e1'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(x1, y1);
+    ctx.lineTo(x1 + ux * lead, y1 + uy * lead);
+    const n = coils * 2, seg = (L - 2 * lead) / n;
+    for (let i = 0; i < n; i++) { const s = lead + seg * (i + .5), side = i % 2 ? -1 : 1; ctx.lineTo(x1 + ux * s + nx * wd * side, y1 + uy * s + ny * wd * side); }
+    ctx.lineTo(x2 - ux * lead, y2 - uy * lead); ctx.lineTo(x2, y2); ctx.stroke(); ctx.restore();
+  }
+  function block(ctx, cx, cy, w, h, color, lbl) {
+    const g = ctx.createLinearGradient(cx, cy - h / 2, cx, cy + h / 2); g.addColorStop(0, color); g.addColorStop(1, '#0b1222');
+    ctx.save(); ctx.shadowColor = color; ctx.shadowBlur = 18; ctx.fillStyle = g;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(cx - w / 2, cy - h / 2, w, h, 8) : ctx.rect(cx - w / 2, cy - h / 2, w, h); ctx.fill(); ctx.restore();
+    ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1; ctx.stroke();
+    if (lbl) { ctx.fillStyle = '#06101f'; ctx.font = '600 12px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(lbl, cx, cy + 4); }
+  }
+  function bob(ctx, x, y, r, color, alpha) {
+    ctx.save(); ctx.globalAlpha = alpha ?? 1; const g = ctx.createRadialGradient(x - r * .35, y - r * .35, r * .1, x, y, r); g.addColorStop(0, '#fff'); g.addColorStop(.3, color); g.addColorStop(1, '#0b1222');
+    ctx.shadowColor = color; ctx.shadowBlur = 18; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.restore();
+  }
+  function hatch(ctx, x, y, w, h) { ctx.fillStyle = '#1e2a44'; ctx.fillRect(x, y, w, h); ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1; ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); for (let i = -h; i < w + h; i += 8) { ctx.beginPath(); ctx.moveTo(x + i, y + h); ctx.lineTo(x + i + h, y); ctx.stroke(); } ctx.restore(); }
+  function bgGrid(ctx, w, h) {
+    const g = ctx.createRadialGradient(w / 2, h * .4, 10, w / 2, h / 2, Math.max(w, h)); g.addColorStop(0, '#0c1630'); g.addColorStop(1, '#050913');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = 'rgba(255,255,255,.035)'; ctx.lineWidth = 1;
+    for (let x = 0; x < w; x += 32) { ctx.beginPath(); ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, h); ctx.stroke(); }
+    for (let yy = 0; yy < h; yy += 32) { ctx.beginPath(); ctx.moveTo(0, yy + .5); ctx.lineTo(w, yy + .5); ctx.stroke(); }
+  }
+  const txt = (ctx, s, x, y, c, al) => { ctx.fillStyle = c || 'rgba(230,236,247,.7)'; ctx.font = '11px JetBrains Mono, monospace'; ctx.textAlign = al || 'left'; ctx.fillText(s, x, y); };
+
+  /* geometry per mode (also used for dragging) */
+  function geo() {
+    const { w, h } = stage;
+    if (mode === 'spring' && P.orient === 'v') {
+      const L0 = 0.35, s = P.m * 9.81 / P.k, top = 30, avail = h - top - 70;
+      const sc = Math.min(420, avail / (L0 + s + 0.5));
+      return { kind: 'v', top, sc, L0, s, cx: w * .5, yEq: top + (L0 + s) * sc };
+    }
+    if (mode === 'spring' || mode === 'driven') {
+      const sc = Math.min(500, (w * .3) / 0.5), wall = Math.max(40, w * .09), xEq = w * .56, yc = h * .5;
+      return { kind: 'h', sc, wall, xEq, yc };
+    }
+    if (mode === 'pendulum') { const Lpx = (h - 110) * (0.55 + 0.45 * P.L / 5); return { px: w / 2, py: 40, Lpx: Math.min(Lpx, w * .46) }; }
+    if (mode === 'double') { const tot = Math.min(h * .44, w * .44), s = tot / (P.L1 + P.L2); return { px: w / 2, py: h * .46, l1: P.L1 * s, l2: P.L2 * s }; }
+    if (mode === 'coupled') { const wl = Math.max(30, w * .06), wr = w - wl, e1 = wl + (wr - wl) / 3, e2 = wl + 2 * (wr - wl) / 3, sc = Math.min(500, (wr - wl) / 3 * .45 / 0.2); return { wl, wr, e1, e2, sc, yc: h * .58 }; }
+  }
+
+  function drawStage() {
+    const { ctx, w, h } = stage; bgGrid(ctx, w, h); const G = geo();
+    if (mode === 'spring' && G.kind === 'v') {
+      hatch(ctx, G.cx - 90, 6, 180, G.top - 6);
+      const by = G.yEq - y[0] * G.sc, bh = 46;
+      ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(34,211,238,.45)'; ctx.beginPath(); ctx.moveTo(G.cx - 120, G.yEq); ctx.lineTo(G.cx + 120, G.yEq); ctx.stroke();
+      ctx.strokeStyle = 'rgba(250,204,21,.35)'; const yN = G.top + G.L0 * G.sc; ctx.beginPath(); ctx.moveTo(G.cx - 120, yN); ctx.lineTo(G.cx + 120, yN); ctx.stroke(); ctx.setLineDash([]);
+      txt(ctx, 'equilibrium', G.cx + 124, G.yEq + 4, 'rgba(34,211,238,.8)'); txt(ctx, 'natural length', G.cx + 124, yN + 4, 'rgba(250,204,21,.7)');
+      txt(ctx, 'static stretch mg/k = ' + SL.fmt(G.s * 100, 1) + ' cm', G.cx - 124, G.yEq - 8, 'rgba(230,236,247,.55)', 'right');
+      spring(ctx, G.cx, G.top, G.cx, by - bh / 2, 14, 14);
+      block(ctx, G.cx, by, 64, bh, C.a, SL.fmt(P.m, 2) + ' kg');
+      const F = -P.k * y[0]; if (Math.abs(F) > 0.05) SL.arrow(ctx, G.cx + 50, by, G.cx + 50, by - SL.clamp(F * 3, -90, 90), '#f97316', 2.5, 8);
+      txt(ctx, 'net force', G.cx + 58, by + 4, 'rgba(249,115,22,.85)');
+    } else if (mode === 'spring' || mode === 'driven') {
+      const bx = G.xEq + y[0] * G.sc, bw = 70, bh = 56;
+      ctx.fillStyle = '#16213a'; ctx.fillRect(G.wall - 10, G.yc + bh / 2, w - G.wall, 8);
+      let ax = G.wall;
+      if (mode === 'driven') { // crank-driven anchor: displacement F0/k cos(wd t) gives force F0 cos(wd t)
+        const d = P.F0 / P.k * Math.cos(P.wd * simT), cx0 = G.wall - 4; ax = G.wall + 16 + d * G.sc;
+        const wr = 16, ph = P.wd * simT; ctx.strokeStyle = '#475569'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx0 - 6, G.yc - 60, wr, 0, 7); ctx.stroke();
+        const pinx = cx0 - 6 + wr * Math.cos(ph), piny = G.yc - 60 + wr * Math.sin(ph); ctx.fillStyle = C.c; ctx.beginPath(); ctx.arc(pinx, piny, 4, 0, 7); ctx.fill();
+        ctx.strokeStyle = 'rgba(250,204,21,.6)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(pinx, piny); ctx.lineTo(ax, G.yc - 30); ctx.stroke();
+        ctx.fillStyle = '#64748b'; ctx.fillRect(ax - 6, G.yc - 34, 12, 68);
+        hatch(ctx, 0, G.yc - 40, Math.max(10, G.wall - 30), 80);
+        const Fd = P.F0 * Math.cos(P.wd * simT); if (Math.abs(Fd) > 0.02) SL.arrow(ctx, bx, G.yc - bh / 2 - 16, bx + SL.clamp(Fd * 14, -110, 110), G.yc - bh / 2 - 16, C.c, 2.5, 8);
+        txt(ctx, 'F(t) = F₀cos ωt', bx, G.yc - bh / 2 - 26, 'rgba(250,204,21,.85)', 'center');
+      } else hatch(ctx, 0, G.yc - 50, G.wall, 100);
+      spring(ctx, ax, G.yc, bx - bw / 2, G.yc, 12, 13);
+      ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(34,211,238,.45)'; ctx.beginPath(); ctx.moveTo(G.xEq, G.yc - 70); ctx.lineTo(G.xEq, G.yc + 50); ctx.stroke(); ctx.setLineDash([]);
+      txt(ctx, 'x = 0', G.xEq, G.yc - 76, 'rgba(34,211,238,.8)', 'center');
+      // ruler
+      for (let i = -5; i <= 5; i++) { const xx = G.xEq + i * 0.1 * G.sc; if (xx < G.wall + 10 || xx > w - 6) continue; ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.beginPath(); ctx.moveTo(xx, G.yc + bh / 2 + 8); ctx.lineTo(xx, G.yc + bh / 2 + (i % 5 ? 14 : 20)); ctx.stroke(); if (i % 2 === 0) txt(ctx, (i * 10) + '', xx, G.yc + bh / 2 + 32, 'rgba(230,236,247,.4)', 'center'); }
+      txt(ctx, 'cm', w - 14, G.yc + bh / 2 + 32, 'rgba(230,236,247,.4)', 'right');
+      block(ctx, bx, G.yc, bw, bh, C.a, SL.fmt(P.m, 2) + ' kg');
+      [bx - 20, bx + 20].forEach(cx => { ctx.fillStyle = '#334155'; ctx.beginPath(); ctx.arc(cx, G.yc + bh / 2 + 1, 5, 0, 7); ctx.fill(); });
+      if (Math.abs(y[1]) > 0.01) { SL.arrow(ctx, bx, G.yc - bh / 2 - 44, bx + SL.clamp(y[1] * 60, -120, 120), G.yc - bh / 2 - 44, '#e6ecf7', 2, 7); txt(ctx, 'v', bx, G.yc - bh / 2 - 52, 'rgba(230,236,247,.7)', 'center'); }
+      if (P.b > 0) { // dashpot glyph under the block
+        const dy = G.yc + bh / 2 + 62; ctx.strokeStyle = 'rgba(167,139,250,.6)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(G.wall, dy); ctx.lineTo(G.wall + 30, dy); ctx.stroke();
+        ctx.strokeRect(G.wall + 30, dy - 8, 40, 16); ctx.beginPath(); ctx.moveTo(G.wall + 55, dy - 6); ctx.lineTo(G.wall + 55, dy + 6); ctx.moveTo(G.wall + 55, dy); ctx.lineTo(bx, dy); ctx.lineTo(bx, G.yc + bh / 2 + 6); ctx.stroke();
+        txt(ctx, 'damper b', G.wall + 34, dy + 22, 'rgba(167,139,250,.85)');
+      }
+    } else if (mode === 'pendulum') {
+      hatch(ctx, G.px - 60, 10, 120, 24);
+      const amp0 = Math.abs(SL.rad(P.th0));
+      ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.setLineDash([4, 5]); ctx.beginPath(); ctx.arc(G.px, G.py, G.Lpx, Math.PI / 2 - amp0, Math.PI / 2 + amp0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(G.px, G.py); ctx.lineTo(G.px, G.py + G.Lpx + 20); ctx.stroke(); ctx.setLineDash([]);
+      const r = 10 + 6 * Math.cbrt(P.m);
+      if (P.ghost) { const gx = G.px + G.Lpx * Math.sin(y[2]), gy = G.py + G.Lpx * Math.cos(y[2]); ctx.strokeStyle = 'rgba(250,204,21,.35)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(G.px, G.py); ctx.lineTo(gx, gy); ctx.stroke(); bob(ctx, gx, gy, r, C.c, .35); txt(ctx, 'sin θ ≈ θ', gx + r + 4, gy + 14, 'rgba(250,204,21,.7)'); }
+      trail.forEach((p, i) => { ctx.fillStyle = `rgba(34,211,238,${i / trail.length * .4})`; ctx.fillRect(p[0] - 1, p[1] - 1, 2, 2); });
+      const bx = G.px + G.Lpx * Math.sin(y[0]), by = G.py + G.Lpx * Math.cos(y[0]);
+      ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(G.px, G.py); ctx.lineTo(bx, by); ctx.stroke();
+      ctx.fillStyle = '#94a3b8'; ctx.beginPath(); ctx.arc(G.px, G.py, 5, 0, 7); ctx.fill();
+      bob(ctx, bx, by, r, C.a);
+      ctx.strokeStyle = 'rgba(34,211,238,.6)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(G.px, G.py, 36, Math.PI / 2, Math.PI / 2 - y[0], y[0] > 0); ctx.stroke();
+      txt(ctx, 'θ = ' + SL.fmt(SL.deg(y[0]), 1) + '°', G.px + (y[0] > 0 ? -44 : 44), G.py + 54, C.a, 'center');
+      txt(ctx, 'L = ' + SL.fmt(P.L, 2) + ' m', G.px + 8, G.py + G.Lpx * .5, 'rgba(230,236,247,.5)');
+      // tangential gravity component
+      const Ft = -P.g * Math.sin(y[0]) * 6; if (Math.abs(Ft) > 1) SL.arrow(ctx, bx, by, bx + Ft * Math.cos(y[0]), by - Ft * Math.sin(y[0]), '#f97316', 2, 7);
+    } else if (mode === 'double') {
+      const draw1 = (o, alpha, c1, c2) => {
+        const x1 = G.px + G.l1 * Math.sin(y[o]), y1 = G.py + G.l1 * Math.cos(y[o]), x2 = x1 + G.l2 * Math.sin(y[o + 1]), y2 = y1 + G.l2 * Math.cos(y[o + 1]);
+        ctx.save(); ctx.globalAlpha = alpha; ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(G.px, G.py); ctx.lineTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.restore();
+        bob(ctx, x1, y1, 8 + 5 * Math.cbrt(P.m1), c1, alpha); bob(ctx, x2, y2, 8 + 5 * Math.cbrt(P.m2), c2, alpha);
+        return [x2, y2];
+      };
+      if (P.trail && trail.length > 1) {
+        for (let i = 1; i < trail.length; i++) { const a = i / trail.length; ctx.strokeStyle = `hsla(${190 + 120 * a},90%,62%,${a * .8})`; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(trail[i - 1][0], trail[i - 1][1]); ctx.lineTo(trail[i][0], trail[i][1]); ctx.stroke(); if (trail[i][2]) { ctx.strokeStyle = `rgba(250,204,21,${a * .45})`; ctx.beginPath(); ctx.moveTo(trail[i - 1][2], trail[i - 1][3]); ctx.lineTo(trail[i][2], trail[i][3]); ctx.stroke(); } }
+      }
+      if (y.length > 4) draw1(4, .45, C.c, C.c);
+      draw1(0, 1, C.a, C.b);
+      ctx.fillStyle = '#94a3b8'; ctx.beginPath(); ctx.arc(G.px, G.py, 5, 0, 7); ctx.fill();
+    } else if (mode === 'coupled') {
+      hatch(ctx, 0, G.yc - 50, G.wl, 100); hatch(ctx, G.wr, G.yc - 50, w - G.wr, 100);
+      ctx.fillStyle = '#16213a'; ctx.fillRect(G.wl, G.yc + 29, G.wr - G.wl, 8);
+      const x1 = G.e1 + y[0] * G.sc, x2 = G.e2 + y[1] * G.sc, bw = Math.min(60, (G.wr - G.wl) * .12), bh = 50;
+      spring(ctx, G.wl, G.yc, x1 - bw / 2, G.yc, 9, 11);
+      spring(ctx, x1 + bw / 2, G.yc, x2 - bw / 2, G.yc, 9, 11, P.ckc > 0 ? '#facc15' : 'rgba(255,255,255,.15)');
+      spring(ctx, x2 + bw / 2, G.yc, G.wr, G.yc, 9, 11);
+      [G.e1, G.e2].forEach(e => { ctx.setLineDash([4, 5]); ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.beginPath(); ctx.moveTo(e, G.yc - 60); ctx.lineTo(e, G.yc + 50); ctx.stroke(); ctx.setLineDash([]); });
+      block(ctx, x1, G.yc, bw, bh, C.a, '1'); block(ctx, x2, G.yc, bw, bh, C.b, '2');
+      txt(ctx, 'k', (G.wl + x1 - bw / 2) / 2, G.yc - 22, 'rgba(230,236,247,.6)', 'center'); txt(ctx, 'k_c', (x1 + x2) / 2, G.yc - 22, 'rgba(250,204,21,.8)', 'center'); txt(ctx, 'k', (x2 + bw / 2 + G.wr) / 2, G.yc - 22, 'rgba(230,236,247,.6)', 'center');
+      // energy bars
+      const [ke] = energy(y), e1 = 0.5 * P.cm * y[2] ** 2 + 0.5 * P.ck * y[0] ** 2, e2 = 0.5 * P.cm * y[3] ** 2 + 0.5 * P.ck * y[1] ** 2, tot = Math.max(1e-9, e1 + e2);
+      const bwid = Math.min(180, (G.wr - G.wl) * .4), bx0 = w / 2 - bwid / 2, byy = G.yc + 80;
+      ctx.fillStyle = '#16213a'; ctx.fillRect(bx0, byy, bwid, 10); ctx.fillStyle = C.a; ctx.fillRect(bx0, byy, bwid * e1 / tot, 10); ctx.fillStyle = C.b; ctx.fillRect(bx0 + bwid * e1 / tot, byy, bwid * e2 / tot, 10);
+      txt(ctx, 'energy share: mass 1 | mass 2', w / 2, byy + 26, 'rgba(230,236,247,.55)', 'center');
+    }
+    if (drag) txt(ctx, 'release to start', w / 2, h - 14, 'rgba(250,204,21,.8)', 'center');
+    else if (simT < 1.5 && !sweep) txt(ctx, mode === 'double' ? 'drag either bob to set the start' : mode === 'driven' ? 'drag the mass, or sweep the driving frequency' : 'drag the ' + (mode === 'pendulum' ? 'bob' : 'mass') + ' to set the start', w / 2, h - 14, 'rgba(230,236,247,.5)', 'center');
+  }
+
+  /* ---------- pointer ---------- */
+  const cv = $('#cv');
+  cv.addEventListener('pointerdown', e => {
+    const p = SL.ptr(e, cv), G = geo(); let hit = null;
+    if (mode === 'spring' && G.kind === 'v') { if (Math.abs(p.x - G.cx) < 60 && Math.abs(p.y - (G.yEq - y[0] * G.sc)) < 50) hit = 'v'; }
+    else if (mode === 'spring' || mode === 'driven') { if (Math.abs(p.x - (G.xEq + y[0] * G.sc)) < 55 && Math.abs(p.y - G.yc) < 50) hit = 'h'; }
+    else if (mode === 'pendulum') { const bx = G.px + G.Lpx * Math.sin(y[0]), by = G.py + G.Lpx * Math.cos(y[0]); if (Math.hypot(p.x - bx, p.y - by) < 40) hit = 'p'; }
+    else if (mode === 'double') { const x1 = G.px + G.l1 * Math.sin(y[0]), y1 = G.py + G.l1 * Math.cos(y[0]), x2 = x1 + G.l2 * Math.sin(y[1]), y2 = y1 + G.l2 * Math.cos(y[1]); if (Math.hypot(p.x - x2, p.y - y2) < 36) hit = 'd2'; else if (Math.hypot(p.x - x1, p.y - y1) < 36) hit = 'd1'; }
+    else if (mode === 'coupled') { const x1 = G.e1 + y[0] * G.sc, x2 = G.e2 + y[1] * G.sc; if (Math.abs(p.x - x1) < 40 && Math.abs(p.y - G.yc) < 50) hit = 'c1'; else if (Math.abs(p.x - x2) < 40 && Math.abs(p.y - G.yc) < 50) hit = 'c2'; }
+    if (hit) { drag = hit; cv.setPointerCapture(e.pointerId); moveDrag(p); e.preventDefault(); }
+  });
+  function moveDrag(p) {
+    const G = geo();
+    if (drag === 'v') { y = [SL.clamp((G.yEq - p.y) / G.sc, -0.5, 0.5), 0]; }
+    else if (drag === 'h') { y = [SL.clamp((p.x - G.xEq) / G.sc, -0.5, 0.5), 0]; }
+    else if (drag === 'p') { const a = Math.atan2(p.x - G.px, p.y - G.py); y = [a, 0, a, 0]; P.th0 = Math.abs(SL.deg(a)); $('#th0').value = Math.min(179, Math.max(1, P.th0)); $('#th0').dispatchEvent(new Event('input')); }
+    else if (drag === 'd1') { y[0] = Math.atan2(p.x - G.px, p.y - G.py); y[2] = y[3] = 0; }
+    else if (drag === 'd2') { const x1 = G.px + G.l1 * Math.sin(y[0]), y1 = G.py + G.l1 * Math.cos(y[0]); y[1] = Math.atan2(p.x - x1, p.y - y1); y[2] = y[3] = 0; }
+    else if (drag === 'c1') { y = [SL.clamp((p.x - G.e1) / G.sc, -0.3, 0.3), y[1], 0, 0]; }
+    else if (drag === 'c2') { y = [y[0], SL.clamp((p.x - G.e2) / G.sc, -0.3, 0.3), 0, 0]; }
+  }
+  cv.addEventListener('pointermove', e => { if (drag) moveDrag(SL.ptr(e, cv)); });
+  const endDrag = () => {
+    if (!drag) return;
+    if (mode === 'double') { const a = y[0], b = y[1]; y = [a, b, 0, 0]; if (P.twin) y = y.concat([a + 0.001, b, 0, 0]); }
+    drag = null; simT = 0; hist = []; trail = []; sepHist = []; amp.n = 0; running = true; setPlayIcon();
+  };
+  cv.addEventListener('pointerup', endDrag); cv.addEventListener('pointercancel', endDrag);
+
+  /* ---------- step ---------- */
+  const H = 1 / 1200;
+  function step(dtReal) {
+    let spd = speed; if (sweep) spd = 12;
+    const n = Math.min(4000, Math.ceil(dtReal * spd / H));
+    for (let i = 0; i < n; i++) {
+      y = rk4(y, simT, H); simT += H;
+      if (mode === 'driven') {
+        if (y[0] > amp.max) amp.max = y[0]; if (y[0] < amp.min) amp.min = y[0];
+        const Td = 2 * Math.PI / P.wd;
+        if (simT - amp.t0 >= Td) { amp.val = (amp.max - amp.min) / 2; amp.max = -1e9; amp.min = 1e9; amp.t0 = simT; amp.n++; if (sweep) sweepTick(); }
+      }
+    }
+    // history (sampled per frame)
+    const o = obs(y), [ke, pe] = energy(y);
+    hist.push({ t: simT, ...o, ke, pe });
+    while (hist.length && simT - hist[0].t > 10) hist.shift();
+    if (mode === 'pendulum') { const G = geo(); trail.push([G.px + G.Lpx * Math.sin(y[0]), G.py + G.Lpx * Math.cos(y[0])]); if (trail.length > 120) trail.shift(); }
+    if (mode === 'double') {
+      const G = geo(), x1 = G.px + G.l1 * Math.sin(y[0]), y1 = G.py + G.l1 * Math.cos(y[0]);
+      const tp = [x1 + G.l2 * Math.sin(y[1]), y1 + G.l2 * Math.cos(y[1])];
+      if (y.length > 4) { const a1 = G.px + G.l1 * Math.sin(y[4]), b1 = G.py + G.l1 * Math.cos(y[4]); tp.push(a1 + G.l2 * Math.sin(y[5]), b1 + G.l2 * Math.cos(y[5])); }
+      trail.push(tp); if (trail.length > 400) trail.shift();
+      if (y.length > 4) { const sep = Math.hypot(wrap(y[0] - y[4]), wrap(y[1] - y[5]), (y[2] - y[6]) * .3, (y[3] - y[7]) * .3); sepHist.push([simT, Math.log10(Math.max(1e-9, sep))]); if (sepHist.length > 2400) sepHist.shift(); }
+    }
+  }
+  function sweepTick() {
+    const W = w0(), z = Math.max(zeta(), 0.02), Td = 2 * Math.PI / P.wd;
+    const settle = Math.min(30, Math.max(4 / (z * W), 3 * Td));
+    if (simT - sweep.tStart >= settle && amp.n >= 2) {
+      sweepPts.push([P.wd, amp.val]);
+      sweep.i++;
+      if (sweep.i >= sweep.list.length) { sweep = null; $('#sweepBtn').classList.remove('on'); SL.toast('Sweep finished. Compare the measured points with the theoretical curve.', 'ok'); return; }
+      setWd(sweep.list[sweep.i]); sweep.tStart = simT; amp.n = 0;
+    }
+  }
+  function setWd(v) { P.wd = v; const el = $('#wd'); el.value = v; const out = el.closest('.ctl').querySelector('output'); out.textContent = fmtWd(v); el.style.setProperty('--p', ((v - el.min) / (el.max - el.min) * 100) + '%'); }
+  const fmtWd = v => SL.fmt(v, 2) + ' rad/s (' + SL.fmt(v / w0(), 2) + 'ω₀)';
+
+  /* ---------- plots ---------- */
+  const ds = (arr, n) => { if (arr.length <= n) return arr; const s = arr.length / n, o = []; for (let i = 0; i < n; i++) o.push(arr[Math.floor(i * s)]); o.push(arr[arr.length - 1]); return o; };
+  function drawPlots() {
+    const hh = ds(hist, 500), t1 = simT, t0 = Math.max(0, t1 - 10);
+    const [p1, p2, p3, p4, p5] = plots;
+    if (!hh.length) return;
+    const sym = (arr) => { let m = 1e-6; arr.forEach(v => m = Math.max(m, Math.abs(v))); return m * 1.1; };
+    // p1: displacement-like
+    {
+      const s = [{ data: hh.map(q => [q.t, q.a]), color: C.a, label: mode === 'double' ? 'θ₁' : mode === 'coupled' ? 'x₁' : mode === 'pendulum' ? 'θ exact' : 'x' }];
+      if (mode === 'pendulum' && P.ghost) s.push({ data: hh.map(q => [q.t, q.g]), color: C.c, label: 'small-angle', dash: [4, 4] });
+      if (mode === 'double' || mode === 'coupled') s.push({ data: hh.map(q => [q.t, q.b]), color: C.b, label: mode === 'double' ? 'θ₂' : 'x₂' });
+      if (mode === 'driven') { const Fs = sym(hh.map(q => q.a)) / Math.max(1e-9, P.F0); s.push({ data: hh.map(q => [q.t, q.g * Fs]), color: C.c, label: 'F(t), scaled', dash: [4, 4], width: 1.2 }); }
+      const m = sym(s.flatMap(q => q.data.map(p => p[1])));
+      SL.chart(p1, s, { xmin: t0, xmax: Math.max(t0 + 10, t1), ymin: -m, ymax: m, pad: [26, 10, 24, 54], xlabel: 't (s)' });
+    }
+    // p2: velocity-like
+    {
+      let s;
+      if (mode === 'double') s = [{ data: hh.map(q => [q.t, q.va]), color: C.a, label: 'ω₁' }, { data: hh.map(q => [q.t, q.vb]), color: C.b, label: 'ω₂' }];
+      else if (mode === 'coupled') s = [{ data: hh.map(q => [q.t, q.va]), color: C.a, label: 'v₁' }, { data: hh.map(q => [q.t, q.vb]), color: C.b, label: 'v₂' }];
+      else s = [{ data: hh.map(q => [q.t, q.b]), color: C.d, label: mode === 'pendulum' ? 'ω (rad/s)' : 'v (m/s)' }];
+      const m = sym(s.flatMap(q => q.data.map(p => p[1])));
+      SL.chart(p2, s, { xmin: t0, xmax: Math.max(t0 + 10, t1), ymin: -m, ymax: m, pad: [26, 10, 24, 54], xlabel: 't (s)' });
+    }
+    // p3: phase portrait
+    {
+      const d = hh.map(q => [q.px, q.py]);
+      const mx = mode === 'double' ? 180 : sym(d.map(p => p[0])), my = sym(d.map(p => p[1]));
+      const segs = [[]]; d.forEach((p, i) => { if (i && mode === 'double' && Math.abs(p[0] - d[i - 1][0]) > 180) segs.push([]); segs[segs.length - 1].push(p); });
+      const r = SL.chart(p3, segs.filter(q => q.length > 1).map(q => ({ data: q, color: mode === 'coupled' ? C.c : C.a, width: 1.6 })), { xmin: -mx, xmax: mx, ymin: -my, ymax: my, pad: [14, 10, 24, 54], xlabel: mode === 'coupled' ? 'x₁ →' : mode === 'double' ? 'θ₂ (°) →' : mode === 'pendulum' ? 'θ (°) →' : 'x (m) →' });
+      const l = d[d.length - 1]; p3.ctx.fillStyle = '#fff'; p3.ctx.beginPath(); p3.ctx.arc(r.X(l[0]), r.Y(l[1]), 3.5, 0, 7); p3.ctx.fill();
+      if (mode === 'coupled') { p3.ctx.setLineDash([3, 4]); p3.ctx.strokeStyle = 'rgba(255,255,255,.25)'; p3.ctx.beginPath(); p3.ctx.moveTo(r.X(-mx), r.Y(-mx)); p3.ctx.lineTo(r.X(mx), r.Y(mx)); p3.ctx.moveTo(r.X(-mx), r.Y(mx)); p3.ctx.lineTo(r.X(mx), r.Y(-mx)); p3.ctx.stroke(); p3.ctx.setLineDash([]); }
+    }
+    // p4: energy
+    {
+      const s = [{ data: hh.map(q => [q.t, q.ke]), color: C.ke, label: 'KE' }, { data: hh.map(q => [q.t, q.pe]), color: C.pe, label: 'PE' }, { data: hh.map(q => [q.t, q.ke + q.pe]), color: C.E, label: 'E', width: 1.5 }];
+      let mx = 1e-9; s[2].data.forEach(p => mx = Math.max(mx, p[1]));
+      SL.chart(p4, s, { xmin: t0, xmax: Math.max(t0 + 10, t1), ymin: 0, ymax: mx * 1.15, pad: [26, 10, 24, 54], xlabel: 't (s)' });
+    }
+    drawP5();
+  }
+  function drawP5() {
+    const p5 = plots[4], ctx = p5.ctx;
+    if (mode === 'spring' || mode === 'driven') {
+      const W = w0(), F0 = mode === 'driven' ? P.F0 : 1, wmax = Math.max(W * 2.2, mode === 'driven' ? P.wd * 1.1 : 0);
+      const d = []; for (let i = 0; i <= 300; i++) { const w = wmax * i / 300; d.push([w, respAmp(w, F0)]); }
+      let ym = 0; d.forEach(p => ym = Math.max(ym, p[1])); sweepPts.forEach(p => ym = Math.max(ym, p[1])); ym = Math.min(ym * 1.15, F0 / P.k * 60) || 1;
+      const r = SL.chart(p5, [{ data: d, color: C.a, label: 'theory A(ω)' }], { xmin: 0, xmax: wmax, ymin: 0, ymax: ym, pad: [26, 12, 26, 52], xlabel: 'ω_d (rad/s)' });
+      ctx.setLineDash([3, 4]); ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.beginPath(); ctx.moveTo(r.X(W), r.Y(0)); ctx.lineTo(r.X(W), r.Y(ym)); ctx.stroke(); ctx.setLineDash([]);
+      txt(ctx, 'ω₀', r.X(W) + 4, r.Y(ym) + 12, 'rgba(230,236,247,.6)');
+      sweepPts.forEach(p => { ctx.fillStyle = C.c; ctx.beginPath(); ctx.arc(r.X(p[0]), r.Y(Math.min(p[1], ym)), 3.5, 0, 7); ctx.fill(); });
+      if (mode === 'driven') {
+        const x = r.X(P.wd); ctx.strokeStyle = 'rgba(244,114,182,.7)'; ctx.beginPath(); ctx.moveTo(x, r.Y(0)); ctx.lineTo(x, r.Y(ym)); ctx.stroke();
+        ctx.fillStyle = C.b; ctx.beginPath(); ctx.arc(x, r.Y(Math.min(respAmp(P.wd, F0), ym)), 5, 0, 7); ctx.fill();
+        if (amp.n > 0) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, r.Y(Math.min(amp.val, ym)), 6, 0, 7); ctx.stroke(); }
+        if (p5.w > 520) txt(ctx, '● theory  ○ measured  ● sweep', p5.w - 14, 14, 'rgba(230,236,247,.55)', 'right');
+      } else if (p5.w > 420) txt(ctx, 'if driven with F₀ = 1 N', p5.w - 14, 14, 'rgba(230,236,247,.55)', 'right');
+    } else if (mode === 'pendulum') {
+      const d = [], d2 = [], d3 = []; for (let a = 0; a <= 170; a += 1) { const r = SL.rad(a); d.push([a, 1 / agm(1, Math.cos(r / 2))]); d2.push([a, 1]); d3.push([a, 1 + r * r / 16 + 11 * r ** 4 / 3072]); }
+      const r = SL.chart(p5, [{ data: d, color: C.a, label: 'exact T/T₀' }, { data: d3, color: C.d, label: 'series (2 terms)', dash: [5, 4] }, { data: d2, color: C.c, label: 'small-angle', dash: [3, 4] }], { xmin: 0, xmax: 170, ymin: 0.9, ymax: 2.6, pad: [26, 12, 26, 52], xlabel: 'amplitude θ₀ (°)' });
+      const a = Math.min(170, P.th0); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(r.X(a), r.Y(1 / agm(1, Math.cos(SL.rad(a) / 2))), 5, 0, 7); ctx.fill();
+    } else if (mode === 'double') {
+      if (!P.twin || !sepHist.length) { ctx.clearRect(0, 0, p5.w, p5.h); txt(ctx, 'Turn on the twin pendulum to measure divergence.', p5.w / 2, p5.h / 2, 'rgba(230,236,247,.6)', 'center'); return; }
+      const d = ds(sepHist, 600);
+      SL.chart(p5, [{ data: d, color: C.c, label: 'log₁₀ separation (rad)' }], { xmin: d[0][0], xmax: Math.max(d[0][0] + 10, simT), ymin: -4, ymax: 1, pad: [26, 12, 26, 52], xlabel: 't (s)' });
+    } else if (mode === 'coupled') {
+      const m = P.cm, k = P.ck, kc = P.ckc, b = Math.max(P.cb, 0.15), w1 = Math.sqrt(k / m), w2 = Math.sqrt((k + 2 * kc) / m), wmax = Math.max(w2 * 1.6, 1);
+      const d = []; for (let i = 1; i <= 400; i++) { const w = wmax * i / 400; const Dr = k + kc - m * w * w, Di = b * w; // X1 = D/(D^2 - kc^2)
+        const nr = Dr * Dr - Di * Di - kc * kc, ni = 2 * Dr * Di; const mag = Math.hypot(Dr, Di) / Math.hypot(nr, ni); d.push([w, mag]); }
+      let ym = 0; d.forEach(p => ym = Math.max(ym, p[1]));
+      const r = SL.chart(p5, [{ data: d, color: C.a, label: '|x₁| per newton on mass 1' }], { xmin: 0, xmax: wmax, ymin: 0, ymax: ym * 1.1, pad: [26, 12, 26, 52], xlabel: 'ω (rad/s)' });
+      [[w1, 'ω₁'], [w2, 'ω₂']].forEach(([w, l]) => { ctx.setLineDash([3, 4]); ctx.strokeStyle = 'rgba(250,204,21,.6)'; ctx.beginPath(); ctx.moveTo(r.X(w), r.Y(0)); ctx.lineTo(r.X(w), r.Y(ym * 1.1)); ctx.stroke(); ctx.setLineDash([]); txt(ctx, l, r.X(w) + 3, r.Y(ym * 1.1) + 12, C.c); });
+      if (P.cb < 0.15 && p5.w > 520) txt(ctx, 'drawn with b = 0.15 so the peaks are finite', p5.w - 14, p5.h - 34, 'rgba(230,236,247,.45)', 'right');
+    }
+  }
+
+  /* ---------- HUD & stats ---------- */
+  const stat = (k, v, u) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u ? `<small>${u}</small>` : ''}</div></div>`;
+  function regime(z) { return z === 0 ? ['undamped', '#22d3ee'] : Math.abs(z - 1) < 0.02 ? ['critically damped', '#22c55e'] : z < 1 ? ['underdamped', '#facc15'] : ['overdamped', '#f472b6']; }
+  function updateUI() {
+    const [ke, pe] = energy(y);
+    let hud = '', st = '', note = '';
+    if (mode === 'spring' || mode === 'driven') {
+      const W = w0(), z = zeta(), [rg, rc] = regime(z);
+      hud = `<span class="readout">t <b>${SL.fmt(simT, 2)}</b> s</span><span class="readout">x <b>${SL.fmt(y[0] * 100, 1)}</b> cm</span><span class="readout">v <b>${SL.fmt(y[1], 2)}</b> m/s</span><span class="readout">E <b>${SL.fmt(ke + pe, 3)}</b> J</span><span class="readout" style="color:${rc}">${rg}</span>`;
+      st = stat('ω₀ = √(k/m)', SL.fmt(W, 3), 'rad/s') + stat('Period T₀', SL.fmt(2 * Math.PI / W, 3), 's') + stat('Damping ratio ζ', SL.fmt(z, 3)) + stat('Q factor', z > 0 ? SL.fmt(1 / (2 * z), 2) : '∞') + stat('Critical b_c', SL.fmt(bc(), 2), 'kg/s');
+      if (mode === 'spring') st += stat(z < 1 ? 'Damped ω_d' : 'Damped ω_d', z < 1 ? SL.fmt(W * Math.sqrt(1 - z * z), 3) : '—', z < 1 ? 'rad/s' : '');
+      if (mode === 'driven') {
+        const wr = z < Math.SQRT1_2 ? W * Math.sqrt(1 - 2 * z * z) : NaN, A = respAmp(P.wd, P.F0), del = SL.deg(Math.atan2(2 * z * W * P.wd, W * W - P.wd * P.wd));
+        st += stat('Resonance ω_r', isFinite(wr) ? SL.fmt(wr, 3) : 'none', isFinite(wr) ? 'rad/s' : '') + stat('A theory', SL.fmt(A * 100, 2), 'cm') + stat('A measured', amp.n ? SL.fmt(amp.val * 100, 2) : '…', 'cm') + stat('Phase lag δ', SL.fmt(del, 1), '°');
+        note = 'Measured amplitude is (max − min)/2 over the last driving cycle; wait for the transient to die out (about ' + SL.fmt(Math.min(99, 4 / Math.max(z * W, 1e-3)), 0) + ' s) before comparing it with theory.';
+      } else note = P.orient === 'v' ? 'Vertical: x is measured from the equilibrium, upward positive. Gravity shifts the centre but not ω₀.' : 'Drag the block or press Pull. Set damping with b or the presets.';
+    } else if (mode === 'pendulum') {
+      const T0 = 2 * Math.PI * Math.sqrt(P.L / P.g), Te = pendT(SL.rad(Math.min(P.th0, 179.9)));
+      hud = `<span class="readout">t <b>${SL.fmt(simT, 2)}</b> s</span><span class="readout">θ <b>${SL.fmt(SL.deg(y[0]), 1)}</b>°</span><span class="readout">ω <b>${SL.fmt(y[1], 2)}</b> rad/s</span><span class="readout">E <b>${SL.fmt(ke + pe, 3)}</b> J</span>`;
+      st = stat('T₀ = 2π√(L/g)', SL.fmt(T0, 3), 's') + stat('Exact T at θ₀', SL.fmt(Te, 3), 's') + stat('Small-angle error', SL.fmt((Te / T0 - 1) * 100, 2), '%') + stat('Lag of ghost', SL.fmt(SL.deg(y[2] - y[0]), 1), '°');
+      note = `Release angle θ₀ = ${SL.fmt(P.th0, 1)}°, g = ${P.g} m/s². Period is for the undamped pendulum.`;
+    } else if (mode === 'double') {
+      const E = ke + pe; const sep = sepHist.length ? Math.pow(10, sepHist[sepHist.length - 1][1]) : NaN;
+      if (!state.E0 || simT < 0.01) state.E0 = E;
+      hud = `<span class="readout">t <b>${SL.fmt(simT, 2)}</b> s</span><span class="readout">θ₁ <b>${SL.fmt(SL.deg(wrap(y[0])), 0)}</b>°</span><span class="readout">θ₂ <b>${SL.fmt(SL.deg(wrap(y[1])), 0)}</b>°</span>`;
+      st = stat('Total energy', SL.fmt(E, 3), 'J') + stat('Energy drift', SL.fmt(Math.abs(E - state.E0) / Math.max(1e-9, Math.abs(state.E0) + 1e-3) * 100, 4), '%') + stat('Twin separation', P.twin ? (isFinite(sep) ? SL.fmt(sep, 4) : '—') : 'off', P.twin ? 'rad' : '') + stat('Max separation', P.twin ? SL.fmt(state.maxSep || 0, 3) : '—', P.twin ? 'rad' : '');
+      note = 'PE measured from the hanging position. Separation combines angle and (scaled) angular-velocity differences.';
+    } else if (mode === 'coupled') {
+      const w1 = Math.sqrt(P.ck / P.cm), w2 = Math.sqrt((P.ck + 2 * P.ckc) / P.cm);
+      hud = `<span class="readout">t <b>${SL.fmt(simT, 2)}</b> s</span><span class="readout">x₁ <b>${SL.fmt(y[0] * 100, 1)}</b> cm</span><span class="readout">x₂ <b>${SL.fmt(y[1] * 100, 1)}</b> cm</span><span class="readout">E <b>${SL.fmt(ke + pe, 3)}</b> J</span>`;
+      st = stat('Mode 1 ω₁', SL.fmt(w1, 3), 'rad/s') + stat('Mode 2 ω₂', SL.fmt(w2, 3), 'rad/s') + stat('Beat period', P.ckc > 0 ? SL.fmt(2 * Math.PI / (w2 - w1), 2) : '∞', 's') + stat('Mode 1 period', SL.fmt(2 * Math.PI / w1, 3), 's');
+      note = 'In the x₁–x₂ plot, mode 1 lies along the rising diagonal and mode 2 along the falling one.';
+    }
+    $('#hud').innerHTML = hud; $('#stats').innerHTML = st; $('#note').textContent = note;
+  }
+  const state = { E0: 0, maxSep: 0 };
+
+  /* ---------- challenges ---------- */
+  const CHALS = [
+    { id: 'T1', t: 'One-second spring', d: 'In Spring mode with no damping, choose m and k so the period is 1.000 s (within 0.5%). Hint: $k = 4\\pi^2 m / T^2$.' },
+    { id: 'crit', t: 'Critically damped', d: 'In Spring mode, set the damping b so that $\\zeta = 1$ within 2%, then pull the mass and watch it return without overshoot. Work out $b_c = 2\\sqrt{km}$ first.' },
+    { id: 'res', t: 'Find the resonance', d: 'In Driven mode with $\\zeta \\le 0.1$, tune $\\omega_d$ to within 1.5% of the true peak $\\omega_r$ and let the measured amplitude build to at least 90% of the theoretical maximum.' },
+    { id: 'pend5', t: 'Where small angles fail', d: 'Release the pendulum (no damping) from the amplitude at which the exact period is 5.0% longer than $2\\pi\\sqrt{L/g}$ (±0.3%). Use the T/T₀ plot.' },
+    { id: 'beat', t: 'Ten-second beats', d: 'In Coupled mode with $m = 1$ kg and $k = 20$ N/m, choose $k_c$ so that the beat period is 10 s (±3%), then press Beats.' },
+    { id: 'calm', t: 'Taming chaos', d: 'With the twin pendulum on, find starting angles for which the twins stay within 0.01 rad of each other for 30 s.' },
+  ];
+  $('#chalList').innerHTML = CHALS.map(c => `<div class="chal" id="ch-${c.id}"><span class="led"></span><div><b>${c.t}</b><p>${c.d}</p></div></div>`).join('');
+  function win(id, msg) { if (done[id]) return; done[id] = true; $('#ch-' + id + ' .led').classList.add('on'); SL.toast(`<b>Challenge complete:</b> ${CHALS.find(c => c.id === id).t}${msg ? '<br>' + msg : ''}`, 'ok', 6000); }
+  let beatPressed = false;
+  function checkChallenges() {
+    if (mode === 'spring' && P.b === 0) { const T = 2 * Math.PI * Math.sqrt(P.m / P.k); if (Math.abs(T - 1) < 0.005) win('T1', `T = ${SL.fmt(T, 4)} s with m = ${P.m} kg, k = ${P.k} N/m.`); }
+    if (mode === 'spring' && Math.abs(zeta() - 1) < 0.02 && simT > 0.5 && Math.abs(y[0]) < 0.02 && hist.length && Math.max(...hist.map(q => Math.abs(q.a))) > 0.05) win('crit', `ζ = ${SL.fmt(zeta(), 3)}, b = ${P.b} kg/s.`);
+    if (mode === 'driven' && zeta() <= 0.1 && zeta() > 0 && !sweep) { const W = w0(), z = zeta(), wr = W * Math.sqrt(1 - 2 * z * z), Am = respAmp(wr, P.F0); if (Math.abs(P.wd - wr) / wr < 0.015 && amp.n > 2 && amp.val >= 0.9 * Am) win('res', `ω_d = ${SL.fmt(P.wd, 3)} rad/s, ω_r = ${SL.fmt(wr, 3)} rad/s, A = ${SL.fmt(amp.val * 100, 1)} cm.`); }
+    if (mode === 'pendulum' && P.pb === 0 && simT > 1) { const r = pendT(SL.rad(P.th0)) / (2 * Math.PI * Math.sqrt(P.L / P.g)); if (Math.abs(r - 1.05) < 0.003) win('pend5', `θ₀ = ${SL.fmt(P.th0, 1)}° gives T/T₀ = ${SL.fmt(r, 4)}. The exact answer is 50.1°.`); }
+    if (mode === 'coupled' && beatPressed && Math.abs(P.cm - 1) < 1e-9 && Math.abs(P.ck - 20) < 1e-9 && P.ckc > 0) { const T2 = 2 * Math.PI / (Math.sqrt(20 + 2 * P.ckc) - Math.sqrt(20)); if (Math.abs(T2 - 10) < 0.3 && simT > 5) win('beat', `k_c = ${P.ckc} N/m gives T_beat = ${SL.fmt(T2, 2)} s.`); }
+    if (mode === 'double' && P.twin && simT >= 30 && state.maxSep < 0.01) win('calm', `Max separation ${SL.fmt(state.maxSep, 4)} rad after 30 s: at low energy the motion is regular.`);
+  }
+
+  /* ---------- controls ---------- */
+  const groups = document.querySelectorAll('.grp');
+  function showGroups() { groups.forEach(g => g.classList.toggle('show', g.dataset.g.split(' ').includes(mode) && !(g.dataset.g === 'spring' && mode !== 'spring'))); }
+  const titles = {
+    spring: ['Displacement x(t) (m)', 'Velocity v(t)', 'Phase portrait: x vs v', 'Resonance curve: steady-state amplitude A(ω)'],
+    driven: ['Displacement x(t) and drive F(t)', 'Velocity v(t)', 'Phase portrait: x vs v', 'Resonance curve: amplitude vs driving frequency'],
+    pendulum: ['Angle θ(t) (°): exact vs small-angle', 'Angular velocity ω(t)', 'Phase portrait: θ vs ω', 'Period vs amplitude: T/T₀'],
+    double: ['Angles θ₁, θ₂ (°, unwrapped)', 'Angular velocities ω₁, ω₂', 'Phase portrait: θ₂ vs ω₂', 'Chaos: log₁₀ of twin separation vs time'],
+    coupled: ['Displacements x₁, x₂ (m)', 'Velocities v₁, v₂', 'Configuration: x₁ vs x₂', 'Response of mass 1 to a driving force: two normal-mode peaks'],
+  };
+  function setMode(m, kind) {
+    mode = m; document.querySelectorAll('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+    showGroups(); const T = titles[m]; $('#p1t').textContent = T[0]; $('#p2t').textContent = T[1]; $('#p3t').textContent = T[2]; $('#p5t').textContent = T[3];
+    sweep = null; $('#sweepBtn').classList.remove('on'); state.maxSep = 0; state.E0 = 0; beatPressed = false;
+    resetState(kind); running = true; setPlayIcon();
+  }
+  $('#modeSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.dataset.m) setMode(b.dataset.m); });
+  const bind = (id, key, fmt, after) => SL.bind('#' + id, v => { P[key] = v; after && after(v); }, fmt);
+  bind('m', 'm', v => SL.fmt(v, 2) + ' kg', () => { setWd(P.wd); });
+  bind('k', 'k', v => SL.fmt(v, 1) + ' N/m', () => { setWd(P.wd); });
+  bind('b', 'b', v => SL.fmt(v, 2) + ' kg/s');
+  bind('F0', 'F0', v => SL.fmt(v, 1) + ' N');
+  SL.bind('#wd', v => { P.wd = v; amp.n = 0; }, fmtWd);
+  bind('L', 'L', v => SL.fmt(v, 2) + ' m');
+  bind('th0', 'th0', v => SL.fmt(v, 1) + '°');
+  bind('pb', 'pb', v => SL.fmt(v, 2) + ' kg/s');
+  bind('m1', 'm1', v => v + ' kg'); bind('m2', 'm2', v => v + ' kg'); bind('L1', 'L1', v => v + ' m'); bind('L2', 'L2', v => v + ' m');
+  bind('dt1', 'dt1', v => v + '°'); bind('dt2', 'dt2', v => v + '°');
+  bind('cm', 'cm', v => SL.fmt(v, 2) + ' kg'); bind('ck', 'ck', v => v + ' N/m'); bind('ckc', 'ckc', v => SL.fmt(v, 2) + ' N/m'); bind('cb', 'cb', v => SL.fmt(v, 2) + ' kg/s');
+  SL.bind('#ghost', v => P.ghost = v); SL.bind('#trail', v => { P.trail = v; trail = []; }); SL.bind('#twin', v => { P.twin = v; if (mode === 'double') setMode('double'); });
+  const setRange = (id, v) => { const el = $('#' + id); el.value = v; el.dispatchEvent(new Event('input')); };
+  document.querySelectorAll('[data-z]').forEach(b => b.onclick = () => { setRange('b', Math.min(40, +b.dataset.z * bc()).toFixed(2)); if (mode === 'spring') resetState(); });
+  $('#orientSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; P.orient = b.dataset.o; $('#orientSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); resetState(); });
+  $('#gSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; P.g = +b.dataset.g; $('#gSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); resetState(); });
+  $('#speedSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; speed = +b.dataset.s; $('#speedSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
+  $('#pullBtn').onclick = () => { resetState(); running = true; setPlayIcon(); };
+  $('#relBtn').onclick = () => { resetState(); running = true; setPlayIcon(); };
+  $('#dRel').onclick = () => { setMode('double'); };
+  document.querySelectorAll('[data-cm]').forEach(b => b.onclick = () => { const k = b.dataset.cm; beatPressed = k === 'beat'; resetState(k === '1' ? 'm1' : k === '2' ? 'm2' : 'beat'); running = true; setPlayIcon(); });
+  $('#sweepBtn').onclick = () => {
+    if (sweep) { sweep = null; $('#sweepBtn').classList.remove('on'); return; }
+    const W = w0(), list = []; for (let i = 0; i < 26; i++) list.push(W * (0.5 + 1.0 * i / 25));
+    sweepPts = []; sweep = { list, i: 0, tStart: simT }; setWd(list[0]); amp.n = 0; running = true; setPlayIcon(); $('#sweepBtn').classList.add('on');
+    SL.toast('Sweeping ω<sub>d</sub> from 0.5ω₀ to 1.5ω₀ at 12× speed. Each point waits for the transient to decay.');
+  };
+  $('#clearSweep').onclick = () => { sweepPts = []; };
+  function setPlayIcon() { $('#playBtn').innerHTML = `<i data-lucide="${running ? 'pause' : 'play'}"></i>`; SL.refreshIcons($('#playBtn')); }
+  $('#playBtn').onclick = () => { running = !running; setPlayIcon(); };
+  $('#resetBtn').onclick = () => { resetState(); running = true; setPlayIcon(); };
+
+  // worked-example loaders
+  const LOADS = {
+    ex1: () => { setMode('spring'); setRange('m', 0.5); setRange('k', 50); setRange('b', 0); y = [0.1, 0]; },
+    ex2: () => { setMode('pendulum'); setRange('L', 1); setRange('th0', 60); setRange('pb', 0); $('#gSeg [data-g="9.81"]').click(); $('#ghost').checked = true; P.ghost = true; resetState(); },
+    ex3: () => { setMode('driven'); setRange('m', 1); setRange('k', 20); setRange('b', 1); setRange('F0', 1); setWd(4.416); resetState(); },
+    ex4: () => { setMode('coupled'); setRange('cm', 1); setRange('ck', 20); setRange('ckc', 2); setRange('cb', 0); resetState('beat'); },
+  };
+  document.querySelectorAll('[data-load]').forEach(b => b.addEventListener('click', () => { LOADS[b.dataset.load](); $('#lab').scrollIntoView({ behavior: 'smooth' }); }));
+
+  /* ---------- quiz ---------- */
+  SL.quiz('#quiz', [
+    { q: 'A mass on a spring has period 2.0 s. The mass is replaced by one four times heavier. The new period is:', options: ['0.5 s', '1.0 s', '4.0 s', '8.0 s'], answer: 2, why: '$T = 2\\pi\\sqrt{m/k}$, so quadrupling $m$ doubles $T$.' },
+    { q: 'In undamped SHM, where is the speed greatest?', options: ['At the extremes of the motion', 'At the equilibrium position', 'Halfway between equilibrium and an extreme', 'It is constant'], answer: 1, why: 'All the energy is kinetic at $x = 0$, where $v_{max} = A\\omega_0$. The acceleration is greatest at the extremes.' },
+    { q: 'A pendulum released from 70° has a period that is:', options: ['Exactly $2\\pi\\sqrt{L/g}$', 'Shorter than $2\\pi\\sqrt{L/g}$', 'Longer than $2\\pi\\sqrt{L/g}$', 'Independent of $L$'], answer: 2, why: 'Because $\\sin\\theta < \\theta$, the restoring torque is weaker than the linear model assumes, so it takes longer: about 10% longer at 70°.' },
+    { q: 'Which damping returns a displaced oscillator to equilibrium fastest without overshooting?', options: ['Underdamped', 'Critically damped', 'Overdamped', 'Undamped'], answer: 1, why: 'Critical damping ($\\zeta = 1$) is the boundary between oscillating and creeping back; heavier damping is slower.' },
+    { q: 'An oscillator has $Q = 50$. Roughly how sharp is its resonance?', options: ['Width about $\\omega_0/50$; peak amplitude about 50 times the static deflection', 'Width about $50\\omega_0$', 'There is no resonance peak', 'The peak is at $50\\omega_0$'], answer: 0, why: 'For light damping the half-power width is $\\Delta\\omega \\approx \\omega_0/Q$ and $A_{max} \\approx Q\\,F_0/k$.' },
+    { q: 'At the resonance of a lightly damped driven oscillator, the displacement relative to the driving force is:', options: ['In phase', 'Lagging by about 90°', 'Lagging by 180°', 'Leading by 90°'], answer: 1, why: 'At resonance the displacement lags by about 90°, so the force is in phase with the velocity and does the most positive work.' },
+    { q: 'Two identical masses joined by a coupling spring $k_c$ (outer springs $k$) oscillate in the antisymmetric mode. Its angular frequency is:', options: ['$\\sqrt{k/m}$', '$\\sqrt{(k+k_c)/m}$', '$\\sqrt{(k+2k_c)/m}$', '$\\sqrt{2k_c/m}$'], answer: 2, why: 'With $x_2 = -x_1$ the coupling spring stretches by $2x_1$, giving restoring force $(k + 2k_c)x_1$.' },
+    { q: 'The Tacoma Narrows Bridge collapse (1940) is best described as:', options: ['Simple resonance with marching soldiers', 'Resonance with periodic wind gusts at exactly the natural frequency', 'Aeroelastic flutter: a self-excited oscillation fed by steady wind', 'An earthquake'], answer: 2, why: 'Steady wind interacting with the twisting deck produced effectively negative damping. It was not a periodic force tuned to a natural frequency.' },
+    { q: 'What makes the double pendulum "chaotic"?', options: ['Its equations are random', 'Tiny differences in starting conditions grow exponentially at high energy', 'Energy is not conserved', 'It has no equilibrium'], answer: 1, why: 'The equations are deterministic and conserve energy, but sensitive dependence on initial conditions makes long-term prediction impossible in practice.' },
+  ]);
+
+  /* ---------- loop ---------- */
+  let acc = 0, accC = 0;
+  const loop = SL.loop((dt) => {
+    if (running && !drag) step(dt);
+    if (mode === 'double' && sepHist.length) { const s = Math.pow(10, sepHist[sepHist.length - 1][1]); if (s > state.maxSep) state.maxSep = s; }
+    drawStage();
+    acc += dt; if (acc > 1 / 30) { drawPlots(); acc = 0; }
+    accC += dt; if (accC > 0.25) { updateUI(); checkChallenges(); accC = 0; }
+  }).start();
+  document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
+
+  setMode('spring'); updateUI();
+  window.__osc = { P, get y() { return y; }, get simT() { return simT; }, get amp() { return amp; }, setMode, step, respAmp, pendT, w0, zeta, setWd, energy, get sweepPts() { return sweepPts; } };
+})();
+</script>
+</body>
+</html>

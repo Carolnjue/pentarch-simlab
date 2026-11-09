@@ -1,0 +1,747 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projectile Motion · Pentarch SimLab</title>
+<meta name="description" content="Launch stones, footballs, golf balls and cannonballs with real mass, size and drag. Compare vacuum and air, change gravity, add wind and hit targets.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .stage.pj{height:600px;touch-action:none;cursor:crosshair}
+  @media (max-width:640px){.stage.pj{height:430px;min-height:0}}
+  .ebar{display:flex;height:16px;border-radius:6px;overflow:hidden;background:var(--bg2);border:1px solid var(--line)}
+  .ebar span{display:block;height:100%;transition:width .08s linear}
+  .elegend{display:flex;flex-wrap:wrap;gap:10px;font:500 .72rem var(--mono);color:var(--muted);margin-top:6px}
+  .elegend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+  .objgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .objgrid button{all:unset;cursor:pointer;text-align:center;padding:7px 2px 6px;border-radius:9px;border:1px solid var(--line2);background:var(--bg2);font-size:.7rem;color:var(--muted);line-height:1.2}
+  .objgrid button .dot{display:block;margin:0 auto 4px;border-radius:50%;box-shadow:inset -3px -3px 5px rgba(0,0,0,.35)}
+  .objgrid button.on{border-color:var(--accent);color:var(--text);background:color-mix(in srgb,var(--accent) 14%,var(--bg2))}
+  .spec{font:500 .74rem var(--mono);color:var(--muted);margin-top:8px;line-height:1.5}
+  .spec b{color:var(--text);font-weight:600}
+  .chal{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
+  .chal .led{margin-top:6px;flex:none}
+  .chal b{display:block}
+  .chal p{margin:2px 0 0;color:var(--muted);font-size:.9rem}
+  .shotlist{display:flex;flex-direction:column;gap:4px;font:500 .74rem var(--mono);color:var(--muted);max-height:150px;overflow:auto}
+  .shotlist div{display:flex;gap:8px;align-items:center}
+  .shotlist i{width:14px;height:3px;border-radius:2px;flex:none}
+  .lab:not(.game) .gamebar{display:none!important}
+  @media (max-width:640px){.stage .readout{font-size:.7rem;padding:4px 7px}}
+  .hidden{display:none!important}
+  .seg.full{display:flex}.seg.full button{flex:1;text-align:center}
+  svg.diag text{font-family:var(--mono);font-size:12px;fill:var(--muted)}
+</style>
+</head>
+<body data-page="projectile">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab" id="lab">
+    <div>
+      <div class="stage pj" id="stage">
+        <canvas id="cv" aria-label="Projectile motion stage: drag back from the launcher to aim and release to launch"></canvas>
+        <div class="hud">
+          <span class="readout">t <b id="hT">0.00</b> s</span>
+          <span class="readout">x <b id="hX">0.0</b> m</span>
+          <span class="readout">y <b id="hY">0.0</b> m</span>
+          <span class="readout">|v| <b id="hV">0.0</b> m/s</span>
+          <span class="readout" id="hEnv">Earth · g = 9.81 m/s²</span>
+          <span class="readout gamebar">Shots left <b id="gShots">10</b></span><span class="readout gamebar">Targets hit <b id="gHits">0/5</b></span>
+        </div>
+        <div class="stage-toolbar">
+          <button class="btn sm" id="fitBtn" title="Fit view to trajectories"><i data-lucide="scan"></i></button>
+          <button class="btn sm" id="clearBtn" title="Clear previous shots"><i data-lucide="eraser"></i></button>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:14px">
+        <h3><i data-lucide="gauge"></i> Shot results <span class="muted small" id="shotName" style="font-weight:500;margin-left:auto"></span></h3>
+        <div class="stats">
+          <div class="stat"><div class="k">Range</div><div class="v" id="sRange">—</div></div>
+          <div class="stat"><div class="k">Time of flight</div><div class="v" id="sTof">—</div></div>
+          <div class="stat"><div class="k">Max height</div><div class="v" id="sH">—</div></div>
+          <div class="stat"><div class="k">Impact speed</div><div class="v" id="sVi">—</div></div>
+          <div class="stat"><div class="k">Impact angle</div><div class="v" id="sAi">—</div></div>
+          <div class="stat"><div class="k">Vacuum range</div><div class="v" id="sVac">—</div></div>
+        </div>
+        <div class="panel-title">Energy now (J)</div>
+        <div class="ebar"><span id="eKE" style="background:#22d3ee;width:0"></span><span id="ePE" style="background:#a78bfa;width:0"></span><span id="eL" style="background:#f97316;width:0"></span></div>
+        <div class="elegend"><span><i style="background:#22d3ee"></i>KE <b id="vKE">0</b></span><span><i style="background:#a78bfa"></i>PE <b id="vPE">0</b></span><span><i style="background:#f97316"></i>Work done against air <b id="vL">0</b></span></div>
+      </div>
+      <div class="panel" style="margin-top:14px">
+        <h3><i data-lucide="history"></i> Shots</h3>
+        <div class="shotlist" id="shotList"><div class="dim">No shots yet. Drag back from the launcher and let go.</div></div>
+      </div>
+
+    </div>
+    <aside>
+      <div class="panel">
+        <div class="seg full" id="modeSeg" style="margin-bottom:12px"><button class="on" data-m="sandbox">Sandbox</button><button data-m="game">Target game</button></div>
+        <h3><i data-lucide="circle-dot"></i> Projectile</h3>
+        <div class="objgrid" id="objGrid"></div>
+        <div id="customBox" class="hidden">
+          <div class="ctl"><label for="cm">Mass</label><output></output><input type="range" id="cm" min="0.002" max="10" step="0.001" value="1"></div>
+          <div class="ctl"><label for="cd">Diameter</label><output></output><input type="range" id="cd" min="0.01" max="0.5" step="0.005" value="0.1"></div>
+          <div class="ctl"><label for="ccd">Drag coefficient C<sub>d</sub></label><output></output><input type="range" id="ccd" min="0.05" max="1.2" step="0.01" value="0.47"></div>
+        </div>
+        <div class="spec" id="spec"></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="crosshair"></i> Launch</h3>
+        <div class="ctl"><label for="ang">Angle θ</label><output></output><input type="range" id="ang" min="-30" max="90" step="0.5" value="45"></div>
+        <div class="ctl"><label for="spd">Speed v₀</label><output></output><input type="range" id="spd" min="0" max="100" step="0.5" value="25"></div>
+        <div class="ctl"><label for="hgt">Launch height h</label><output></output><input type="range" id="hgt" min="0" max="100" step="1" value="0"></div>
+        <div class="btn-row" style="margin:4px 0 8px"><button class="btn sm" data-h="0">Ground</button><button class="btn sm" data-h="20">Tower 20 m</button><button class="btn sm" data-h="50">Cliff 50 m</button></div>
+        <div class="btn-row"><button class="btn primary" id="fire"><i data-lucide="send"></i> Launch</button><button class="btn" id="skip" title="Jump to landing"><i data-lucide="skip-forward"></i></button><button class="btn" id="resetAll"><i data-lucide="rotate-ccw"></i> Reset</button></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="globe-2"></i> Environment</h3>
+        <div class="seg full" id="planetSeg" style="margin-bottom:8px"><button class="on" data-p="earth">Earth</button><button data-p="moon">Moon</button><button data-p="mars">Mars</button><button data-p="jupiter">Jupiter</button></div>
+        <label class="toggle">Air resistance (quadratic drag)<input type="checkbox" id="air" checked></label>
+        <div class="ctl"><label for="wind">Wind (+ = tailwind)</label><output></output><input type="range" id="wind" min="-20" max="20" step="0.5" value="0"></div>
+        <label class="toggle">Compare with vacuum path<input type="checkbox" id="cmpVac" checked></label>
+        <label class="toggle">Velocity &amp; acceleration vectors<input type="checkbox" id="vecs" checked></label>
+        <label class="toggle" id="predWrap">Show predicted path while aiming<input type="checkbox" id="pred"></label>
+        <div class="panel-title">Playback speed</div>
+        <div class="seg full" id="speedSeg"><button data-s="0.25">¼×</button><button data-s="0.5">½×</button><button class="on" data-s="1">1×</button><button data-s="3">3×</button><button data-s="10">10×</button></div>
+      </div>
+      <div class="panel gamebar" id="gamePanel">
+        <h3><i data-lucide="target"></i> Target game</h3>
+        <p class="small muted" style="margin:0 0 10px">Hit all five targets with ten shots. Targets on poles must be struck in flight. The predicted path is hidden: use physics.</p>
+        <div class="btn-row"><button class="btn primary sm" id="newRound"><i data-lucide="shuffle"></i> New round</button></div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+      <button><i data-lucide="table"></i> Data</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. Two motions at once</h3>
+      <p>A projectile is any object that, once launched, moves under gravity (and, in reality, air). The key idea is that <b>horizontal and vertical motion are independent</b>: gravity acts only vertically, so in a vacuum the horizontal velocity never changes while the vertical velocity changes at a steady rate $g$. Resolve the launch velocity $v_0$ at angle $\theta$ into components:</p>
+      <div class="eq">$$v_{0x} = v_0\cos\theta, \qquad v_{0y} = v_0\sin\theta$$</div>
+      <div class="grid2">
+        <div>
+          <p><b>Horizontal</b> (no force, $a_x = 0$):</p>
+          <div class="eq">$$\begin{gathered}x(t) = v_0\cos\theta\; t\\ v_x = v_0\cos\theta\end{gathered}$$</div>
+        </div>
+        <div>
+          <p><b>Vertical</b> (constant $a_y = -g$):</p>
+          <div class="eq">$$\begin{gathered}y(t) = h + v_0\sin\theta\; t - \tfrac12 g t^2\\ v_y = v_0\sin\theta - g t\end{gathered}$$</div>
+        </div>
+      </div>
+      <p>Switch on <i>vectors</i> in the lab: in a vacuum the blue horizontal arrows stay the same length all the way along the path, the green vertical arrows shrink to zero at the apex and grow downward, and the orange acceleration arrow is identical everywhere.</p>
+      <svg class="diag" viewBox="0 0 640 230" style="width:100%;max-width:640px;display:block;margin:10px 0">
+        <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="currentColor"/></marker></defs>
+        <line x1="30" y1="200" x2="620" y2="200" stroke="#2a3a5c"/>
+        <path d="M50 200 Q 320 -60 590 200" fill="none" stroke="#22d3ee" stroke-width="2.5"/>
+        <g style="color:#60a5fa"><line x1="50" y1="200" x2="125" y2="200" stroke="#60a5fa" stroke-width="2" marker-end="url(#ah)"/></g>
+        <g style="color:#34d399"><line x1="50" y1="200" x2="50" y2="125" stroke="#34d399" stroke-width="2" marker-end="url(#ah)"/></g>
+        <g style="color:#e6ecf7"><line x1="50" y1="200" x2="120" y2="130" stroke="#e6ecf7" stroke-width="2" marker-end="url(#ah)"/></g>
+        <text x="130" y="196">v₀cosθ</text><text x="56" y="120">v₀sinθ</text><text x="122" y="128">v₀</text>
+        <path d="M80 200 A30 30 0 0 0 71 179" fill="none" stroke="#93a1bd"/><text x="86" y="192">θ</text>
+        <circle cx="320" cy="70" r="5" fill="#facc15"/>
+        <g style="color:#60a5fa"><line x1="320" y1="70" x2="395" y2="70" stroke="#60a5fa" stroke-width="2" marker-end="url(#ah)"/></g>
+        <g style="color:#f97316"><line x1="320" y1="70" x2="320" y2="112" stroke="#f97316" stroke-width="2" marker-end="url(#ah)"/></g>
+        <text x="330" y="60">apex: v_y = 0</text><text x="328" y="128">g</text>
+        <line x1="320" y1="76" x2="320" y2="200" stroke="#5f6d8a" stroke-dasharray="4 4"/><text x="326" y="170">H</text>
+        <line x1="50" y1="215" x2="590" y2="215" stroke="#5f6d8a"/><text x="300" y="228">R</text>
+      </svg>
+      <h3>2. Results for launch from level ground (vacuum)</h3>
+      <p>Setting $y = 0$ (with $h=0$) gives the time of flight, and substituting into $x(t)$ gives the range. The apex is where $v_y = 0$.</p>
+      <div class="eq">$$\begin{gathered}T = \frac{2v_0\sin\theta}{g}, \qquad H = \frac{v_0^2\sin^2\theta}{2g}\\[4pt] R = \frac{v_0^2\sin 2\theta}{g}\end{gathered}$$</div>
+      <p>Because $\sin 2\theta$ peaks at $2\theta = 90^\circ$, the range is maximum at <b>$\theta = 45^\circ$</b>, giving $R_{max} = v_0^2/g$. Complementary angles ($30^\circ$ and $60^\circ$, say) give the same range in a vacuum, though the higher one stays in the air longer. The path is a parabola: eliminating $t$,</p>
+      <div class="eq">$$y = h + x\tan\theta - \frac{g\,x^2}{2v_0^2\cos^2\theta}$$</div>
+      <p><b>Launching from a height</b> $h$: the projectile has extra time to travel, and the best angle falls below 45°:</p>
+      <div class="eq">$$\begin{gathered}\tan\theta_{opt} = \frac{v_0}{\sqrt{v_0^2 + 2gh}}\\[4pt] R_{max} = \frac{v_0}{g}\sqrt{v_0^2 + 2gh}\end{gathered}$$</div>
+      <p>Energy conservation gives the impact speed without solving for the path: $v_{impact} = \sqrt{v_0^2 + 2gh}$ (vacuum only).</p>
+
+      <h3>3. Air resistance</h3>
+      <p>For everyday balls at everyday speeds the Reynolds number is large (10<sup>4</sup>–10<sup>5</sup>), so drag is close to <b>quadratic</b> in speed and points opposite to the velocity of the ball <i>relative to the air</i>:</p>
+      <div class="eq">$$\begin{gathered}\vec F_D = -\tfrac12\,\rho\, C_d\, A\, |\vec v_{rel}|\,\vec v_{rel}\\ \vec v_{rel} = \vec v - \vec v_{wind}, \qquad A = \tfrac{\pi d^2}{4}\end{gathered}$$</div>
+      <p>Here $\rho$ is the air density (1.225 kg/m³ at sea level on Earth), $C_d$ the drag coefficient (about 0.47 for a smooth sphere, roughly 0.25 for a dimpled golf ball or a football at speed) and $A$ the frontal area. Drag couples the two directions (the horizontal deceleration depends on the total speed), so there is no closed-form solution. The lab integrates Newton's second law numerically with the fourth-order Runge–Kutta method (RK4):</p>
+      <div class="eq">$$\begin{gathered}\frac{d\vec v}{dt} = -g\,\hat y - \frac{\rho C_d A}{2m}\,|\vec v_{rel}|\,\vec v_{rel}\\ \frac{d\vec r}{dt} = \vec v\end{gathered}$$</div>
+      <p>What matters is the ratio $\rho C_d A / m$: a heavy, dense shot put barely notices the air, while a ping-pong ball with the same diameter class is dominated by it.</p>
+      <h3>4. Terminal velocity</h3>
+      <p>Falling straight down, the drag grows until it balances the weight, $mg = \tfrac12\rho C_d A v_t^2$:</p>
+      <div class="eq">$$v_t = \sqrt{\frac{2mg}{\rho\,C_d\,A}}$$</div>
+      <p>Terminal velocity is a useful single number for how strongly air matters: if launch speeds are small compared with $v_t$, the vacuum model is good; if they are comparable or larger, drag changes the path dramatically. A ping-pong ball has $v_t \approx 8.3$ m/s, a golf ball about 46 m/s, and a cannonball well over 150 m/s.</p>
+      <h3>5. Why the best angle is lower with drag</h3>
+      <p>With drag, a high lob spends a long time in the air, losing speed the whole time, and its descent becomes steep as the horizontal velocity is eaten away (the path is no longer symmetric: it falls more steeply than it rose). A flatter launch spends less time in the air and keeps more of its horizontal speed. The optimum therefore drops below 45°, typically to 30–40° for balls, and lower still for light objects or headwinds. Try it in the challenges.</p>
+      <div class="callout"><i data-lucide="info"></i><div><b>Model limits.</b> The lab treats the projectile as a non-spinning sphere with a constant drag coefficient. Real footballs and golf balls spin, and the Magnus effect produces lift (this is why a well-struck golf drive carries far further than this model predicts) and sideways swerve. $C_d$ also changes with speed (the "drag crisis"). Air density is kept constant with height, and the ground is flat.</div></div>
+      <h3>Gravity and air on other worlds</h3>
+      <table class="data"><thead><tr><th>World</th><th>g (m/s²)</th><th>Surface air density (kg/m³)</th><th>Note</th></tr></thead><tbody>
+        <tr><td>Earth</td><td class="num">9.81</td><td class="num">1.225</td><td>Sea level, 15 °C</td></tr>
+        <tr><td>Moon</td><td class="num">1.62</td><td class="num">0</td><td>No atmosphere: always a vacuum</td></tr>
+        <tr><td>Mars</td><td class="num">3.71</td><td class="num">≈ 0.020</td><td>Thin CO₂ atmosphere</td></tr>
+        <tr><td>Jupiter</td><td class="num">24.79</td><td class="num">≈ 0.16</td><td>At the 1-bar cloud level (it has no solid surface)</td></tr>
+      </tbody></table>
+    </div>
+
+    <div class="tabpanel prose">
+      <p class="muted">Each example has a button that loads its numbers into the lab so you can check the answer against the simulation.</p>
+      <h3>Example 1: a stone thrown on level ground (no air)</h3>
+      <div class="worked">
+        <p>A stone is thrown at $v_0 = 20$ m/s at $\theta = 30^\circ$ on Earth ($g = 9.81$ m/s²). Find the time of flight, maximum height and range.</p>
+        <ol class="steps">
+          <li>Components: $v_{0x} = 20\cos30^\circ = 17.32$ m/s, $v_{0y} = 20\sin30^\circ = 10.00$ m/s.</li>
+          <li>Time of flight: $T = 2v_{0y}/g = 2(10.00)/9.81 = 2.04$ s.</li>
+          <li>Max height: $H = v_{0y}^2/(2g) = 100/19.62 = 5.10$ m, reached at $t = T/2 = 1.02$ s.</li>
+          <li>Range: $R = v_{0x}T = 17.32 \times 2.039 = 35.3$ m. Check with $R = v_0^2\sin2\theta/g = 400 \times 0.866/9.81 = 35.3$ m.</li>
+        </ol>
+        <button class="btn sm" data-load='{"obj":"stone","ang":30,"spd":20,"hgt":0,"air":false,"planet":"earth","wind":0}'><i data-lucide="play"></i> Load in the lab</button>
+      </div>
+      <h3>Example 2: horizontal throw from a 20 m tower</h3>
+      <div class="worked">
+        <p>A ball leaves a 20 m tower horizontally at 15 m/s. Ignoring air, when and where does it land, and how fast is it going?</p>
+        <ol class="steps">
+          <li>Vertical motion starts from rest: $20 = \tfrac12 (9.81) t^2 \Rightarrow t = \sqrt{40/9.81} = 2.02$ s.</li>
+          <li>Horizontal distance: $x = 15 \times 2.019 = 30.3$ m.</li>
+          <li>Vertical speed at impact: $v_y = g t = 9.81 \times 2.019 = 19.8$ m/s (downward).</li>
+          <li>Impact speed $= \sqrt{15^2 + 19.8^2} = 24.8$ m/s, which agrees with energy conservation $\sqrt{v_0^2 + 2gh} = \sqrt{225 + 392.4} = 24.8$ m/s. Impact angle $= \tan^{-1}(19.8/15) = 52.9^\circ$ below horizontal.</li>
+        </ol>
+        <button class="btn sm" data-load='{"obj":"stone","ang":0,"spd":15,"hgt":20,"air":false,"planet":"earth","wind":0}'><i data-lucide="play"></i> Load in the lab</button>
+      </div>
+      <h3>Example 3: terminal velocity of a ping-pong ball</h3>
+      <div class="worked">
+        <p>A ping-pong ball has $m = 2.7$ g, $d = 40$ mm and $C_d \approx 0.5$. Find its terminal velocity in air at sea level.</p>
+        <ol class="steps">
+          <li>Frontal area: $A = \pi (0.020)^2 = 1.257\times10^{-3}$ m².</li>
+          <li>$v_t = \sqrt{\dfrac{2mg}{\rho C_d A}} = \sqrt{\dfrac{2(0.0027)(9.81)}{1.225 \times 0.5 \times 1.257\times10^{-3}}} = \sqrt{68.8} = 8.3$ m/s.</li>
+          <li>Drop it from 50 m in the lab: the impact speed comes out at about 8.3 m/s, while in a vacuum it would be $\sqrt{2 \times 9.81 \times 50} = 31.3$ m/s.</li>
+        </ol>
+        <button class="btn sm" data-load='{"obj":"pingpong","ang":0,"spd":0,"hgt":50,"air":true,"planet":"earth","wind":0}'><i data-lucide="play"></i> Load in the lab</button>
+      </div>
+      <h3>Example 4: the same kick on the Moon</h3>
+      <div class="worked">
+        <p>A football kicked at 25 m/s and 45° travels $R = 25^2/9.81 = 63.7$ m on Earth in a vacuum. On the Moon ($g = 1.62$ m/s², no air):</p>
+        <ol class="steps">
+          <li>$R = v_0^2/g = 625/1.62 = 386$ m, which is $9.81/1.62 = 6.06$ times further.</li>
+          <li>Time of flight: $T = 2(25\sin45^\circ)/1.62 = 21.8$ s, compared with 3.6 s on Earth.</li>
+        </ol>
+        <button class="btn sm" data-load='{"obj":"football","ang":45,"spd":25,"hgt":0,"air":false,"planet":"moon","wind":0}'><i data-lucide="play"></i> Load in the lab</button>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <p>These challenges are checked automatically after every shot. A green light means you have done it.</p>
+      <div id="chalList"></div>
+      <h3>Open experiments</h3>
+      <ol class="steps">
+        <li><b>Complementary angles.</b> In a vacuum, launch at 30° and then at 60° with the same speed. Compare range, height and time of flight in the shot list. Now switch air on and repeat: which one wins?</li>
+        <li><b>Heavy versus light.</b> Launch a shot put and a ping-pong ball at the same 30 m/s and 40°. In a vacuum they are identical. With air, measure the ratio of their ranges and connect it to their terminal velocities in the Data tab.</li>
+        <li><b>Wind.</b> Kick the football at 25 m/s, 40° with a 10 m/s headwind and then a 10 m/s tailwind. Is the gain from the tailwind equal to the loss from the headwind? Explain using the $|v_{rel}|\,v_{rel}$ form of drag.</li>
+        <li><b>Energy audit.</b> Watch the energy bar. In a vacuum KE + PE stays constant. With air, the orange "work done against air" grows. Where does that energy go?</li>
+      </ol>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+
+    <div class="tabpanel prose">
+      <h3>Projectile data used in the lab</h3>
+      <p class="muted small">Typical values. Drag coefficients for spheres depend on speed and surface; these are representative for the speeds in the lab. Terminal velocities are for Earth sea-level air.</p>
+      <div style="overflow-x:auto"><table class="data" id="dataTable"></table></div>
+    </div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const PLANETS = {
+    earth: { name: 'Earth', g: 9.81, rho: 1.225, sky: ['#071a33', '#123f6b', '#2a6a9a'], ground: ['#1d4d2b', '#123019'], stars: 0 },
+    moon: { name: 'Moon', g: 1.62, rho: 0, sky: ['#02030a', '#05070f', '#0b0f1c'], ground: ['#6b6f78', '#3d4048'], stars: 1 },
+    mars: { name: 'Mars', g: 3.71, rho: 0.020, sky: ['#2b1408', '#6b3518', '#b8673a'], ground: ['#8a3f1d', '#5a2611'], stars: .2 },
+    jupiter: { name: 'Jupiter', g: 24.79, rho: 0.16, sky: ['#2a1a0e', '#6e4523', '#c49056'], ground: ['#7a5432', '#4a3019'], stars: 0 },
+  };
+  const OBJECTS = {
+    stone: { name: 'Stone', m: 0.15, d: 0.05, cd: 0.50, color: '#9ca3af' },
+    football: { name: 'Football', m: 0.43, d: 0.22, cd: 0.25, color: '#f8fafc' },
+    golf: { name: 'Golf ball', m: 0.0459, d: 0.0427, cd: 0.25, color: '#e5e7eb' },
+    pingpong: { name: 'Ping-pong', m: 0.0027, d: 0.040, cd: 0.50, color: '#fb923c' },
+    cannon: { name: 'Cannonball', m: 5.5, d: 0.11, cd: 0.47, color: '#475569' },
+    shot: { name: 'Shot put', m: 7.26, d: 0.12, cd: 0.47, color: '#a8a29e' },
+    balloon: { name: 'Water balloon', m: 0.52, d: 0.10, cd: 0.47, color: '#38bdf8' },
+    custom: { name: 'Custom', m: 1, d: 0.1, cd: 0.47, color: '#f472b6' },
+  };
+  const NOTES = {
+    stone: 'Irregular shape; C<sub>d</sub> is an estimate.', football: 'FIFA size 5. Spin (Magnus swerve) not modelled.',
+    golf: 'Dimples cut drag. Real drives also get lift from backspin, not modelled.', pingpong: 'Very light for its size: drag dominates.',
+    cannon: 'Cast iron, about 12 lb.', shot: "Men's competition shot.", balloon: 'Treated as a rigid sphere.', custom: 'Set your own values.'
+  };
+  const SHOT_COLORS = ['#22d3ee', '#f472b6', '#facc15', '#a3e635', '#fb923c', '#a78bfa', '#34d399', '#f87171'];
+
+  const S = { obj: 'stone', planet: 'earth', mode: 'sandbox', ang: 45, spd: 25, h: 0, air: true, wind: 0, cmp: true, vecs: true, pred: false, play: 1 };
+  let shots = [], cur = null, colorIdx = 0, aiming = null, game = null, firstShot = true;
+  const chal = {};
+
+  /* ---------- physics ---------- */
+  function objParams() {
+    const o = OBJECTS[S.obj];
+    return { m: o.m, d: o.d, cd: o.cd };
+  }
+  function params(override) {
+    const p = PLANETS[S.planet], o = objParams();
+    const A = Math.PI * o.d * o.d / 4;
+    const rho = S.air ? p.rho : 0;
+    return Object.assign({ v0: S.spd, ang: S.ang, h: S.h, g: p.g, c: 0.5 * rho * o.cd * A / o.m, wind: rho > 0 ? S.wind : 0, m: o.m, rho, A, cd: o.cd }, override || {});
+  }
+  function vt(pp) { return pp.rho > 0 ? Math.sqrt(2 * pp.m * pp.g / (pp.rho * pp.cd * pp.A)) : Infinity; }
+  function simulate(pp, maxPts) {
+    const th = SL.rad(pp.ang);
+    let x = 0, y = pp.h, vx = pp.v0 * Math.cos(th), vy = pp.v0 * Math.sin(th), t = 0;
+    const g = pp.g, c = pp.c, w = pp.wind;
+    // time-step from vacuum flight-time estimate
+    const vy0 = vy, Tv = (vy0 + Math.sqrt(vy0 * vy0 + 2 * g * pp.h)) / g || 0.5;
+    const dt = SL.clamp(Tv / (maxPts || 3000), 0.0008, 0.02);
+    const acc = (vx, vy) => { const rx = vx - w, ry = vy, sp = Math.hypot(rx, ry); return [-c * sp * rx, -g - c * sp * ry]; };
+    const pts = [];
+    const E0 = 0.5 * (vx * vx + vy * vy) + g * y; // per unit mass
+    const push = () => { const a = acc(vx, vy); pts.push({ t, x, y, vx, vy, ax: a[0], ay: a[1] }); };
+    push();
+    let apex = { t: 0, x: 0, y: y }, done = false;
+    if (pp.h <= 0 && vy <= 0) { done = true; }
+    let n = 0;
+    while (!done && n++ < 200000) {
+      const k1 = acc(vx, vy);
+      const k2 = acc(vx + .5 * dt * k1[0], vy + .5 * dt * k1[1]);
+      const k3 = acc(vx + .5 * dt * k2[0], vy + .5 * dt * k2[1]);
+      const k4 = acc(vx + dt * k3[0], vy + dt * k3[1]);
+      const nx = x + dt * (vx + dt / 6 * (k1[0] + k2[0] + k3[0])); // exact RK4 position update for v' = f(v)
+      const ny = y + dt * (vy + dt / 6 * (k1[1] + k2[1] + k3[1]));
+      const nvx = vx + dt / 6 * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]);
+      const nvy = vy + dt / 6 * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]);
+      if (vy > 0 && nvy <= 0) { const f = vy / (vy - nvy); apex = { t: t + f * dt, x: x + f * (nx - x), y: Math.max(y, ny) }; }
+      if (ny < 0) { const f = y / (y - ny); x += f * (nx - x); vx += f * (nvx - vx); vy += f * (nvy - vy); t += f * dt; y = 0; push(); done = true; break; }
+      x = nx; y = ny; vx = nvx; vy = nvy; t += dt;
+      if (pp.h > 0 && x < -0.3 && y < pp.h) { push(); done = true; break; }
+      if (t > 900) break;
+      push();
+    }
+    if (apex.y < pp.h) apex = { t: 0, x: 0, y: pp.h };
+    let maxY = 0; pts.forEach(p => { if (p.y > maxY) maxY = p.y; });
+    if (apex.y < maxY) { const p = pts.reduce((a, b) => b.y > a.y ? b : a); apex = { t: p.t, x: p.x, y: p.y }; }
+    const last = pts[pts.length - 1];
+    let xmin = 0; pts.forEach(p => { if (p.x < xmin) xmin = p.x; });
+    return { pts, apex, range: last.x, T: last.t, vImp: Math.hypot(last.vx, last.vy), aImp: SL.deg(Math.atan2(-last.vy, Math.abs(last.vx))), E0, xmin, maxY };
+  }
+  // energy at a sample, per unit mass
+  const eKE = p => 0.5 * (p.vx * p.vx + p.vy * p.vy);
+
+  /* ---------- canvas & view ---------- */
+  const stage = $('#stage'), cvEl = $('#cv'), hudEl = document.querySelector('#stage .hud');
+  const view = { s: 6, ox: 60, ts: 6, tox: 60, init: false };
+  let st = { w: 0, h: 0 };
+  st = SL.canvas(cvEl, () => { view.init = false; fitView(true); });
+  const gy = () => st.h - 44;
+  const X = x => view.ox + x * view.s, Y = y => gy() - y * view.s;
+  const invX = px => (px - view.ox) / view.s, invY = py => (gy() - py) / view.s;
+
+  function extents() {
+    let xmin = 0, xmax = 10, ymax = Math.max(5, S.h * 1.15);
+    const add = r => { xmin = Math.min(xmin, r.xmin); xmax = Math.max(xmax, r.range, r.apex.x); ymax = Math.max(ymax, r.maxY); };
+    shots.forEach(s => { add(s.res); if (s.vac) add(s.vac); });
+    if (S.mode === 'sandbox') { const pv = simulate(params({ c: 0, wind: 0 }), 300); add(pv); }
+    if (game) game.targets.forEach(tg => { xmax = Math.max(xmax, tg.x + tg.r * 3); ymax = Math.max(ymax, tg.y + tg.r * 3); });
+    return { xmin, xmax, ymax };
+  }
+  function fitView(snap) {
+    if (!st.w) return;
+    const e = extents();
+    const W = (e.xmax - e.xmin) * 1.06, H = e.ymax * 1.12;
+    const left = st.w < 500 ? 34 : 60;
+    const s = Math.min((st.w - left - 24) / Math.max(W, 1), (st.h - 120) / Math.max(H, 1));
+    view.ts = s; view.tox = left - e.xmin * s;
+    if (snap || !view.init) { view.s = view.ts; view.ox = view.tox; view.init = true; }
+  }
+
+  /* ---------- drawing ---------- */
+  const stars = Array.from({ length: 140 }, () => [Math.random(), Math.random() * .8, Math.random() * 1.3 + .2]);
+  const windP = Array.from({ length: 50 }, () => [Math.random(), Math.random() * .85, Math.random() * .6 + .4]);
+  function niceStep(px) { const raw = 80 / px; const p = Math.pow(10, Math.floor(Math.log10(raw))); for (const m of [1, 2, 5, 10]) if (m * p >= raw) return m * p; return 10 * p; }
+  function drawBg(ctx, w, h) {
+    const P = PLANETS[S.planet];
+    const g = ctx.createLinearGradient(0, 0, 0, gy()); g.addColorStop(0, P.sky[0]); g.addColorStop(.6, P.sky[1]); g.addColorStop(1, P.sky[2]);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    if (S.planet === 'jupiter') { ctx.globalAlpha = .08; for (let i = 0; i < 7; i++) { ctx.fillStyle = i % 2 ? '#f5d0a0' : '#7c3f12'; ctx.fillRect(0, i * gy() / 7, w, gy() / 14); } ctx.globalAlpha = 1; }
+    if (P.stars) { ctx.fillStyle = '#fff'; stars.forEach(s => { ctx.globalAlpha = P.stars * (.3 + .7 * s[2] / 1.5); ctx.fillRect(s[0] * w, s[1] * gy(), s[2], s[2]); }); ctx.globalAlpha = 1; }
+    if (S.planet === 'moon') { // Earth in the sky
+      const ex = w * .82, ey = 70, r = 22; const eg = ctx.createRadialGradient(ex - 6, ey - 6, 2, ex, ey, r); eg.addColorStop(0, '#7dd3fc'); eg.addColorStop(1, '#1e3a8a');
+      ctx.fillStyle = eg; ctx.beginPath(); ctx.arc(ex, ey, r, 0, 7); ctx.fill();
+    }
+    // grid
+    const step = niceStep(view.s);
+    ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1; ctx.font = '10.5px JetBrains Mono, monospace'; ctx.fillStyle = 'rgba(230,236,247,.45)';
+    const x0 = Math.floor(invX(0) / step) * step;
+    for (let x = x0; X(x) < w; x += step) { const px = Math.round(X(x)) + .5; ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, gy()); ctx.stroke(); ctx.textAlign = 'center'; ctx.fillText(SL.fmt(x, 1) + ' m', px, gy() + 30); }
+    for (let y = step; Y(y) > 0; y += step) { const py = Math.round(Y(y)) + .5; ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(w, py); ctx.stroke(); ctx.textAlign = 'left'; ctx.fillText(SL.fmt(y, 1) + ' m', 4, py - 3); }
+    // ground
+    const gg = ctx.createLinearGradient(0, gy(), 0, h); gg.addColorStop(0, P.ground[0]); gg.addColorStop(1, P.ground[1]);
+    ctx.fillStyle = gg; ctx.fillRect(0, gy(), w, h - gy());
+    ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.beginPath(); ctx.moveTo(0, gy() + .5); ctx.lineTo(w, gy() + .5); ctx.stroke();
+    // cliff/tower
+    if (S.h > 0) {
+      const top = Y(S.h), xr = X(0);
+      const cg = ctx.createLinearGradient(0, top, 0, gy()); cg.addColorStop(0, P.ground[0]); cg.addColorStop(1, '#0d0f14');
+      ctx.fillStyle = cg; ctx.beginPath(); ctx.moveTo(0, top); ctx.lineTo(xr, top); ctx.lineTo(xr + 4, top + (gy() - top) * .3); ctx.lineTo(xr - 2, top + (gy() - top) * .6); ctx.lineTo(xr + 3, gy()); ctx.lineTo(0, gy()); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.stroke();
+      ctx.fillStyle = 'rgba(230,236,247,.7)'; ctx.textAlign = 'right'; ctx.fillText('h = ' + SL.fmt(S.h, 0) + ' m', xr - 6, top + 14);
+    }
+    // wind streaks
+    if (S.air && PLANETS[S.planet].rho > 0 && Math.abs(S.wind) > 0.1) {
+      ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 1.2;
+      windP.forEach(p => { const px = p[0] * w, py = p[1] * gy(), L = SL.clamp(Math.abs(S.wind) * 2.2, 6, 40) * p[2]; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px - Math.sign(S.wind) * L, py); ctx.stroke(); });
+    }
+  }
+  function drawPath(ctx, pts, color, alpha, width, dash) {
+    if (!pts || pts.length < 2) return;
+    ctx.save(); ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = width; ctx.setLineDash(dash || []); ctx.lineJoin = 'round';
+    ctx.beginPath(); const stp = Math.max(1, Math.floor(pts.length / 1500));
+    for (let i = 0; i < pts.length; i += stp) { const p = pts[i]; i ? ctx.lineTo(X(p.x), Y(p.y)) : ctx.moveTo(X(p.x), Y(p.y)); }
+    const l = pts[pts.length - 1]; ctx.lineTo(X(l.x), Y(l.y)); ctx.stroke(); ctx.restore();
+  }
+  function sampleAt(pts, t) {
+    if (t <= 0) return pts[0];
+    const last = pts[pts.length - 1]; if (t >= last.t) return last;
+    let lo = 0, hi = pts.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (pts[m].t <= t) lo = m; else hi = m; }
+    const a = pts[lo], b = pts[hi], f = (t - a.t) / (b.t - a.t || 1); const o = {}; for (const k in a) o[k] = a[k] + (b[k] - a[k]) * f; return o;
+  }
+  function vecArrows(ctx, p, vs, as) {
+    const x = X(p.x), y = Y(p.y);
+    if (Math.abs(p.vx) * vs > 3) SL.arrow(ctx, x, y, x + p.vx * vs, y, '#60a5fa', 2, 7);
+    if (Math.abs(p.vy) * vs > 3) SL.arrow(ctx, x, y, x, y - p.vy * vs, '#34d399', 2, 7);
+    if (Math.hypot(p.ax, p.ay) * as > 3) SL.arrow(ctx, x, y, x + p.ax * as, y - p.ay * as, '#f97316', 2, 7);
+  }
+  function drawBall(ctx, x, y, color, r) {
+    const g = ctx.createRadialGradient(x - r * .35, y - r * .35, r * .1, x, y, r); g.addColorStop(0, '#fff'); g.addColorStop(.35, color); g.addColorStop(1, '#0b0f1a');
+    ctx.save(); ctx.shadowColor = color; ctx.shadowBlur = 14; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.restore();
+  }
+  function ballR() { return SL.clamp(4 + OBJECTS[S.obj].d * 30, 5, 11); }
+  function drawLauncher(ctx) {
+    const x = X(0), y = Y(S.h), th = SL.rad(aiming ? aiming.ang : S.ang);
+    ctx.save(); ctx.translate(x, y);
+    ctx.fillStyle = '#334155'; ctx.beginPath(); ctx.arc(0, 0, 11, Math.PI, 0); ctx.fill();
+    ctx.rotate(-th); const bg = ctx.createLinearGradient(0, -6, 0, 6); bg.addColorStop(0, '#94a3b8'); bg.addColorStop(1, '#334155');
+    ctx.fillStyle = bg; ctx.fillRect(-4, -5.5, 30, 11); ctx.fillStyle = '#0b1222'; ctx.fillRect(24, -4, 3, 8);
+    ctx.restore();
+    ctx.fillStyle = '#1e293b'; ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fill();
+  }
+  function drawTargets(ctx) {
+    if (!game) return;
+    game.targets.forEach(tg => {
+      const x = X(tg.x), y = Y(tg.y), r = Math.max(6, tg.r * view.s);
+      if (tg.pole) { ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y + r); ctx.lineTo(x, gy()); ctx.stroke(); }
+      const cols = tg.hit ? ['#22c55e', '#052e16', '#22c55e'] : ['#ef4444', '#fff', '#ef4444'];
+      [1, .66, .33].forEach((f, i) => { ctx.fillStyle = cols[i]; ctx.beginPath(); ctx.arc(x, y, r * f, 0, 7); ctx.fill(); });
+      if (tg.hit) { ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, r + 4 + Math.sin(performance.now() / 200) * 2, 0, 7); ctx.stroke(); }
+      ctx.fillStyle = 'rgba(230,236,247,.75)'; ctx.font = '10.5px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+      ctx.fillText(SL.fmt(tg.x, 0) + ' m' + (tg.y > 0.5 ? ', ' + SL.fmt(tg.y, 0) + ' m up' : ''), x, y - r - 6);
+    });
+  }
+  function label(ctx, txt, x, y, color) {
+    ctx.font = '600 11px JetBrains Mono, monospace'; const w = ctx.measureText(txt).width + 10;
+    ctx.fillStyle = 'rgba(5,9,19,.82)'; ctx.strokeStyle = color; ctx.lineWidth = 1;
+    const bx = SL.clamp(x - w / 2, 4, st.w - w - 4);
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx, y - 14, w, 19, 5) : ctx.rect(bx, y - 14, w, 19); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = color; ctx.textAlign = 'left'; ctx.fillText(txt, bx + 5, y);
+  }
+
+  let predCache = null;
+  function draw() {
+    const { ctx, w, h } = st;
+    view.s += (view.ts - view.s) * .15; view.ox += (view.tox - view.ox) * .15;
+    drawBg(ctx, w, h);
+    drawTargets(ctx);
+    // previous shots
+    shots.forEach(s => { if (s !== cur) { drawPath(ctx, s.res.pts, s.color, .38, 2); const l = s.res.pts[s.res.pts.length - 1]; ctx.fillStyle = s.color; ctx.globalAlpha = .5; ctx.beginPath(); ctx.arc(X(l.x), Y(l.y), 3, 0, 7); ctx.fill(); ctx.globalAlpha = 1; } });
+    // prediction while aiming / idle
+    if (S.pred && S.mode === 'sandbox' && (!cur || cur.done)) {
+      const pp = aiming ? params({ v0: aiming.spd, ang: aiming.ang }) : params();
+      const key = JSON.stringify(pp); if (!predCache || predCache.key !== key) predCache = { key, r: simulate(pp, 600) };
+      drawPath(ctx, predCache.r.pts, '#ffffff', .5, 1.5, [3, 5]);
+    }
+    if (cur) {
+      const r = cur.res, tNow = Math.min(cur.t, r.T);
+      if (cur.vac && S.cmp) { drawPath(ctx, cur.vac.pts, '#e6ecf7', .55, 1.5, [7, 6]); const l = cur.vac.pts[cur.vac.pts.length - 1]; label(ctx, 'vacuum ' + SL.fmt(cur.vac.range, 1) + ' m', X(l.x), Y(l.y) - 14, '#cbd5e1'); }
+      // travelled part
+      const upto = r.pts.filter(p => p.t <= tNow);
+      drawPath(ctx, upto, cur.color, 1, 3);
+      ctx.save(); ctx.shadowColor = cur.color; ctx.shadowBlur = 12; drawPath(ctx, upto, cur.color, .35, 6); ctx.restore();
+      const vScale = 55 / Math.max(5, cur.p.v0, Math.hypot(r.pts[r.pts.length - 1].vx, r.pts[r.pts.length - 1].vy));
+      const aScale = 34 / cur.p.g;
+      if (S.vecs) { const n = 8; for (let i = 1; i < n; i++) { const tt = r.T * i / n; if (tt < tNow) { ctx.globalAlpha = .55; vecArrows(ctx, sampleAt(r.pts, tt), vScale, aScale); ctx.globalAlpha = 1; } } }
+      // apex
+      if (tNow >= r.apex.t && r.apex.y > S.h + 0.01) {
+        const ax = X(r.apex.x), ay = Y(r.apex.y);
+        ctx.setLineDash([3, 4]); ctx.strokeStyle = 'rgba(250,204,21,.6)'; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax, gy()); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.moveTo(ax, ay - 7); ctx.lineTo(ax + 6, ay); ctx.lineTo(ax, ay + 7); ctx.lineTo(ax - 6, ay); ctx.fill();
+        label(ctx, 'H = ' + SL.fmt(r.apex.y, 2) + ' m', ax, ay - 14, '#facc15');
+      }
+      const p = sampleAt(r.pts, tNow);
+      if (S.vecs) vecArrows(ctx, p, vScale, aScale);
+      drawBall(ctx, X(p.x), Y(p.y), OBJECTS[cur.obj].color, ballR());
+      if (cur.done) {
+        const l = r.pts[r.pts.length - 1];
+        ctx.strokeStyle = cur.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(X(l.x) - 6, gy() - 6); ctx.lineTo(X(l.x) + 6, gy() + 6); ctx.moveTo(X(l.x) + 6, gy() - 6); ctx.lineTo(X(l.x) - 6, gy() + 6); ctx.stroke();
+        label(ctx, 'R = ' + SL.fmt(r.range, 2) + ' m', X(l.x), gy() - 14, cur.color);
+      }
+      // legend for vectors
+      if (S.vecs) {
+        ctx.font = '10.5px JetBrains Mono, monospace'; const items = [['v_x', '#60a5fa'], ['v_y', '#34d399'], ['a', '#f97316']];
+        let lx = 14; const ly = hudEl.offsetHeight + 30; items.forEach(([t, c]) => { ctx.fillStyle = c; ctx.fillRect(lx, ly - 4, 14, 3); ctx.fillStyle = 'rgba(230,236,247,.8)'; ctx.textAlign = 'left'; ctx.fillText(t, lx + 18, ly); lx += 50; });
+      }
+    }
+    drawLauncher(ctx);
+    if (!cur || cur.done) { if (!aiming) drawBall(ctx, X(0) + Math.cos(SL.rad(S.ang)) * 26, Y(S.h) - Math.sin(SL.rad(S.ang)) * 26, OBJECTS[S.obj].color, ballR() * .8); }
+    if (aiming) {
+      const x0 = X(0), y0 = Y(S.h);
+      ctx.strokeStyle = 'rgba(250,204,21,.8)'; ctx.lineWidth = 2; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(aiming.px, aiming.py); ctx.stroke(); ctx.setLineDash([]);
+      drawBall(ctx, aiming.px, aiming.py, OBJECTS[S.obj].color, ballR());
+      const L = 30 + aiming.spd * 1.3, th = SL.rad(aiming.ang);
+      SL.arrow(ctx, x0, y0, x0 + Math.cos(th) * L, y0 - Math.sin(th) * L, '#facc15', 3, 11);
+      ctx.strokeStyle = 'rgba(250,204,21,.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x0, y0, 34, 0, -th, th > 0); ctx.stroke();
+      label(ctx, `θ ${SL.fmt(aiming.ang, 1)}°  v₀ ${SL.fmt(aiming.spd, 1)} m/s`, x0 + Math.cos(th) * L + 40, y0 - Math.sin(th) * L - 10, '#facc15');
+    }
+    if (firstShot && !aiming && !cur) {
+      ctx.fillStyle = 'rgba(230,236,247,.75)'; ctx.font = '600 14px Inter, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('Drag back from the launcher and release to launch', w / 2, h * .38);
+      ctx.font = '12px Inter, sans-serif'; ctx.fillStyle = 'rgba(230,236,247,.5)'; ctx.fillText('or set the angle and speed and press Launch', w / 2, h * .38 + 20);
+    }
+  }
+
+  /* ---------- launching ---------- */
+  function launch(ang, spd) {
+    if (ang !== undefined) { setSlider('#ang', ang); setSlider('#spd', spd); }
+    if (S.mode === 'game') { if (!game || game.left <= 0) { SL.toast('No shots left. Start a new round.', 'warn'); return; } game.left--; }
+    if (cur && !cur.done) finish(cur);
+    const p = params();
+    const res = simulate(p);
+    const vac = p.c > 0 ? simulate(params({ c: 0, wind: 0 })) : null;
+    const color = SHOT_COLORS[colorIdx++ % SHOT_COLORS.length];
+    cur = { p, res, vac, color, t: 0, done: false, obj: S.obj, planet: S.planet, air: p.c > 0, ang: S.ang, spd: S.spd, h: S.h, wind: p.wind };
+    shots.push(cur); if (shots.length > 8) shots.shift();
+    firstShot = false;
+    fitView();
+    updateStats(true);
+  }
+  function finish(s) {
+    s.t = s.res.T; s.done = true;
+    if (s === cur) { renderShotList(); checkChallenges(s); if (game) checkTargets(s); updateStats(); }
+  }
+  function setSlider(sel, v) { const el = $(sel); el.value = v; el.dispatchEvent(new Event('input')); }
+
+  /* ---------- pointer aiming ---------- */
+  const vmax = 100;
+  function aimFrom(e) {
+    const p = SL.ptr(e, cvEl), x0 = X(0), y0 = Y(S.h);
+    const dx = x0 - p.x, dy = p.y - y0; // pull-back vector, flipped
+    const L = Math.hypot(dx, dy);
+    const k = vmax / (0.42 * Math.min(st.w, st.h * 1.4));
+    let ang = SL.deg(Math.atan2(dy, dx)); ang = SL.clamp(Math.round(ang * 2) / 2, -30, 90);
+    const spd = SL.clamp(Math.round(L * k * 2) / 2, 0, vmax);
+    const th = SL.rad(ang), Lp = Math.min(L, 0.42 * Math.min(st.w, st.h * 1.4));
+    return { ang, spd, px: x0 - Math.cos(th) * Lp, py: y0 + Math.sin(th) * Lp, L };
+  }
+  cvEl.addEventListener('pointerdown', e => { if (e.button > 0) return; cvEl.setPointerCapture(e.pointerId); aiming = aimFrom(e); });
+  cvEl.addEventListener('pointermove', e => { if (!aiming) return; aiming = aimFrom(e); $('#hV').textContent = SL.fmt(aiming.spd, 1); });
+  const endAim = e => { if (!aiming) return; const a = aiming; aiming = null; if (a.L > 12) launch(a.ang, a.spd); };
+  cvEl.addEventListener('pointerup', endAim); cvEl.addEventListener('pointercancel', () => aiming = null);
+
+  /* ---------- stats / ui ---------- */
+  function updateStats(reset) {
+    const s = cur; if (!s) return;
+    const r = s.res;
+    $('#sRange').innerHTML = SL.fmt(r.range, 2) + '<small>m</small>';
+    $('#sTof').innerHTML = SL.fmt(r.T, 2) + '<small>s</small>';
+    $('#sH').innerHTML = SL.fmt(r.apex.y, 2) + '<small>m</small>';
+    $('#sVi').innerHTML = SL.fmt(r.vImp, 2) + '<small>m/s</small>';
+    $('#sAi').innerHTML = SL.fmt(r.aImp, 1) + '<small>°</small>';
+    $('#sVac').innerHTML = s.vac ? SL.fmt(s.vac.range, 2) + '<small>m</small>' : '<span class="dim" style="font-size:.85rem">same</span>';
+    $('#shotName').textContent = `${OBJECTS[s.obj].name} · ${PLANETS[s.planet].name} · ${s.air ? 'air' : 'vacuum'}`;
+  }
+  function liveReadout() {
+    if (!cur) return;
+    const p = sampleAt(cur.res.pts, Math.min(cur.t, cur.res.T)), m = cur.p.m;
+    $('#hT').textContent = SL.fmt(p.t, 2); $('#hX').textContent = SL.fmt(p.x, 1); $('#hY').textContent = SL.fmt(p.y, 1);
+    if (!aiming) $('#hV').textContent = SL.fmt(Math.hypot(p.vx, p.vy), 1);
+    const ke = eKE(p) * m, pe = cur.p.g * p.y * m, E0 = cur.res.E0 * m, lost = E0 - ke - pe;
+    const tot = Math.max(E0, ke + pe, 1e-9);
+    $('#eKE').style.width = (ke / tot * 100) + '%'; $('#ePE').style.width = (pe / tot * 100) + '%'; $('#eL').style.width = Math.max(0, lost / tot * 100) + '%';
+    $('#vKE').textContent = SL.fmt(ke, ke < 10 ? 2 : 0); $('#vPE').textContent = SL.fmt(pe, pe < 10 ? 2 : 0); $('#vL').textContent = SL.fmt(lost, Math.abs(lost) < 10 ? 2 : 0);
+  }
+  function renderShotList() {
+    const el = $('#shotList');
+    if (!shots.length) { el.innerHTML = '<div class="dim">No shots yet. Drag back from the launcher and let go.</div>'; return; }
+    el.innerHTML = shots.slice().reverse().map(s => `<div><i style="background:${s.color}"></i><span>${OBJECTS[s.obj].name.split(' ')[0]} ${SL.fmt(s.ang, 1)}° ${SL.fmt(s.spd, 1)} m/s ${s.h ? 'h' + s.h + ' ' : ''}${s.air ? (s.wind ? 'wind ' + s.wind + ' ' : 'air') : 'vac'} ${PLANETS[s.planet].name.slice(0, 2)} → <b style="color:var(--text)">${SL.fmt(s.res.range, 1)} m</b></span></div>`).join('');
+  }
+  function updateSpec() {
+    const o = objParams(), pp = params(), v = vt(Object.assign({}, pp, { rho: PLANETS[S.planet].rho }));
+    const A = Math.PI * o.d * o.d / 4;
+    $('#spec').innerHTML = `m <b>${SL.fmt(o.m * 1000 >= 1000 ? o.m : o.m * 1000, o.m >= 1 ? 2 : 1)} ${o.m >= 1 ? 'kg' : 'g'}</b> · d <b>${SL.fmt(o.d * 1000, 1)} mm</b> · C<sub>d</sub> <b>${o.cd}</b><br>A <b>${SL.fmt(A * 1e4, 2)} cm²</b> · terminal velocity <b>${isFinite(v) ? SL.fmt(v, 1) + ' m/s' : '∞ (no air)'}</b><br><span class="dim">${NOTES[S.obj]}</span>`;
+    const P = PLANETS[S.planet];
+    $('#hEnv').innerHTML = `${P.name} · g = <b>${P.g}</b> m/s² · ${S.air && P.rho > 0 ? 'ρ = ' + P.rho + ' kg/m³' : 'vacuum'}`;
+  }
+  function onParam() { updateSpec(); predCache = null; if (!cur || cur.done) fitView(); }
+
+  // object grid
+  $('#objGrid').innerHTML = Object.entries(OBJECTS).map(([k, o]) => { const r = SL.clamp(6 + o.d * 40, 8, 18); return `<button data-o="${k}" class="${k === S.obj ? 'on' : ''}"><span class="dot" style="width:${r}px;height:${r}px;background:${o.color}"></span>${o.name}</button>`; }).join('');
+  $('#objGrid').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; selectObj(b.dataset.o); });
+  function selectObj(k) {
+    S.obj = k; document.querySelectorAll('#objGrid button').forEach(x => x.classList.toggle('on', x.dataset.o === k));
+    $('#customBox').classList.toggle('hidden', k !== 'custom'); onParam();
+  }
+  SL.bind('#cm', v => { OBJECTS.custom.m = v; onParam(); }, v => v >= 1 ? SL.fmt(v, 2) + ' kg' : SL.fmt(v * 1000, 0) + ' g');
+  SL.bind('#cd', v => { OBJECTS.custom.d = v; onParam(); }, v => SL.fmt(v * 100, 1) + ' cm');
+  SL.bind('#ccd', v => { OBJECTS.custom.cd = v; onParam(); }, v => SL.fmt(v, 2));
+  SL.bind('#ang', v => { S.ang = v; onParam(); }, v => SL.fmt(v, 1) + '°');
+  SL.bind('#spd', v => { S.spd = v; onParam(); }, v => SL.fmt(v, 1) + ' m/s');
+  SL.bind('#hgt', v => { S.h = v; onParam(); }, v => v + ' m');
+  SL.bind('#wind', v => { S.wind = v; onParam(); }, v => (v > 0 ? '+' : '') + SL.fmt(v, 1) + ' m/s');
+  SL.bind('#air', v => { S.air = v; onParam(); });
+  SL.bind('#cmpVac', v => S.cmp = v); SL.bind('#vecs', v => S.vecs = v); SL.bind('#pred', v => S.pred = v);
+  document.querySelectorAll('[data-h]').forEach(b => b.onclick = () => setSlider('#hgt', b.dataset.h));
+  const segPick = (seg, attr, cb) => $(seg).addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $(seg).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); cb(b.dataset[attr]); });
+  segPick('#planetSeg', 'p', p => { S.planet = p; onParam(); if (game) newRound(); });
+  segPick('#speedSeg', 's', s => S.play = +s);
+  segPick('#modeSeg', 'm', m => setMode(m));
+  function setPlanet(p) { S.planet = p; document.querySelectorAll('#planetSeg button').forEach(x => x.classList.toggle('on', x.dataset.p === p)); onParam(); }
+  $('#fire').onclick = () => launch();
+  $('#skip').onclick = () => { if (cur && !cur.done) finish(cur); };
+  $('#clearBtn').onclick = () => { shots = cur && !cur.done ? [cur] : []; if (!shots.length) cur = null; renderShotList(); fitView(); };
+  $('#fitBtn').onclick = () => fitView();
+  $('#resetAll').onclick = () => { shots = []; cur = null; colorIdx = 0; setSlider('#ang', 45); setSlider('#spd', 25); setSlider('#hgt', 0); setSlider('#wind', 0); $('#air').checked = true; $('#air').dispatchEvent(new Event('change')); setPlanet('earth'); selectObj('stone'); renderShotList(); fitView(); ['#sRange', '#sTof', '#sH', '#sVi', '#sAi', '#sVac'].forEach(s => $(s).textContent = '—'); };
+  document.querySelectorAll('[data-load]').forEach(b => b.addEventListener('click', () => {
+    const c = JSON.parse(b.dataset.load);
+    if (S.mode !== 'sandbox') { document.querySelector('#modeSeg [data-m=sandbox]').click(); }
+    selectObj(c.obj); setPlanet(c.planet); $('#air').checked = c.air; $('#air').dispatchEvent(new Event('change'));
+    setSlider('#ang', c.ang); setSlider('#spd', c.spd); setSlider('#hgt', c.hgt); setSlider('#wind', c.wind);
+    shots = []; cur = null; renderShotList();
+    $('#lab').scrollIntoView({ behavior: 'smooth' }); setTimeout(() => launch(), 500);
+  }));
+
+  /* ---------- game ---------- */
+  function setMode(m) {
+    S.mode = m; $('#lab').classList.toggle('game', m === 'game'); $('#predWrap').classList.toggle('hidden', m === 'game');
+    shots = []; cur = null; renderShotList();
+    if (m === 'game') newRound(); else { game = null; fitView(); }
+  }
+  function bestRange(v) { // quick scan for reach with current physics
+    let best = 0; for (let a = 10; a <= 60; a += 2.5) { const r = simulate(params({ v0: v, ang: a }), 250); if (r.range > best) best = r.range; } return best;
+  }
+  function newRound() {
+    const reach = bestRange(60);
+    const targets = [];
+    for (let i = 0; i < 5; i++) {
+      const fx = .22 + i * .15 + Math.random() * .08;
+      const x = reach * fx, pole = i % 2 === 1 || (i === 4 && Math.random() < .5);
+      const r = Math.max(0.8, reach * .022);
+      const y = pole ? reach * (.05 + Math.random() * .18) : r;
+      targets.push({ x, y, r, pole, hit: false });
+    }
+    game = { targets, left: 10, hits: 0 };
+    shots = []; cur = null; renderShotList(); updateGame(); fitView();
+    SL.toast(`New round on ${PLANETS[S.planet].name}: 5 targets, 10 shots. Launch speeds up to 100 m/s.`);
+  }
+  function checkTargets(s) {
+    const pts = s.res.pts; let newHits = 0;
+    game.targets.forEach(tg => {
+      if (tg.hit) return;
+      const tol = tg.r + OBJECTS[s.obj].d / 2;
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1], b = pts[i], dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy || 1e-12;
+        const u = SL.clamp(((tg.x - a.x) * dx + (tg.y - a.y) * dy) / L2, 0, 1);
+        if (Math.hypot(a.x + u * dx - tg.x, a.y + u * dy - tg.y) <= tol) { tg.hit = true; newHits++; break; }
+      }
+    });
+    game.hits = game.targets.filter(t => t.hit).length; updateGame();
+    if (newHits) SL.toast(`Hit! ${game.hits}/5 targets down.`, 'ok');
+    if (game.hits === 5) { SL.toast(`All targets hit with ${game.left} shot${game.left === 1 ? '' : 's'} to spare.`, 'ok', 5000); markChal('sharp'); }
+    else if (game.left === 0) SL.toast(`Out of shots: ${game.hits}/5 hit. Press New round to try again.`, 'warn', 5000);
+  }
+  function updateGame() { if (!game) return; $('#gShots').textContent = game.left; $('#gHits').textContent = game.hits + '/5'; }
+  $('#newRound').onclick = newRound;
+
+  /* ---------- challenges ---------- */
+  const CHALS = [
+    { id: 'opt45', t: 'The 45° rule', d: 'In a vacuum from level ground, fire a shot whose range is within 0.2% of the theoretical maximum $v_0^2/g$ for its speed.' },
+    { id: 'dragopt', t: 'Drag lowers the best angle', d: 'With air on Earth, from the ground with no wind, launch a golf ball or football at 40 m/s or more and get within 1% of its true maximum range. You will find the best angle is below 45°.' },
+    { id: 'cliff', t: 'Cliff-top optimum', d: 'From a height of at least 40 m in a vacuum, get within 0.3% of the maximum range $R_{max} = \\tfrac{v_0}{g}\\sqrt{v_0^2+2gh}$. The angle you need is less than 45°.' },
+    { id: 'term', t: 'Terminal velocity', d: 'With air on Earth, drop or throw any object so that it lands within 2% of its terminal velocity (shown under the object list).' },
+    { id: 'moon', t: 'One small kick', d: 'Fire the same speed and angle from the ground in a vacuum on Earth and then on the Moon. The lab checks that the range ratio equals $g_E/g_M = 6.06$.' },
+    { id: 'sharp', t: 'Sharpshooter', d: 'In the Target game, hit all five targets in one round.' },
+  ];
+  $('#chalList').innerHTML = CHALS.map(c => `<div class="chal" id="ch-${c.id}"><span class="led"></span><div><b>${c.t}</b><p>${c.d}</p></div></div>`).join('');
+  function markChal(id, msg) {
+    if (chal[id]) return; chal[id] = true;
+    const el = $('#ch-' + id); if (el) el.querySelector('.led').classList.add('on');
+    const c = CHALS.find(x => x.id === id);
+    SL.toast(`<b>Challenge complete:</b> ${c.t}${msg ? '<br>' + msg : ''}`, 'ok', 6000);
+  }
+  function checkChallenges(s) {
+    const p = s.p, r = s.res;
+    if (p.c === 0 && p.h === 0 && p.v0 > 1) { const R = p.v0 * p.v0 / p.g; if (r.range >= 0.998 * R) markChal('opt45', `Range ${SL.fmt(r.range, 2)} m vs v₀²/g = ${SL.fmt(R, 2)} m at θ = ${s.ang}°.`); }
+    if (p.c > 0 && p.h === 0 && p.wind === 0 && s.planet === 'earth' && (s.obj === 'golf' || s.obj === 'football') && p.v0 >= 40) {
+      let best = 0, bestA = 0; for (let a = 15; a <= 50; a += 0.5) { const q = simulate(params({ v0: p.v0, ang: a, h: 0, obj: s.obj }), 800); if (q.range > best) { best = q.range; bestA = a; } }
+      if (r.range >= 0.99 * best) markChal('dragopt', `Best angle for this ${OBJECTS[s.obj].name.toLowerCase()} at ${p.v0} m/s is about ${bestA}°, range ${SL.fmt(best, 1)} m.`);
+    }
+    if (p.c === 0 && p.h >= 40 && p.v0 > 1) { const R = p.v0 / p.g * Math.sqrt(p.v0 * p.v0 + 2 * p.g * p.h), ao = SL.deg(Math.atan(p.v0 / Math.sqrt(p.v0 * p.v0 + 2 * p.g * p.h))); if (r.range >= 0.997 * R) markChal('cliff', `Optimum angle here is ${SL.fmt(ao, 1)}°, R<sub>max</sub> = ${SL.fmt(R, 1)} m.`); }
+    if (p.c > 0 && s.planet === 'earth') { const v = vt(p); if (Math.abs(r.vImp - v) / v < 0.02) markChal('term', `Impact ${SL.fmt(r.vImp, 2)} m/s, v<sub>t</sub> = ${SL.fmt(v, 2)} m/s.`); }
+    if (p.c === 0 && p.h === 0 && p.v0 > 1 && s.planet === 'moon') {
+      const e = shots.find(q => q !== s && q.planet === 'earth' && q.p.c === 0 && q.h === 0 && q.spd === s.spd && q.ang === s.ang);
+      if (e && e.res.range > 0) { const ratio = r.range / e.res.range; if (Math.abs(ratio - 9.81 / 1.62) < 0.12) markChal('moon', `Range ratio ${SL.fmt(ratio, 2)} (Moon ${SL.fmt(r.range, 1)} m / Earth ${SL.fmt(e.res.range, 1)} m).`); }
+    }
+  }
+
+  /* ---------- data table ---------- */
+  (function () {
+    const rows = Object.entries(OBJECTS).filter(([k]) => k !== 'custom').map(([k, o]) => {
+      const A = Math.PI * o.d * o.d / 4, v = Math.sqrt(2 * o.m * 9.81 / (1.225 * o.cd * A));
+      return `<tr><td>${o.name}</td><td class="num">${o.m >= 1 ? SL.fmt(o.m, 2) + ' kg' : SL.fmt(o.m * 1000, 1) + ' g'}</td><td class="num">${SL.fmt(o.d * 1000, 1)} mm</td><td class="num">${o.cd}</td><td class="num">${SL.fmt(o.m / A, 1)}</td><td class="num">${SL.fmt(v, 1)} m/s</td></tr>`;
+    }).join('');
+    $('#dataTable').innerHTML = `<thead><tr><th>Object</th><th>Mass</th><th>Diameter</th><th>C<sub>d</sub></th><th>m/A (kg/m²)</th><th>v<sub>t</sub> (Earth)</th></tr></thead><tbody>${rows}</tbody>`;
+  })();
+
+  /* ---------- quiz ---------- */
+  SL.quiz('#quiz', [
+    { q: 'In a vacuum, what is the velocity of a projectile at the top of its path?', options: ['Zero', 'Horizontal, equal to $v_0\\cos\\theta$', 'Vertical, equal to $v_0\\sin\\theta$', 'Equal to $v_0$'], answer: 1, why: 'Only the vertical component becomes zero at the apex. The horizontal component never changes without air, so the velocity there is $v_0\\cos\\theta$.' },
+    { q: 'What is the acceleration of a projectile in a vacuum, just after launch, at the apex and just before impact?', options: ['Largest at launch, zero at the apex', 'Always $g$ downward', 'Always along the velocity', 'Zero at the apex, $g$ elsewhere'], answer: 1, why: 'Gravity is the only force, so the acceleration is $g$ downward everywhere, including at the apex. The orange arrow in the lab never changes in a vacuum.' },
+    { q: 'Two stones are thrown at 20 m/s on flat ground in a vacuum, one at 30° and one at 60°. Which lands further away?', options: ['30°', '60°', 'They land at the same distance', 'It depends on their mass'], answer: 2, why: '$R = v_0^2\\sin2\\theta/g$ and $\\sin60^\\circ = \\sin120^\\circ$, so complementary angles give the same range (35.3 m here). The 60° stone stays up longer and goes higher.' },
+    { q: 'A ball is rolled off a 45 m cliff horizontally at 10 m/s (take $g = 9.8$ m/s², no air). How long until it lands?', options: ['1.5 s', '3.0 s', '4.5 s', '9.2 s'], answer: 1, why: 'Vertical motion starts from rest: $t = \\sqrt{2h/g} = \\sqrt{90/9.8} = 3.03$ s. The horizontal speed does not affect the fall time.' },
+    { q: 'With quadratic drag, by what factor does the drag force increase if the speed doubles?', options: ['2', '$\\sqrt2$', '4', '8'], answer: 2, why: '$F_D = \\tfrac12\\rho C_d A v^2$, so doubling $v$ quadruples the force.' },
+    { q: 'Which change doubles the terminal velocity of a sphere?', options: ['Doubling its mass', 'Quadrupling its mass (same size and shape)', 'Halving its drag coefficient', 'Doubling the air density'], answer: 1, why: '$v_t = \\sqrt{2mg/(\\rho C_d A)}$: it scales as $\\sqrt m$, so mass must increase four times. Halving $C_d$ only raises $v_t$ by $\\sqrt2$.' },
+    { q: 'Why is the angle for maximum range less than 45° when there is air resistance?', options: ['Air pushes the ball down', 'High lobs stay in the air longer and lose more horizontal speed, so flatter shots go further', 'Drag increases the effect of gravity', 'Air density is lower higher up'], answer: 1, why: 'Drag acts for the whole flight. A higher trajectory has a longer flight, so it loses more of its horizontal velocity. A flatter launch trades a little height for keeping its speed.' },
+    { q: 'The same kick (same speed and angle) is made on the Moon, with no air. Compared with the vacuum range on Earth, the range is about:', options: ['The same', '1.6 times as far', '6 times as far', '36 times as far'], answer: 2, why: 'Range is proportional to $1/g$, and $9.81/1.62 = 6.06$.' },
+    { q: 'A bullet is fired horizontally and another is dropped from the same height at the same moment (no air). Which hits the ground first?', options: ['The dropped one', 'The fired one', 'They land at the same time', 'It depends on the muzzle speed'], answer: 2, why: 'Vertical motion is independent of horizontal motion. Both start with zero vertical velocity and fall with the same acceleration.' },
+  ]);
+
+  /* ---------- main loop ---------- */
+  let lastHud = 0;
+  const loop = SL.loop((dt, t) => {
+    if (cur && !cur.done) { cur.t += dt * S.play; if (cur.t >= cur.res.T) finish(cur); }
+    if (t - lastHud > .05) { liveReadout(); lastHud = t; }
+    draw();
+  }).start();
+  document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
+
+  updateSpec(); fitView(true);
+  window.__pj = { simulate, params, S, get cur() { return cur; }, get game() { return game; }, launch, finish, vt };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Waves &amp; Optics · Pentarch SimLab</title>
+<meta name="description" content="Ripple-tank interference, Young's slits and diffraction gratings, a live ray-tracing optical bench, Snell's law and total internal reflection, and standing waves you can hear.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .stage.wv{height:580px;touch-action:none}
+  @media (max-width:640px){.stage.wv{height:460px;min-height:0}.stage .readout{font-size:.68rem;padding:4px 7px}}
+  .seg.full{display:flex}.seg.full button{flex:1;text-align:center}
+  .grp{display:none}.grp.show{display:block}
+  .stat .k{text-transform:none;letter-spacing:.02em;font-size:.72rem}
+  .wmodes{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .wmodes button{all:unset;cursor:pointer;text-align:center;padding:8px 3px;border-radius:9px;border:1px solid var(--line2);background:var(--bg2);font-size:.74rem;line-height:1.2;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px}
+  .wmodes button svg{width:17px;height:17px}
+  .wmodes button.on{border-color:var(--accent);color:var(--text);background:color-mix(in srgb,var(--accent) 14%,var(--bg2))}
+  .chal{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
+  .chal .led{margin-top:6px;flex:none}.chal b{display:block}.chal p{margin:2px 0 0;color:var(--muted);font-size:.9rem}
+  .nature{font:500 .8rem var(--mono);color:var(--muted);line-height:1.7;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:10px}
+  .nature b{color:var(--text)}
+  .lamb{height:8px;border-radius:5px;background:linear-gradient(90deg,#7600ed,#2b00ff,#00a8ff,#00ff6e,#c8ff00,#ffcc00,#ff5a00,#d00000);margin:-2px 0 6px}
+  svg.diag text{font-family:var(--mono);font-size:12px;fill:var(--muted)}
+</style>
+</head>
+<body data-page="waves-optics">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab" id="lab">
+    <div style="min-width:0">
+      <div class="stage wv" id="stage">
+        <canvas id="cv" aria-label="Waves and optics stage"></canvas>
+        <div class="hud" id="hud"></div>
+        <div class="stage-toolbar"><button class="btn sm" id="playBtn" title="Pause or play"><i data-lucide="pause"></i></button></div>
+      </div>
+      <div class="panel" style="margin-top:14px">
+        <h3><i data-lucide="gauge"></i> <span id="statsTitle">Measurements</span></h3>
+        <div class="stats" id="stats"></div>
+        <div class="nature" id="nature" style="display:none"></div>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <div class="wmodes" id="modeSeg">
+          <button data-m="ripple" class="on"><i data-lucide="radio"></i>Ripple tank</button>
+          <button data-m="slits"><i data-lucide="columns-3"></i>Slits &amp; gratings</button>
+          <button data-m="bench"><i data-lucide="scan-eye"></i>Lens bench</button>
+          <button data-m="refract"><i data-lucide="triangle-right"></i>Refraction</button>
+          <button data-m="standing"><i data-lucide="audio-lines"></i>Standing waves</button>
+        </div>
+      </div>
+
+      <!-- RIPPLE -->
+      <div class="panel grp" data-g="ripple">
+        <h3><i data-lucide="radio"></i> Ripple tank</h3>
+        <div class="seg full" id="nsrc" style="margin-bottom:6px"><button data-n="1">1 source</button><button class="on" data-n="2">2 sources</button></div>
+        <div class="seg full" id="rview" style="margin-bottom:6px"><button class="on" data-v="wave">Waves</button><button data-v="int">Time-averaged intensity</button></div>
+        <div class="ctl"><label for="rl">Wavelength λ</label><output></output><input type="range" id="rl" min="0.6" max="5" step="0.05" value="2"></div>
+        <div class="ctl"><label for="rd">Source separation d</label><output></output><input type="range" id="rd" min="0" max="16" step="0.1" value="6"></div>
+        <div class="ctl"><label for="rp">Phase difference φ</label><output></output><input type="range" id="rp" min="0" max="360" step="5" value="0"></div>
+        <label class="toggle">Theory: nodal-line directions<input type="checkbox" id="rth" checked></label>
+        <p class="small muted" style="margin:6px 0 0">Drag the sources. Hover anywhere to read the path difference.</p>
+      </div>
+
+      <!-- SLITS -->
+      <div class="panel grp" data-g="slits">
+        <h3><i data-lucide="columns-3"></i> Slits &amp; gratings</h3>
+        <div class="seg full" id="slitType" style="margin-bottom:6px"><button data-t="1">Single</button><button class="on" data-t="2">Double</button><button data-t="g">Grating</button></div>
+        <div class="ctl"><label for="sl">Wavelength λ</label><output></output><input type="range" id="sl" min="380" max="750" step="1" value="633"></div>
+        <div class="lamb"></div>
+        <div class="ctl"><label for="sa">Slit width a</label><output></output><input type="range" id="sa" min="5" max="200" step="1" value="40"></div>
+        <div class="ctl" id="sdWrap"><label for="sd">Slit separation d</label><output></output><input type="range" id="sd" min="20" max="1000" step="5" value="250"></div>
+        <div class="ctl" id="sgWrap"><label for="sg">Grating lines per mm</label><output></output><input type="range" id="sg" min="50" max="1200" step="10" value="300"></div>
+        <div class="ctl" id="snWrap"><label for="sn">Number of slits N</label><output></output><input type="range" id="sn" min="3" max="60" step="1" value="10"></div>
+        <div class="ctl"><label for="sL">Screen distance L</label><output></output><input type="range" id="sL" min="0.3" max="5" step="0.05" value="1.5"></div>
+        <label class="toggle">Photon-by-photon build-up<input type="checkbox" id="phot"></label>
+        <label class="toggle">Show single-slit envelope<input type="checkbox" id="env" checked></label>
+      </div>
+
+      <!-- BENCH -->
+      <div class="panel grp" data-g="bench">
+        <h3><i data-lucide="scan-eye"></i> Optical bench</h3>
+        <div class="btn-row" id="benchPresets" style="margin-bottom:8px">
+          <button class="btn sm" data-p="proj">Projector</button><button class="btn sm" data-p="cam">Camera</button><button class="btn sm" data-p="mag">Magnifier</button><button class="btn sm" data-p="div">Diverging</button>
+          <button class="btn sm" data-p="micro">Microscope</button><button class="btn sm" data-p="tele">Telescope</button><button class="btn sm" data-p="concave">Concave mirror</button><button class="btn sm" data-p="convex">Convex mirror</button>
+        </div>
+        <div class="seg full" id="benchKind" style="margin-bottom:6px"><button class="on" data-k="lens">Lens(es)</button><button data-k="mirror">Mirror</button></div>
+        <div class="ctl"><label for="f1" id="f1lab">Lens 1 focal length f₁</label><output></output><input type="range" id="f1" min="-40" max="40" step="0.5" value="10"></div>
+        <div id="lens2box">
+          <label class="toggle">Second lens<input type="checkbox" id="use2"></label>
+          <div class="ctl" id="f2wrap"><label for="f2">Lens 2 focal length f₂</label><output></output><input type="range" id="f2" min="-40" max="40" step="0.5" value="8"></div>
+        </div>
+        <div class="ctl"><label for="oh">Object height</label><output></output><input type="range" id="oh" min="-6" max="6" step="0.1" value="3"></div>
+        <label class="toggle">Distant object (parallel rays)<input type="checkbox" id="far"></label>
+        <label class="toggle">Extra rays (fan)<input type="checkbox" id="fan"></label>
+        <p class="small muted" style="margin:6px 0 0">Drag the object, lenses or mirror along the bench; drag the arrow tip up or down.</p>
+      </div>
+
+      <!-- REFRACTION -->
+      <div class="panel grp" data-g="refract">
+        <h3><i data-lucide="triangle-right"></i> Refraction</h3>
+        <div class="seg full" id="refKind" style="margin-bottom:8px"><button class="on" data-k="iface">Interface</button><button data-k="fibre">Optical fibre</button></div>
+        <div id="ifaceBox">
+          <div class="ctl"><label for="n1">Upper medium n₁</label><output></output><input type="range" id="n1" min="1" max="2.5" step="0.01" value="1.5"></div>
+          <div class="btn-row" style="margin-bottom:4px"><button class="btn sm" data-n1="1.00">Air</button><button class="btn sm" data-n1="1.33">Water</button><button class="btn sm" data-n1="1.50">Glass</button><button class="btn sm" data-n1="2.42">Diamond</button></div>
+          <div class="ctl"><label for="n2">Lower medium n₂</label><output></output><input type="range" id="n2" min="1" max="2.5" step="0.01" value="1"></div>
+          <div class="btn-row" style="margin-bottom:4px"><button class="btn sm" data-n2="1.00">Air</button><button class="btn sm" data-n2="1.33">Water</button><button class="btn sm" data-n2="1.50">Glass</button><button class="btn sm" data-n2="2.42">Diamond</button></div>
+          <div class="ctl"><label for="th1">Angle of incidence θ₁</label><output></output><input type="range" id="th1" min="0" max="89.5" step="0.1" value="35"></div>
+          <button class="btn sm" id="swapN"><i data-lucide="arrow-up-down"></i> Swap media</button>
+        </div>
+        <div id="fibreBox" style="display:none">
+          <div class="ctl"><label for="nco">Core index</label><output></output><input type="range" id="nco" min="1.40" max="1.70" step="0.005" value="1.48"></div>
+          <div class="ctl"><label for="ncl">Cladding index</label><output></output><input type="range" id="ncl" min="1.00" max="1.69" step="0.005" value="1.46"></div>
+          <div class="ctl"><label for="lang">Launch angle in air</label><output></output><input type="range" id="lang" min="0" max="60" step="0.5" value="10"></div>
+          <div class="ctl"><label for="bend">Fibre bend</label><output></output><input type="range" id="bend" min="0" max="1" step="0.01" value="0"></div>
+        </div>
+        <p class="small muted" style="margin:6px 0 0">Drag the laser on the stage to change the angle.</p>
+      </div>
+
+      <!-- STANDING -->
+      <div class="panel grp" data-g="standing">
+        <h3><i data-lucide="audio-lines"></i> Standing waves</h3>
+        <div class="seg full" id="swKind" style="margin-bottom:8px"><button class="on" data-k="string">String</button><button data-k="open">Open pipe</button><button data-k="closed">Closed pipe</button></div>
+        <div class="seg full" id="swMode" style="margin-bottom:6px"><button class="on" data-k="mode">Single harmonic</button><button data-k="pluck">Pluck / blow</button></div>
+        <div class="ctl"><label for="hn">Harmonic n</label><output></output><input type="range" id="hn" min="1" max="10" step="1" value="2"></div>
+        <div class="ctl"><label for="sLen">Length L</label><output></output><input type="range" id="sLen" min="0.2" max="2" step="0.005" value="0.65"></div>
+        <div id="strBox">
+          <div class="ctl"><label for="ten">Tension T</label><output></output><input type="range" id="ten" min="5" max="200" step="0.5" value="73.5"></div>
+          <div class="ctl"><label for="mu">Linear density μ</label><output></output><input type="range" id="mu" min="0.1" max="10" step="0.05" value="0.4"></div>
+          <div class="ctl" id="pluckWrap"><label for="pp">Pluck position</label><output></output><input type="range" id="pp" min="0.05" max="0.5" step="0.01" value="0.2"></div>
+        </div>
+        <div id="pipeBox" style="display:none">
+          <div class="ctl"><label for="temp">Air temperature</label><output></output><input type="range" id="temp" min="-10" max="40" step="1" value="20"></div>
+        </div>
+        <label class="toggle">Show travelling-wave components<input type="checkbox" id="trav"></label>
+        <div class="btn-row" style="margin-top:6px"><button class="btn sm primary" id="tone"><i data-lucide="volume-2"></i> Play sound</button></div>
+        <p class="small muted" style="margin:6px 0 0">Motion on screen is slowed down; the sound plays at the true frequency.</p>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. Waves and superposition</h3>
+      <p>A travelling wave carries a disturbance at speed $v = f\lambda$. A circular wave from a point source in a ripple tank is $\psi(r,t) = \frac{A}{\sqrt r}\cos(kr - \omega t + \phi)$, with wavenumber $k = 2\pi/\lambda$ and angular frequency $\omega = 2\pi f$ (the $1/\sqrt r$ spreads the energy over a growing circle). Where waves overlap, their displacements add: the <b>principle of superposition</b>.</p>
+      <h3>2. Two-source interference</h3>
+      <p>Two coherent sources a distance $d$ apart produce, at any point, a path difference $\Delta r = r_2 - r_1$. In phase sources interfere</p>
+      <div class="eq">$$\text{constructively when } \Delta r = m\lambda, \qquad \text{destructively when } \Delta r = \left(m+\tfrac12\right)\lambda$$</div>
+      <p>The nodal (destructive) lines are hyperbolae with the sources as foci; far away they approach straight lines at angles $d\sin\theta = (m + \tfrac12)\lambda$. The number of nodal lines on each side is set by $d/\lambda$. A phase difference $\phi$ between the sources shifts the whole pattern, which is the principle behind phased-array antennas and radar.</p>
+      <h3>3. Young's double slit, single slit and gratings</h3>
+      <p>For light the slits act as coherent sources. With slit width $a$, separation $d$ and $N$ slits, the far-field (Fraunhofer) intensity is the product of a single-slit envelope and a multi-slit interference term:</p>
+      <div class="eq">$$\begin{gathered}I(\theta) = I_0\left(\frac{\sin\beta}{\beta}\right)^2\left(\frac{\sin N\alpha}{N\sin\alpha}\right)^2\\ \beta = \frac{\pi a\sin\theta}{\lambda}, \qquad \alpha = \frac{\pi d\sin\theta}{\lambda}\end{gathered}$$</div>
+      <ul>
+        <li><b>Maxima</b> (principal): $d\sin\theta = m\lambda$. For small angles on a screen at distance $L$, the fringe spacing is $\Delta y = \lambda L/d$.</li>
+        <li><b>Single-slit minima</b>: $a\sin\theta = m\lambda$ ($m \ne 0$). The central maximum has width $2\lambda L/a$, so narrower slits spread light more.</li>
+        <li><b>Missing orders</b> occur when an interference maximum falls on an envelope zero, i.e. when $d/a$ is an integer ratio.</li>
+        <li><b>Gratings</b> (large $N$) make the principal maxima very sharp, with $N-2$ weak subsidiary maxima between them. That is why gratings are used in spectrometers: the resolving power is $\lambda/\Delta\lambda = mN$.</li>
+      </ul>
+      <p>The lab plots exactly this formula, so its peaks and zeros match the theory. Switch on photon build-up to see that the pattern is a probability distribution: single photons land at random, but with probability proportional to $I$.</p>
+      <h3>4. Lenses and mirrors</h3>
+      <div class="callout"><i data-lucide="info"></i><div><b>Sign convention used in this lab: "real is positive".</b> Distances are measured from the lens or mirror. The object distance $u$ is positive for a real object; the image distance $v$ is positive for a real image (on the far side of a lens, or in front of a mirror) and negative for a virtual image. The focal length $f$ is positive for converging elements (convex lens, concave mirror) and negative for diverging ones (concave lens, convex mirror).</div></div>
+      <div class="eq">$$\frac{1}{f} = \frac{1}{u} + \frac{1}{v}, \qquad \text{magnification } m = \frac{v}{u} = \frac{h_i}{h_o}\ \text{(size ratio)}$$</div>
+      <p>With this convention a real image is always inverted and a virtual image upright. (Many university texts instead use the <b>Cartesian convention</b>, measuring all distances in the direction light travels, which gives $\frac1f = \frac1v - \frac1u$ with $u$ negative for a real object. The physics is identical; only the bookkeeping differs.) For a spherical mirror $f = R/2$.</p>
+      <p><b>Principal rays</b> for a thin lens: (1) a ray parallel to the axis leaves through the far focal point $F'$ (or appears to come from the near one for a diverging lens); (2) a ray through the optical centre is undeviated; (3) a ray through the near focal point $F$ leaves parallel to the axis. Where the rays (or their backward extensions) meet is the image.</p>
+      <p><b>Two-lens instruments.</b> The image from the first lens is the object for the second. A compound <b>microscope</b> uses a short-focus objective to form a magnified real image just inside the focal length of the eyepiece, which acts as a magnifier: overall $m = m_1 m_2$. A refracting <b>telescope</b> places the lenses $f_o + f_e$ apart so parallel light leaves parallel (afocal), with angular magnification $M = -f_o/f_e$.</p>
+      <h3>5. Refraction, Snell's law and total internal reflection</h3>
+      <div class="eq">$$n_1\sin\theta_1 = n_2\sin\theta_2, \qquad n = \frac{c}{v}, \qquad \sin\theta_c = \frac{n_2}{n_1}\ (n_1 &gt; n_2)$$</div>
+      <p>Light bends towards the normal when it slows down. Going from a denser to a less dense medium, beyond the <b>critical angle</b> $\theta_c$ no refracted ray exists and all the light is reflected: <b>total internal reflection</b>. The partial reflection below $\theta_c$ follows the Fresnel equations (the lab shows the unpolarised average); it grows sharply near $\theta_c$.</p>
+      <p><b>Optical fibres</b> trap light by total internal reflection at the core–cladding boundary. Rays entering the end face within the acceptance cone are guided:</p>
+      <div class="eq">$$\text{NA} = \sin\theta_{max} = \sqrt{n_{core}^2 - n_{clad}^2}$$</div>
+      <p>Fibres carry most of the world's internet traffic, including the submarine cables that land on the Kenyan coast at Mombasa.</p>
+      <h3>6. Standing waves and harmonics</h3>
+      <p>Two equal waves travelling in opposite directions add to a standing wave $y = 2A\sin kx\,\cos\omega t$ with fixed <b>nodes</b> (no motion) and <b>antinodes</b> (maximum motion) half a wavelength apart. Fitting whole patterns into a length $L$ gives the allowed frequencies:</p>
+      <div class="eq">$$\begin{gathered}\text{string fixed at both ends: } f_n = \frac{n v}{2L},\quad v = \sqrt{\frac{T}{\mu}},\quad n = 1,2,3,\dots\\ \text{pipe open at both ends: } f_n = \frac{n v}{2L}, \qquad \text{pipe closed at one end: } f_n = \frac{n v}{4L},\ n = 1,3,5,\dots\end{gathered}$$</div>
+      <p>The speed of sound in air is about $v \approx 331.3\sqrt{1 + T_C/273.15}$ m/s (343 m/s at 20 °C). A plucked or blown instrument sounds many harmonics at once; their relative strengths give its <b>timbre</b>. Plucking a string at a fraction $p$ of its length gives harmonic amplitudes proportional to $\sin(n\pi p)/n^2$, so harmonics with a node at the plucking point are missing. Open ends are displacement antinodes (pressure nodes); a closed end is a displacement node. Real pipes need a small end correction (about $0.6r$ per open end), which the lab neglects.</p>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Example 1: Young's fringes</h3>
+      <div class="worked">
+        <p>Red laser light ($\lambda = 600$ nm) passes through two slits $d = 0.25$ mm apart onto a screen $L = 1.5$ m away.</p>
+        <ol class="steps">
+          <li>Fringe spacing $\Delta y = \lambda L/d = (600\times10^{-9})(1.5)/(0.25\times10^{-3}) = 3.6\times10^{-3}$ m $= 3.6$ mm.</li>
+          <li>Angle of the first maximum: $\sin\theta_1 = \lambda/d = 0.0024$, so $\theta_1 = 0.138^\circ$: small angles really are small.</li>
+          <li>If each slit is $a = 0.05$ mm wide, the envelope's first zero is at $\lambda L/a = 18$ mm, so about $2 \times 18/3.6 - 1 = 9$ bright fringes fit in the central envelope (the 5th-order fringes coincide with the zeros: missing orders, since $d/a = 5$).</li>
+        </ol>
+        <button class="btn sm" data-load="young"><i data-lucide="play"></i> Load in the lab</button>
+      </div>
+      <h3>Example 2: a diffraction grating</h3>
+      <div class="worked">
+        <p>A grating with 600 lines/mm is lit by a green 532 nm laser.</p>
+        <ol class="steps">
+          <li>$d = 1/600$ mm $= 1.667$ µm.</li>
+          <li>First order: $\sin\theta_1 = \lambda/d = 0.3192$, $\theta_1 = 18.6^\circ$.</li>
+          <li>Highest order: $m_{max} = \lfloor d/\lambda \rfloor = \lfloor 3.13 \rfloor = 3$, at $\theta_3 = \sin^{-1}(0.958) = 73.3^\circ$.</li>
+        </ol>
+        <button class="btn sm" data-load="grating"><i data-lucide="play"></i> Load in the lab</button>
+      </div>
+      <h3>Example 3: a projector lens</h3>
+      <div class="worked">
+        <p>An object is 15 cm from a converging lens with $f = 10$ cm. Using real-is-positive:</p>
+        <ol class="steps">
+          <li>$\frac{1}{v} = \frac1f - \frac1u = \frac{1}{10} - \frac{1}{15} = \frac{1}{30}$, so $v = +30$ cm: a real image 30 cm beyond the lens.</li>
+          <li>$m = v/u = 30/15 = 2$: twice the size, and (being real) inverted.</li>
+          <li>Move the object to 7 cm (inside $f$): $\frac1v = \frac1{10} - \frac17$, $v = -23.3$ cm. Negative means virtual, on the same side as the object, upright and magnified $3.3\times$: a magnifying glass.</li>
+        </ol>
+        <button class="btn sm" data-load="proj"><i data-lucide="play"></i> Load in the lab</button>
+      </div>
+      <h3>Example 4: critical angles and a fibre</h3>
+      <div class="worked">
+        <ol class="steps">
+          <li>Glass to air: $\theta_c = \sin^{-1}(1/1.50) = 41.8^\circ$. Water to air: $48.8^\circ$. Diamond: only $24.4^\circ$, which is why diamonds sparkle: light is trapped and bounces around inside.</li>
+          <li>Air to water at $40^\circ$: $\sin\theta_2 = \sin40^\circ/1.33$, $\theta_2 = 28.9^\circ$.</li>
+          <li>A fibre with $n_{core} = 1.48$ and $n_{clad} = 1.46$ has $\text{NA} = \sqrt{1.48^2 - 1.46^2} = 0.242$, an acceptance half-angle of $14.0^\circ$ in air.</li>
+        </ol>
+        <button class="btn sm" data-load="fibre"><i data-lucide="play"></i> Load in the lab</button>
+      </div>
+      <h3>Example 5: tuning a guitar string</h3>
+      <div class="worked">
+        <p>A high-E string has $L = 0.650$ m and $\mu = 0.40$ g/m. What tension gives E4 = 329.6 Hz?</p>
+        <ol class="steps">
+          <li>Required wave speed $v = 2Lf_1 = 2(0.650)(329.6) = 428.5$ m/s.</li>
+          <li>$T = \mu v^2 = (0.40\times10^{-3})(428.5)^2 = 73.4$ N (the weight of about 7.5 kg).</li>
+          <li>Second harmonic: $659$ Hz; fretting at half length doubles every frequency (one octave up).</li>
+        </ol>
+        <button class="btn sm" data-load="guitar"><i data-lucide="play"></i> Load in the lab</button>
+      </div>
+      <h3>Example 6: open and closed pipes</h3>
+      <div class="worked">
+        <ol class="steps">
+          <li>At 20 °C, $v = 331.3\sqrt{1 + 20/273.15} = 343.2$ m/s.</li>
+          <li>A 0.50 m pipe open at both ends: $f_1 = v/2L = 343$ Hz, with harmonics 686, 1030 Hz, …</li>
+          <li>The same pipe closed at one end: $f_1 = v/4L = 172$ Hz, an octave lower, and only odd harmonics (515, 858 Hz, …), which gives the hollow sound of a clarinet-like tone.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <p>Challenges are checked automatically as you work.</p>
+      <div id="chalList"></div>
+      <h3>Open experiments</h3>
+      <ol class="steps">
+        <li><b>Counting nodal lines.</b> In the ripple tank, double $d$ at fixed $\lambda$. How does the number of nodal lines change? Predict it from $d/\lambda$ first.</li>
+        <li><b>Colour and spacing.</b> With a double slit, compare violet (400 nm) and red (700 nm). Which spreads more? This is why a grating splits white light into a spectrum with red furthest out.</li>
+        <li><b>Real or virtual?</b> Slide the object through $2f$ and $f$ in front of a converging lens and record $v$ and $m$. Plot $1/v$ against $1/u$: a straight line of gradient −1 and intercept $1/f$.</li>
+        <li><b>Plucking position.</b> Pluck the string at 0.5 of its length and listen. Which harmonics are missing in the spectrum, and why?</li>
+      </ol>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  let mode = 'ripple', running = true, T = 0;
+  const st = SL.canvas($('#cv'));
+  const stat = (k, v, u) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u ? `<small>${u}</small>` : ''}</div></div>`;
+  const txt = (ctx, s, x, y, c, al, font) => { ctx.fillStyle = c || 'rgba(230,236,247,.75)'; ctx.font = font || '11px JetBrains Mono, monospace'; ctx.textAlign = al || 'left'; ctx.fillText(s, x, y); };
+  const done = {};
+  const setRange = (id, v) => { const el = $('#' + id); el.value = v; el.dispatchEvent(new Event('input')); };
+  const segPick = (sel, cb) => $(sel).addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $(sel).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); cb(b); });
+  const segSet = (sel, attr, val) => $(sel).querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset[attr] === String(val)));
+  function lambdaRGB(nm, a) {
+    let r = 0, g = 0, b = 0;
+    if (nm < 440) { r = -(nm - 440) / 60; b = 1; } else if (nm < 490) { g = (nm - 440) / 50; b = 1; } else if (nm < 510) { g = 1; b = -(nm - 510) / 20; } else if (nm < 580) { r = (nm - 510) / 70; g = 1; } else if (nm < 645) { r = 1; g = -(nm - 645) / 65; } else r = 1;
+    const f = nm < 420 ? .3 + .7 * (nm - 380) / 40 : nm > 700 ? .3 + .7 * (750 - nm) / 50 : 1;
+    return `rgba(${Math.round(255 * Math.pow(r * f, .8))},${Math.round(255 * Math.pow(g * f, .8))},${Math.round(255 * Math.pow(b * f, .8))},${a ?? 1})`;
+  }
+
+  /* ======================= (a) RIPPLE TANK ======================= */
+  const RP = { n: 2, view: 'wave', lam: 2, d: 6, phi: 0, th: true, W: 40, src: null, hover: null, cache: null, v: 12 };
+  const off = document.createElement('canvas'), octx = off.getContext('2d');
+  const LUTw = [], LUTi = [];
+  for (let i = 0; i < 256; i++) { const v = i / 127.5 - 1; const a = Math.abs(v);
+    LUTw.push(v >= 0 ? [Math.round(10 + 30 * a), Math.round(60 + 190 * a), Math.round(110 + 140 * a)] : [Math.round(10 + 60 * a), Math.round(30 + 10 * a), Math.round(80 + 60 * a)]);
+    const t = i / 255; LUTi.push([Math.round(255 * Math.min(1, t * 1.6) * .35 + 255 * Math.max(0, t - .6) * 1.6), Math.round(255 * Math.min(1, t * 1.3)), Math.round(80 + 175 * Math.min(1, t * 1.2))].map(x => Math.min(255, x))); }
+  function ripSources() {
+    const H = RP.W * st.h / st.w;
+    if (!RP.src) RP.src = [[7, H / 2 - RP.d / 2], [7, H / 2 + RP.d / 2]];
+    return RP.n === 1 ? [RP.src[0]] : RP.src;
+  }
+  function setSep() { const H = RP.W * st.h / st.w, s = ripSources(), cx = RP.n === 2 ? (RP.src[0][0] + RP.src[1][0]) / 2 : 7, cy = RP.n === 2 ? (RP.src[0][1] + RP.src[1][1]) / 2 : H / 2; const a = RP.src ? Math.atan2(RP.src[1][1] - RP.src[0][1], RP.src[1][0] - RP.src[0][0]) : Math.PI / 2; RP.src = [[cx - Math.cos(a) * RP.d / 2, cy - Math.sin(a) * RP.d / 2], [cx + Math.cos(a) * RP.d / 2, cy + Math.sin(a) * RP.d / 2]]; RP.cache = null; }
+  function drawRipple(dt) {
+    const { ctx, w, h } = st, res = w < 600 ? 3 : 3, gw = Math.ceil(w / res), gh = Math.ceil(h / res);
+    if (off.width !== gw || off.height !== gh) { off.width = gw; off.height = gh; RP.cache = null; }
+    const sc = RP.W / w, src = ripSources(), k = 2 * Math.PI / RP.lam, om = 2 * Math.PI * RP.v / RP.lam, phs = [0, SL.rad(RP.phi)];
+    const img = RP.view === 'wave' ? octx.createImageData(gw, gh) : (RP.cache || octx.createImageData(gw, gh));
+    if (RP.view === 'wave' || !RP.cache) {
+      const D = img.data; let imax = 0; const I = RP.view === 'int' ? new Float32Array(gw * gh) : null;
+      const r0 = RP.lam / 3;
+      for (let j = 0; j < gh; j++) { const y = (j + .5) * res * sc;
+        for (let i = 0; i < gw; i++) { const x = (i + .5) * res * sc; let re = 0, im = 0, val = 0;
+          for (let s = 0; s < src.length; s++) { const r = Math.max(r0, Math.hypot(x - src[s][0], y - src[s][1])), a = 1 / Math.sqrt(r), ph = k * r + phs[s];
+            if (I) { re += a * Math.cos(ph); im += a * Math.sin(ph); } else val += a * Math.cos(ph - om * T); }
+          const p = (j * gw + i) * 4;
+          if (I) { const v = re * re + im * im; I[j * gw + i] = v; if (v > imax) imax = v; }
+          else { const c = LUTw[Math.max(0, Math.min(255, Math.round((val * 0.9 + 1) * 127.5)))]; D[p] = c[0]; D[p + 1] = c[1]; D[p + 2] = c[2]; D[p + 3] = 255; }
+        } }
+      if (I) { const ref = imax * 0.25 || 1; for (let q = 0; q < I.length; q++) { const c = LUTi[Math.min(255, Math.round(Math.min(1, I[q] / ref) * 255))]; D[q * 4] = c[0]; D[q * 4 + 1] = c[1]; D[q * 4 + 2] = c[2]; D[q * 4 + 3] = 255; } RP.cache = img; }
+    }
+    octx.putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = true; ctx.drawImage(off, 0, 0, gw * res, gh * res);
+    const X = x => x / sc, Y = y => y / sc;
+    // theory lines
+    if (RP.th && RP.n === 2 && RP.d > 0) {
+      // far-field nodal directions n: r2 - r1 = -d (n·u12) = (m + 1/2)λ - (φ/360)λ
+      const cx = (src[0][0] + src[1][0]) / 2, cy = (src[0][1] + src[1][1]) / 2, ux = (src[1][0] - src[0][0]) / RP.d, uy = (src[1][1] - src[0][1]) / RP.d, px = -uy, py = ux;
+      ctx.setLineDash([5, 6]); ctx.lineWidth = 1.2; ctx.strokeStyle = 'rgba(250,204,21,.55)';
+      for (let m = -40; m <= 40; m++) { const c = -((m + .5) - RP.phi / 360) * RP.lam / RP.d; if (Math.abs(c) >= 1) continue; const sq = Math.sqrt(1 - c * c);
+        for (const sg of [1, -1]) { const nx = c * ux + sg * sq * px, ny = c * uy + sg * sq * py; ctx.beginPath(); ctx.moveTo(X(cx), Y(cy)); ctx.lineTo(X(cx) + nx * 3000, Y(cy) + ny * 3000); ctx.stroke(); } }
+      ctx.setLineDash([]);
+    }
+    // sources
+    src.forEach((s, i) => { const x = X(s[0]), y = Y(s[1]); ctx.fillStyle = '#facc15'; ctx.shadowColor = '#facc15'; ctx.shadowBlur = 12; ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.fill(); ctx.shadowBlur = 0; ctx.strokeStyle = '#06101f'; ctx.lineWidth = 2; ctx.stroke(); txt(ctx, 'S' + (i + 1), x + 10, y + 4, '#fde68a'); });
+    // scale bar
+    ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(14, h - 18); ctx.lineTo(14 + X(5), h - 18); ctx.stroke(); txt(ctx, '5 cm', 14, h - 24, 'rgba(255,255,255,.8)');
+    // hover probe
+    if (RP.hover) { const p = RP.hover, wx = p.x * sc, wy = p.y * sc; ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 1; src.forEach(s => { ctx.beginPath(); ctx.moveTo(X(s[0]), Y(s[1])); ctx.lineTo(p.x, p.y); ctx.stroke(); });
+      if (src.length === 2) { const dr = Math.hypot(wx - src[1][0], wy - src[1][1]) - Math.hypot(wx - src[0][0], wy - src[0][1]), q = dr / RP.lam; const lab = `Δr = ${SL.fmt(dr, 2)} cm = ${SL.fmt(q, 2)}λ`; ctx.font = '600 11px JetBrains Mono, monospace'; const tw = ctx.measureText(lab).width; const bx = SL.clamp(p.x + 12, 4, st.w - tw - 14); ctx.fillStyle = 'rgba(5,9,19,.85)'; ctx.fillRect(bx, p.y - 26, tw + 10, 20); txt(ctx, lab, bx + 5, p.y - 12, '#fde68a', 'left', '600 11px JetBrains Mono, monospace'); } }
+  }
+  function uiRipple() {
+    const f = RP.v / RP.lam, nl = RP.n === 2 ? 2 * Math.floor(RP.d / RP.lam + 0.5) : 0;
+    $('#hud').innerHTML = `<span class="readout">λ <b>${SL.fmt(RP.lam, 2)}</b> cm</span><span class="readout">f <b>${SL.fmt(f, 2)}</b> Hz</span><span class="readout">d/λ <b>${RP.n === 2 ? SL.fmt(RP.d / RP.lam, 2) : '—'}</b></span>`;
+    $('#stats').innerHTML = stat('Wave speed v', SL.fmt(RP.v, 0), 'cm/s') + stat('Frequency f = v/λ', SL.fmt(f, 2), 'Hz') + stat('Separation d', SL.fmt(RP.d, 1), 'cm') + stat('Nodal lines (far field)', RP.n === 2 ? (RP.phi % 360 === 0 ? nl : 'see lines') : '—') + stat('First nodal angle', RP.n === 2 && RP.lam / (2 * RP.d) <= 1 ? SL.fmt(SL.deg(Math.asin(RP.lam / (2 * RP.d))), 1) : '—', RP.n === 2 ? '°' : '');
+    $('#nature').style.display = 'none';
+  }
+
+  /* ======================= (b) SLITS ======================= */
+  const SP = { type: '2', lam: 633, a: 40, d: 250, N: 10, lpm: 300, L: 1.5, phot: false, env: true, hits: [], hover: null };
+  const nSl = () => SP.type === '1' ? 1 : SP.type === '2' ? 2 : SP.N;
+  const effAD = () => SP.type === 'g' ? [0.4e-3 / SP.lpm, 1e-3 / SP.lpm] : [SP.a * 1e-6, SP.d * 1e-6];
+  function slitI(th) {
+    const s = Math.sin(th), lam = SP.lam * 1e-9, [a, d] = effAD(), N = nSl();
+    const b = Math.PI * a * s / lam, env = Math.abs(b) < 1e-9 ? 1 : (Math.sin(b) / b) ** 2;
+    if (N === 1) return { I: env, env };
+    const al = Math.PI * d * s / lam, sa = Math.sin(al); const inter = Math.abs(sa) < 1e-9 ? 1 : (Math.sin(N * al) / (N * sa)) ** 2;
+    return { I: env * inter, env };
+  }
+  function thMax() { const lam = SP.lam * 1e-9; if (SP.type === 'g') return Math.min(Math.asin(Math.min(0.999, 3.3 * lam / effAD()[1])), SL.rad(80)); return Math.min(SL.rad(70), Math.asin(Math.min(0.95, 2.6 * lam / (SP.a * 1e-6)))); }
+  function drawSlits(dt) {
+    const { ctx, w, h } = st; ctx.fillStyle = '#04070f'; ctx.fillRect(0, 0, w, h);
+    const tm = thMax(), G = SP.type === 'g', ymax = G ? SL.deg(tm) : SP.L * Math.tan(tm), col = lambdaRGB(SP.lam);
+    const thOf = q => G ? SL.rad(q) : Math.atan(q / SP.L), qOf = th => G ? SL.deg(th) : SP.L * Math.tan(th);
+    const b1 = Math.round(h * .24), b2 = Math.round(h * .46), pl = 54, pr = 16, pw = w - pl - pr;
+    const yToX = y => pl + (y / ymax + 1) / 2 * pw;
+    // schematic band
+    const sy = b1 / 2 + 14, bx = w * .22, scx = w - 30;
+    ctx.fillStyle = '#1e293b'; ctx.fillRect(20, sy - 8, 40, 16); txt(ctx, 'laser', 22, sy + 24, 'rgba(230,236,247,.5)');
+    ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(60, sy); ctx.lineTo(bx, sy); ctx.stroke();
+    ctx.fillStyle = '#64748b'; ctx.fillRect(bx - 2, 24, 4, b1 - 30); const N = Math.min(nSl(), 9), gap = 7;
+    for (let i = 0; i < N; i++) { const yy = sy + (i - (N - 1) / 2) * gap; ctx.fillStyle = '#04070f'; ctx.fillRect(bx - 3, yy - 2, 6, 4); }
+    ctx.globalAlpha = .25; ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(bx, sy); ctx.lineTo(scx, 24); ctx.lineTo(scx, b1 - 6); ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+    ctx.fillStyle = '#cbd5e1'; ctx.fillRect(scx, 22, 4, b1 - 26);
+    txt(ctx, (SP.type === 'g' ? `grating, N = ${SP.N}` : SP.type === '2' ? 'double slit' : 'single slit') + ' (not to scale)', bx + 8, b1 - 4, 'rgba(230,236,247,.55)');
+    txt(ctx, 'L = ' + SL.fmt(SP.L, 2) + ' m', (bx + scx) / 2, sy + 4, 'rgba(230,236,247,.8)', 'center'); txt(ctx, 'screen', scx - 4, b1 - 2, 'rgba(230,236,247,.55)', 'right');
+    // screen pattern
+    const sy0 = b1 + 6, sh = b2 - b1 - 12;
+    ctx.fillStyle = '#000'; ctx.fillRect(pl, sy0, pw, sh);
+    if (!SP.phot) { for (let px = 0; px < pw; px++) { const y = (px / pw * 2 - 1) * ymax, I = slitI(thOf(y)).I; ctx.fillStyle = lambdaRGB(SP.lam, Math.min(1, Math.pow(I, .55) * 1.1)); ctx.fillRect(pl + px, sy0, 1, sh); } }
+    else {
+      if (running) { const nNew = Math.min(400, Math.ceil(dt * 900)); for (let k = 0; k < nNew; k++) { for (let tries = 0; tries < 40; tries++) { const y = (Math.random() * 2 - 1) * ymax; if (Math.random() < slitI(thOf(y)).I) { SP.hits.push([y, Math.random()]); break; } } } if (SP.hits.length > 9000) SP.hits.splice(0, SP.hits.length - 9000); }
+      ctx.fillStyle = lambdaRGB(SP.lam, .85); SP.hits.forEach(p => ctx.fillRect(yToX(p[0]), sy0 + p[1] * sh, 1.4, 1.4));
+      txt(ctx, SP.hits.length + ' photons', pl + 6, sy0 + 14, 'rgba(255,255,255,.8)');
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.strokeRect(pl + .5, sy0 + .5, pw - 1, sh - 1);
+    // intensity plot
+    const py0 = b2 + 18, ph = h - py0 - 30, Yp = I => py0 + ph - I * ph;
+    ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = 1; for (let i = 0; i <= 4; i++) { const yy = Yp(i / 4); ctx.beginPath(); ctx.moveTo(pl, yy); ctx.lineTo(pl + pw, yy); ctx.stroke(); txt(ctx, (i / 4).toFixed(2), pl - 6, yy + 4, 'rgba(230,236,247,.4)', 'right'); }
+    txt(ctx, 'I/I₀', pl - 6, py0 - 6, 'rgba(230,236,247,.6)', 'right');
+    const U = G ? 1 : 1000, e10 = Math.pow(10, Math.floor(Math.log10(ymax * U))), step = e10 / U * (ymax * U / e10 > 5 ? 2 : ymax * U / e10 > 2 ? 1 : 0.5);
+    for (let y = -Math.floor(ymax / step) * step; y <= ymax + 1e-12; y += step) { const xx = yToX(y); ctx.beginPath(); ctx.moveTo(xx, py0); ctx.lineTo(xx, py0 + ph); ctx.stroke(); txt(ctx, SL.fmt(Math.abs(y) < step * 1e-6 ? 0 : y * U, 1), xx, py0 + ph + 14, 'rgba(230,236,247,.45)', 'center'); }
+    txt(ctx, G ? 'angle θ (°)' : 'y on screen (mm)', pl + pw, py0 + ph + 26, 'rgba(230,236,247,.5)', 'right');
+    if (SP.env && nSl() > 1) { ctx.setLineDash([4, 4]); ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = 1.2; ctx.beginPath(); for (let px = 0; px <= pw; px++) { const y = (px / pw * 2 - 1) * ymax, e = slitI(thOf(y)).env; px ? ctx.lineTo(pl + px, Yp(e)) : ctx.moveTo(pl, Yp(e)); } ctx.stroke(); ctx.setLineDash([]); }
+    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.shadowColor = col; ctx.shadowBlur = 8; ctx.beginPath();
+    const n = Math.min(4 * pw, 3000); for (let i = 0; i <= n; i++) { const y = (i / n * 2 - 1) * ymax, I = slitI(thOf(y)).I; i ? ctx.lineTo(pl + i / n * pw, Yp(I)) : ctx.moveTo(pl, Yp(I)); } ctx.stroke(); ctx.shadowBlur = 0;
+    // order markers
+    if (nSl() > 1) { const lam = SP.lam * 1e-9, d = effAD()[1]; for (let m = -12; m <= 12; m++) { const s = m * lam / d; if (Math.abs(s) >= 1) continue; const y = qOf(Math.asin(s)); if (Math.abs(y) > ymax) continue; const sp = Math.abs(yToX(qOf(Math.asin(SP.lam * 1e-9 / d))) - yToX(0)); if (sp < 26 && m % 5) continue; txt(ctx, 'm=' + m, yToX(y), py0 + 10, 'rgba(250,204,21,.8)', 'center'); } }
+    if (SP.hover) { const x = SP.hover.x; if (x >= pl && x <= pl + pw) { const y = ((x - pl) / pw * 2 - 1) * ymax, th = thOf(y), I = slitI(th).I; ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.beginPath(); ctx.moveTo(x, sy0); ctx.lineTo(x, py0 + ph); ctx.stroke(); const lab = `${G ? '' : 'y ' + SL.fmt(y * 1000, 2) + ' mm · '}θ ${SL.fmt(SL.deg(th), 3)}° · I ${SL.fmt(I, 3)}`; ctx.font = '600 11px JetBrains Mono, monospace'; const tw = ctx.measureText(lab).width; const bx2 = SL.clamp(x - tw / 2 - 5, 4, w - tw - 14); ctx.fillStyle = 'rgba(5,9,19,.9)'; ctx.fillRect(bx2, Yp(I) - 30, tw + 10, 20); txt(ctx, lab, bx2 + 5, Yp(I) - 16, '#fff', 'left', '600 11px JetBrains Mono, monospace'); } }
+  }
+  function uiSlits() {
+    const lam = SP.lam * 1e-9, [a, d] = effAD(), N = nSl();
+    $('#hud').innerHTML = `<span class="readout" style="color:${lambdaRGB(SP.lam)}">λ <b style="color:inherit">${SP.lam}</b> nm</span><span class="readout">a <b>${SL.fmt(a * 1e6, 2)}</b> µm</span>${N > 1 ? `<span class="readout">d <b>${SL.fmt(d * 1e6, 3)}</b> µm</span>` : ''}`;
+    let s = stat('Central max width 2λL/a', SL.fmt(2 * lam * SP.L / a * 1000, 2), 'mm') + stat('First envelope zero θ', a > lam ? SL.fmt(SL.deg(Math.asin(lam / a)), 3) : 'none', a > lam ? '°' : '');
+    if (N > 1) { const m1 = lam / d < 1 ? Math.asin(lam / d) : NaN; s += stat('Fringe spacing λL/d', SL.fmt(lam * SP.L / d * 1000, 3), 'mm') + stat('1st-order angle', SL.fmt(SL.deg(m1), 3), '°') + stat('Highest order', Math.floor(d / lam * (1 - 1e-12))) + stat('d/a ratio', SL.fmt(d / a, 2)); }
+    if (SP.type === 'g') s += stat('Lines per mm', SL.fmt(1e-3 / d, 0)) + stat('Resolving power (m=1)', N);
+    $('#stats').innerHTML = s; $('#nature').style.display = 'none';
+  }
+
+  /* ======================= (c) OPTICAL BENCH ======================= */
+  const BP = { kind: 'lens', xo: 25, ho: 3, x1: 50, f1: 10, use2: false, x2: 75, f2: 8, xm: 80, fm: 15, far: false, alpha: 2, fan: false, len: 100, drag: null };
+  function benchGeo() { const { w, h } = st; const pad = 20, s = (w - 2 * pad) / BP.len, vy = w < 700 ? 2.5 : 1; return { s, vy, X: x => pad + x * s, Y: y => h * .5 - y * s * vy, inv: px => (px - pad) / s, invY: py => (h * .5 - py) / (s * vy) }; }
+  function lenses() { const L = [{ x: BP.x1, f: BP.f1, id: 'x1' }]; if (BP.use2) L.push({ x: BP.x2, f: BP.f2, id: 'x2' }); return L.sort((a, b) => a.x - b.x); }
+  // chain images (Cartesian internally; displayed real-is-positive)
+  function imageChain() {
+    if (BP.kind === 'mirror') { const u = BP.xm - BP.xo, f = BP.fm, v = Math.abs(1 / f - 1 / u) < 1e-9 ? Infinity : 1 / (1 / f - 1 / u); return [{ u, v, f, m: -v / u, x: BP.xm - v, h: BP.ho * (-v / u), el: 'mirror' }]; }
+    const out = []; let xo = BP.far ? -Infinity : BP.xo, ho = BP.ho;
+    lenses().forEach(L => {
+      const uc = xo - L.x; // negative for real object
+      let vc, m;
+      if (!isFinite(uc)) { vc = L.f; m = NaN; } else { const inv = 1 / L.f + 1 / uc; vc = Math.abs(inv) < 1e-9 ? Infinity : 1 / inv; m = vc / uc; }
+      const xi = L.x + vc; out.push({ u: -uc, v: vc, f: L.f, m: m, x: xi, h: isFinite(m) ? ho * m : NaN, el: L }); xo = xi; ho = ho * m;
+    });
+    return out;
+  }
+  function traceLens(x0, y0, s, Ls) {
+    const pts = [[x0, y0]]; let x = x0, y = y0;
+    Ls.forEach(L => { if (L.x <= x) return; y = y + s * (L.x - x); x = L.x; pts.push([x, y]); s = s - y / L.f; });
+    return { pts, x, y, s };
+  }
+  function drawLensShape(ctx, X, Y, x, f, col, label) {
+    const hh = 9.5, px = X(x), top = Y(hh), bot = Y(-hh), bulge = SL.clamp(120 / Math.abs(f), 3, 16);
+    ctx.save(); ctx.fillStyle = 'rgba(125,211,252,.16)'; ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.beginPath();
+    if (f > 0) { ctx.moveTo(px, top); ctx.quadraticCurveTo(px + bulge, (top + bot) / 2, px, bot); ctx.quadraticCurveTo(px - bulge, (top + bot) / 2, px, top); }
+    else { const e = 6; ctx.moveTo(px - e - 2, top); ctx.lineTo(px + e + 2, top); ctx.quadraticCurveTo(px + 2, (top + bot) / 2, px + e + 2, bot); ctx.lineTo(px - e - 2, bot); ctx.quadraticCurveTo(px - 2, (top + bot) / 2, px - e - 2, top); }
+    ctx.fill(); ctx.stroke(); ctx.restore();
+    txt(ctx, label, px, top - 8, col, 'center');
+    [-1, 1].forEach(sg => { const fx = X(x + sg * f); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(fx, Y(0), 3.5, 0, 7); ctx.fill(); txt(ctx, sg * f > 0 ? "F'" : 'F', fx, Y(0) + 16, col, 'center'); ctx.globalAlpha = .5; const fx2 = X(x + sg * 2 * f); ctx.beginPath(); ctx.arc(fx2, Y(0), 2.5, 0, 7); ctx.fill(); txt(ctx, '2F', fx2, Y(0) + 16, col, 'center'); ctx.globalAlpha = 1; });
+  }
+  function arrowObj(ctx, X, Y, x, hgt, col, dashed, lab) {
+    ctx.save(); if (dashed) ctx.setLineDash([5, 4]); SL.arrow(ctx, X(x), Y(0), X(x), Y(hgt), col, 3, 10); ctx.restore(); if (lab) txt(ctx, lab, X(x), Y(hgt) + (hgt > 0 ? -8 : 18), col, 'center');
+  }
+  function drawBench() {
+    const { ctx, w, h } = st, G = benchGeo(), { X, Y } = G;
+    ctx.fillStyle = '#050913'; ctx.fillRect(0, 0, w, h);
+    // bench rail and ticks
+    ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, Y(0)); ctx.lineTo(w, Y(0)); ctx.stroke();
+    for (let x = 0; x <= BP.len; x += 5) { ctx.strokeStyle = 'rgba(255,255,255,' + (x % 10 ? .08 : .18) + ')'; ctx.beginPath(); ctx.moveTo(X(x), h - 34); ctx.lineTo(X(x), h - (x % 10 ? 28 : 24)); ctx.stroke(); if (x % 10 === 0) txt(ctx, x, X(x), h - 12, 'rgba(230,236,247,.45)', 'center'); }
+    txt(ctx, 'cm', w - 8, h - 12, 'rgba(230,236,247,.45)', 'right');
+    const imgs = imageChain(), ray = ['#facc15', '#22d3ee', '#f472b6'];
+    if (BP.kind === 'lens') {
+      const Ls = lenses(); const L1 = Ls.find(l => l.id === 'x1');
+      Ls.forEach(L => drawLensShape(ctx, X, Y, L.x, L.f, L.id === 'x1' ? '#7dd3fc' : '#a78bfa', (L.id === 'x1' ? 'f₁ ' : 'f₂ ') + SL.fmt(L.f, 1)));
+      let rays = [];
+      if (BP.far) { const a = SL.rad(BP.alpha), first = Ls[0]; [-6, -3, 0, 3, 6].forEach((hh, i) => { const x0 = 0, y0 = hh - a * (first.x - x0); rays.push({ x0, y0, s: a, c: i === 2 ? ray[1] : ray[0] }); }); }
+      else {
+        const L = Ls[0], xo = BP.xo, ho = BP.ho;
+        rays.push({ x0: xo, y0: ho, s: 0, c: ray[0] });
+        rays.push({ x0: xo, y0: ho, s: (0 - ho) / (L.x - xo), c: ray[1] });
+        const xF = L.x - L.f; if (Math.abs(xF - xo) > 0.3) rays.push({ x0: xo, y0: ho, s: -ho / (xF - xo), c: ray[2] });
+        if (BP.fan) for (let k = -3; k <= 3; k++) rays.push({ x0: xo, y0: ho, s: (k * 2.5 - ho) / (L.x - xo), c: 'rgba(255,255,255,.35)', thin: true });
+      }
+      const last = Ls[Ls.length - 1], fin = imgs[imgs.length - 1];
+      rays.forEach(r => {
+        const t = traceLens(r.x0, r.y0, r.s, Ls.filter(l => l.x > r.x0));
+        ctx.strokeStyle = r.c; ctx.lineWidth = r.thin ? 1 : 1.7; ctx.globalAlpha = r.thin ? 1 : .95; ctx.beginPath(); t.pts.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1])));
+        const xe = BP.len + 5; ctx.lineTo(X(xe), Y(t.y + t.s * (xe - t.x))); ctx.stroke();
+        // backward (virtual) extension
+        if (fin && isFinite(fin.v) && fin.x < last.x) { ctx.setLineDash([4, 4]); ctx.globalAlpha = .55; ctx.beginPath(); ctx.moveTo(X(t.x), Y(t.y)); const xb = Math.max(-5, fin.x - 3); ctx.lineTo(X(xb), Y(t.y + t.s * (xb - t.x))); ctx.stroke(); ctx.setLineDash([]); }
+        ctx.globalAlpha = 1;
+      });
+      // intermediate image for 2-lens systems
+      imgs.forEach((im, i) => { if (!isFinite(im.v) || !isFinite(im.h) || im.x < -20 || im.x > BP.len + 20) return; const isLast = i === imgs.length - 1; const real = im.x > im.el.x; arrowObj(ctx, X, Y, im.x, im.h, isLast ? '#34d399' : 'rgba(52,211,153,.5)', !real, isLast ? (real ? 'real image' : 'virtual image') : 'image 1'); });
+    } else {
+      // mirror
+      const xm = BP.xm, f = BP.fm, px = X(xm), top = Y(10), bot = Y(-10), curv = SL.clamp(140 / Math.abs(f), 3, 14) * Math.sign(f);
+      ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(px + curv, top); ctx.quadraticCurveTo(px - curv, (top + bot) / 2, px + curv, bot); ctx.stroke();
+      ctx.strokeStyle = 'rgba(203,213,225,.3)'; ctx.lineWidth = 1; for (let yy = top; yy < bot; yy += 7) { const t = (yy - top) / (bot - top), xx = px + curv * (1 - 4 * t * (1 - t) * 2 + 1) / 2 + 0; ctx.beginPath(); ctx.moveTo(xx + 2, yy); ctx.lineTo(xx + 8, yy - 5); ctx.stroke(); }
+      [[xm - f, 'F'], [xm - 2 * f, 'C']].forEach(([x, l]) => { ctx.fillStyle = '#7dd3fc'; ctx.beginPath(); ctx.arc(X(x), Y(0), 3.5, 0, 7); ctx.fill(); txt(ctx, l, X(x), Y(0) + 16, '#7dd3fc', 'center'); });
+      txt(ctx, (f > 0 ? 'concave' : 'convex') + ' f = ' + SL.fmt(f, 1), px, top - 8, '#cbd5e1', 'center');
+      const xo = BP.xo, ho = BP.ho, im = imgs[0];
+      const rs = [{ s: 0, c: ray[0] }, { s: -ho / (xm - xo), c: ray[1] }]; if (Math.abs(xm - 2 * f - xo) > .3) rs.push({ s: -ho / ((xm - 2 * f) - xo), c: ray[2] });
+      if (BP.fan) for (let k = -3; k <= 3; k++) rs.push({ s: (k * 2.5 - ho) / (xm - xo), c: 'rgba(255,255,255,.35)', thin: true });
+      rs.forEach(r => { const yh = ho + r.s * (xm - xo), s2 = r.s - yh / f, yr = x => yh + s2 * (xm - x);
+        ctx.strokeStyle = r.c; ctx.lineWidth = r.thin ? 1 : 1.7; ctx.beginPath(); ctx.moveTo(X(xo), Y(ho)); ctx.lineTo(X(xm), Y(yh)); ctx.lineTo(X(-5), Y(yr(-5))); ctx.stroke();
+        if (isFinite(im.v) && im.v < 0) { ctx.setLineDash([4, 4]); ctx.globalAlpha = .55; ctx.beginPath(); ctx.moveTo(X(xm), Y(yh)); const xb = Math.min(BP.len + 5, im.x + 3); ctx.lineTo(X(xb), Y(yr(xb))); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; } });
+      if (isFinite(im.v)) arrowObj(ctx, X, Y, im.x, im.h, '#34d399', im.v < 0, im.v > 0 ? 'real image' : 'virtual image');
+    }
+    if (G.vy > 1) txt(ctx, 'heights drawn ×' + G.vy, w - 10, h - 44, 'rgba(230,236,247,.45)', 'right');
+    if (!BP.far) { arrowObj(ctx, X, Y, BP.xo, BP.ho, '#f97316', false, 'object'); ctx.fillStyle = 'rgba(249,115,22,.25)'; ctx.beginPath(); ctx.arc(X(BP.xo), Y(BP.ho), 10, 0, 7); ctx.fill(); }
+    else txt(ctx, `distant object: rays arrive at α = ${BP.alpha}°`, 12, 22 + 34, '#f97316');
+  }
+  function uiBench() {
+    const imgs = imageChain(); let html = '', s = '';
+    const fmtD = v => isFinite(v) ? SL.fmt(v, 2) : '∞';
+    if (BP.kind === 'mirror') {
+      const im = imgs[0];
+      s = stat('Object distance u', fmtD(im.u), 'cm') + stat('Image distance v', fmtD(im.v), 'cm') + stat('Focal length f', SL.fmt(im.f, 1), 'cm') + stat('Magnification', isFinite(im.v) ? SL.fmt(Math.abs(im.v / im.u), 2) + '×' : '∞');
+      html = nat(im, true);
+    } else {
+      imgs.forEach((im, i) => { const tag = imgs.length > 1 ? (i + 1) : ''; s += stat('u' + tag, BP.far && i === 0 ? '∞' : fmtD(im.u), 'cm') + stat('v' + tag, fmtD(im.v), 'cm'); });
+      if (BP.far && imgs.length === 2) { // angular magnification from ray slopes
+        const Ls = lenses(), a = SL.rad(BP.alpha), t = traceLens(0, -a * Ls[0].x, a, Ls); s += stat('Angular magnification', SL.fmt(t.s / a, 2) + '×');
+      } else if (!BP.far) { const mt = imgs.reduce((p, im) => p * im.m, 1); s += stat('Total magnification', isFinite(mt) ? SL.fmt(Math.abs(mt), 2) + '×' : '∞'); }
+      html = BP.far ? (imgs.length === 2 ? `Telescope: separation ${SL.fmt(Math.abs(BP.x2 - BP.x1), 1)} cm vs f₁ + f₂ = ${SL.fmt(BP.f1 + BP.f2, 1)} cm. Ideal angular magnification −f₁/f₂ = <b>${SL.fmt(-BP.f1 / BP.f2, 2)}</b>.` : `Parallel rays focus in the focal plane, v = f = <b>${SL.fmt(BP.f1, 1)} cm</b>.`) : nat(imgs[imgs.length - 1], false, imgs);
+    }
+    $('#stats').innerHTML = s; $('#nature').style.display = 'block'; $('#nature').innerHTML = html;
+    $('#hud').innerHTML = `<span class="readout">real-is-positive: <b>1/f = 1/u + 1/v</b></span>`;
+  }
+  function nat(im, mirror, chain) {
+    if (!isFinite(im.v)) return 'Object at the focal point: the rays leave parallel and the image is at <b>infinity</b>.';
+    const real = im.v > 0, mt = chain ? chain.reduce((p, q) => p * q.m, 1) : im.m, upright = mt > 0, mag = Math.abs(mt);
+    const chk = `1/u + 1/v = ${SL.fmt(1 / im.u + 1 / im.v, 4)} cm⁻¹ · 1/f = ${SL.fmt(1 / im.f, 4)} cm⁻¹`;
+    return `Final image: <b>${real ? 'real' : 'virtual'}</b>, <b>${upright ? 'upright' : 'inverted'}</b>, <b>${mag > 1.001 ? 'magnified' : mag < 0.999 ? 'diminished' : 'same size'}</b> (${SL.fmt(mag, 2)}×)${chain && chain.length > 1 ? ' relative to the object' : ''}.<br>${chain && chain.length > 1 ? 'Last element: ' : ''}${chk}`;
+  }
+  const BENCH_PRESETS = {
+    proj: { kind: 'lens', xo: 35, ho: 3, x1: 50, f1: 10, use2: false, far: false },
+    cam: { kind: 'lens', xo: 10, ho: 4, x1: 50, f1: 10, use2: false, far: false },
+    mag: { kind: 'lens', xo: 43, ho: 2, x1: 50, f1: 10, use2: false, far: false },
+    div: { kind: 'lens', xo: 30, ho: 4, x1: 50, f1: -15, use2: false, far: false },
+    micro: { kind: 'lens', xo: 25, ho: 1, x1: 30, f1: 4, use2: true, x2: 56, f2: 8, far: false },
+    tele: { kind: 'lens', xo: 10, ho: 2, x1: 20, f1: 40, use2: true, x2: 70, f2: 10, far: true },
+    concave: { kind: 'mirror', xo: 40, ho: 3, xm: 80, fm: 15, far: false },
+    convex: { kind: 'mirror', xo: 50, ho: 4, xm: 80, fm: -15, far: false },
+  };
+  function benchPreset(k) {
+    const p = BENCH_PRESETS[k]; Object.assign(BP, p);
+    segSet('#benchKind', 'k', BP.kind); benchKindUI();
+    setRange('f1', BP.kind === 'mirror' ? BP.fm : BP.f1); setRange('oh', BP.ho); if (p.f2) setRange('f2', p.f2);
+    $('#use2').checked = BP.use2; $('#far').checked = BP.far; $('#f2wrap').style.display = BP.use2 ? '' : 'none';
+  }
+  function benchKindUI() { $('#lens2box').style.display = BP.kind === 'lens' ? '' : 'none'; $('#f1lab').textContent = BP.kind === 'lens' ? 'Lens 1 focal length f₁' : 'Mirror focal length f (concave +)'; }
+
+  /* ======================= (d) REFRACTION ======================= */
+  const RF = { kind: 'iface', n1: 1.5, n2: 1, th1: 35, nco: 1.48, ncl: 1.46, lang: 10, bend: 0 };
+  function fresnel(n1, n2, t1) { const s2 = n1 / n2 * Math.sin(t1); if (s2 >= 1) return { R: 1, t2: NaN }; const t2 = Math.asin(s2), c1 = Math.cos(t1), c2 = Math.cos(t2); const rs = (n1 * c1 - n2 * c2) / (n1 * c1 + n2 * c2), rp = (n2 * c1 - n1 * c2) / (n2 * c1 + n1 * c2); return { R: (rs * rs + rp * rp) / 2, t2 }; }
+  const nCol = n => `rgba(56,189,248,${SL.clamp((n - 1) * .22, 0, .5)})`;
+  function beam(ctx, x1, y1, x2, y2, a, wdt) { ctx.save(); ctx.globalAlpha = Math.max(.06, a); ctx.strokeStyle = '#ff3b3b'; ctx.shadowColor = '#ff3b3b'; ctx.shadowBlur = 14; ctx.lineWidth = wdt || 3; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.restore(); }
+  function drawRefract() {
+    const { ctx, w, h } = st; ctx.fillStyle = '#050913'; ctx.fillRect(0, 0, w, h);
+    if (RF.kind === 'iface') {
+      const cx = w / 2, cy = h / 2, R = Math.min(w, h) * .42;
+      ctx.fillStyle = nCol(RF.n1); ctx.fillRect(0, 0, w, cy); ctx.fillStyle = nCol(RF.n2); ctx.fillRect(0, cy, w, h - cy);
+      ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(w, cy); ctx.stroke();
+      ctx.setLineDash([4, 5]); ctx.beginPath(); ctx.moveTo(cx, cy - R - 10); ctx.lineTo(cx, cy + R + 10); ctx.stroke(); ctx.setLineDash([]);
+      txt(ctx, 'n₁ = ' + SL.fmt(RF.n1, 2), 14, cy - 12, '#e6ecf7'); txt(ctx, 'n₂ = ' + SL.fmt(RF.n2, 2), 14, cy + 22, '#e6ecf7'); txt(ctx, 'normal', cx + 6, cy - R - 2, 'rgba(230,236,247,.5)');
+      // protractor
+      ctx.strokeStyle = 'rgba(255,255,255,.1)'; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.stroke();
+      for (let a = 0; a < 360; a += 10) { const r1 = R - (a % 30 ? 5 : 10); const ang = SL.rad(a); ctx.beginPath(); ctx.moveTo(cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1); ctx.lineTo(cx + Math.cos(ang) * R, cy + Math.sin(ang) * R); ctx.stroke(); }
+      const t1 = SL.rad(RF.th1), fr = fresnel(RF.n1, RF.n2, t1);
+      const lx = cx - Math.sin(t1) * R, ly = cy - Math.cos(t1) * R;
+      beam(ctx, lx, ly, cx, cy, 1, 3.5);
+      beam(ctx, cx, cy, cx + Math.sin(t1) * R, cy - Math.cos(t1) * R, fr.R, 1 + 3 * fr.R);
+      if (isFinite(fr.t2)) beam(ctx, cx, cy, cx + Math.sin(fr.t2) * R, cy + Math.cos(fr.t2) * R, 1 - fr.R, 1 + 3 * (1 - fr.R));
+      // laser body
+      ctx.save(); ctx.translate(lx, ly); ctx.rotate(Math.atan2(cy - ly, cx - lx)); ctx.fillStyle = '#334155'; ctx.fillRect(-34, -8, 34, 16); ctx.fillStyle = '#ef4444'; ctx.fillRect(-4, -4, 4, 8); ctx.restore();
+      ctx.fillStyle = 'rgba(250,204,21,.3)'; ctx.beginPath(); ctx.arc(lx, ly, 18, 0, 7); ctx.fill();
+      // angle arcs
+      ctx.strokeStyle = '#facc15'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(cx, cy, 52, -Math.PI / 2 - t1, -Math.PI / 2); ctx.stroke(); txt(ctx, 'θ₁ ' + SL.fmt(RF.th1, 1) + '°', cx - 12 - Math.sin(t1 / 2) * 70, cy - 60, '#facc15', 'right');
+      if (isFinite(fr.t2)) { ctx.strokeStyle = '#34d399'; ctx.beginPath(); ctx.arc(cx, cy, 52, Math.PI / 2 - fr.t2, Math.PI / 2); ctx.stroke(); txt(ctx, 'θ₂ ' + SL.fmt(SL.deg(fr.t2), 1) + '°', cx + 12 + Math.sin(fr.t2 / 2) * 70, cy + 70, '#34d399'); }
+      else { ctx.font = '600 13px Inter, sans-serif'; txt(ctx, 'TOTAL INTERNAL REFLECTION', cx, cy + 40, '#f472b6', 'center', '600 13px Inter, sans-serif'); }
+      if (RF.n1 > RF.n2) { const tc = Math.asin(RF.n2 / RF.n1); ctx.setLineDash([2, 5]); ctx.strokeStyle = 'rgba(244,114,182,.6)'; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx - Math.sin(tc) * R, cy - Math.cos(tc) * R); ctx.stroke(); ctx.setLineDash([]); txt(ctx, 'θc', cx - Math.sin(tc) * (R + 14), cy - Math.cos(tc) * (R + 14), '#f472b6', 'center'); }
+      txt(ctx, 'reflected ' + SL.fmt(fr.R * 100, 1) + '%', cx + Math.sin(t1) * R * .7 + 8, cy - Math.cos(t1) * R * .7, 'rgba(255,255,255,.75)');
+      if (isFinite(fr.t2)) txt(ctx, 'transmitted ' + SL.fmt((1 - fr.R) * 100, 1) + '%', cx + Math.sin(fr.t2) * R * .7 + 8, cy + Math.cos(fr.t2) * R * .7, 'rgba(255,255,255,.75)');
+    } else drawFibre(ctx, w, h);
+  }
+  function drawFibre(ctx, w, h) {
+    const cy = h * .5, half = Math.min(46, h * .1), x0 = 90, x1 = w - 20, bend = RF.bend;
+    // centreline: straight then arc bend of radius depending on bend
+    const len = x1 - x0;
+    const centre = t => { const x = x0 + t * len; return [x, cy + bend * Math.sin(Math.PI * t) * h * .25 * (t > .3 && t < .9 ? 1 : 1)]; };
+    // draw cladding and core along polyline
+    const N = 200, top = [], bot = [], ct = [], cb = [];
+    for (let i = 0; i <= N; i++) { const t = i / N, c = centre(t), c2 = centre(Math.min(1, t + .001)), ang = Math.atan2(c2[1] - c[1], c2[0] - c[0]) + Math.PI / 2; top.push([c[0] - Math.cos(ang) * half * 1.6, c[1] - Math.sin(ang) * half * 1.6]); bot.push([c[0] + Math.cos(ang) * half * 1.6, c[1] + Math.sin(ang) * half * 1.6]); ct.push([c[0] - Math.cos(ang) * half, c[1] - Math.sin(ang) * half]); cb.push([c[0] + Math.cos(ang) * half, c[1] + Math.sin(ang) * half]); }
+    const poly = (a, b, col) => { ctx.fillStyle = col; ctx.beginPath(); a.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); b.slice().reverse().forEach(p => ctx.lineTo(p[0], p[1])); ctx.closePath(); ctx.fill(); };
+    poly(top, bot, 'rgba(148,163,184,.18)'); poly(ct, cb, 'rgba(56,189,248,.28)');
+    txt(ctx, 'cladding n = ' + SL.fmt(RF.ncl, 3), x0 + 10, top[10][1] - 8, 'rgba(230,236,247,.6)'); txt(ctx, 'core n = ' + SL.fmt(RF.nco, 3), x0 + 10, cy + 4, 'rgba(230,236,247,.7)');
+    // acceptance cone
+    const NA = Math.sqrt(Math.max(0, RF.nco ** 2 - RF.ncl ** 2)), acc = NA >= 1 ? Math.PI / 2 : Math.asin(NA);
+    ctx.fillStyle = 'rgba(52,211,153,.12)'; ctx.beginPath(); ctx.moveTo(x0, cy); ctx.lineTo(x0 - 80 * Math.cos(acc), cy - 80 * Math.sin(acc)); ctx.lineTo(x0 - 80 * Math.cos(acc), cy + 80 * Math.sin(acc)); ctx.closePath(); ctx.fill();
+    txt(ctx, 'acceptance ±' + SL.fmt(SL.deg(acc), 1) + '°', 8, cy + 92 * Math.sin(Math.min(acc, 1.2)) + 14, '#34d399');
+    // ray trace: 2D, segment-by-segment reflection off core boundary polyline
+    const a0 = SL.rad(RF.lang), inside = Math.asin(Math.sin(a0) / RF.nco);
+    let p = [x0, cy - half * .3], d = [Math.cos(inside), Math.sin(inside)], power = 1, bounces = 0, lost = false;
+    const lx = x0 - 70 * Math.cos(a0), ly = p[1] - 70 * Math.sin(a0);
+    beam(ctx, lx, ly, p[0], p[1], 1, 3);
+    ctx.save(); ctx.translate(lx, ly); ctx.rotate(a0); ctx.fillStyle = '#334155'; ctx.fillRect(-30, -7, 30, 14); ctx.restore();
+    const segs = []; for (let i = 0; i < N; i++) { segs.push([ct[i], ct[i + 1]]); segs.push([cb[i], cb[i + 1]]); }
+    let leaks = 0;
+    for (let k = 0; k < 400 && power > 0.02; k++) {
+      let best = null, bt = 1e9;
+      for (const [a, b] of segs) { const ex = b[0] - a[0], ey = b[1] - a[1], den = d[0] * ey - d[1] * ex; if (Math.abs(den) < 1e-12) continue; const t = ((a[0] - p[0]) * ey - (a[1] - p[1]) * ex) / den, u = ((a[0] - p[0]) * d[1] - (a[1] - p[1]) * d[0]) / den; if (t > 1e-6 && u >= 0 && u <= 1 && t < bt) { bt = t; best = [a, b]; } }
+      const endT = (x1 - p[0]) / (d[0] || 1e-9);
+      if (!best || (d[0] > 0 && endT > 0 && endT < bt)) { const q = [p[0] + d[0] * Math.max(0, endT), p[1] + d[1] * Math.max(0, endT)]; beam(ctx, p[0], p[1], q[0], q[1], power, 2.5); break; }
+      const q = [p[0] + d[0] * bt, p[1] + d[1] * bt]; beam(ctx, p[0], p[1], q[0], q[1], power, 2.5);
+      const ex = best[1][0] - best[0][0], ey = best[1][1] - best[0][1], L = Math.hypot(ex, ey); let nx = -ey / L, ny = ex / L; if (nx * d[0] + ny * d[1] > 0) { nx = -nx; ny = -ny; }
+      const cosi = -(nx * d[0] + ny * d[1]), ti = Math.acos(SL.clamp(cosi, -1, 1)), fr = fresnel(RF.nco, RF.ncl, ti);
+      if (fr.R < 0.999) { leaks++; const tr = power * (1 - fr.R); const t2 = fr.t2, tx = -nx, ty = -ny; // transmitted direction
+        const tdx = Math.sin(t2) * (d[0] + cosi * nx) / Math.max(1e-9, Math.hypot(d[0] + cosi * nx, d[1] + cosi * ny)) + Math.cos(t2) * tx, tdy = Math.sin(t2) * (d[1] + cosi * ny) / Math.max(1e-9, Math.hypot(d[0] + cosi * nx, d[1] + cosi * ny)) + Math.cos(t2) * ty;
+        beam(ctx, q[0], q[1], q[0] + tdx * 60, q[1] + tdy * 60, tr * .8, 1.6); power *= fr.R; }
+      d = [d[0] + 2 * cosi * nx, d[1] + 2 * cosi * ny]; p = q; bounces++;
+      if (p[0] > x1) break;
+    }
+    RF.out = { NA, acc, power, bounces, leaks, internal: SL.deg(inside), crit: RF.nco > RF.ncl ? SL.deg(Math.asin(RF.ncl / RF.nco)) : NaN };
+    txt(ctx, `power delivered ${SL.fmt(power * 100, 1)}%`, x1, 24, power > .9 ? '#34d399' : '#f472b6', 'right', '600 12px JetBrains Mono, monospace');
+  }
+  function uiRefract() {
+    if (RF.kind === 'iface') {
+      const t1 = SL.rad(RF.th1), fr = fresnel(RF.n1, RF.n2, t1);
+      $('#hud').innerHTML = `<span class="readout">n₁ sin θ₁ <b>${SL.fmt(RF.n1 * Math.sin(t1), 4)}</b></span><span class="readout">n₂ sin θ₂ <b>${isFinite(fr.t2) ? SL.fmt(RF.n2 * Math.sin(fr.t2), 4) : '—'}</b></span>`;
+      $('#stats').innerHTML = stat('θ₁', SL.fmt(RF.th1, 1), '°') + stat('θ₂', isFinite(fr.t2) ? SL.fmt(SL.deg(fr.t2), 2) : 'none', isFinite(fr.t2) ? '°' : '') + stat('Critical angle', RF.n1 > RF.n2 ? SL.fmt(SL.deg(Math.asin(RF.n2 / RF.n1)), 2) : 'none', RF.n1 > RF.n2 ? '°' : '') + stat('Reflectance R', SL.fmt(fr.R * 100, 2), '%') + stat('Speed in medium 1', SL.fmt(2.998e8 / RF.n1 / 1e8, 3), '×10⁸ m/s') + stat('Speed in medium 2', SL.fmt(2.998e8 / RF.n2 / 1e8, 3), '×10⁸ m/s');
+    } else {
+      const o = RF.out || {};
+      $('#hud').innerHTML = `<span class="readout">NA <b>${SL.fmt(o.NA, 3)}</b></span><span class="readout">bounces <b>${o.bounces ?? 0}</b></span>`;
+      $('#stats').innerHTML = stat('Numerical aperture', SL.fmt(o.NA, 3)) + stat('Acceptance half-angle', SL.fmt(SL.deg(o.acc), 2), '°') + stat('Core critical angle', SL.fmt(o.crit, 2), '°') + stat('Angle in core (to axis)', SL.fmt(o.internal, 2), '°') + stat('Power delivered', SL.fmt((o.power ?? 1) * 100, 1), '%');
+    }
+    $('#nature').style.display = 'none';
+  }
+
+  /* ======================= (e) STANDING WAVES ======================= */
+  const SW = { kind: 'string', mode: 'mode', n: 2, L: 0.65, T: 73.5, mu: 0.4, p: 0.2, temp: 20, trav: false };
+  const vSound = () => 331.3 * Math.sqrt(1 + SW.temp / 273.15);
+  const waveV = () => SW.kind === 'string' ? Math.sqrt(SW.T / (SW.mu * 1e-3)) : vSound();
+  const harmN = n => SW.kind === 'closed' ? 2 * n - 1 : n; // nth allowed harmonic number
+  const freq = n => SW.kind === 'closed' ? harmN(n) * waveV() / (4 * SW.L) : n * waveV() / (2 * SW.L);
+  function pluckAmps(M) { const a = []; for (let n = 1; n <= M; n++) a.push(SW.kind === 'string' ? 2 * Math.sin(n * Math.PI * SW.p) / (n * n * Math.PI * Math.PI * SW.p * (1 - SW.p)) : (SW.kind === 'closed' ? (n % 2 ? 1 / n : 0) : 1 / n)); return a; }
+  function drawStanding() {
+    const { ctx, w, h } = st; ctx.fillStyle = '#050913'; ctx.fillRect(0, 0, w, h);
+    const x0 = 40, x1 = w - 40, cy = h * .45, A = Math.min(h * .2, 90), om = 2 * Math.PI * 0.6; // slowed visual frequency
+    const t = T;
+    if (SW.kind === 'string') {
+      ctx.fillStyle = '#334155'; ctx.fillRect(x0 - 14, cy - 50, 14, 100); ctx.fillRect(x1, cy - 50, 14, 100);
+      const yAt = (u) => { if (SW.mode === 'mode') return A * Math.sin(SW.n * Math.PI * u) * Math.cos(om * SW.n * t); const amps = pluckAmps(30); let y = 0; amps.forEach((b, i) => { const n = i + 1; y += b * Math.sin(n * Math.PI * u) * Math.cos(om * .5 * n * t); }); return A * .8 * y * 1; };
+      if (SW.mode === 'mode') { ctx.setLineDash([4, 5]); ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.lineWidth = 1; [1, -1].forEach(sg => { ctx.beginPath(); for (let i = 0; i <= 300; i++) { const u = i / 300; const x = x0 + u * (x1 - x0), y = cy - sg * A * Math.sin(SW.n * Math.PI * u); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke(); }); ctx.setLineDash([]); }
+      if (SW.trav && SW.mode === 'mode') { [1, -1].forEach((dir, k) => { ctx.strokeStyle = k ? 'rgba(244,114,182,.6)' : 'rgba(167,139,250,.6)'; ctx.lineWidth = 1.5; ctx.beginPath(); for (let i = 0; i <= 300; i++) { const u = i / 300, x = x0 + u * (x1 - x0), y = cy - A / 2 * Math.sin(SW.n * Math.PI * u - dir * om * SW.n * t); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke(); }); }
+      ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 3; ctx.shadowColor = '#22d3ee'; ctx.shadowBlur = 12; ctx.beginPath(); for (let i = 0; i <= 400; i++) { const u = i / 400, x = x0 + u * (x1 - x0), y = cy - yAt(u); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke(); ctx.shadowBlur = 0;
+      if (SW.mode === 'mode') for (let k = 0; k <= SW.n; k++) { const x = x0 + k / SW.n * (x1 - x0); ctx.fillStyle = '#f472b6'; ctx.beginPath(); ctx.arc(x, cy, 5, 0, 7); ctx.fill(); txt(ctx, 'N', x, cy + 22, '#f472b6', 'center'); if (k < SW.n) txt(ctx, 'A', x + (x1 - x0) / SW.n / 2, cy - A - 10, '#facc15', 'center'); }
+      else { const xp = x0 + SW.p * (x1 - x0); ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.moveTo(xp, cy - A - 18); ctx.lineTo(xp - 6, cy - A - 28); ctx.lineTo(xp + 6, cy - A - 28); ctx.fill(); txt(ctx, 'pluck', xp, cy - A - 32, '#facc15', 'center'); }
+      if (SW.mode === 'mode') { ctx.strokeStyle = 'rgba(250,204,21,.6)'; ctx.lineWidth = 1; const lamPx = 2 * (x1 - x0) / SW.n; const yb = cy + A + 30; ctx.beginPath(); ctx.moveTo(x0, yb); ctx.lineTo(Math.min(x1, x0 + lamPx), yb); ctx.stroke(); txt(ctx, 'λ = 2L/n = ' + SL.fmt(2 * SW.L / SW.n, 3) + ' m', x0 + Math.min(lamPx, x1 - x0) / 2, yb - 6, '#facc15', 'center'); }
+    } else {
+      // pipe with air particles; displacement s(x,t)
+      const top = cy - 60, bot = cy + 60;
+      ctx.fillStyle = 'rgba(148,163,184,.12)'; ctx.fillRect(x0, top, x1 - x0, bot - top); ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x0, top); ctx.lineTo(x1, top); ctx.moveTo(x0, bot); ctx.lineTo(x1, bot); ctx.stroke();
+      if (SW.kind === 'closed') { ctx.fillStyle = '#94a3b8'; ctx.fillRect(x0 - 8, top - 2, 8, bot - top + 4); }
+      const k = n => SW.kind === 'closed' ? (2 * n - 1) * Math.PI / 2 : n * Math.PI; // in units of 1/L
+      const sAt = u => { if (SW.mode === 'mode') { const kk = k(SW.n); return (SW.kind === 'closed' ? Math.sin(kk * u) : Math.cos(kk * u)) * Math.cos(om * t * harmN(SW.n)); } let s = 0; pluckAmps(12).forEach((b, i) => { const n = i + 1, kk = k(n); s += b * (SW.kind === 'closed' ? Math.sin(kk * u) : Math.cos(kk * u)) * Math.cos(om * .5 * harmN(n) * t); }); return s; };
+      const pAt = u => { const e = 1e-3; return -(sAt(u + e) - sAt(u - e)) / (2 * e); };
+      const dx = (x1 - x0) * .045;
+      for (let j = 0; j < 9; j++) for (let i = 0; i <= 70; i++) { const u = i / 70; let x = x0 + u * (x1 - x0) + sAt(u) * dx, y = top + 10 + j * (bot - top - 20) / 8 + ((i * 7 + j * 13) % 5 - 2); const xc = SL.clamp(x, x0 + 2, x1 - 2); ctx.fillStyle = 'rgba(125,211,252,.8)'; x = xc; ctx.fillRect(x - 1.2, y - 1.2, 2.4, 2.4); }
+      // graphs below
+      const gy = bot + 60, ga = 34; let pm = 0; for (let i = 0; i <= 200; i++) pm = Math.max(pm, Math.abs(pAt(i / 200))); pm = pm || 1;
+      ctx.lineWidth = 2; ctx.strokeStyle = '#22d3ee'; ctx.beginPath(); for (let i = 0; i <= 300; i++) { const u = i / 300, x = x0 + u * (x1 - x0), y = gy - sAt(u) * ga; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+      ctx.strokeStyle = '#f472b6'; ctx.beginPath(); for (let i = 0; i <= 300; i++) { const u = i / 300, x = x0 + u * (x1 - x0), y = gy - pAt(u) / pm * ga * Math.max(...[1]) * .9; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,.15)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0, gy); ctx.lineTo(x1, gy); ctx.stroke();
+      txt(ctx, 'displacement', x0, gy - ga - 10, '#22d3ee'); txt(ctx, 'pressure variation', x0 + 110, gy - ga - 10, '#f472b6');
+      txt(ctx, SW.kind === 'closed' ? 'closed end: displacement node' : 'open end: displacement antinode', x0, top - 10, 'rgba(230,236,247,.6)'); txt(ctx, 'open end', x1, top - 10, 'rgba(230,236,247,.6)', 'right');
+    }
+    // spectrum bars
+    const M = 10, amps = SW.mode === 'mode' ? Array.from({ length: M }, (_, i) => i + 1 === SW.n ? 1 : 0) : pluckAmps(M).map(Math.abs);
+    const mx = Math.max(...amps) || 1, bw = Math.min(26, (w - 80) / M - 6), base = h - 26, bh = Math.min(70, h * .14);
+    txt(ctx, 'harmonic spectrum', 40, base - bh - 10, 'rgba(230,236,247,.5)');
+    amps.forEach((a, i) => { const x = 40 + i * (bw + 6); ctx.fillStyle = 'rgba(255,255,255,.06)'; ctx.fillRect(x, base - bh, bw, bh); ctx.fillStyle = '#a78bfa'; ctx.fillRect(x, base - bh * a / mx, bw, bh * a / mx); txt(ctx, String(harmN(i + 1)), x + bw / 2, base + 14, 'rgba(230,236,247,.5)', 'center', '10px JetBrains Mono, monospace'); });
+  }
+  function uiStanding() {
+    const v = waveV(), f = freq(SW.n), f1 = freq(1);
+    $('#hud').innerHTML = `<span class="readout">f${SW.mode === 'mode' ? '' : '₁'} <b>${SL.fmt(SW.mode === 'mode' ? f : f1, 1)}</b> Hz</span><span class="readout">${noteName(SW.mode === 'mode' ? f : f1)}</span>`;
+    $('#stats').innerHTML = stat('Wave speed v', SL.fmt(v, 1), 'm/s') + stat('Fundamental f₁', SL.fmt(f1, 2), 'Hz') + stat(SW.mode === 'mode' ? `Harmonic ${harmN(SW.n)} frequency` : 'Harmonics present', SW.mode === 'mode' ? SL.fmt(f, 2) : (SW.kind === 'closed' ? 'odd only' : 'all n'), SW.mode === 'mode' ? 'Hz' : '') + stat('Wavelength', SL.fmt(v / (SW.mode === 'mode' ? f : f1), 3), 'm') + stat('Period', SL.fmt(1000 / (SW.mode === 'mode' ? f : f1), 3), 'ms');
+    $('#nature').style.display = 'none';
+  }
+  function noteName(f) { const names = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B']; const n = 12 * Math.log2(f / 440) + 69, r = Math.round(n), c = Math.round((n - r) * 100); return `${names[(r % 12 + 12) % 12]}${Math.floor(r / 12) - 1} ${c >= 0 ? '+' : ''}${c} ct`; }
+  let toneNode = null;
+  function playTone() {
+    const ac = SL.audio(); if (!ac) { SL.toast('Audio is not available in this browser.', 'warn'); return; }
+    if (toneNode) { try { toneNode.stop(); } catch (e) {} toneNode = null; }
+    const f0 = SW.mode === 'mode' ? freq(SW.n) : freq(1); if (f0 > 12000) { SL.toast('That frequency is above the useful audio range.', 'warn'); return; }
+    const osc = ac.createOscillator(), g = ac.createGain();
+    if (SW.mode === 'pluck') { const amps = pluckAmps(24), M = SW.kind === 'closed' ? 47 : 24, re = new Float32Array(M + 1), im = new Float32Array(M + 1); amps.forEach((a, i) => { const hn = SW.kind === 'closed' ? 2 * i + 1 : i + 1; if (hn <= M && hn * f0 < 18000) im[hn] = Math.abs(a); }); osc.setPeriodicWave(ac.createPeriodicWave(re, im)); osc.frequency.value = f0; }
+    else { osc.type = 'sine'; osc.frequency.value = f0; }
+    const now = ac.currentTime; g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(0.18, now + 0.02); g.gain.exponentialRampToValueAtTime(0.001, now + (SW.mode === 'pluck' ? 2.2 : 1.6));
+    osc.connect(g).connect(ac.destination); osc.start(now); osc.stop(now + 2.3); toneNode = osc;
+  }
+
+  /* ======================= pointer ======================= */
+  const cv = $('#cv'); let drag = null;
+  cv.addEventListener('pointerdown', e => {
+    const p = SL.ptr(e, cv);
+    if (mode === 'ripple') { const sc = RP.W / st.w; ripSources().forEach((s, i) => { if (Math.hypot(p.x - s[0] / sc, p.y - s[1] / sc) < 20) drag = { t: 'src', i }; }); }
+    else if (mode === 'bench') { const G = benchGeo(); const cand = [];
+      if (!BP.far) { cand.push({ t: 'tip', d: Math.hypot(p.x - G.X(BP.xo), p.y - G.Y(BP.ho)) }); cand.push({ t: 'obj', d: Math.abs(p.x - G.X(BP.xo)) + (Math.abs(p.y - G.Y(BP.ho / 2)) > Math.abs(G.Y(BP.ho) - G.Y(0)) / 2 + 20 ? 99 : 0) }); }
+      if (BP.kind === 'lens') { cand.push({ t: 'x1', d: Math.abs(p.x - G.X(BP.x1)) + (Math.abs(p.y - G.Y(0)) > 95 ? 99 : 0) }); if (BP.use2) cand.push({ t: 'x2', d: Math.abs(p.x - G.X(BP.x2)) + (Math.abs(p.y - G.Y(0)) > 95 ? 99 : 0) }); }
+      else cand.push({ t: 'xm', d: Math.abs(p.x - G.X(BP.xm)) + (Math.abs(p.y - G.Y(0)) > 95 ? 99 : 0) });
+      cand.sort((a, b) => a.d - b.d); if (cand[0] && cand[0].d < 22) drag = { t: cand[0].t }; }
+    else if (mode === 'refract' && RF.kind === 'iface') drag = { t: 'laser' };
+    else if (mode === 'refract') drag = { t: 'flaser' };
+    if (drag) { cv.setPointerCapture(e.pointerId); e.preventDefault(); moveP(p); }
+  });
+  function moveP(p) {
+    if (mode === 'ripple') { RP.hover = p; if (drag) { const sc = RP.W / st.w; RP.src[drag.i] = [SL.clamp(p.x * sc, 0, RP.W), SL.clamp(p.y * sc, 0, RP.W * st.h / st.w)]; if (RP.n === 2) { RP.d = Math.hypot(RP.src[1][0] - RP.src[0][0], RP.src[1][1] - RP.src[0][1]); const el = $('#rd'); el.value = Math.min(16, RP.d); el.closest('.ctl').querySelector('output').textContent = SL.fmt(RP.d, 1) + ' cm'; } RP.cache = null; } }
+    if (mode === 'slits') SP.hover = p;
+    if (!drag) return;
+    if (mode === 'bench') { const G = benchGeo(), x = SL.clamp(Math.round(G.inv(p.x) * 2) / 2, 0, BP.len);
+      if (drag.t === 'tip') { BP.ho = SL.clamp(Math.round(G.invY(p.y) * 10) / 10, -6, 6); if (Math.abs(BP.ho) < 0.3) BP.ho = 0.3 * Math.sign(BP.ho || 1); setRange('oh', BP.ho); }
+      else if (drag.t === 'obj') { const lim = BP.kind === 'lens' ? Math.min(...lenses().map(l => l.x)) - 0.5 : BP.xm - 0.5; BP.xo = Math.min(x, lim); }
+      else if (drag.t === 'x1') BP.x1 = Math.max(x, BP.far ? 1 : BP.xo + 0.5); else if (drag.t === 'x2') BP.x2 = Math.max(x, BP.far ? 1 : BP.xo + 0.5); else if (drag.t === 'xm') BP.xm = Math.max(x, BP.xo + 0.5); }
+    if (mode === 'refract' && drag.t === 'laser') { const cx = st.w / 2, cy = st.h / 2; const a = SL.deg(Math.atan2(cx - p.x, cy - p.y)); setRange('th1', SL.clamp(Math.abs(a), 0, 89.5).toFixed(1)); }
+    if (mode === 'refract' && drag.t === 'flaser') { const a = SL.deg(Math.atan2(st.h * .5 - p.y, 90 - p.x)); setRange('lang', SL.clamp(Math.round(Math.abs(a) * 2) / 2, 0, 60)); }
+  }
+  cv.addEventListener('pointermove', e => moveP(SL.ptr(e, cv)));
+  const up = () => { drag = null; }; cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+  cv.addEventListener('pointerleave', () => { RP.hover = null; SP.hover = null; });
+
+  /* ======================= controls ======================= */
+  function setMode(m) {
+    mode = m; document.querySelectorAll('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+    document.querySelectorAll('.grp').forEach(g => g.classList.toggle('show', g.dataset.g === m));
+    $('#statsTitle').textContent = { ripple: 'Interference', slits: 'Diffraction pattern', bench: 'Image formation', refract: 'Refraction', standing: 'Standing wave' }[m];
+    if (m === 'ripple') RP.cache = null; running = true; setPlay(); updUI();
+  }
+  $('#modeSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.m); });
+  // ripple
+  segPick('#nsrc', b => { RP.n = +b.dataset.n; RP.cache = null; });
+  segPick('#rview', b => { RP.view = b.dataset.v; RP.cache = null; });
+  SL.bind('#rl', v => { RP.lam = v; RP.cache = null; }, v => SL.fmt(v, 2) + ' cm');
+  SL.bind('#rd', v => { RP.d = v; if (st.w) setSep(); }, v => SL.fmt(v, 1) + ' cm');
+  SL.bind('#rp', v => { RP.phi = v; RP.cache = null; }, v => v + '°');
+  SL.bind('#rth', v => RP.th = v);
+  // slits
+  function slitUI() { $('#sdWrap').style.display = SP.type === '2' ? '' : 'none'; $('#sa').closest('.ctl').style.display = SP.type === 'g' ? 'none' : ''; $('#snWrap').style.display = $('#sgWrap').style.display = SP.type === 'g' ? '' : 'none'; SP.hits = []; }
+  segPick('#slitType', b => { SP.type = b.dataset.t; slitUI(); });
+  SL.bind('#sg', v => { SP.lpm = v; SP.hits = []; }, v => v + ' /mm (d = ' + SL.fmt(1000 / v, 3) + ' µm)');
+  SL.bind('#sl', v => { SP.lam = v; SP.hits = []; }, v => v + ' nm');
+  SL.bind('#sa', v => { SP.a = v; if (SP.d < v) setRange('sd', v); SP.hits = []; }, v => v + ' µm');
+  SL.bind('#sd', v => { SP.d = Math.max(v, SP.a); SP.hits = []; }, v => v + ' µm');
+  SL.bind('#sn', v => { SP.N = v; SP.hits = []; }, v => v);
+  SL.bind('#sL', v => { SP.L = v; SP.hits = []; }, v => SL.fmt(v, 2) + ' m');
+  SL.bind('#phot', v => { SP.phot = v; SP.hits = []; }); SL.bind('#env', v => SP.env = v);
+  // bench
+  segPick('#benchKind', b => { BP.kind = b.dataset.k; if (BP.kind === 'mirror') { BP.far = false; $('#far').checked = false; setRange('f1', BP.fm); } else setRange('f1', BP.f1); benchKindUI(); });
+  SL.bind('#f1', v => { if (Math.abs(v) < 1) v = v < 0 ? -1 : 1; if (BP.kind === 'mirror') BP.fm = v; else BP.f1 = v; }, v => SL.fmt(v, 1) + ' cm');
+  SL.bind('#f2', v => { if (Math.abs(v) < 1) v = v < 0 ? -1 : 1; BP.f2 = v; }, v => SL.fmt(v, 1) + ' cm');
+  SL.bind('#use2', v => { BP.use2 = v; $('#f2wrap').style.display = v ? '' : 'none'; if (v && BP.x2 <= BP.x1) BP.x2 = Math.min(95, BP.x1 + 20); });
+  SL.bind('#oh', v => BP.ho = v === 0 ? 0.1 : v, v => SL.fmt(v, 1) + ' cm');
+  SL.bind('#far', v => { BP.far = v && BP.kind === 'lens'; }); SL.bind('#fan', v => BP.fan = v);
+  document.querySelectorAll('#benchPresets [data-p]').forEach(b => b.onclick = () => benchPreset(b.dataset.p));
+  // refraction
+  segPick('#refKind', b => { RF.kind = b.dataset.k; $('#ifaceBox').style.display = RF.kind === 'iface' ? '' : 'none'; $('#fibreBox').style.display = RF.kind === 'fibre' ? '' : 'none'; });
+  SL.bind('#n1', v => RF.n1 = v, v => SL.fmt(v, 2)); SL.bind('#n2', v => RF.n2 = v, v => SL.fmt(v, 2));
+  SL.bind('#th1', v => RF.th1 = v, v => SL.fmt(v, 1) + '°');
+  document.querySelectorAll('[data-n1]').forEach(b => b.onclick = () => setRange('n1', b.dataset.n1));
+  document.querySelectorAll('[data-n2]').forEach(b => b.onclick = () => setRange('n2', b.dataset.n2));
+  $('#swapN').onclick = () => { const a = RF.n1, b = RF.n2; setRange('n1', b); setRange('n2', a); };
+  SL.bind('#nco', v => { RF.nco = v; if (RF.ncl >= v) setRange('ncl', (v - 0.005).toFixed(3)); }, v => SL.fmt(v, 3));
+  SL.bind('#ncl', v => { RF.ncl = Math.min(v, RF.nco - 0.001); }, v => SL.fmt(v, 3));
+  SL.bind('#lang', v => RF.lang = v, v => v + '°'); SL.bind('#bend', v => RF.bend = v, v => SL.fmt(v * 100, 0) + '%');
+  // standing
+  function swUI() { $('#strBox').style.display = SW.kind === 'string' ? '' : 'none'; $('#pipeBox').style.display = SW.kind === 'string' ? 'none' : ''; $('#pluckWrap').style.display = SW.mode === 'pluck' ? '' : 'none'; $('#swMode [data-k=pluck]').textContent = SW.kind === 'string' ? 'Pluck' : 'Blow (rich tone)'; setRange('hn', SW.n); }
+  segPick('#swKind', b => { SW.kind = b.dataset.k; if (SW.kind !== 'string' && SW.L === 0.65) setRange('sLen', 0.5); swUI(); });
+  segPick('#swMode', b => { SW.mode = b.dataset.k; swUI(); });
+  SL.bind('#hn', v => SW.n = v, v => SW.kind === 'closed' ? `${v} (n = ${2 * v - 1})` : v);
+  SL.bind('#sLen', v => SW.L = v, v => SL.fmt(v, 3) + ' m'); SL.bind('#ten', v => SW.T = v, v => SL.fmt(v, 1) + ' N'); SL.bind('#mu', v => SW.mu = v, v => SL.fmt(v, 2) + ' g/m');
+  SL.bind('#pp', v => SW.p = v, v => SL.fmt(v, 2) + ' L'); SL.bind('#temp', v => SW.temp = v, v => v + ' °C'); SL.bind('#trav', v => SW.trav = v);
+  $('#tone').onclick = () => { playTone(); checkTone(); };
+  function setPlay() { $('#playBtn').innerHTML = `<i data-lucide="${running ? 'pause' : 'play'}"></i>`; SL.refreshIcons($('#playBtn')); }
+  $('#playBtn').onclick = () => { running = !running; setPlay(); };
+  // worked-example loaders
+  const LOADS = {
+    young: () => { setMode('slits'); $('#slitType [data-t="2"]').click(); setRange('sl', 600); setRange('sa', 50); setRange('sd', 250); setRange('sL', 1.5); },
+    grating: () => { setMode('slits'); $('#slitType [data-t=g]').click(); setRange('sl', 532); setRange('sg', 600); setRange('sn', 60); },
+    proj: () => { setMode('bench'); benchPreset('proj'); },
+    fibre: () => { setMode('refract'); $('#refKind [data-k=fibre]').click(); setRange('nco', 1.48); setRange('ncl', 1.46); setRange('lang', 13.5); },
+    guitar: () => { setMode('standing'); $('#swKind [data-k=string]').click(); $('#swMode [data-k=mode]').click(); setRange('hn', 1); setRange('sLen', 0.65); setRange('ten', 73.5); setRange('mu', 0.4); },
+  };
+  document.querySelectorAll('[data-load]').forEach(b => b.addEventListener('click', () => { LOADS[b.dataset.load](); $('#lab').scrollIntoView({ behavior: 'smooth' }); }));
+
+  /* ======================= challenges ======================= */
+  const CHALS = [
+    { id: 'nod6', t: 'Six nodal lines', d: 'In the ripple tank with two in-phase sources, set $d$ and $\\lambda$ so that there are exactly six nodal lines (three on each side).' },
+    { id: 'miss', t: 'Missing orders', d: 'With a double slit, choose $a$ and $d$ so that the 3rd-order fringe is missing (it falls on the first envelope zero).' },
+    { id: 'img2', t: 'Same-size image', d: 'With one converging lens, place the object so the real image is the same size as the object (within 2%). Where is it?' },
+    { id: 'tele', t: 'Build a telescope', d: 'With two converging lenses and a distant object, make the output rays parallel (separation within 1% of $f_1 + f_2$) with an angular magnification of at least 5×.' },
+    { id: 'tir', t: 'Trap the light', d: 'Make a glass-to-air interface show total internal reflection with the angle of incidence less than 1° above the critical angle.' },
+    { id: 'a440', t: 'Concert A', d: 'Tune the string (single harmonic, n = 1) to A4 = 440 Hz within ±1 Hz and play it.' },
+  ];
+  $('#chalList').innerHTML = CHALS.map(c => `<div class="chal" id="ch-${c.id}"><span class="led"></span><div><b>${c.t}</b><p>${c.d}</p></div></div>`).join('');
+  function win(id, msg) { if (done[id]) return; done[id] = true; $('#ch-' + id + ' .led').classList.add('on'); SL.toast(`<b>Challenge complete:</b> ${CHALS.find(c => c.id === id).t}${msg ? '<br>' + msg : ''}`, 'ok', 6000); }
+  function checkTone() { if (SW.kind === 'string' && SW.mode === 'mode' && SW.n === 1 && Math.abs(freq(1) - 440) <= 1) win('a440', `f₁ = ${SL.fmt(freq(1), 2)} Hz.`); }
+  function checkChallenges() {
+    if (mode === 'ripple' && RP.n === 2 && RP.phi % 360 === 0) { const nl = 2 * Math.floor(RP.d / RP.lam + 0.5); if (nl === 6 && Math.abs(RP.d / RP.lam - Math.round(RP.d / RP.lam - .5) - .5) > 0.05) win('nod6', `d/λ = ${SL.fmt(RP.d / RP.lam, 2)}: nodal lines where d sin θ = ±λ/2, ±3λ/2, ±5λ/2.`); }
+    if (mode === 'slits' && SP.type === '2' && Math.abs(SP.d / SP.a - 3) < 0.03) win('miss', `d/a = ${SL.fmt(SP.d / SP.a, 2)}: the 3rd maximum lands on the envelope zero.`);
+    if (mode === 'bench' && BP.kind === 'lens' && !BP.use2 && !BP.far && BP.f1 > 0) { const im = imageChain()[0]; if (im.v > 0 && Math.abs(Math.abs(im.m) - 1) < 0.02) win('img2', `u = ${SL.fmt(im.u, 1)} cm, v = ${SL.fmt(im.v, 1)} cm: both at 2f.`); }
+    if (mode === 'bench' && BP.kind === 'lens' && BP.use2 && BP.far && BP.f1 > 0 && BP.f2 > 0) { const sep = Math.abs(BP.x2 - BP.x1); if (Math.abs(sep - (BP.f1 + BP.f2)) / (BP.f1 + BP.f2) < 0.01 && BP.f1 / BP.f2 >= 5 && BP.x1 < BP.x2) win('tele', `M = −f₁/f₂ = ${SL.fmt(-BP.f1 / BP.f2, 2)}.`); }
+    if (mode === 'refract' && RF.kind === 'iface' && Math.abs(RF.n1 - 1.5) < 0.005 && Math.abs(RF.n2 - 1) < 0.005) { const tc = SL.deg(Math.asin(1 / 1.5)); if (RF.th1 > tc && RF.th1 - tc < 1) win('tir', `θ₁ = ${SL.fmt(RF.th1, 1)}°, θc = ${SL.fmt(tc, 2)}°.`); }
+  }
+
+  /* ======================= quiz ======================= */
+  SL.quiz('#quiz', [
+    { q: 'Two in-phase sources produce a nodal (dark) line where the path difference is:', options: ['A whole number of wavelengths', 'An odd number of half-wavelengths', 'Zero', 'Equal to the source separation'], answer: 1, why: 'Destructive interference needs the waves to arrive half a cycle out of step: $\\Delta r = (m + \\tfrac12)\\lambda$.' },
+    { q: 'In Young\'s experiment, what happens to the fringe spacing if the slit separation is halved?', options: ['It halves', 'It doubles', 'It is unchanged', 'It quadruples'], answer: 1, why: '$\\Delta y = \\lambda L/d$, so halving $d$ doubles the spacing.' },
+    { q: 'Making a single slit narrower makes the central bright band:', options: ['Narrower', 'Wider', 'Unchanged in width but brighter', 'Disappear'], answer: 1, why: 'The first minimum is at $\\sin\\theta = \\lambda/a$: smaller $a$, larger angle, more spreading.' },
+    { q: 'Why do diffraction gratings with many slits give very sharp maxima?', options: ['Each slit is narrower', 'Contributions from many slits cancel unless the path difference is almost exactly $m\\lambda$', 'The light is brighter', 'The screen is further away'], answer: 1, why: 'With $N$ slits the interference term $(\\sin N\\alpha/N\\sin\\alpha)^2$ falls to zero only a fraction $1/N$ of an order away from each principal maximum.' },
+    { q: 'An object is 20 cm from a converging lens of focal length 10 cm. The image is:', options: ['Virtual, upright, magnified', 'Real, inverted, same size, 20 cm from the lens', 'Real, inverted, magnified, 30 cm from the lens', 'At infinity'], answer: 1, why: '$1/v = 1/10 - 1/20 = 1/20$, so $v = 20$ cm and $m = v/u = 1$: real, inverted, same size (object at 2F).' },
+    { q: 'Using real-is-positive, a lens gives $v = -15$ cm. This means the image is:', options: ['Real, on the far side', 'Virtual, on the same side as the object', 'At the focal point', 'Impossible'], answer: 1, why: 'Negative image distances denote virtual images, found by extending rays backwards to the object side.' },
+    { q: 'The critical angle for light going from glass ($n = 1.5$) to water ($n = 1.33$) is about:', options: ['41.8°', '48.8°', '62.5°', 'There is none'], answer: 2, why: '$\\sin\\theta_c = 1.33/1.5 = 0.887$, $\\theta_c = 62.5^\\circ$. It is larger than for glass to air because the index contrast is smaller.' },
+    { q: 'A guitar string\'s tension is increased by a factor of 4. Its fundamental frequency:', options: ['Doubles', 'Quadruples', 'Halves', 'Is unchanged'], answer: 0, why: '$f_1 = \\frac{1}{2L}\\sqrt{T/\\mu}$, so $f \\propto \\sqrt T$.' },
+    { q: 'A pipe closed at one end has a fundamental of 200 Hz. Which frequency is NOT one of its harmonics?', options: ['600 Hz', '1000 Hz', '400 Hz', '1400 Hz'], answer: 2, why: 'A closed pipe supports only odd multiples of the fundamental: 200, 600, 1000, 1400 Hz …' },
+  ]);
+
+  /* ======================= main loop ======================= */
+  let uiAcc = 0, chAcc = 0;
+  function updUI() { ({ ripple: uiRipple, slits: uiSlits, bench: uiBench, refract: uiRefract, standing: uiStanding })[mode](); }
+  const loop = SL.loop(dt => {
+    if (running) T += dt;
+    if (mode === 'ripple') drawRipple(dt); else if (mode === 'slits') drawSlits(dt); else if (mode === 'bench') drawBench(); else if (mode === 'refract') drawRefract(); else drawStanding();
+    uiAcc += dt; if (uiAcc > .15) { uiAcc = 0; updUI(); }
+    chAcc += dt; if (chAcc > .5) { chAcc = 0; checkChallenges(); }
+  }).start();
+  document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
+  slitUI(); benchKindUI(); swUI(); $('#f2wrap').style.display = 'none'; setMode('ripple');
+  window.__wo = { RP, SP, BP, RF, SW, slitI, imageChain, freq, fresnel, setMode, benchPreset, traceLens, lenses };
+})();
+</script>
+</body>
+</html>
