@@ -96,7 +96,8 @@
       try { window.lucide.createIcons({ attrs: { 'stroke-width': 1.9 }, nameAttr: 'data-lucide', root: root || document }); } catch (e) { try { window.lucide.createIcons(); } catch (_) {} }
     }
   }
-  const LOGO = `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6"/><path d="M10 3v6.5L4.6 18.2A1.9 1.9 0 0 0 6.2 21h11.6a1.9 1.9 0 0 0 1.6-2.8L14 9.5V3"/><path d="M7.5 15h9"/></svg>`;
+  const LOGO_SRC = 'https://pentarchcommunications.com/wp-content/uploads/2026/01/LOGO-SYMBOL-TRANSPARENT-150x150.png';
+  const LOGO = `<img src="${LOGO_SRC}" alt="Pentarch" width="36" height="36">`;
 
   /* ---------------- Header ---------------- */
   function header() {
@@ -116,7 +117,7 @@
         <div class="mega-depts">${DEPTS.slice(5).map(d => `<div data-dept="${d.id}"><h5>${icon(d.icon)}${d.name}</h5>${MODULES.filter(m => m.dept === d.id).map(m => `<a href="${m.id}.html">${m.title}</a>`).join('')}</div>`).join('')}</div>
       </div></div></div>`;
     return `<header class="sl-header" id="slHeader"><div class="container bar">
-      <a class="sl-logo" href="index.html"><span class="mark">${LOGO}</span><span>Pentarch SimLab<small>Learn by doing</small></span></a>
+      <a class="sl-logo" href="index.html"><span class="mark">${LOGO}</span><span><b class="pw">PENTARCH</b> SimLab<small>Learn by doing</small></span></a>
       <nav class="sl-nav" aria-label="Departments">${main}${more}</nav>
       <button class="sl-search" id="slSearchBtn" aria-label="Search labs">${icon('search')}<span>Search</span><kbd>/</kbd></button>
       <button class="sl-burger" id="slBurger" aria-label="Menu">${icon('menu')}</button>
@@ -133,7 +134,7 @@
     };
     return `<footer class="sl-footer"><div class="container">
       <div class="cols">
-        <div><a class="sl-logo" href="index.html" style="padding:0"><span class="mark">${LOGO}</span><span>Pentarch SimLab<small>Learn by doing</small></span></a>
+        <div><a class="sl-logo" href="index.html" style="padding:0"><span class="mark">${LOGO}</span><span><b class="pw">PENTARCH</b> SimLab<small>Learn by doing</small></span></a>
           <p class="muted small" style="margin-top:14px;max-width:330px">Interactive simulations for university and college students. Experiment, build, break things and understand why. A learning platform by Pentarch Communications.</p>
           <a href="${PARENT}" style="display:inline-flex;align-items:center;gap:6px">${icon('arrow-up-left')} pentarchcommunications.com</a></div>
         ${cols.map(([t, k]) => `<div><h5>${t}</h5>${MODULES.filter(m => groups[k].includes(m.dept)).slice(0, 9).map(m => `<a href="${m.id}.html">${m.title}</a>`).join('')}</div>`).join('')}
