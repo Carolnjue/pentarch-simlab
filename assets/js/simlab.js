@@ -281,7 +281,7 @@
     wireTourBtn();
     const key = 'sl-tour-seen-' + (document.body.dataset.page || '');
     let seen = false; try { seen = !!localStorage.getItem(key); } catch (e) {}
-    if (!seen) setTimeout(() => toast(`New to this lab? <a href="#" data-tour style="color:inherit;font-weight:600;text-decoration:underline">Take the 1-minute guided tour</a>`, '', 9000), 1500);
+    if (!seen) setTimeout(() => !document.querySelector('.sl-tour') && toast(`New to this lab? <a href="#" data-tour style="color:inherit;font-weight:600;text-decoration:underline">Take the 1-minute guided tour</a>`, '', 9000), 1500);
     document.addEventListener('click', e => { if (e.target.closest('[data-tour]')) { e.preventDefault(); runTour(); } });
   }
   function wireTourBtn() {
@@ -292,6 +292,7 @@
     if (!_tour || !_tour.length) return;
     try { localStorage.setItem('sl-tour-seen-' + (document.body.dataset.page || ''), '1'); } catch (e) {}
     document.querySelectorAll('.sl-tour').forEach(x => x.remove());
+    document.querySelectorAll('.toast').forEach(x => { if (x.querySelector('[data-tour]')) x.remove(); });
     let i = start || 0;
     const ov = document.createElement('div'); ov.className = 'sl-tour';
     ov.innerHTML = `<div class="sl-tour-hole"></div><div class="sl-tour-tip" role="dialog" aria-modal="true" aria-labelledby="slTourH" aria-live="polite"><div class="sl-tour-n"></div><h4 id="slTourH"></h4><p></p><div class="btn-row"><button class="btn sm ghost" data-a="skip">Close</button><span style="flex:1"></span><button class="btn sm" data-a="back">Back</button><button class="btn sm primary" data-a="next">Next</button></div></div>`;
@@ -462,7 +463,7 @@
   function toast(msg, type, ms) {
     let box = document.querySelector('.toasts');
     if (!box) { box = document.createElement('div'); box.className = 'toasts'; document.body.appendChild(box); }
-    const t = document.createElement('div'); t.className = 'toast ' + (type || ''); t.innerHTML = msg;
+    const t = document.createElement('div'); t.className = 'toast ' + (type || ''); t.innerHTML = msg + '<button class="toast-x" aria-label="Dismiss">\u00D7</button>'; t.querySelector('.toast-x').onclick = () => t.remove();
     box.appendChild(t); setTimeout(() => { t.style.opacity = 0; t.style.transition = '.3s'; setTimeout(() => t.remove(), 300); }, ms || 3800);
   }
 
