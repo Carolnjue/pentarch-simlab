@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=9">
 <style>
   #stage{height:540px;touch-action:none}
   #cv{cursor:crosshair}
@@ -43,7 +43,15 @@
   #bode{width:100%;height:340px;display:block;background:var(--bg2);border:1px solid var(--line);border-radius:12px}
   .errbox{position:absolute;left:12px;right:12px;bottom:12px;background:rgba(127,29,29,.85);border:1px solid var(--bad);color:#fee2e2;border-radius:10px;padding:8px 12px;font-size:.84rem;display:none}
   @media (max-width:980px){#stage{height:500px}}
-  @media (max-width:520px){#stage{height:330px} #scv{height:240px}}
+  .ebal{margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--bg2)}
+  .ebal .eh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px;font-size:.88rem}
+  .ebar{display:flex;height:12px;border-radius:6px;overflow:hidden;background:rgba(255,255,255,.05)}
+  .ebar i{display:block;height:100%;transition:width .3s}
+  .elist{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;font:500 .78rem var(--mono);color:var(--muted)}
+  .elist span b{color:var(--text);font-weight:600}
+  .elist .sw{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:0}
+  .elist .note{flex-basis:100%;font:400 .8rem var(--font);color:var(--dim);line-height:1.5}
+  @media (max-width:520px){#stage{height:330px} #scv{height:240px}.sc-ctl select{min-height:36px}.lab .btn.sm{min-height:36px}}
 </style>
 </head>
 <body data-page="circuits">
@@ -65,6 +73,11 @@
           <button class="btn sm" id="resetSim"><i data-lucide="rotate-ccw"></i> Reset</button>
         </div>
         <div class="errbox" id="err"></div>
+      </div>
+      <div class="ebal" id="ebal" aria-live="off">
+        <div class="eh"><b>Where the energy goes</b><span class="small dim">average over one sweep</span></div>
+        <div class="ebar" id="ebar"></div>
+        <div class="elist" id="elist"></div>
       </div>
       <div class="scope">
         <div class="scope-row">
@@ -254,7 +267,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=9"></script>
 <script>
 (() => {
   'use strict';
@@ -500,8 +513,11 @@
     if (frozenVB) return frozenVB;
     if (st.w >= 600 || !els.length) return [0, 0, GW - 1, GH - 1];
     let x0 = GW, y0 = GH, x1 = 0, y1 = 0; els.forEach(e => [e.a, e.type === 'gnd' ? [e.a[0], e.a[1] + 1] : e.b].forEach(p => { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); }));
-    x0 = Math.max(0, x0 - 2); x1 = Math.min(GW - 1, x1 + 2); y0 = Math.max(0, y0 - 1); y1 = Math.min(GH - 1, y1 + 1);
-    while (x1 - x0 < 11) { if (x0 > 0) x0--; if (x1 - x0 < 11 && x1 < GW - 1) x1++; if (x0 === 0 && x1 === GW - 1) break; }
+    x0 = Math.max(0, x0 - 1); x1 = Math.min(GW - 1, x1 + 2); y0 = Math.max(0, y0 - 1); y1 = Math.min(GH - 1, y1 + 1);
+    while (x1 - x0 < 9) { if (x0 > 0) x0--; if (x1 - x0 < 9 && x1 < GW - 1) x1++; if (x0 === 0 && x1 === GW - 1) break; }
+    // the view is width-limited on phones, so use the spare height to show more rows to build into
+    const c = (st.w - 20) / (x1 - x0 + 0.6), rows = Math.floor((st.h - 100) / c - 0.6);
+    while (y1 - y0 < rows && (y0 > 0 || y1 < GH - 1)) { if (y1 < GH - 1) y1++; if (y1 - y0 < rows && y0 > 0) y0--; }
     return [x0, y0, x1, y1];
   }
   const view = () => { const w = st.w, h = st.h, [x0, y0, x1, y1] = viewBox(), nx = x1 - x0, ny = y1 - y0; const c = Math.min((w - 20) / (nx + 0.6), (h - 50) / (ny + 0.6)); const ox = (w - c * nx) / 2 - x0 * c, oy = 42 + (h - 42 - c * ny) / 2 - y0 * c; return { w, h, c, x0, y0, x1, y1, X: x => ox + x * c, Y: y => oy + y * c, ix: px => (px - ox) / c, iy: py => (py - oy) / c }; };
@@ -685,17 +701,19 @@
 
   function segDist(px, py, x1, y1, x2, y2) { const dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy; let t = L2 ? ((px - x1) * dx + (py - y1) * dy) / L2 : 0; t = SL.clamp(t, 0, 1); return Math.hypot(px - x1 - t * dx, py - y1 - t * dy); }
   function pickEl(gx, gy) {
-    let best = null, bd = 0.42;
+    let best = null, bd = touchMode ? 0.55 : 0.42;
     els.forEach(e => { const d = e.type === 'gnd' ? Math.hypot(gx - e.a[0], gy - e.a[1] - 0.5) : segDist(gx, gy, e.a[0], e.a[1], e.b[0], e.b[1]); const pri = e.type === 'wire' ? 0.08 : 0; if (d + pri < bd) { bd = d + pri; best = e; } });
     return best;
   }
+  let touchMode = false;
   cv.addEventListener('pointerdown', ev => {
+    touchMode = ev.pointerType === 'touch' || ev.pointerType === 'pen';
     frozenVB = viewBox();
     const p = SL.ptr(ev, cv), V = view(), gx = V.ix(p.x), gy = V.iy(p.y), g = [SL.clamp(Math.round(gx), V.x0, V.x1), SL.clamp(Math.round(gy), V.y0, V.y1)];
     cv.setPointerCapture(ev.pointerId);
     if (tool === 'select') {
       // endpoint stretch on selected
-      if (sel && sel.type !== 'gnd') for (const end of ['a', 'b']) if (Math.hypot(gx - sel[end][0], gy - sel[end][1]) < 0.35) { drag = { kind: 'end', end, el: sel }; return; }
+      if (sel && sel.type !== 'gnd') for (const end of ['a', 'b']) if (Math.hypot(gx - sel[end][0], gy - sel[end][1]) < (touchMode ? 0.5 : 0.35)) { drag = { kind: 'end', end, el: sel }; return; }
       const e = pickEl(gx, gy);
       if (e) { sel = e; drag = { kind: 'move', el: e, g0: g, a0: e.a.slice(), b0: e.b.slice(), moved: false }; renderProps(); }
       else { sel = null; renderProps(); }
@@ -857,7 +875,7 @@
   }
 
   /* ---------------- simulation loop ---------------- */
-  function resetSim() { SIM.t = 0; els.forEach(e => { e.v = e.i = e.vp = e.ip = 0; e.vd = 0.6; e.ema = e.ems = e.emi = e.emis = 0; e.hot = 0; }); armScope(); SC.last = null; }
+  function resetSim() { SIM.t = 0; els.forEach(e => { e.v = e.i = e.vp = e.ip = 0; e.vd = 0.6; e.ema = e.ems = e.emi = e.emis = e.emp = 0; e.hot = 0; }); armScope(); SC.last = null; }
   $('#resetSim').onclick = () => { resetSim(); retopo(); };
   $('#pause').onclick = () => { SIM.paused = !SIM.paused; $('#pause').innerHTML = SIM.paused ? '<i data-lucide="play"></i> Run' : '<i data-lucide="pause"></i> Pause'; SL.refreshIcons($('#pause')); };
   $('#method').onchange = e => { SIM.method = e.target.value; };
@@ -877,7 +895,7 @@
       for (let k = 0; k < steps; k++) {
         if (!step(SIM.h)) break;
         const a = SIM.h / tau;
-        SIM.topo.comps.forEach(e => { e.ema += (e.v - e.ema) * a; e.ems += (e.v * e.v - e.ems) * a; e.emi += (e.i - e.emi) * a; e.emis += (e.i * e.i - e.emis) * a; });
+        SIM.topo.comps.forEach(e => { e.emp = (e.emp || 0) + (e.v * e.i - (e.emp || 0)) * a; e.ema += (e.v - e.ema) * a; e.ems += (e.v * e.v - e.ems) * a; e.emi += (e.i - e.emi) * a; e.emis += (e.i * e.i - e.emis) * a; });
         scopeSample();
       }
       // LED burn-out
@@ -890,7 +908,28 @@
     const fac = els.filter(e => e.type === 'ac').reduce((m, e) => Math.max(m, e.f), 0), hw = $('#hudWarn');
     if (fac && SIM.h > 1 / (20 * fac)) { hw.style.display = ''; hw.textContent = `time step too coarse for ${eng(fac, 'Hz')}: reduce time/div`; } else hw.style.display = 'none';
     draw(); drawScope(); updateMeter();
+    if (++ebN % 8 === 0) energy();
   }).start();
+
+  /* Energy balance (Tellegen: the powers of all parts sum to zero at every instant) */
+  let ebN = 0;
+  function energy() {
+    const C = SIM.topo ? SIM.topo.comps : [], g = { src: 0, heat: 0, led: 0, cap: 0, ind: 0 }, now = { cap: 0, ind: 0 };
+    C.forEach(e => { const pa = e.emp || 0, pn = e.v * e.i;
+      if (e.type === 'dc' || e.type === 'ac') { g.src -= pa; if (e.type === 'dc' && e.rint > 0) g.heat += e.i * e.i * e.rint; }
+      else if (e.type === 'res' || e.type === 'lamp') g.heat += pa; else if (e.type === 'led') g.led += pa;
+      else if (e.type === 'cap') { g.cap += pa; now.cap += pn; } else if (e.type === 'ind') { g.ind += pa; now.ind += pn; } });
+    const P = v => eng(Math.abs(v) < 1e-12 ? 0 : v, 'W'), tot = Math.max(1e-15, g.heat + g.led + Math.max(0, g.cap) + Math.max(0, g.ind));
+    const parts = [['heat', '#f97316', 'Resistors and lamps (heat)'], ['led', '#a3e635', 'LEDs (light + heat)'], ['cap', '#38bdf8', 'Capacitors (stored)'], ['ind', '#c084fc', 'Inductors (stored)']];
+    $('#ebar').innerHTML = parts.map(([k, c]) => `<i style="width:${(Math.max(0, g[k]) / tot * 100).toFixed(1)}%;background:${c}"></i>`).join('');
+    const has = t => C.some(e => e.type === t);
+    let h = `<span>Sources deliver <b>${P(g.src)}</b></span>`;
+    parts.forEach(([k, c, n]) => { if (k === 'heat' ? (has('res') || has('lamp') || has('dc')) : has(k === 'led' ? 'led' : k)) h += `<span><i class="sw" style="background:${c}"></i>${n} <b>${P(g[k])}</b></span>`; });
+    const reac = has('cap') || has('ind');
+    if (!C.length || SIM.err) h = '<span class="note">Build a complete circuit to see how the power from the sources is shared out.</span>';
+    else h += `<span class="note">${reac ? `Right now ${has('cap') ? `the capacitors are ${now.cap >= 0 ? 'storing' : 'returning'} ${P(Math.abs(now.cap))}` : ''}${has('cap') && has('ind') ? ' and ' : ''}${has('ind') ? `the inductors are ${now.ind >= 0 ? 'storing' : 'returning'} ${P(Math.abs(now.ind))}` : ''}. Over a full AC cycle they store and return equal energy, so their average falls towards zero. ` : ''}Energy is conserved: at every instant the source power equals the sum of the others.</span>`;
+    $('#elist').innerHTML = h;
+  }
 
   /* ---------------- Bode plot ---------------- */
   const bcv = $('#bode'); let bst = null; bst = SL.canvas(bcv, () => { if (bst) drawBode(); });
@@ -967,6 +1006,16 @@
 
   /* ---------------- init ---------------- */
   setTool('select'); syncScopeUI(); loadPreset('lowpass', true);
+  const tour = () => SL.tour([
+    { el: '#stage', title: 'The breadboard', text: 'A live circuit simulator. Dots show current flowing; wire colour shows voltage. Tap a part to select it, drag to move it.' },
+    { el: '#palette', title: 'Add parts', text: 'Pick a component, then drag across the board to place it. Wires join any two holes.' },
+    { el: '#props', title: 'Properties and meter', text: 'Select a part to change its value and read its voltage, current and power.' },
+    { el: '#preset', title: 'Ready-made circuits', text: 'Load a divider, RC charging, a low-pass filter, an RLC resonator, a Wheatstone bridge or an LED driver.' },
+    { el: '#ebal', title: 'Where the energy goes', text: 'Watch how the source power is shared between resistors, LEDs, capacitors and inductors. The total always balances.' },
+    { el: '.scope', title: 'Oscilloscope', text: 'Probe any voltage or current on two channels. Use Autoset if the trace is off-screen.' },
+    { el: '.tabs .tablist button:nth-child(4)', title: 'Take the challenges', text: 'Open Challenges for circuit puzzles that are checked automatically by the simulator.' },
+  ]);
+  tour();
   window.__circ = { get els() { return els; }, SIM, SC, step, phasor, loadPreset, topology, retopo, resetSim, setEls: a => { els = a; retopo(); }, mkEl };
 })();
 </script>

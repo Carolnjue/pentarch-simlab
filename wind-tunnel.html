@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=9">
 <style>
   .stage.wt{height:540px;touch-action:none;cursor:ns-resize}
   @media (max-width:640px){.stage.wt{height:400px;min-height:0}}
@@ -35,6 +35,11 @@
   .chal b{display:block}
   .chal p{margin:2px 0 0;color:var(--muted);font-size:.9rem}
   .vischips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+  .wcap{margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--bg2);font-size:.86rem;line-height:1.6;color:var(--muted)}
+  .wcap h4{margin:0 0 4px;font:600 .74rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+  .wcap .eqn{font:500 .8rem var(--mono);color:var(--text);margin:4px 0;overflow-x:auto;white-space:nowrap}
+  .wcap b{color:var(--text)}
+  @media (max-width:520px){.vischips .chipt{padding-top:8px;padding-bottom:8px}.seg button{min-height:38px}.presets .btn.sm,.btn-row .btn.sm{min-height:36px}}
   .chipt{display:inline-flex;align-items:center;gap:7px;font-size:.8rem;color:var(--muted);background:var(--panel);border:1px solid var(--line2);padding:6px 11px;border-radius:99px;cursor:pointer;user-select:none}
   .chipt input{appearance:none;width:12px;height:12px;border-radius:50%;border:2px solid var(--line2);margin:0;flex:none}
   .chipt input:checked{background:var(--accent);border-color:var(--accent);box-shadow:0 0 8px var(--accent)}
@@ -43,7 +48,7 @@
   .statsp .stats{grid-template-columns:repeat(4,minmax(0,1fr))}
   @media (max-width:640px){.statsp .stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
   .hidden{display:none!important}
-  @media (max-width:980px){.labcol{display:contents}.labcol .stage{order:1}.lab>aside{order:2}.labcol .charts{order:4;margin-top:0}.labcol .vischips{order:1}.labcol .statsp{order:3;margin-top:0}}
+  @media (max-width:980px){.labcol{display:contents}.labcol .stage{order:1}.lab>aside{order:2}.labcol .charts{order:4;margin-top:0}.labcol .vischips{order:1}.labcol .wcap{order:1}.labcol .statsp{order:3;margin-top:0}}
   .seg.full{display:flex}.seg.full button{flex:1;text-align:center}
   .tip{position:absolute;pointer-events:none;font:500 .72rem var(--mono);background:rgba(5,9,19,.88);border:1px solid var(--line2);border-radius:8px;padding:5px 8px;color:var(--text);white-space:nowrap;display:none;z-index:3}
   .reclist{max-height:220px;overflow:auto}
@@ -80,6 +85,7 @@
         <label class="chipt"><input type="checkbox" id="vF" checked> Forces</label>
         <label class="chipt"><input type="checkbox" id="vN"> NACA outline</label>
       </div>
+      <div class="wcap" id="wCap" aria-live="off"></div>
       <div class="charts">
         <div class="chartbox"><h4>Pressure coefficient <span id="cpNote">upper vs lower surface</span></h4><canvas id="chCp"></canvas>
           <div class="legend-row"><span><i style="background:#22d3ee"></i>upper</span><span><i style="background:#f59e0b"></i>lower</span><span><i style="background:#f472b6"></i>separated (sketch)</span></div></div>
@@ -219,31 +225,8 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=9"></script>
 <script>
-  /* Round-number axis ticks for SL.chart on this page: the y range is widened to tidy values and
-     the x-axis title is moved below the tick labels so they never collide. */
-  (() => {
-    const base = SL.chart; if (!base || base.__nice) return;
-    const nice = (a, b, n) => {
-      if (!isFinite(a) || !isFinite(b) || b <= a) return [a, b];
-      const raw = (b - a) / n, p = Math.pow(10, Math.floor(Math.log10(raw)));
-      for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 15, 20]) { const s = m * p, lo = Math.floor(a / s + 1e-9) * s; if (lo + n * s >= b - 1e-9 * s) return [lo + 0, lo + n * s]; }
-      return [a, b];
-    };
-    const ext = (series, k) => { let lo = Infinity, hi = -Infinity; series.forEach(s => s.data.forEach(p => { const v = p[k]; if (isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } })); return [lo, hi]; };
-    SL.chart = function (st, series, o) {
-      o = Object.assign({}, o || {});
-      const [ylo, yhi] = ext(series, 1);
-      let y0 = o.ymin ?? ylo, y1 = o.ymax ?? yhi; if (y0 === y1) { y0 -= 1; y1 += 1; }
-      [o.ymin, o.ymax] = nice(y0, y1, 4);
-      if (o.niceX && o.xmin != null && o.xmin === -o.xmax && o.xmax > 0) { const a = nice(0, o.xmax, 2.5); o.xmin = -a[1]; o.xmax = a[1]; }
-      else if (o.niceX || o.xmin == null || o.xmax == null) { const [xlo, xhi] = ext(series, 0); [o.xmin, o.xmax] = nice(o.xmin ?? xlo, o.xmax ?? xhi, 5); }
-      if (o.xlabel) { const pad = (o.pad || [28, 14, 30, 46]).slice(); pad[2] = Math.max(pad[2], 40); o.pad = pad; }
-      return base.call(this, st, series, o);
-    };
-    SL.chart.__nice = true;
-  })();
 (() => {
   const D2R = Math.PI / 180, R2D = 180 / Math.PI;
   const $ = s => document.querySelector(s);
@@ -754,7 +737,7 @@
       let plat = null; sk.forEach(p => { if (p[0] >= xs && plat === null) plat = p[1]; });
       ser.push({ data: sk.map(p => [p[0], p[0] >= xs ? Math.max(0.2, plat * 0.55) : p[1]]), color: '#f472b6', dash: [5, 4] });
     }
-    SL.chart(chCp, ser, { xmin: cyl ? 0 : 0, xmax: cyl ? 180 : 1, ymin: -1.2, ymax: Math.ceil(ymax), xlabel: cyl ? 'θ from front (°)' : 'x/c', ylabel: '−Cp', pad: [22, 12, 30, 40] });
+    SL.chart(chCp, ser, { xmin: cyl ? 0 : 0, xmax: cyl ? 180 : 1, ymin: -1.2, ymax: Math.ceil(ymax), xlabel: cyl ? 'θ from front (°)' : 'x/c', ylabel: '−Cp', pad: [22, 12, 34, 40] });
     $('#cpNote').textContent = cyl ? 'top vs bottom of cylinder (inviscid)' : 'inviscid Joukowski section';
     // CL-alpha
     const clS = data.map(d => [d.a, d.CL]);
@@ -762,15 +745,16 @@
     if (!cyl) series.push({ data: [[-10, 2 * Math.PI * (-10 * D2R - M.aL0)], [25, 2 * Math.PI * (25 * D2R - M.aL0)]], color: 'rgba(147,161,189,.7)', dash: [4, 4], width: 1.2 });
     else series.push({ data: data.map(d => [d.a, 2 * Math.PI * d.a]), color: 'rgba(147,161,189,.7)', dash: [4, 4], width: 1.2 });
     const lim = cyl ? [-4, 4] : [-1.4, 2.2];
-    const m1 = SL.chart(chCL, series, { xmin: cyl ? -3 : -10, xmax: cyl ? 3 : 25, ymin: lim[0], ymax: lim[1], xlabel: cyl ? 'spin ratio s' : 'α (°)', ylabel: 'CL', pad: [22, 12, 30, 40] });
+    const m1 = SL.chart(chCL, series, { xmin: cyl ? -3 : -10, xmax: cyl ? 3 : 25, ymin: lim[0], ymax: lim[1], xlabel: cyl ? 'spin ratio s' : 'α (°)', ylabel: 'CL', pad: [22, 12, 34, 40] });
     const cur = cyl ? S.spin : S.alpha * R2D;
+    if (!cyl) alphaTicks(chCL, m1);
     S.recs.filter(r => r.mode === S.mode).forEach(r => dot(chCL.ctx, m1.X(cyl ? r.spin : r.a), m1.Y(r.CL), '#facc15', 3.5));
     dot(chCL.ctx, m1.X(cur), m1.Y(SL.clamp(R.CL, lim[0], lim[1])), '#22d3ee');
     // polar
     const pre = data.filter(d => d.sep < 0.5);
     const cdMax = cyl ? Math.max(...data.map(d => d.CD)) * 1.05 : Math.min(0.2, Math.max(0.03, ...pre.map(d => d.CD)) * 1.4);
     const pol = data.filter(d => d.CD <= cdMax);
-    const m2 = SL.chart(chP, [{ data: (cyl ? data : pol).map(d => [d.CD, d.CL]), color: '#a78bfa', width: 2.2 }], { xmin: 0, xmax: cdMax, ymin: lim[0], ymax: lim[1], xlabel: 'CD', ylabel: 'CL', pad: [22, 12, 30, 40] });
+    const m2 = SL.chart(chP, [{ data: (cyl ? data : pol).map(d => [d.CD, d.CL]), color: '#a78bfa', width: 2.2 }], { xmin: 0, xmax: cdMax, ymin: lim[0], ymax: lim[1], xlabel: 'CD', ylabel: 'CL', pad: [22, 12, 34, 40] });
     if (R.CD <= cdMax) dot(chP.ctx, m2.X(R.CD), m2.Y(R.CL), '#a78bfa');
     // tangent from origin (max L/D)
     if (!cyl) {
@@ -781,8 +765,34 @@
     // L/D
     const ld = data.map(d => [d.a, d.CL / d.CD]);
     const ldMax = Math.ceil(Math.max(...ld.map(p => p[1])) / 20) * 20, ldMin = Math.min(0, Math.floor(Math.min(...ld.map(p => p[1])) / 20) * 20);
-    const m3 = SL.chart(chLD, [{ data: ld, color: '#34d399', width: 2.2 }], { xmin: cyl ? -3 : -10, xmax: cyl ? 3 : 25, ymin: ldMin, ymax: ldMax, xlabel: cyl ? 'spin ratio s' : 'α (°)', ylabel: 'L/D', pad: [22, 12, 30, 46] });
+    const m3 = SL.chart(chLD, [{ data: ld, color: '#34d399', width: 2.2 }], { xmin: cyl ? -3 : -10, xmax: cyl ? 3 : 25, ymin: ldMin, ymax: ldMax, xlabel: cyl ? 'spin ratio s' : 'α (°)', ylabel: 'L/D', pad: [22, 12, 34, 46] });
+    if (!cyl) alphaTicks(chLD, m3);
     dot(chLD.ctx, m3.X(cur), m3.Y(R.CL / R.CD), '#34d399');
+  }
+
+  /* Live explanation linking the picture to the numbers */
+  function caption() {
+    const f = SL.fmt, cyl = S.mode === 'cyl', a = S.alpha * R2D;
+    let h = '<h4>What the tunnel shows</h4>';
+    if (cyl) {
+      h += S.spin === 0 ? 'A non-spinning cylinder: the flow is symmetric, so there is drag from the wide separated wake but no lift. ' : `The spinning cylinder drags air round with it (the <b>Magnus effect</b>): the flow is faster on the side moving with the stream, so pressure there is lower and the cylinder is pushed ${R.CL > 0 ? 'up' : 'down'}. `;
+    } else {
+      const stall = R.sep > 0.5, near = !stall && (S.alpha > M.aSp - 4 * D2R || S.alpha < M.aSn + 4 * D2R);
+      h += stall ? `At α = ${f(a, 1)}° the flow has <b>separated</b> from most of the upper surface (the airfoil is stalled): suction collapses, lift falls and drag rises sharply, so L/D is only ${f(R.CL / R.CD, 1)}. `
+        : near ? `At α = ${f(a, 1)}° the boundary layer is starting to separate near the trailing edge, so lift grows more slowly. Stall is close${R.aStall ? `, at about ${f(R.aStall, 0)}°` : ''}. `
+        : `At α = ${f(a, 1)}° the flow stays <b>attached</b>. Air over the upper surface moves faster (blue: low pressure, suction) than air underneath, and that pressure difference is the lift.${R.aStall ? ` Stall is about ${f(R.aStall - a, 0)}° away.` : ''} `;
+    }
+    h += `<div class="eqn">L = q·S·C<sub>L</sub> = ${f(R.q, 0)} Pa × ${f(R.Sref, 3)} m² × ${f(R.CL, 3)} = <b>${f(R.L, R.L > 100 ? 1 : 2)} N</b></div>`;
+    h += `<div class="eqn">D = q·S·C<sub>D</sub> = ${f(R.q, 0)} Pa × ${f(R.Sref, 3)} m² × ${f(R.CD, 4)} = <b>${f(R.Dr, 3)} N</b></div>`;
+    h += `q = ½ρV² = ½ × ${f(atm.rho, 3)} × ${S.V}² Pa: double the speed and every force grows four times.`;
+    $('#wCap').innerHTML = h;
+  }
+  // α axes: label every 5° so stall angles can be read off easily
+  function alphaTicks(st, m) {
+    const { ctx, h } = st; ctx.font = '11px JetBrains Mono, monospace'; ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'center';
+    for (let v = -5; v <= 25; v += 10) ctx.fillText(String(v), m.X(v), h - 34 + 15);
+    ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.lineWidth = 1;
+    for (let v = -10; v <= 25; v += 5) { const x = m.X(v); ctx.beginPath(); ctx.moveTo(x, 22); ctx.lineTo(x, h - 34); ctx.stroke(); }
   }
 
   /* ======================= UI wiring ======================= */
@@ -824,6 +834,7 @@
       R.aStall = aStall.a; R.CLmax = aStall.CL;
     } else { $('#sA0').textContent = '—'; $('#sAs').textContent = '—'; $('#sClm').textContent = '—'; $('#sCm').textContent = '—'; }
     $('#sKJ').textContent = SL.fmt(R.CLkj, 3);
+    caption();
     charts();
     checkChallenges();
   }
@@ -1000,6 +1011,16 @@
   const perf = { u: 0, d: 0, n: 0 };
   const loop = SL.loop((dt, t) => { const t0 = performance.now(); updParticles(dt, t); const t1 = performance.now(); draw(t); perf.u += t1 - t0; perf.d += performance.now() - t1; perf.n++; }).start();
   document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
+  const tour = () => SL.tour([
+    { el: '#stage', title: 'The test section', text: 'Smoke and streamlines flow past the model; colour shows pressure. Drag up or down on the stage to pitch the airfoil.' },
+    { el: '#aCtl', title: 'Angle of attack', text: 'Raise α slowly and watch lift grow, then the flow break away from the upper surface at stall.' },
+    { el: '.ctl:has(#vel)', title: 'Airspeed', text: 'Double the speed and the forces grow four times, because they scale with q = ½ρV².' },
+    { el: '#modeSeg', title: 'Change the model', text: 'Choose a NACA airfoil or shape your own, or switch to a spinning cylinder to see the Magnus effect.' },
+    { el: '#wCap', title: 'What the tunnel shows', text: 'This caption explains the flow and works the lift and drag out from q, S and the coefficients.' },
+    { el: '#rec', title: 'Record data', text: 'Record points or run an automatic α sweep to build your own lift curve, then compare it with the model.' },
+    { el: '.tabs .tablist button:nth-child(3)', title: 'Take the challenges', text: 'Open Experiments & challenges for wind-tunnel tasks that tick off automatically.' },
+  ]);
+  tour();
   window.WT = { perf, parts, J, R: () => R, M: () => M, isa, thinAirfoil, sectionModel, cl2d, cd2d, wing, velAt, surfaceCp, fitJoukowski, cylModel };
 })();
 </script>

@@ -9,9 +9,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=9">
 <style>
-  #stage{height:600px;touch-action:none}
+  #stage{height:560px;touch-action:none}
   #stage canvas{cursor:grab}
   #stage canvas.drag{cursor:grabbing}
   .gtip{position:absolute;pointer-events:none;background:rgba(5,9,19,.92);border:1px solid var(--line2);border-radius:9px;padding:8px 10px;font:500 .76rem var(--mono);color:var(--text);display:none;z-index:5;max-width:240px;line-height:1.45}
@@ -44,8 +44,14 @@
   select.inl{width:auto}
   .sel-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0}
   .sel-row label{font-size:.78rem;color:var(--muted);display:block;margin-bottom:3px}
+  .lab>div:first-child{align-self:start;min-width:0}
+  .gcap{margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--bg2);font-size:.86rem;line-height:1.6;color:var(--muted)}
+  .gcap h4{margin:0 0 6px;font:600 .74rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+  .gcap b{color:var(--text)}
+  .gcap .chain{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
+  .gcap .chain span{font:500 .76rem var(--mono);padding:3px 8px;border-radius:7px;background:rgba(255,255,255,.04);border:1px solid var(--line);color:var(--text)}
   @media (max-width:980px){#stage{height:460px}}
-  @media (max-width:520px){#stage{height:400px}.stage-toolbar .btn span{display:none}}
+  @media (max-width:520px){#stage{height:400px}.stage-toolbar .btn span{display:none}.stage-toolbar .btn.sm{min-height:36px;min-width:40px}.grow .x{width:34px;height:34px}.grow .sub select{padding:6px 8px;min-height:34px}.mode-seg button{min-height:38px}}
 </style>
 </head>
 <body data-page="gears">
@@ -72,6 +78,7 @@
         <div class="gtip" id="tip"></div>
       </div>
       <p class="small muted" style="margin:8px 2px 0"><i data-lucide="mouse-pointer-2" style="width:14px;height:14px;vertical-align:-2px"></i> Drag a gear to swing it around its partner. Drag the driver (G1) or empty space to pan; scroll or pinch to zoom. Hover any gear for details.</p>
+      <div class="gcap" id="gCap" aria-live="polite"></div>
     </div>
     <aside>
       <div class="panel">
@@ -318,7 +325,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=9"></script>
 <script>
 (() => {
   const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
@@ -623,8 +630,36 @@
     $('#trainWarn').textContent = S.mode === 'train' ? R.warn : '';
     $('#planetWarn').textContent = S.mode === 'planet' ? R.warn : '';
     tables();
+    caption();
     checkChallenges();
     if (geomChanged) view.fitNow = true;
+  }
+
+  /* Plain-language explanation of what the current mechanism is doing */
+  function caption() {
+    const f = SL.fmt, el = $('#gCap'); if (!el) return;
+    let h = '<h4>What is happening</h4>';
+    if (S.mode === 'train') {
+      const it = L.items, chain = [];
+      it.forEach((g, i) => { if (!i) return; const p = it[i - 1];
+        if (g.coax) chain.push(`G${i} + G${i + 1} share a shaft: same speed`);
+        else { const r = g.z / p.z; chain.push(`G${i} ${p.z}T → G${i + 1} ${g.z}T: ${Math.abs(r - 1) < 1e-9 ? 'same speed' : r > 1 ? f(r, 2) + '× slower' : f(1 / r, 2) + '× faster'}`); } });
+      const i = Math.abs(R.ratio), red = i >= 1;
+      h += `<div class="chain">${chain.map(c => `<span>${c}</span>`).join('')}</div>`;
+      h += `Overall the output turns <b>${red ? f(i, 2) + '× slower' : f(1 / i, 2) + '× faster'}</b> than the motor (${f(Math.abs(R.nin), 0)} → ${f(Math.abs(R.nout), 1)} rpm). `;
+      h += `Power is speed × torque, so a perfect train would give <b>${f(Math.abs(S.tin * R.ratio), 2)} N·m</b>; ${R.k} mesh${R.k === 1 ? '' : 'es'} at η = ${f(S.eta, 3)} leave <b>${f(Math.abs(R.Tout), 2)} N·m</b> and turn ${f(R.Pin - R.Pout, 1)} W into heat. `;
+      h += `With ${R.k} external mesh${R.k === 1 ? '' : 'es'} (${R.k % 2 ? 'odd' : 'even'}), the output turns the <b>${R.ratio > 0 ? 'same' : 'opposite'}</b> way as the motor.`;
+    } else if (S.mode === 'planet') {
+      const nm = { s: 'sun', c: 'carrier', r: 'ring' };
+      if (!R.valid) h += 'Choose different members for the input and the held member.';
+      else { const i = Math.abs(R.ratio); h += `The <b>${nm[S.planet.inp]}</b> is driven, the <b>${nm[S.planet.fix]}</b> is held and the <b>${nm[R.out]}</b> is the output. Willis' equation z<sub>s</sub>ω<sub>s</sub> + z<sub>r</sub>ω<sub>r</sub> = (z<sub>s</sub> + z<sub>r</sub>)ω<sub>c</sub> gives an output <b>${i >= 1 ? f(i, 3) + '× slower' : f(1 / i, 3) + '× faster'}</b>${R.ratio < 0 ? ', <b>reversed</b>' : ''}. The held ${nm[S.planet.fix]} must resist ${f(Math.abs(R.Treact), 2)} N·m, and the load is shared by ${S.planet.N} planets.`; }
+    } else if (S.mode === 'rack') {
+      const tr = Math.PI * S.rack.m * S.rack.z;
+      h += `Each turn of the ${S.rack.z}-tooth pinion pushes the rack one pitch circumference, π·m·z = <b>${f(tr, 1)} mm</b>. At ${f(S.rpm, 0)} rpm that is <b>${f(Math.abs(R.v), 3)} m/s</b>. The tooth force is torque ÷ pitch radius: ${f(S.tin, 1)} N·m ÷ ${f(S.rack.m * S.rack.z / 2000, 4)} m × η = <b>${f(R.F, 1)} N</b>. A smaller pinion pushes harder but moves the rack more slowly.`;
+    } else {
+      h += `Each turn of the ${S.worm.z1}-start worm advances the wheel by ${S.worm.z1} tooth${S.worm.z1 > 1 ? 's' : ''}, so the ratio is ${S.worm.z2}/${S.worm.z1} = <b>${f(R.ratio, 2)} : 1</b> in one stage. The lead angle is only ${f(SL.deg(R.lead), 2)}°, so the teeth mostly slide: efficiency is <b>${f(R.etaTot * 100, 1)}%</b>. ${R.lock ? 'Friction exceeds tan γ, so the load <b>cannot back-drive</b> the worm (self-locking).' : 'Friction is below tan γ, so a heavy load <b>could back-drive</b> the worm.'}`;
+    }
+    el.innerHTML = h;
   }
 
   function tables() {
@@ -1139,6 +1174,16 @@
     involuteDemo();
     const lp = SL.loop(frame).start();
     document.addEventListener('visibilitychange', () => document.hidden ? lp.stop() : lp.start());
+    SL.tour([
+      { el: '#stage', title: 'The gear train', text: 'This is a working gear train. Drag any gear to swing it around its partner, drag empty space to pan and scroll or pinch to zoom. Watch the arrows: meshing gears always turn opposite ways.' },
+      { el: '#modeSeg', title: 'Pick a mechanism', text: 'Switch between a simple or compound gear train, a planetary set, a rack and pinion and a worm drive. Each has its own controls below.' },
+      { el: '#gearList', title: 'Set the teeth', text: 'Slide a gear\'s tooth count and watch the ratio change. A big gear driven by a small one turns slower but with more torque.', before: () => $('#modeSeg [data-m=train]').click() },
+      { el: '#addMesh', title: 'Grow the train', text: 'Add a meshing gear or a same-shaft gear to build a compound train. Two gears on one shaft let the ratios multiply.' },
+      { el: '.ctl:has(#rpm)', title: 'Drive it', text: 'Set the motor speed, torque and efficiency per mesh. Speed goes down exactly as torque goes up, minus the losses.' },
+      { el: '#stats', title: 'Live results', text: 'Ratio, output speed and torque, power and heat update instantly. Compare power in and power out to see where energy goes.' },
+      { el: '#gCap', title: 'What is happening', text: 'This caption explains the current set-up in plain words, mesh by mesh. Read it whenever a number surprises you.' },
+      { el: '.tabs .tablist button:nth-child(3)', title: 'Take the challenges', text: 'Open Experiments & challenges for design tasks that are checked automatically as you build.' },
+    ]);
     window.__gears = { S, view, setT: t => { simT = t; }, get R() { return R; }, setMode, loadPreset, update };
   }
   document.addEventListener('sl:ready', init);

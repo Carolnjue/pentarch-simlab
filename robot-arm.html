@@ -9,9 +9,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=9">
 <style>
-  #stage{height:640px;touch-action:none}
+  #stage{height:580px;touch-action:none}
   #stage canvas{cursor:grab}
   #stage canvas.drag{cursor:grabbing}
   #stage canvas.tgt{cursor:crosshair}
@@ -36,6 +36,12 @@
   .mat.big .katex{font-size:.95em!important}
   .ikstat{display:flex;gap:8px;align-items:flex-start;font-size:.82rem;color:var(--muted);margin-top:8px;line-height:1.4}
   .ikstat .led{margin-top:4px;flex:none}
+  .lab>div:first-child{align-self:start;min-width:0}
+  .fkcap{margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--bg2);font-size:.86rem;line-height:1.6;color:var(--muted)}
+  .fkcap h4{margin:0 0 6px;font:600 .74rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+  .fkcap .eqn{font:500 .8rem var(--mono);color:var(--text);overflow-x:auto;white-space:nowrap;padding:2px 0 6px}
+  .fkcap b{color:var(--text)}
+  @media (max-width:520px){.tbar .btn.sm{min-height:36px}table.dh input{min-height:34px}}
   .plots{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .plots canvas{width:100%;height:220px;display:block;background:#050913;border:1px solid var(--line);border-radius:10px}
   @media (max-width:760px){.plots{grid-template-columns:1fr}}
@@ -79,6 +85,7 @@
         </div>
       </div>
       <p class="small muted" style="margin:8px 2px 0" id="hint">Drag to orbit the camera, scroll or pinch to zoom. Switch to <b>IK</b> and drag the glowing target to make the arm follow.</p>
+      <div class="fkcap" id="fkCap" aria-live="polite"></div>
   <div class="panel" id="plotPanel" style="margin-top:14px" hidden>
     <h3><i data-lucide="line-chart"></i> Trajectory profiles</h3>
     <div class="plots"><canvas id="pq" aria-label="Joint positions against time"></canvas><canvas id="pv" aria-label="Joint velocities against time"></canvas></div>
@@ -351,31 +358,8 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=9"></script>
 <script>
-  /* Round-number axis ticks for SL.chart on this page: the y range is widened to tidy values and
-     the x-axis title is moved below the tick labels so they never collide. */
-  (() => {
-    const base = SL.chart; if (!base || base.__nice) return;
-    const nice = (a, b, n) => {
-      if (!isFinite(a) || !isFinite(b) || b <= a) return [a, b];
-      const raw = (b - a) / n, p = Math.pow(10, Math.floor(Math.log10(raw)));
-      for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 15, 20]) { const s = m * p, lo = Math.floor(a / s + 1e-9) * s; if (lo + n * s >= b - 1e-9 * s) return [lo + 0, lo + n * s]; }
-      return [a, b];
-    };
-    const ext = (series, k) => { let lo = Infinity, hi = -Infinity; series.forEach(s => s.data.forEach(p => { const v = p[k]; if (isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } })); return [lo, hi]; };
-    SL.chart = function (st, series, o) {
-      o = Object.assign({}, o || {});
-      const [ylo, yhi] = ext(series, 1);
-      let y0 = o.ymin ?? ylo, y1 = o.ymax ?? yhi; if (y0 === y1) { y0 -= 1; y1 += 1; }
-      [o.ymin, o.ymax] = nice(y0, y1, 4);
-      if (o.niceX && o.xmin != null && o.xmin === -o.xmax && o.xmax > 0) { const a = nice(0, o.xmax, 2.5); o.xmin = -a[1]; o.xmax = a[1]; }
-      else if (o.niceX || o.xmin == null || o.xmax == null) { const [xlo, xhi] = ext(series, 0); [o.xmin, o.xmax] = nice(o.xmin ?? xlo, o.xmax ?? xhi, 5); }
-      if (o.xlabel) { const pad = (o.pad || [28, 14, 30, 46]).slice(); pad[2] = Math.max(pad[2], 40); o.pad = pad; }
-      return base.call(this, st, series, o);
-    };
-    SL.chart.__nice = true;
-  })();
 (() => {
   const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
   const D2R = Math.PI / 180, R2D = 180 / Math.PI, TAU = Math.PI * 2;
@@ -874,10 +858,35 @@
     const reach = Math.hypot(tip[0], tip[1]);
     html += stat('Radial reach', f3(reach), 'm');
     $('#stats').innerHTML = html;
+    fkCaption(rel);
     syncDH();
     const now = performance.now();
     if (force || now - lastMat > 110) { lastMat = now; renderMats(); } else { clearTimeout(matTimer); matTimer = setTimeout(() => { lastMat = performance.now(); renderMats(); }, 120); }
     checkChallenges();
+  }
+
+  /* Live caption: the forward-kinematics sum behind the tool position, with numbers */
+  function fkCaption(rel) {
+    const el = $('#fkCap'); if (!el) return;
+    const rows = S.rob.rows, q = S.q, f = SL.fmt, tip = K.tip;
+    const planarOK = (S.key === 'rr' || S.key === 'rrr') && rows.every(r => r.alpha === 0 && r.d === 0);
+    const scaraOK = S.key === 'scara' && rows[0].alpha === 0 && rows[1].alpha === 180;
+    let h = '<h4>How the tool position is found</h4>';
+    if (planarOK || scaraOK) {
+      const n = S.key === 'rrr' ? 3 : 2; let cum = 0; const tx = [], ty = [], vx = [], vy = [];
+      for (let i = 0; i < n; i++) { cum += q[i]; const a = rows[i].a, ang = i ? `θ${Array.from({ length: i + 1 }, (_, k) => k + 1).join('+θ')}` : 'θ1';
+        tx.push(`${f(a, 2)}·cos(${f(cum, 0)}°)`); ty.push(`${f(a, 2)}·sin(${f(cum, 0)}°)`); vx.push(a * Math.cos(cum * D2R)); vy.push(a * Math.sin(cum * D2R)); }
+      h += `Each link adds its length in the direction it points (the sum of the joint angles before it):`;
+      h += `<div class="eqn">x = ${tx.join(' + ')} = ${vx.map(v => f3(v)).join(' + ')} = <b>${f3(tip[0])} m</b></div>`;
+      h += `<div class="eqn">y = ${ty.join(' + ')} = ${vy.map(v => f3(v)).join(' + ')} = <b>${f3(tip[1])} m</b></div>`;
+      if (S.key === 'scara') h += `The height comes from the column and the prismatic joint: z = ${f3(tip[2])} m. `;
+    } else {
+      h += `The tool pose is the product of the ${rows.length} DH matrices, T<sup>0</sup><sub>${rows.length}</sub> = A<sub>1</sub>A<sub>2</sub>…A<sub>${rows.length}</sub> (see <b>Homogeneous transforms</b> below). Its last column is the tool position <b>(${f3(tip[0])}, ${f3(tip[1])}, ${f3(tip[2])}) m</b>. `;
+    }
+    h += rel < 0.03 ? ' <b style="color:var(--bad)">The arm is at a singularity:</b> the tool cannot move in at least one direction, however fast the joints turn.'
+      : rel < 0.12 ? ' <b style="color:var(--warn)">Near a singularity:</b> small tool motions in one direction now need very large joint speeds.'
+      : ` Manipulability is ${f(rel * 100, 0)}% of the best pose, so the tool can move freely in every task direction.`;
+    el.innerHTML = h;
   }
 
   /* ================================= modes ==================================== */
@@ -990,11 +999,11 @@
     const ser = (arr) => Array.from({ length: n }, (_, j) => ({ data: tj.t.map((t, i) => [t, arr[i][j]]), color: COL.link[j % 6], label: jointLabel(j) }));
     const isR = j => S.rob.rows[j].type === 'R';
     const conv = arr => arr.map(r => r.map((v, j) => isR(j) ? v : v * 100));
-    const a = SL.chart(pq, ser(conv(tj.q)), { xlabel: 't (s)', pad: [34, 12, 30, 48] });
-    const b = SL.chart(pv, ser(conv(tj.qd)), { xlabel: 't (s)', pad: [34, 12, 30, 48] });
+    const a = SL.chart(pq, ser(conv(tj.q)), { xlabel: 't (s)', pad: [42, 12, 34, 48] });
+    const b = SL.chart(pv, ser(conv(tj.qd)), { xlabel: 't (s)', pad: [42, 12, 34, 48] });
     const hasP = S.rob.rows.some(r => r.type === 'P');
-    [[pq, 'Joint position ' + (hasP ? '(°, cm)' : '(°)')], [pv, 'Joint velocity ' + (hasP ? '(°/s, cm/s)' : '(°/s)')]].forEach(([c, t]) => { c.ctx.font = '600 11px Inter, sans-serif'; c.ctx.fillStyle = '#c9d3e6'; c.ctx.textAlign = 'right'; c.ctx.fillText(t, c.w - 12, 14); });
-    [[pq, a], [pv, b]].forEach(([c, m]) => { if (tNow == null) return; const x = m.X(tNow); c.ctx.strokeStyle = 'rgba(255,255,255,.6)'; c.ctx.setLineDash([3, 3]); c.ctx.beginPath(); c.ctx.moveTo(x, 20); c.ctx.lineTo(x, c.h - 30); c.ctx.stroke(); c.ctx.setLineDash([]); });
+    [[pq, 'Joint position ' + (hasP ? '(°, cm)' : '(°)')], [pv, 'Joint velocity ' + (hasP ? '(°/s, cm/s)' : '(°/s)')]].forEach(([c, t]) => { c.ctx.font = '600 11px Inter, sans-serif'; c.ctx.fillStyle = '#c9d3e6'; c.ctx.textAlign = 'left'; c.ctx.fillText(t, 10, 13); });
+    [[pq, a], [pv, b]].forEach(([c, m]) => { if (tNow == null) return; const x = m.X(tNow); c.ctx.strokeStyle = 'rgba(255,255,255,.6)'; c.ctx.setLineDash([3, 3]); c.ctx.beginPath(); c.ctx.moveTo(x, 40); c.ctx.lineTo(x, c.h - 34); c.ctx.stroke(); c.ctx.setLineDash([]); });
   }
   document.querySelector('.tabs').addEventListener('tab', () => {});
 
@@ -1229,6 +1238,15 @@
     SL.quiz('#quiz', QUIZ); renderChal(); chalReady = true;
     const lp = SL.loop(frame).start();
     document.addEventListener('visibilitychange', () => document.hidden ? lp.stop() : lp.start());
+    SL.tour([
+      { el: '#stage', title: 'The robot', text: 'A live 3D serial arm. Drag empty space to orbit and pinch or scroll to zoom. The coloured axes are each joint\'s DH frame.' },
+      { el: '#robSeg', title: 'Choose a robot', text: 'Switch between a 2R and 3R planar arm, a SCARA and a 6-DOF elbow arm. Each has its own DH table and workspace.' },
+      { el: '#joints', title: 'Forward kinematics', text: 'Move a joint slider and watch the tool and its coordinates follow. Joint angles in, tool position out.', before: () => $('#modeSeg [data-m=fk]').click() },
+      { el: '#fkCap', title: 'Where the numbers come from', text: 'This caption shows the sum (or matrix product) that turns the joint values into the tool position, with today\'s numbers.' },
+      { el: '#modeSeg', title: 'Switch modes', text: 'IK target lets you drag the tool and the solver finds the joints. Trajectory plans smooth moves; Pick & place runs a full task.' },
+      { el: '#stats', title: 'Live results', text: 'Tool position, Jacobian determinant and manipulability. Fold or stretch the arm and watch manipulability fall towards a singularity.' },
+      { el: '.tabs .tablist button:nth-child(4)', title: 'Take the challenges', text: 'Open Experiments & challenges for reach, singularity and pick-and-place tasks that tick off automatically.' },
+    ]);
     window.__robot = { S, proj: p => { camBasis(); return P(p); }, get K() { return K; }, setRobot, solveIK, fkq, cam, camT, planTraj, updateModeUI, afterQ };
   }
   document.addEventListener('sl:ready', init);

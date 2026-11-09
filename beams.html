@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=9">
 <style>
   #stage{height:700px;touch-action:pan-y}
   #cv{cursor:crosshair}
@@ -35,7 +35,10 @@
   .wk h4{margin-top:1.2em}
   #resStats{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
   @media (max-width:980px){#stage{height:640px}}
-  @media (max-width:520px){#stage{height:600px}}
+  @media (max-width:520px){#stage{height:600px}.loadlist button{padding:9px 12px}.seg button{min-height:38px}.btn-row .btn.sm{min-height:36px}}
+  .scen{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:center;margin:10px 0 2px}
+  .scen label{font-size:.86rem;color:var(--muted)}
+  .scen-note{font-size:.78rem;color:var(--dim);margin:4px 0 0;min-height:0}
 </style>
 </head>
 <body data-page="beams">
@@ -78,9 +81,11 @@
         <div class="seg full" id="supSeg">
           <button data-s="ss" class="on">Simple</button><button data-s="oh">Overhang</button><button data-s="cant">Cantilever</button><button data-s="prop">Propped</button><button data-s="ff">Fixed</button>
         </div>
+        <div class="scen"><label for="scen">Real-world case</label><select id="scen"><option value="">Choose a scenario…</option><option value="joist">Timber floor joist</option><option value="foot">Steel footbridge</option><option value="truck">Lorry axles on a road girder</option><option value="balc">Balcony cantilever</option><option value="dive">Diving board (overhang)</option><option value="shelf">Bookshelf on an aluminium tube</option></select></div>
+        <p class="scen-note" id="scenNote"></p>
         <div class="ctl"><label for="spanL">Beam length L</label><output>6 m</output><input type="range" id="spanL" min="2" max="12" step="0.5" value="6"></div>
         <div class="panel-title">Loads</div>
-        <div class="btn-row">
+        <div class="btn-row" id="addRow">
           <button class="btn sm" data-add="point"><i data-lucide="arrow-down"></i> Point</button>
           <button class="btn sm" data-add="udl"><i data-lucide="rows-3"></i> UDL</button>
           <button class="btn sm" data-add="tri"><i data-lucide="triangle-right"></i> Triangular</button>
@@ -281,7 +286,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=9"></script>
 <script>
 (() => {
   'use strict';
@@ -927,8 +932,29 @@
     { q: 'Doubling the span of a simply supported beam with a uniform load (same $w$, same section) multiplies the maximum deflection by…', options: ['2', '4', '8', '16'], answer: 3, why: '$\\delta = 5wL^4/384EI$, so $\\delta \\propto L^4$ and $2^4 = 16$.' },
   ]);
 
+  /* ---------------- real-world scenarios ---------------- */
+  const SCEN = {
+    joist: { L: 4, sup: 'ss', loads: [{ type: 'udl', a: 0, b: 4, w: 1.2 }], sec: { shape: 'rect', h: 200, b: 50, t: 10 }, mat: 'timber', note: 'A 50 × 200 mm C24 joist at 400 mm centres carrying a house floor (about 3 kN/m² total). Deflection, not strength, usually governs: compare δ with L/360.' },
+    foot: { L: 10, sup: 'ss', loads: [{ type: 'udl', a: 0, b: 10, w: 6 }], sec: { shape: 'I', h: 450, b: 200, t: 16 }, mat: 'steel', selfw: true, note: 'One of two main girders of a 3 m wide pedestrian bridge: a dense crowd of 4 kN/m² shared between two beams, plus self-weight.' },
+    truck: { L: 12, sup: 'ss', loads: [{ type: 'point', x: 5.3, P: 90 }, { type: 'point', x: 6.7, P: 90 }], sec: { shape: 'I', h: 600, b: 300, t: 25 }, mat: 'steel', selfw: true, note: 'A tandem axle (2 × 90 kN at 1.4 m) crossing a 12 m girder. Drag the axles along the span to find the position of the largest moment.' },
+    balc: { L: 2, sup: 'cant', loads: [{ type: 'udl', a: 0, b: 2, w: 4 }, { type: 'point', x: 2, P: 1.5 }], sec: { shape: 'box', h: 200, b: 100, t: 6 }, mat: 'steel', note: 'A steel box cantilever under a balcony slab: people and finishes as a UDL plus a railing load at the tip. The moment is largest at the wall.' },
+    dive: { L: 4, sup: 'oh', supports: [{ type: 'pin', x: 0 }, { type: 'roller', x: 1.2 }], loads: [{ type: 'point', x: 4, P: 1.0 }], sec: { shape: 'rect', h: 50, b: 400, t: 10 }, mat: 'alu', note: 'A 100 kg diver standing on the tip of an aluminium board pinned at the back and resting on a fulcrum. Note the hogging moment over the fulcrum and the negative reaction: the pin must hold the back of the board down.' },
+    shelf: { L: 2, sup: 'ss', loads: [{ type: 'udl', a: 0, b: 2, w: 0.6 }], sec: { shape: 'tube', h: 40, b: 40, t: 2 }, mat: 'alu', note: 'A 2 m shelf of books (about 60 kg per metre) on a 40 mm aluminium tube. Try steel or a deeper section to stop the sag.' },
+  };
+  $('#scen').onchange = e => { const o = SCEN[e.target.value]; if (!o) { $('#scenNote').textContent = ''; return; } loadScenario(JSON.parse(JSON.stringify(o))); $('#scenNote').textContent = o.note; };
+
   /* ---------------- init ---------------- */
   syncSecUI(); renderAll();
+  const tour = () => SL.tour([
+    { el: '#stage', title: 'The beam', text: 'A loaded beam with its shear, bending-moment and deflection diagrams. Drag loads and supports along the beam; touch the diagrams to read values.' },
+    { el: '#supSeg', title: 'Supports', text: 'Change how the beam is held: simply supported, overhanging, cantilever, propped or fixed. Watch the moment diagram change shape.' },
+    { el: '#scen', title: 'Real-world cases', text: 'Load a floor joist, footbridge, balcony or diving board to see realistic spans, loads and sections.' },
+    { el: '#addRow', title: 'Add loads', text: 'Add point loads, uniform or triangular loads and couples, then tap a load chip to edit its size and position.' },
+    { el: '#shapeSeg', title: 'Section and material', text: 'Pick the cross-section and material. A deeper section resists bending far better: I grows with h³.' },
+    { el: '#resStats', title: 'Results', text: 'Reactions, maximum shear, moment, deflection and stress, with a safety factor bar against yield.' },
+    { el: '.tabs .tablist button:nth-child(3)', title: 'Take the challenges', text: 'Open Experiments & challenges for design tasks, such as the lightest beam that passes, checked automatically.' },
+  ]);
+  tour();
   window.__beam = { S, solve, secProps, loadScenario, get R() { return R; } };
 })();
 </script>

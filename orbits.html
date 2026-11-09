@@ -9,13 +9,19 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=9">
 <style>
   .stage.orb{height:620px;touch-action:none}
   @media (max-width:640px){.stage.orb{height:470px;min-height:0}.stage .readout{font-size:.68rem;padding:4px 7px}}
   .seg.full{display:flex}.seg.full button{flex:1;text-align:center}
   .grp{display:none}.grp.show{display:block}
   .stat .k{text-transform:none;letter-spacing:.02em;font-size:.72rem}
+  .orbcap{margin:12px 0 0;padding:10px 12px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);font-size:.86rem;line-height:1.55;color:var(--muted)}
+  .orbcap b{color:var(--text)}
+  @media (max-width:520px){.stage-toolbar .btn.sm{min-height:36px;min-width:40px}.seg button{min-height:38px}.btn-row .btn.sm{min-height:36px}}
+  .capnote{font-size:.8rem;line-height:1.45;margin:2px 0 10px;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg2);color:var(--muted)}
+  .capnote b{color:var(--text)}
+  .capnote.ok{border-color:rgba(74,222,128,.35)}.capnote.warn{border-color:rgba(245,158,11,.45)}.capnote.bad{border-color:rgba(239,68,68,.5)}
   .chal{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
   .chal .led{margin-top:6px;flex:none}.chal b{display:block}.chal p{margin:2px 0 0;color:var(--muted);font-size:.9rem}
   .mini{width:100%;height:150px;display:block;background:#050913;border:1px solid var(--line);border-radius:10px;margin-top:10px}
@@ -50,6 +56,7 @@
       <div class="panel" style="margin-top:14px">
         <h3><i data-lucide="gauge"></i> <span id="statsTitle">Orbital elements</span></h3>
         <div class="stats" id="stats"></div>
+        <p class="orbcap grp" data-g="sandbox" id="orbCap" aria-live="off"></p>
         <canvas class="mini grp" data-g="rocket" id="mini"></canvas>
       </div>
     </div>
@@ -67,7 +74,7 @@
         <div class="panel">
           <h3><i data-lucide="satellite"></i> Satellite</h3>
           <p class="small muted" style="margin:0 0 8px">Drag the satellite to move it; drag the tip of its yellow arrow to set the velocity.</p>
-          <div class="btn-row">
+          <div class="btn-row" id="orbPresets">
             <button class="btn sm" data-preset="circ">Circular</button><button class="btn sm" data-preset="ell">Ellipse</button>
             <button class="btn sm" data-preset="esc">Escape</button><button class="btn sm" data-preset="hyp">Hyperbola</button>
             <button class="btn sm" data-preset="iss">ISS orbit</button><button class="btn sm" data-preset="geo">GEO</button>
@@ -97,6 +104,7 @@
           <div class="ctl"><label for="pay">Payload</label><output></output><input type="range" id="pay" min="100" max="3000" step="50" value="500"></div>
           <div class="ctl"><label for="kick">Pitch-over (gravity turn) angle</label><output></output><input type="range" id="kick" min="0.5" max="12" step="0.25" value="3"></div>
           <div class="ctl"><label for="talt">Target orbit altitude</label><output></output><input type="range" id="talt" min="160" max="800" step="10" value="250"></div>
+          <p class="capnote" id="capNote"></p>
           <label class="toggle">Autopilot (gravity turn + circularise)<input type="checkbox" id="auto" checked></label>
           <div id="manualBox" style="display:none">
             <div class="ctl"><label for="mpitch">Pitch from vertical</label><output></output><input type="range" id="mpitch" min="0" max="100" step="0.5" value="0"></div>
@@ -261,31 +269,8 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=9"></script>
 <script>
-  /* Round-number axis ticks for SL.chart on this page: the y range is widened to tidy values and
-     the x-axis title is moved below the tick labels so they never collide. */
-  (() => {
-    const base = SL.chart; if (!base || base.__nice) return;
-    const nice = (a, b, n) => {
-      if (!isFinite(a) || !isFinite(b) || b <= a) return [a, b];
-      const raw = (b - a) / n, p = Math.pow(10, Math.floor(Math.log10(raw)));
-      for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 15, 20]) { const s = m * p, lo = Math.floor(a / s + 1e-9) * s; if (lo + n * s >= b - 1e-9 * s) return [lo + 0, lo + n * s]; }
-      return [a, b];
-    };
-    const ext = (series, k) => { let lo = Infinity, hi = -Infinity; series.forEach(s => s.data.forEach(p => { const v = p[k]; if (isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } })); return [lo, hi]; };
-    SL.chart = function (st, series, o) {
-      o = Object.assign({}, o || {});
-      const [ylo, yhi] = ext(series, 1);
-      let y0 = o.ymin ?? ylo, y1 = o.ymax ?? yhi; if (y0 === y1) { y0 -= 1; y1 += 1; }
-      [o.ymin, o.ymax] = nice(y0, y1, 4);
-      if (o.niceX && o.xmin != null && o.xmin === -o.xmax && o.xmax > 0) { const a = nice(0, o.xmax, 2.5); o.xmin = -a[1]; o.xmax = a[1]; }
-      else if (o.niceX || o.xmin == null || o.xmax == null) { const [xlo, xhi] = ext(series, 0); [o.xmin, o.xmax] = nice(o.xmin ?? xlo, o.xmax ?? xhi, 5); }
-      if (o.xlabel) { const pad = (o.pad || [28, 14, 30, 46]).slice(); pad[2] = Math.max(pad[2], 40); o.pad = pad; }
-      return base.call(this, st, series, o);
-    };
-    SL.chart.__nice = true;
-  })();
 (() => {
   const $ = s => document.querySelector(s);
   const MU = 3.986004418e14, RE = 6.371e6, G0 = 9.80665, OMEGA = 7.2921159e-5;
@@ -418,6 +403,23 @@
     if (A.armed) tag(ctx, `armed: ${A.armDir === 'pro' ? 'prograde' : 'retrograde'} ${A.dvSize} m/s at ${A.armed === 'apo' ? 'apoapsis' : 'periapsis'}`, w / 2, h - 16, '#facc15');
     return el;
   }
+  /* Plain-language reading of the current orbit, including when the next apsis comes (where burns work best) */
+  function orbCaption(el) {
+    const c = $('#orbCap'); if (!c) return;
+    const vc = Math.sqrt(MU / el.r), f = SL.fmt; let t = '';
+    if (el.rp < RE) t = `<b style="color:#f87171">This path dips inside the Earth:</b> without a burn the satellite will hit the ground. Burn prograde to raise the low point. `;
+    if (el.e >= 1) t += `<b>Escape trajectory.</b> The total energy ε is positive, so gravity can never pull the satellite back: it leaves Earth for good.`;
+    else if (el.e < 0.005) t += `<b>Circular orbit.</b> The speed matches the circular speed here (${f(vc / 1000, 3)} km/s), so gravity bends the path by exactly the right amount and the height never changes.`;
+    else {
+      const cosNu = SL.clamp((el.p / el.r - 1) / el.e, -1, 1), nu = el.rv >= 0 ? Math.acos(cosNu) : 2 * Math.PI - Math.acos(cosNu);
+      const E = 2 * Math.atan2(Math.sqrt(1 - el.e) * Math.sin(nu / 2), Math.sqrt(1 + el.e) * Math.cos(nu / 2)), M = ((E - el.e * Math.sin(E)) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI), n = 2 * Math.PI / el.T;
+      const up = el.rv >= 0, dt = up ? (Math.PI - M) / n : (2 * Math.PI - M) / n;
+      t += up ? `<b>Climbing</b> away from Earth: the speed falls as kinetic energy turns into potential energy. Apoapsis (${fmtKm(el.ra - RE)} km) in <b>${fmtT(dt)}</b>: a prograde burn there raises the periapsis.`
+        : `<b>Falling</b> towards Earth: the speed rises as potential energy turns back into kinetic energy. Periapsis (${fmtKm(el.rp - RE)} km) in <b>${fmtT(dt)}</b>: a prograde burn there raises the apoapsis.`;
+      t += ` Right now you are ${el.v > vc ? 'faster' : 'slower'} than circular speed (${f(el.v / 1000, 3)} vs ${f(vc / 1000, 3)} km/s).`;
+    }
+    c.innerHTML = t;
+  }
   function uiA(el) {
     const type = el.e < 0.005 ? 'circle' : el.e < 1 ? 'ellipse' : Math.abs(el.e - 1) < 0.005 ? 'parabola' : 'hyperbola';
     $('#hud').innerHTML = `<span class="readout">t <b>${fmtT(A.t)}</b></span><span class="readout">alt <b>${fmtKm(el.r - RE)}</b> km</span><span class="readout">v <b>${SL.fmt(el.v / 1000, 3)}</b> km/s</span><span class="readout">Δv used <b>${SL.fmt(A.dvUsed, 0)}</b> m/s</span>`;
@@ -427,6 +429,7 @@
     $('#stats').innerHTML = stat('Orbit type', type) + stat('Eccentricity e', SL.fmt(el.e, 4)) + stat('Semi-major axis a', el.e < 1 ? fmtKm(el.a) : fmtKm(el.a), 'km') + stat('Period T', fmtT(el.T)) +
       stat('Periapsis alt', fmtKm(el.rp - RE), 'km') + stat('Apoapsis alt', el.e < 1 ? fmtKm(el.ra - RE) : '∞', el.e < 1 ? 'km' : '') + stat('Energy ε', SL.fmt(el.eps / 1e6, 3), 'MJ/kg') + stat('Vis-viva v', SL.fmt(visviva / 1000, 3), 'km/s') +
       stat('Circular v here', SL.fmt(Math.sqrt(MU / el.r) / 1000, 3), 'km/s') + stat('Escape v here', SL.fmt(Math.sqrt(2 * MU / el.r) / 1000, 3), 'km/s') + stat('Sector area (T/16)', areaTxt);
+    orbCaption(el);
   }
   function hohmannUI() {
     const el = elements(A.r, A.v, MU), r1 = el.e < 0.05 ? el.a : el.r, r2 = A.tgt, at = (r1 + r2) / 2;
@@ -620,7 +623,7 @@
     $('#stats').innerHTML = stat('Altitude', SL.fmt(hR / 1000, 2), 'km') + stat('Inertial speed', SL.fmt(el.v, 0), 'm/s') + stat('Surface speed', SL.fmt(vs, 0), 'm/s') + stat('Vertical speed', SL.fmt(vr, 0), 'm/s') +
       stat('Downrange', SL.fmt(down / 1000, 0), 'km') + stat('Dynamic pressure q', SL.fmt(R.q / 1000, 1), 'kPa') + stat('Max-Q', SL.fmt(R.maxQ / 1000, 1), 'kPa') + stat('Acceleration', SL.fmt(R.acc, 2), 'g') +
       stat('Mass', SL.fmt(m, 0), 'kg') + stat('Pitch from vertical', SL.fmt(SL.deg(R.pitch), 1), '°') + stat('Δv remaining', SL.fmt(dvLeft, 0), 'm/s') + stat('Apoapsis / periapsis', `${SL.fmt((el.ra - RE) / 1000, 0)} / ${SL.fmt((el.rp - RE) / 1000, 0)}`, 'km');
-    if (R.log.length > 1) { const mini = miniSt; SL.chart(mini, [{ data: R.log.map(p => [p[0], p[1]]), color: '#22d3ee', label: 'altitude (km)' }, { data: R.log.map(p => [p[0], p[2] * 30]), color: '#f472b6', label: 'speed (km/s × 30)' }], { xlabel: 't (s)', ymin: 0, pad: [24, 10, 24, 44] }); }
+    if (R.log.length > 1) { const mini = miniSt; SL.chart(mini, [{ data: R.log.map(p => [p[0], p[1]]), color: '#22d3ee', label: 'altitude (km)' }, { data: R.log.map(p => [p[0], p[2] * 30]), color: '#f472b6', label: 'speed (km/s × 30)' }], { xlabel: 't (s)', ymin: 0, pad: [24, 10, 34, 44] }); }
   }
   const miniSt = SL.canvas($('#mini'));
   function rocketChallenges(el) {
@@ -695,7 +698,7 @@
     { id: 'esc', t: 'Escape efficiently', d: 'From a circular orbit, reach escape ($e \\ge 1$) with a single prograde burn within 2% of the minimum $(\\sqrt2-1)v_c$.' },
     { id: 'k2', t: 'Equal areas', d: 'On an orbit with $e &gt; 0.5$ and swept areas on, record 8 sectors and see that their areas agree.' },
     { id: 'orbit', t: 'Reach orbit from Kenya', d: 'Launch the rocket and reach a stable orbit with periapsis above 140 km.' },
-    { id: 'heavy', t: 'Heavy lifter', d: 'Reach orbit with a payload of 1000 kg or more. You will need an efficient trajectory.' },
+    { id: 'heavy', t: 'Heavy lifter', d: 'Reach orbit with a payload of 1000 kg or more. This launcher manages about 1,600 kg to a 200 km orbit and less the higher you aim, so keep the target low and try a pitch-over of 3–4°.' },
     { id: 'gentle', t: 'Smooth ride', d: 'Reach orbit with maximum dynamic pressure below 30 kPa.' },
   ];
   $('#chalList').innerHTML = CHALS.map(c => `<div class="chal" id="ch-${c.id}"><span class="led"></span><div><b>${c.t}</b><p>${c.d}</p></div></div>`).join('');
@@ -741,9 +744,20 @@
   function setPlay() { $('#playBtn').innerHTML = `<i data-lucide="${running ? 'pause' : 'play'}"></i>`; SL.refreshIcons($('#playBtn')); }
   $('#playBtn').onclick = () => { running = !running; setPlay(); };
   // rocket
-  SL.bind('#pay', v => { RK.payload = v; const [a, b] = dvBudget(); $('#dvBudget').textContent = `${SL.fmt(a, 0)} + ${SL.fmt(b, 0)} = ${SL.fmt(a + b, 0)} m/s`; }, v => SL.fmt(v, 0) + ' kg');
+  SL.bind('#pay', v => { RK.payload = v; capNote(); const [a, b] = dvBudget(); $('#dvBudget').textContent = `${SL.fmt(a, 0)} + ${SL.fmt(b, 0)} = ${SL.fmt(a + b, 0)} m/s`; }, v => SL.fmt(v, 0) + ' kg');
   SL.bind('#kick', v => RK.kick = v, v => v + '°');
-  SL.bind('#talt', v => RK.talt = v * 1000, v => v + ' km');
+  SL.bind('#talt', v => { RK.talt = v * 1000; capNote(); }, v => v + ' km');
+  /* What this launcher can do: limits found by flying the autopilot over the whole slider range */
+  function capNote() {
+    const el = $('#capNote'); if (!el) return;
+    const p = RK.payload, h = RK.talt / 1000, lim = Math.round((1800 - h) / 50) * 50, f = SL.fmt;
+    let cls, t;
+    if (p <= lim - 200) { cls = 'ok'; t = `Within capability: the autopilot should put <b>${f(p, 0)} kg</b> into a circular ${h} km orbit.`; }
+    else if (p <= lim) { cls = 'warn'; t = `Close to the limit for ${h} km (about <b>${f(lim, 0)} kg</b>). Use an efficient pitch-over of 3.5–4.5°; there is little margin.`; }
+    else if (p <= 1700) { cls = 'warn'; t = `Too heavy for a circular ${h} km orbit (limit about <b>${f(lim, 0)} kg</b>). With a 4–4.5° pitch-over it may still reach a lower, elliptical orbit.`; }
+    else { cls = 'bad'; t = `Beyond this rocket: above about <b>1,700 kg</b> the stages run dry before orbital speed, at any altitude. Lower the payload.`; }
+    el.className = 'capnote ' + cls; el.innerHTML = t;
+  }
   SL.bind('#auto', v => { RK.auto = v; $('#manualBox').style.display = v ? 'none' : 'block'; if (!v && R && R.phase !== 'pad') { $('#mpitch').value = SL.deg(R.pitch).toFixed(1); $('#mpitch').dispatchEvent(new Event('input')); } });
   SL.bind('#mpitch', v => RK.mpitch = v, v => v + '°'); SL.bind('#mthr', v => RK.mthr = v / 100, v => v + '%');
   $('#launchBtn').onclick = () => { if (!R || R.phase !== 'pad') newRocket(); R.phase = 'ascent'; R.thr = 1; running = true; setPlay(); note('Lift-off! Vertical climb, then pitch-over at T+10 s.'); };
@@ -769,7 +783,7 @@
   const k3 = SL.canvas($('#k3plot'));
   function drawK3() {
     const d = PL.map(p => [Math.log10(p.a), Math.log10(p.T / 365.256)]);
-    const r = SL.chart(k3, [{ data: [[-0.5, -0.75], [1.6, 2.4]], color: 'rgba(250,204,21,.6)', label: 'gradient 1.5', dash: [5, 4] }], { xmin: -0.5, xmax: 1.6, ymin: -0.8, ymax: 2.4, xlabel: 'log₁₀ a (AU)', pad: [30, 14, 30, 46] });
+    const r = SL.chart(k3, [{ data: [[-0.5, -0.75], [1.6, 2.4]], color: 'rgba(250,204,21,.6)', label: 'gradient 1.5', dash: [5, 4] }], { xmin: -0.5, xmax: 1.6, ymin: -0.8, ymax: 2.4, xlabel: 'log₁₀ a (AU)', pad: [30, 14, 34, 46] });
     d.forEach((q, i) => { k3.ctx.fillStyle = PL[i].c; k3.ctx.beginPath(); k3.ctx.arc(r.X(q[0]), r.Y(q[1]), 5, 0, 7); k3.ctx.fill(); k3.ctx.fillStyle = 'rgba(230,236,247,.75)'; k3.ctx.font = '10px JetBrains Mono, monospace'; k3.ctx.textAlign = 'left'; k3.ctx.fillText(PL[i].n, r.X(q[0]) + 7, r.Y(q[1]) + 12); });
   }
   document.querySelector('[data-tabs]').addEventListener('tab', e => { if (e.detail === 3) setTimeout(drawK3, 50); });
@@ -798,6 +812,16 @@
   }).start();
   document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
   preset('ell'); A.VR = A.VRt;
+  const tour = () => SL.tour([
+    { el: '#stage', title: 'Earth and a satellite', text: 'Drag the satellite to move it, or the tip of its yellow arrow to change its velocity. The predicted orbit updates live.', before: () => setMode('sandbox') },
+    { el: '#orbPresets', title: 'Try an orbit', text: 'Load a circular, elliptical, escape or hyperbolic path, the ISS or a geostationary orbit.' },
+    { el: '.ctl:has(#dv)', title: 'Fire the engine', text: 'Choose a burn size, then fire prograde, retrograde or radially and watch the orbit reshape.' },
+    { el: '#orbCap', title: 'Read the orbit', text: 'This caption says whether you are climbing or falling and how long until the next apoapsis or periapsis, where burns work best.' },
+    { el: '#modeSeg', title: 'Three labs in one', text: 'Launch a two-stage rocket from Malindi into orbit, or watch the planets follow Kepler\'s laws in the solar system.' },
+    { el: '#capNote', title: 'What the rocket can lift', text: 'Payload and target altitude decide whether orbit is possible. This note tells you before you launch.', before: () => setMode('rocket') },
+    { el: '.tabs .tablist button:nth-child(3)', title: 'Take the challenges', text: 'Open Experiments & challenges: circularise, fly a Hohmann transfer, escape efficiently and reach orbit from Kenya.' },
+  ]);
+  tour();
   window.__orb = { A, RK, get R() { return R; }, elements, stepA, stepRocket, newRocket, setMode, preset, burn, PL, plPos, SC, MU, RE };
 })();
 </script>

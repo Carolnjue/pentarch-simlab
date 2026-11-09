@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=9">
 <style>
   .stage.pj{height:600px;touch-action:none;cursor:crosshair}
   @media (max-width:640px){.stage.pj{height:430px;min-height:0}}
@@ -33,6 +33,18 @@
   .lab:not(.game) .gamebar{display:none!important}
   @media (max-width:640px){.stage .readout{font-size:.7rem;padding:4px 7px}}
   .hidden{display:none!important}
+  .aimcap{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);pointer-events:none;display:none;font:600 .9rem var(--mono);padding:6px 12px;border-radius:9px;background:rgba(5,9,19,.75);border:1px solid var(--line2);color:var(--text);white-space:nowrap}
+  .aimcap b{color:var(--accent)}
+  @media (max-width:640px){
+    .lab.game .stage.pj{height:350px}
+    .lab.game .stage .hud .fl{display:none}
+    .lab.game .stage .hud{right:auto;max-width:calc(100% - 156px)}
+    .lab.game .stage-toolbar{top:10px;bottom:auto}
+    .stage-toolbar .btn.sm{min-height:36px;min-width:40px}
+    .stage-toolbar .btn span{display:none}
+    .objgrid button{padding:9px 2px 8px}
+    .seg button{min-height:38px}
+  }
   .seg.full{display:flex}.seg.full button{flex:1;text-align:center}
   svg.diag text{font-family:var(--mono);font-size:12px;fill:var(--muted)}
 </style>
@@ -47,19 +59,21 @@
       <div class="stage pj" id="stage">
         <canvas id="cv" aria-label="Projectile motion stage: drag back from the launcher to aim and release to launch"></canvas>
         <div class="hud">
-          <span class="readout">t <b id="hT">0.00</b> s</span>
-          <span class="readout">x <b id="hX">0.0</b> m</span>
-          <span class="readout">y <b id="hY">0.0</b> m</span>
+          <span class="readout fl">t <b id="hT">0.00</b> s</span>
+          <span class="readout fl">x <b id="hX">0.0</b> m</span>
+          <span class="readout fl">y <b id="hY">0.0</b> m</span>
           <span class="readout">|v| <b id="hV">0.0</b> m/s</span>
-          <span class="readout" id="hEnv">Earth · g = 9.81 m/s²</span>
+          <span class="readout fl" id="hEnv">Earth · g = 9.81 m/s²</span>
           <span class="readout gamebar">Shots left <b id="gShots">10</b></span><span class="readout gamebar">Targets hit <b id="gHits">0/5</b></span>
         </div>
         <div class="stage-toolbar">
           <button class="btn sm" id="fitBtn" title="Fit view to trajectories"><i data-lucide="scan"></i></button>
           <button class="btn sm" id="clearBtn" title="Clear previous shots"><i data-lucide="eraser"></i></button>
+          <button class="btn sm primary gamebar" id="newRound2" title="New round"><i data-lucide="shuffle"></i><span>New round</span></button>
         </div>
+        <div class="aimcap" id="aimCap"></div>
       </div>
-      <div class="panel" style="margin-top:14px">
+      <div class="panel" id="resPanel" style="margin-top:14px">
         <h3><i data-lucide="gauge"></i> Shot results <span class="muted small" id="shotName" style="font-weight:500;margin-left:auto"></span></h3>
         <div class="stats">
           <div class="stat"><div class="k">Range</div><div class="v" id="sRange">—</div></div>
@@ -260,7 +274,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=9"></script>
 <script>
 (() => {
   const $ = s => document.querySelector(s);
@@ -365,8 +379,8 @@
     if (!st.w) return;
     const e = extents();
     const W = (e.xmax - e.xmin) * 1.06, H = e.ymax * 1.12;
-    const left = st.w < 500 ? 34 : 60;
-    const s = Math.min((st.w - left - 24) / Math.max(W, 1), (st.h - 120) / Math.max(H, 1));
+    const left = st.w < 500 ? 34 : 60, right = game && st.w < 640 ? 14 : 24, top = game && st.w < 640 ? 96 : 120;
+    const s = Math.min((st.w - left - right) / Math.max(W, 1), (st.h - top) / Math.max(H, 1));
     view.ts = s; view.tox = left - e.xmin * s;
     if (snap || !view.init) { view.s = view.ts; view.ox = view.tox; view.init = true; }
   }
@@ -563,9 +577,11 @@
     return { ang, spd, px: x0 - Math.cos(th) * Lp, py: y0 + Math.sin(th) * Lp, L };
   }
   cvEl.addEventListener('pointerdown', e => { if (e.button > 0) return; cvEl.setPointerCapture(e.pointerId); aiming = aimFrom(e); });
-  cvEl.addEventListener('pointermove', e => { if (!aiming) return; aiming = aimFrom(e); $('#hV').textContent = SL.fmt(aiming.spd, 1); });
-  const endAim = e => { if (!aiming) return; const a = aiming; aiming = null; if (a.L > 12) launch(a.ang, a.spd); };
-  cvEl.addEventListener('pointerup', endAim); cvEl.addEventListener('pointercancel', () => aiming = null);
+  // on phones the finger covers the on-canvas aim label, so mirror it in a caption above
+  const aimCap = () => { const c = $('#aimCap'); if (!aiming || st.w >= 640) { c.style.display = 'none'; return; } c.style.display = 'block'; c.innerHTML = `θ <b>${SL.fmt(aiming.ang, 1)}°</b> · v₀ <b>${SL.fmt(aiming.spd, 1)}</b> m/s`; };
+  cvEl.addEventListener('pointermove', e => { if (!aiming) return; aiming = aimFrom(e); $('#hV').textContent = SL.fmt(aiming.spd, 1); aimCap(); });
+  const endAim = e => { if (!aiming) return; const a = aiming; aiming = null; aimCap(); if (a.L > 12) launch(a.ang, a.spd); };
+  cvEl.addEventListener('pointerup', endAim); cvEl.addEventListener('pointercancel', () => { aiming = null; aimCap(); });
 
   /* ---------- stats / ui ---------- */
   function updateStats(reset) {
@@ -675,11 +691,22 @@
     });
     game.hits = game.targets.filter(t => t.hit).length; updateGame();
     if (newHits) SL.toast(`Hit! ${game.hits}/5 targets down.`, 'ok');
+    else if (game.hits < 5) {
+      // feedback on the miss: compare the path with the nearest standing target
+      const range = pts[pts.length - 1].x; let best = null;
+      game.targets.filter(t => !t.hit).forEach(tg => {
+        let msg, d;
+        if (range < tg.x) { d = tg.x - range; msg = `landed ${SL.fmt(d, 1)} m short of`; }
+        else { let k = pts.findIndex(q => q.x >= tg.x); k = Math.max(1, k); const a = pts[k - 1], b = pts[k], f = (tg.x - a.x) / ((b.x - a.x) || 1e-9), yy = a.y + f * (b.y - a.y); d = Math.abs(yy - tg.y); msg = `passed ${SL.fmt(d, 1)} m ${yy > tg.y ? 'above' : 'below'}`; }
+        if (!best || d < best.d) best = { d, msg, tg };
+      });
+      if (best) SL.toast(`Miss: the shot ${best.msg} the ${SL.fmt(best.tg.x, 0)} m target${best.tg.pole ? ` (on a ${SL.fmt(best.tg.y, 0)} m pole)` : ''}.`, '', 3200);
+    }
     if (game.hits === 5) { SL.toast(`All targets hit with ${game.left} shot${game.left === 1 ? '' : 's'} to spare.`, 'ok', 5000); markChal('sharp'); }
     else if (game.left === 0) SL.toast(`Out of shots: ${game.hits}/5 hit. Press New round to try again.`, 'warn', 5000);
   }
   function updateGame() { if (!game) return; $('#gShots').textContent = game.left; $('#gHits').textContent = game.hits + '/5'; }
-  $('#newRound').onclick = newRound;
+  $('#newRound').onclick = newRound; $('#newRound2').onclick = newRound;
 
   /* ---------- challenges ---------- */
   const CHALS = [
@@ -744,6 +771,16 @@
   document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
 
   updateSpec(); fitView(true);
+  const tour = () => SL.tour([
+    { el: '#stage', title: 'The launch field', text: 'Drag back from the launcher and let go to fire: the further you pull, the faster the shot. The path, velocity and forces are drawn live.' },
+    { el: '#objGrid', title: 'Choose a projectile', text: 'A stone, football, golf ball, ping-pong ball or cannonball: each has real mass, size and drag coefficient.' },
+    { el: '.ctl:has(#ang)', title: 'Set it exactly', text: 'Use the angle, speed and height sliders for precise launches, then press Launch.' },
+    { el: '#planetSeg', title: 'Change the world', text: 'Switch planet, turn air resistance on or off, add wind and compare with the vacuum path.' },
+    { el: '#resPanel', title: 'Shot results', text: 'Range, flight time, maximum height and the energy split between kinetic, potential and work lost to air.' },
+    { el: '#modeSeg', title: 'Target game', text: 'Switch to the Target game: five targets, ten shots and no predicted path. Physics is your only guide.' },
+    { el: '.tabs .tablist button:nth-child(3)', title: 'Take the challenges', text: 'Open Experiments & challenges for range, angle and drag tasks that tick off automatically.' },
+  ]);
+  tour();
   window.__pj = { simulate, params, S, get cur() { return cur; }, get game() { return game; }, launch, finish, vt };
 })();
 </script>

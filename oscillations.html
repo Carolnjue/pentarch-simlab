@@ -9,10 +9,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=9">
 <style>
   .stage.osc{height:440px;touch-action:none}
-  @media (max-width:640px){.stage.osc{height:380px;min-height:0}.stage .readout{font-size:.7rem;padding:4px 7px}}
+  @media (max-width:640px){.stage.osc{height:430px;min-height:0}.stage-toolbar .btn.sm{min-height:36px;min-width:40px}.seg button{min-height:38px}.stage .readout{font-size:.7rem;padding:4px 7px}}
   .plots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
   .plots .plot{background:#050913;border:1px solid var(--line);border-radius:12px;padding:8px 8px 4px;min-width:0}
   .plots .plot.span2{grid-column:span 2}
@@ -115,6 +115,7 @@
           <div class="ctl"><label for="cb">Damping b</label><output></output><input type="range" id="cb" min="0" max="5" step="0.01" value="0"></div>
           <div class="btn-row"><button class="btn sm" data-cm="1">Mode 1 (in phase)</button><button class="btn sm" data-cm="2">Mode 2 (opposite)</button><button class="btn sm" data-cm="beat">Beats (push one)</button></div>
         </div>
+        <label class="toggle" id="fbdWrap" style="margin-top:4px">Free-body diagram (spring, driven)<input type="checkbox" id="fbd" checked></label>
         <div class="panel-title">Simulation speed</div>
         <div class="seg full" id="speedSeg"><button data-s="0.25">¼×</button><button data-s="0.5">½×</button><button class="on" data-s="1">1×</button><button data-s="2">2×</button><button data-s="5">5×</button></div>
       </div>
@@ -258,31 +259,8 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=9"></script>
 <script>
-  /* Round-number axis ticks for SL.chart on this page: the y range is widened to tidy values and
-     the x-axis title is moved below the tick labels so they never collide. */
-  (() => {
-    const base = SL.chart; if (!base || base.__nice) return;
-    const nice = (a, b, n) => {
-      if (!isFinite(a) || !isFinite(b) || b <= a) return [a, b];
-      const raw = (b - a) / n, p = Math.pow(10, Math.floor(Math.log10(raw)));
-      for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 15, 20]) { const s = m * p, lo = Math.floor(a / s + 1e-9) * s; if (lo + n * s >= b - 1e-9 * s) return [lo + 0, lo + n * s]; }
-      return [a, b];
-    };
-    const ext = (series, k) => { let lo = Infinity, hi = -Infinity; series.forEach(s => s.data.forEach(p => { const v = p[k]; if (isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } })); return [lo, hi]; };
-    SL.chart = function (st, series, o) {
-      o = Object.assign({}, o || {});
-      const [ylo, yhi] = ext(series, 1);
-      let y0 = o.ymin ?? ylo, y1 = o.ymax ?? yhi; if (y0 === y1) { y0 -= 1; y1 += 1; }
-      [o.ymin, o.ymax] = nice(y0, y1, 4);
-      if (o.niceX && o.xmin != null && o.xmin === -o.xmax && o.xmax > 0) { const a = nice(0, o.xmax, 2.5); o.xmin = -a[1]; o.xmax = a[1]; }
-      else if (o.niceX || o.xmin == null || o.xmax == null) { const [xlo, xhi] = ext(series, 0); [o.xmin, o.xmax] = nice(o.xmin ?? xlo, o.xmax ?? xhi, 5); }
-      if (o.xlabel) { const pad = (o.pad || [28, 14, 30, 46]).slice(); pad[2] = Math.max(pad[2], 40); o.pad = pad; }
-      return base.call(this, st, series, o);
-    };
-    SL.chart.__nice = true;
-  })();
 (() => {
   const $ = s => document.querySelector(s);
   const C = { a: '#22d3ee', b: '#f472b6', c: '#facc15', d: '#a78bfa', ke: '#22d3ee', pe: '#a78bfa', E: '#e6ecf7', ok: '#22c55e' };
@@ -397,7 +375,7 @@
       return { kind: 'v', top, sc, L0, s, cx: w * .5, yEq: top + (L0 + s) * sc };
     }
     if (mode === 'spring' || mode === 'driven') {
-      const sc = Math.min(500, (w * .3) / 0.5), wall = Math.max(40, w * .09), xEq = w * .56, yc = h * .5;
+      const sc = Math.min(500, (w * .3) / 0.5), wall = Math.max(40, w * .09), xEq = w * .56, yc = w < 520 ? h * .37 : h * .5;
       return { kind: 'h', sc, wall, xEq, yc };
     }
     if (mode === 'pendulum') { const Lpx = (h - 110) * (0.55 + 0.45 * P.L / 5); return { px: w / 2, py: 40, Lpx: Math.min(Lpx, w * .46) }; }
@@ -405,6 +383,25 @@
     if (mode === 'coupled') { const wl = Math.max(30, w * .06), wr = w - wl, e1 = wl + (wr - wl) / 3, e2 = wl + 2 * (wr - wl) / 3, sc = Math.min(500, (wr - wl) / 3 * .45 / 0.2); return { wl, wr, e1, e2, sc, yc: h * .58 }; }
   }
 
+  /* Live free-body diagram of the block: each force as an arrow with its value, and their sum = ma */
+  let showFBD = true, fScale = 1;
+  function fbd(ctx, w) {
+    const x = y[0], v = y[1], Fs = -P.k * x, Fb = -P.b * v, Fd = mode === 'driven' ? P.F0 * Math.cos(P.wd * simT) : 0, Fn = Fs + Fb + Fd;
+    const rows = [['spring  −kx', Fs, '#f97316'], ['damper  −bv', Fb, '#a78bfa']];
+    if (mode === 'driven') rows.push(['drive  F(t)', Fd, '#facc15']);
+    rows.push(['net  = ma', Fn, '#e6ecf7']);
+    fScale = Math.max(fScale * 0.995, ...rows.map(r => Math.abs(r[1])), 0.05);
+    const bw = w < 520 ? Math.min(244, w - 112) : 262, rh = 21, bh = 30 + rows.length * rh, x0 = w < 520 ? 12 : w - bw - 12, y0 = w < 520 ? stage.h - bh - 30 : 52;
+    const lab = 88, val = 46, half = (bw - lab - val - 8) / 2, cx = x0 + lab + half;
+    ctx.save(); ctx.fillStyle = 'rgba(5,9,19,.82)'; ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x0, y0, bw, bh, 9) : ctx.rect(x0, y0, bw, bh); ctx.fill(); ctx.stroke();
+    ctx.font = '600 10.5px JetBrains Mono, monospace'; ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'left'; ctx.fillText('FREE-BODY', x0 + 10, y0 + 17); ctx.textAlign = 'right'; ctx.fillText('N', x0 + bw - 10, y0 + 17);
+    ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(cx, y0 + 24); ctx.lineTo(cx, y0 + bh - 6); ctx.stroke(); ctx.setLineDash([]);
+    rows.forEach(([lb, F, col], i) => { const yy = y0 + 36 + i * rh, L = SL.clamp(F / fScale, -1, 1) * half;
+      ctx.fillStyle = col; ctx.font = '500 10.5px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText(lb.replace('  ', ' '), x0 + 10, yy + 4);
+      if (Math.abs(L) > 3) SL.arrow(ctx, cx, yy, cx + L, yy, col, i === rows.length - 1 ? 2.6 : 2, 6); else { ctx.beginPath(); ctx.arc(cx, yy, 2, 0, 7); ctx.fill(); }
+      ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(230,236,247,.85)'; ctx.fillText(SL.fmt(F, Math.abs(F) < 10 ? 2 : 1), x0 + bw - 10, yy + 4); });
+    ctx.restore();
+  }
   function drawStage() {
     const { ctx, w, h } = stage; bgGrid(ctx, w, h); const G = geo();
     if (mode === 'spring' && G.kind === 'v') {
@@ -446,6 +443,7 @@
         ctx.strokeRect(G.wall + 30, dy - 8, 40, 16); ctx.beginPath(); ctx.moveTo(G.wall + 55, dy - 6); ctx.lineTo(G.wall + 55, dy + 6); ctx.moveTo(G.wall + 55, dy); ctx.lineTo(bx, dy); ctx.lineTo(bx, G.yc + bh / 2 + 6); ctx.stroke();
         txt(ctx, 'damper b', G.wall + 34, dy + 22, 'rgba(167,139,250,.85)');
       }
+      if (showFBD) fbd(ctx, w);
     } else if (mode === 'pendulum') {
       hatch(ctx, G.px - 60, 10, 120, 24);
       const amp0 = Math.abs(SL.rad(P.th0));
@@ -578,7 +576,7 @@
       if (mode === 'double' || mode === 'coupled') s.push({ data: hh.map(q => [q.t, q.b]), color: C.b, label: mode === 'double' ? 'θ₂' : 'x₂' });
       if (mode === 'driven') { const Fs = sym(hh.map(q => q.a)) / Math.max(1e-9, P.F0); s.push({ data: hh.map(q => [q.t, q.g * Fs]), color: C.c, label: 'F(t), scaled', dash: [4, 4], width: 1.2 }); }
       const m = sym(s.flatMap(q => q.data.map(p => p[1])));
-      SL.chart(p1, s, { xmin: t0, xmax: Math.max(t0 + 10, t1), ymin: -m, ymax: m, pad: [26, 10, 24, 54], xlabel: 't (s)' });
+      SL.chart(p1, s, { xmin: t0, xmax: Math.max(t0 + 10, t1), ymin: -m, ymax: m, pad: [26, 10, 34, 54], xlabel: 't (s)' });
     }
     // p2: velocity-like
     {
@@ -587,14 +585,14 @@
       else if (mode === 'coupled') s = [{ data: hh.map(q => [q.t, q.va]), color: C.a, label: 'v₁' }, { data: hh.map(q => [q.t, q.vb]), color: C.b, label: 'v₂' }];
       else s = [{ data: hh.map(q => [q.t, q.b]), color: C.d, label: mode === 'pendulum' ? 'ω (rad/s)' : 'v (m/s)' }];
       const m = sym(s.flatMap(q => q.data.map(p => p[1])));
-      SL.chart(p2, s, { xmin: t0, xmax: Math.max(t0 + 10, t1), ymin: -m, ymax: m, pad: [26, 10, 24, 54], xlabel: 't (s)' });
+      SL.chart(p2, s, { xmin: t0, xmax: Math.max(t0 + 10, t1), ymin: -m, ymax: m, pad: [26, 10, 34, 54], xlabel: 't (s)' });
     }
     // p3: phase portrait
     {
       const d = hh.map(q => [q.px, q.py]);
       const mx = mode === 'double' ? 180 : sym(d.map(p => p[0])), my = sym(d.map(p => p[1]));
       const segs = [[]]; d.forEach((p, i) => { if (i && mode === 'double' && Math.abs(p[0] - d[i - 1][0]) > 180) segs.push([]); segs[segs.length - 1].push(p); });
-      const r = SL.chart(p3, segs.filter(q => q.length > 1).map(q => ({ data: q, color: mode === 'coupled' ? C.c : C.a, width: 1.6 })), { xmin: -mx, xmax: mx, ymin: -my, ymax: my, pad: [14, 10, 24, 54], xlabel: mode === 'coupled' ? 'x₁ →' : mode === 'double' ? 'θ₂ (°) →' : mode === 'pendulum' ? 'θ (°) →' : 'x (m) →' , niceX: true });
+      const r = SL.chart(p3, segs.filter(q => q.length > 1).map(q => ({ data: q, color: mode === 'coupled' ? C.c : C.a, width: 1.6 })), { xmin: -mx, xmax: mx, ymin: -my, ymax: my, pad: [14, 10, 34, 54], xlabel: mode === 'coupled' ? 'x₁ →' : mode === 'double' ? 'θ₂ (°) →' : mode === 'pendulum' ? 'θ (°) →' : 'x (m) →' , niceX: true });
       const l = d[d.length - 1]; p3.ctx.fillStyle = '#fff'; p3.ctx.beginPath(); p3.ctx.arc(r.X(l[0]), r.Y(l[1]), 3.5, 0, 7); p3.ctx.fill();
       if (mode === 'coupled') { p3.ctx.setLineDash([3, 4]); p3.ctx.strokeStyle = 'rgba(255,255,255,.25)'; p3.ctx.beginPath(); p3.ctx.moveTo(r.X(-mx), r.Y(-mx)); p3.ctx.lineTo(r.X(mx), r.Y(mx)); p3.ctx.moveTo(r.X(-mx), r.Y(mx)); p3.ctx.lineTo(r.X(mx), r.Y(-mx)); p3.ctx.stroke(); p3.ctx.setLineDash([]); }
     }
@@ -602,7 +600,7 @@
     {
       const s = [{ data: hh.map(q => [q.t, q.ke]), color: C.ke, label: 'KE' }, { data: hh.map(q => [q.t, q.pe]), color: C.pe, label: 'PE' }, { data: hh.map(q => [q.t, q.ke + q.pe]), color: C.E, label: 'E', width: 1.5 }];
       let mx = 1e-9; s[2].data.forEach(p => mx = Math.max(mx, p[1]));
-      SL.chart(p4, s, { xmin: t0, xmax: Math.max(t0 + 10, t1), ymin: 0, ymax: mx * 1.15, pad: [26, 10, 24, 54], xlabel: 't (s)' });
+      SL.chart(p4, s, { xmin: t0, xmax: Math.max(t0 + 10, t1), ymin: 0, ymax: mx * 1.15, pad: [26, 10, 34, 54], xlabel: 't (s)' });
     }
     drawP5();
   }
@@ -612,7 +610,7 @@
       const W = w0(), F0 = mode === 'driven' ? P.F0 : 1, wmax = Math.max(W * 2.2, mode === 'driven' ? P.wd * 1.1 : 0);
       const d = []; for (let i = 0; i <= 300; i++) { const w = wmax * i / 300; d.push([w, respAmp(w, F0)]); }
       let ym = 0; d.forEach(p => ym = Math.max(ym, p[1])); sweepPts.forEach(p => ym = Math.max(ym, p[1])); ym = Math.min(ym * 1.15, F0 / P.k * 60) || 1;
-      const r = SL.chart(p5, [{ data: d, color: C.a, label: mode === 'driven' ? 'theory A(ω)' : 'theory A(ω), F₀ = 1 N' }], { xmin: 0, xmax: wmax, ymin: 0, ymax: ym, pad: [26, 12, 26, 52], xlabel: 'ω_d (rad/s)', niceX: true });
+      const r = SL.chart(p5, [{ data: d, color: C.a, label: mode === 'driven' ? 'theory A(ω)' : 'theory A(ω), F₀ = 1 N' }], { xmin: 0, xmax: wmax, ymin: 0, ymax: ym, pad: [26, 12, 34, 52], xlabel: 'ω_d (rad/s)', niceX: true });
       ctx.setLineDash([3, 4]); ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.beginPath(); ctx.moveTo(r.X(W), r.Y(0)); ctx.lineTo(r.X(W), r.Y(ym)); ctx.stroke(); ctx.setLineDash([]);
       txt(ctx, 'ω₀', r.X(W) + 4, r.Y(ym) + 12, 'rgba(230,236,247,.6)');
       sweepPts.forEach(p => { ctx.fillStyle = C.c; ctx.beginPath(); ctx.arc(r.X(p[0]), r.Y(Math.min(p[1], ym)), 3.5, 0, 7); ctx.fill(); });
@@ -624,18 +622,18 @@
       }
     } else if (mode === 'pendulum') {
       const d = [], d2 = [], d3 = []; for (let a = 0; a <= 170; a += 1) { const r = SL.rad(a); d.push([a, 1 / agm(1, Math.cos(r / 2))]); d2.push([a, 1]); d3.push([a, 1 + r * r / 16 + 11 * r ** 4 / 3072]); }
-      const r = SL.chart(p5, [{ data: d, color: C.a, label: 'exact T/T₀' }, { data: d3, color: C.d, label: 'series (2 terms)', dash: [5, 4] }, { data: d2, color: C.c, label: 'small-angle', dash: [3, 4] }], { xmin: 0, xmax: 170, ymin: 0.9, ymax: 2.6, pad: [26, 12, 26, 52], xlabel: 'amplitude θ₀ (°)' });
+      const r = SL.chart(p5, [{ data: d, color: C.a, label: 'exact T/T₀' }, { data: d3, color: C.d, label: 'series (2 terms)', dash: [5, 4] }, { data: d2, color: C.c, label: 'small-angle', dash: [3, 4] }], { xmin: 0, xmax: 170, ymin: 0.9, ymax: 2.6, pad: [26, 12, 34, 52], xlabel: 'amplitude θ₀ (°)' });
       const a = Math.min(170, P.th0); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(r.X(a), r.Y(1 / agm(1, Math.cos(SL.rad(a) / 2))), 5, 0, 7); ctx.fill();
     } else if (mode === 'double') {
       if (!P.twin || !sepHist.length) { ctx.clearRect(0, 0, p5.w, p5.h); txt(ctx, 'Turn on the twin pendulum to measure divergence.', p5.w / 2, p5.h / 2, 'rgba(230,236,247,.6)', 'center'); return; }
       const d = ds(sepHist, 600);
-      SL.chart(p5, [{ data: d, color: C.c, label: 'log₁₀ separation (rad)' }], { xmin: d[0][0], xmax: Math.max(d[0][0] + 10, simT), ymin: -4, ymax: 1, pad: [26, 12, 26, 52], xlabel: 't (s)' });
+      SL.chart(p5, [{ data: d, color: C.c, label: 'log₁₀ separation (rad)' }], { xmin: d[0][0], xmax: Math.max(d[0][0] + 10, simT), ymin: -4, ymax: 1, pad: [26, 12, 34, 52], xlabel: 't (s)' });
     } else if (mode === 'coupled') {
       const m = P.cm, k = P.ck, kc = P.ckc, b = Math.max(P.cb, 0.15), w1 = Math.sqrt(k / m), w2 = Math.sqrt((k + 2 * kc) / m), wmax = Math.max(w2 * 1.6, 1);
       const d = []; for (let i = 1; i <= 400; i++) { const w = wmax * i / 400; const Dr = k + kc - m * w * w, Di = b * w; // X1 = D/(D^2 - kc^2)
         const nr = Dr * Dr - Di * Di - kc * kc, ni = 2 * Dr * Di; const mag = Math.hypot(Dr, Di) / Math.hypot(nr, ni); d.push([w, mag]); }
       let ym = 0; d.forEach(p => ym = Math.max(ym, p[1]));
-      const r = SL.chart(p5, [{ data: d, color: C.a, label: '|x₁| per newton on mass 1' }], { xmin: 0, xmax: wmax, ymin: 0, ymax: ym * 1.1, pad: [26, 12, 26, 52], xlabel: 'ω (rad/s)', niceX: true });
+      const r = SL.chart(p5, [{ data: d, color: C.a, label: '|x₁| per newton on mass 1' }], { xmin: 0, xmax: wmax, ymin: 0, ymax: ym * 1.1, pad: [26, 12, 34, 52], xlabel: 'ω (rad/s)', niceX: true });
       [[w1, 'ω₁'], [w2, 'ω₂']].forEach(([w, l]) => { ctx.setLineDash([3, 4]); ctx.strokeStyle = 'rgba(250,204,21,.6)'; ctx.beginPath(); ctx.moveTo(r.X(w), r.Y(0)); ctx.lineTo(r.X(w), r.Y(ym * 1.1)); ctx.stroke(); ctx.setLineDash([]); txt(ctx, l, r.X(w) + 3, r.Y(ym * 1.1) + 12, C.c); });
       if (P.cb < 0.15 && p5.w > 520) txt(ctx, 'drawn with b = 0.15 so the peaks are finite', p5.w - 14, p5.h - 34, 'rgba(230,236,247,.45)', 'right');
     }
@@ -728,6 +726,7 @@
   bind('m1', 'm1', v => v + ' kg'); bind('m2', 'm2', v => v + ' kg'); bind('L1', 'L1', v => v + ' m'); bind('L2', 'L2', v => v + ' m');
   bind('dt1', 'dt1', v => v + '°'); bind('dt2', 'dt2', v => v + '°');
   bind('cm', 'cm', v => SL.fmt(v, 2) + ' kg'); bind('ck', 'ck', v => v + ' N/m'); bind('ckc', 'ckc', v => SL.fmt(v, 2) + ' N/m'); bind('cb', 'cb', v => SL.fmt(v, 2) + ' kg/s');
+  SL.bind('#fbd', v => { showFBD = v; });
   SL.bind('#ghost', v => P.ghost = v); SL.bind('#trail', v => { P.trail = v; trail = []; }); SL.bind('#twin', v => { P.twin = v; if (mode === 'double') setMode('double'); });
   const setRange = (id, v) => { const el = $('#' + id); el.value = v; el.dispatchEvent(new Event('input')); };
   document.querySelectorAll('[data-z]').forEach(b => b.onclick = () => { setRange('b', Math.min(40, +b.dataset.z * bc()).toFixed(2)); if (mode === 'spring') resetState(); });
@@ -783,6 +782,16 @@
   document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
 
   setMode('spring'); updateUI();
+  const tour = () => SL.tour([
+    { el: '#stage', title: 'The oscillator', text: 'A mass on a spring with a damper. Drag the block sideways and let go. The free-body box shows each force and their sum, ma.' },
+    { el: '#modeSeg', title: 'Five oscillators', text: 'Switch between a spring, a pendulum, a chaotic double pendulum, two coupled masses and a driven oscillator.', before: () => setMode('spring') },
+    { el: '.ctl:has(#k)', title: 'Stiffness and mass', text: 'A stiffer spring or a lighter mass oscillates faster: ω₀ = √(k/m). Watch the period in the results.' },
+    { el: '.ctl:has(#b)', title: 'Damping', text: 'Add damping to make the motion die away. The presets jump to under-, critically and over-damped.' },
+    { el: '.plots', title: 'Live graphs', text: 'Displacement, velocity, the phase portrait, energy and the resonance curve are traced as the mass moves.' },
+    { el: '#stats', title: 'Results', text: 'Natural frequency, period, damping ratio ζ and Q factor update with every slider.' },
+    { el: '.tabs .tablist button:nth-child(3)', title: 'Take the challenges', text: 'Open Experiments & challenges for resonance, damping and pendulum tasks that tick off automatically.' },
+  ]);
+  tour();
   window.__osc = { P, get y() { return y; }, get simT() { return simT; }, get amp() { return amp; }, setMode, step, respAmp, pendT, w0, zeta, setWd, energy, get sweepPts() { return sweepPts; } };
 })();
 </script>

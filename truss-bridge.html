@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=9">
 <style>
   #stage{height:580px;touch-action:none}
   #cv{cursor:crosshair}
@@ -43,7 +43,7 @@
   .legend span{display:inline-flex;align-items:center;gap:5px}
   .legend i{display:inline-block;width:18px;height:4px;border-radius:3px}
   @media (max-width:980px){#stage{height:520px}}
-  @media (max-width:520px){#stage{height:460px}}
+  @media (max-width:520px){#stage{height:460px}.seg button{min-height:38px}.lab .btn.sm{min-height:36px}}
 </style>
 </head>
 <body data-page="truss-bridge">
@@ -95,7 +95,7 @@
         <p class="small dim" id="secInfo" style="margin:0 0 6px"></p>
         <p class="small dim" style="margin:0 0 8px">In Build mode, clicking an existing member repaints it with this material and section.</p>
         <div class="panel-title">Presets</div>
-        <div class="btn-row">
+        <div class="btn-row" id="presetRow">
           <button class="btn sm" data-p="warren">Warren</button><button class="btn sm" data-p="pratt">Pratt</button><button class="btn sm" data-p="howe">Howe</button><button class="btn sm" data-p="k">K-truss</button><button class="btn sm" data-p="deck">Deck only</button>
         </div>
         <div class="ctl"><label for="span">Span</label><output>12 m</output><input type="range" id="span" min="12" max="30" step="6" value="12"></div>
@@ -108,6 +108,7 @@
         <div class="ctl"><label for="pload">Point load (Load tool)</label><output>20 kN</output><input type="range" id="pload" min="5" max="200" step="5" value="20"></div>
         <div class="ctl"><label for="exag">Deflection exaggeration</label><output>×50</output><input type="range" id="exag" min="1" max="300" step="1" value="50"></div>
         <label class="toggle"><span>Include member self-weight</span><input type="checkbox" id="selfw" checked></label>
+        <label class="toggle"><span>Label member forces (kN, T / C)</span><input type="checkbox" id="lblN"></label>
         <div class="btn-row" style="margin-top:8px"><button class="btn primary" id="run"><i data-lucide="play"></i> Run truck test</button><button class="btn" id="stop"><i data-lucide="square"></i> Stop</button></div>
         <p class="small dim" style="margin:8px 0 0">The model is one of two identical side trusses, so it carries half of the truck: two axles 4 m apart taking 40% and 60% of that load, passed to the deck joints by the lever rule.</p>
       </div>
@@ -239,7 +240,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=9"></script>
 <script>
 (() => {
   'use strict';
@@ -393,10 +394,10 @@
 
   /* ---------------- canvas & view ---------------- */
   const cv = $('#cv'); let st = null; st = SL.canvas(cv, () => { if (st) draw(); });
-  const view = () => { const w = st.w, h = st.h, sc = Math.min(w / (S.span + 7), (h - 50) / 14.5); return { w, h, sc, X: x => w / 2 + (x - S.span / 2) * sc, Y: y => h * 0.5 + 18 - (y - 0.5) * sc, ix: px => (px - w / 2) / sc + S.span / 2, iy: py => 0.5 - (py - h * 0.5 - 18) / sc }; };
+  const view = () => { const w = st.w, h = st.h, sc = Math.min(w / (S.span + (w < 600 ? 5 : 7)), (h - 50) / 14.5); return { w, h, sc, X: x => w / 2 + (x - S.span / 2) * sc, Y: y => h * 0.5 + 18 - (y - 0.5) * sc, ix: px => (px - w / 2) / sc + S.span / 2, iy: py => 0.5 - (py - h * 0.5 - 18) / sc }; };
   const BOUNDS = () => ({ x0: 0, x1: S.span, y0: -4, y1: 7 });
 
-  let RES = null, shown = new Map(), hover = null, drag = null, ptrW = null, T = 0;
+  let RES = null, shown = new Map(), hover = null, drag = null, ptrW = null, T = 0, touchMode = false, showN = false;
   let needSolve = true; const dirty = () => { needSolve = true; };
 
   function forceColor(N, u, alpha = 1) {
@@ -452,8 +453,20 @@
       if ((hover && hover.kind === 'm' && hover.id === m.id) || S.sel === m.id) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.setLineDash([]); }
       ctx.restore();
     });
+    // member force labels
+    if (showN && RES && RES.ok && !RUN.collapse) {
+      ctx.font = `600 ${sc < 22 ? 10 : 11}px JetBrains Mono, monospace`; ctx.textAlign = 'center';
+      S.members.forEach(m => { if (RUN.broken.has(m.id)) return; const info = RES.N.get(m.id); if (!info) return; const [x1, y1] = P(jById(m.a)), [x2, y2] = P(jById(m.b));
+        const N = info.N, z = Math.abs(N) < 0.05, t = z ? '0' : `${fmt(Math.abs(N), Math.abs(N) < 10 ? 1 : 0)} ${N > 0 ? 'T' : 'C'}`;
+        const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, tw = ctx.measureText(t).width + 8;
+        ctx.fillStyle = 'rgba(5,9,19,.85)'; ctx.fillRect(mx - tw / 2, my - 8, tw, 15);
+        ctx.fillStyle = z ? '#94a3b8' : N > 0 ? '#fca5a5' : '#93c5fd'; ctx.fillText(t, mx, my + 3.5); });
+      ctx.textAlign = 'left';
+    }
     // drag preview
     if (drag && drag.kind === 'member' && ptrW) { const A = jById(drag.from); const [x1, y1] = P(A); ctx.strokeStyle = 'rgba(245,165,36,.85)'; ctx.lineWidth = 3; ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(X(ptrW.x), Y(ptrW.y)); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = 'rgba(245,165,36,.85)'; ctx.beginPath(); ctx.arc(X(ptrW.x), Y(ptrW.y), 5, 0, 7); ctx.fill(); }
+    // touch: the finger hides the snap point, so show a ring and a coordinate label above it
+    if (drag && touchMode && ptrW && drag.kind !== 'tap') { const sx = X(ptrW.x), sy = Y(ptrW.y); ctx.strokeStyle = 'rgba(245,165,36,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sx, sy, 15, 0, 7); ctx.stroke(); const lbl = `(${ptrW.x}, ${ptrW.y}) m`; ctx.font = '600 12px JetBrains Mono, monospace'; const tw = ctx.measureText(lbl).width + 14, lx = SL.clamp(sx - tw / 2, 4, w - tw - 4), ly = Math.max(4, sy - 62); ctx.fillStyle = 'rgba(5,9,19,.9)'; ctx.strokeStyle = 'rgba(245,165,36,.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(lx, ly, tw, 22, 6) : ctx.rect(lx, ly, tw, 22); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#fcd34d'; ctx.textAlign = 'center'; ctx.fillText(lbl, lx + tw / 2, ly + 15); ctx.textAlign = 'left'; }
     // supports
     supports().forEach(s => { const [px, py] = P(s.j); drawSupport(ctx, px, py, s.sup, sc); });
     // joints
@@ -555,6 +568,7 @@
   SL.bind('#pload', v => { S.P = v; }, v => v + ' kN');
   SL.bind('#exag', v => { S.exag = v; }, v => '×' + v);
   $('#selfw').onchange = e => { S.selfw = e.target.checked; dirty(); };
+  $('#lblN').onchange = e => { showN = e.target.checked; };
   $('#run').onclick = () => {
     const dk = deckOK(); if (!dk.ok) { SL.toast('The truck needs a continuous deck: connect bottom-chord joints at y = 0 from abutment to abutment' + (dk.gap ? ` (gap near x = ${fmt(dk.gap, 1)} m).` : '.'), 'warn'); return; }
     const r = solve([], new Set()); if (!r.ok) { SL.toast('Fix the structure first: it is not stable.', 'warn'); return; }
@@ -600,17 +614,18 @@
   /* ---------------- pointer ---------------- */
   function pick(px, py) {
     const V = view(), ex = S.exag; const P = j => { const d = shown.get(j.id) || [0, 0]; return [V.X(j.x + d[0] * ex), V.Y(j.y + d[1] * ex)]; };
-    const rr = Math.max(10, V.sc * 0.4);
+    const rr = Math.max(touchMode ? 20 : 10, V.sc * 0.4);
     let best = null, bd = rr;
     S.joints.forEach(j => { const [x, y] = P(j); const d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; best = { kind: 'j', id: j.id }; } });
     if (best) return best;
-    let bm = null, bdm = 8;
+    let bm = null, bdm = touchMode ? 16 : 8;
     S.members.forEach(m => { if (RUN.broken.has(m.id)) return; const [x1, y1] = P(jById(m.a)), [x2, y2] = P(jById(m.b)); const dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy; let t = ((px - x1) * dx + (py - y1) * dy) / (L2 || 1); t = SL.clamp(t, 0, 1); const d = Math.hypot(px - x1 - t * dx, py - y1 - t * dy); if (d < bdm) { bdm = d; bm = { kind: 'm', id: m.id }; } });
     return bm;
   }
   const snapW = (px, py) => { const V = view(), B = BOUNDS(); return { x: SL.clamp(Math.round(V.ix(px)), B.x0, B.x1), y: SL.clamp(Math.round(V.iy(py)), B.y0, B.y1) }; };
   cv.addEventListener('pointerdown', e => {
     if (RUN.active || RUN.collapse) return;
+    touchMode = e.pointerType === 'touch' || e.pointerType === 'pen';
     const p = SL.ptr(e, cv), hit = pick(p.x, p.y); cv.setPointerCapture(e.pointerId);
     drag = { kind: null, start: p, moved: false, hit };
     if (S.tool === 'build') { if (hit && hit.kind === 'j') drag.kind = 'member', drag.from = hit.id; else drag.kind = 'tap'; }
@@ -790,6 +805,16 @@
 
   /* ---------------- init ---------------- */
   preset('pratt', 12); hist.length = 0; secInfo(); setMsg();
+  const tour = () => SL.tour([
+    { el: '#stage', title: 'Your bridge', text: 'A truss over a river: red members in tension, blue in compression, thicker means more force. Tap a member to read it.' },
+    { el: '#toolSeg', title: 'Build tools', text: 'Build: drag from a joint to draw a member, tap empty grid to add a joint. Move, Erase and Load edit the design.' },
+    { el: '#presetRow', title: 'Start from a classic', text: 'Load a Warren, Pratt, Howe or K-truss and compare how the diagonals carry the load.' },
+    { el: '.toggle:has(#lblN)', title: 'Label the forces', text: 'Switch on labels to print every member force in kN, T for tension and C for compression.' },
+    { el: '#run', title: 'Test it', text: 'Drive a truck across. Members that yield or buckle fail, and a weak design collapses into the river.' },
+    { el: '.lab .stats', title: 'Analysis', text: 'Joint and member counts, determinacy (m + r vs 2j), cost, mass and the worst member utilisation.' },
+    { el: '.tabs .tablist button:nth-child(4)', title: 'Take the challenges', text: 'Open Challenges for graded bridge-building levels with budgets and truck loads.' },
+  ]);
+  tour();
   window.__truss = { S, solve, preset, truckLoads, RUN, startLevel, mProps, deckOK, get RES() { return RES; } };
 })();
 </script>
