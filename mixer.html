@@ -1,0 +1,1089 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audio Mixing Desk · Pentarch SimLab</title>
+<meta name="description" content="Mix a live multitrack song on a realistic 10-channel console: gain staging, high-pass filters, four-band EQ, compression, aux sends, reverb and delay, panning, metering and loudness.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .mx-top{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px}
+  @media (max-width:980px){.mx-top{grid-template-columns:1fr}}
+  .mx-scope{min-height:340px}
+  @media (max-width:980px){.mx-scope{height:320px;min-height:0}}
+  .mx-scope #spec{position:absolute;inset:0}
+  .mx-scope .mini{position:absolute;right:10px;top:10px;width:118px;height:118px;border:1px solid var(--line2);border-radius:10px;background:rgba(5,9,19,.85)}
+  .mx-scope .legend{position:absolute;left:12px;top:44px;display:flex;gap:10px;font:500 .7rem var(--mono);color:var(--muted);pointer-events:none;flex-wrap:wrap}
+  .mx-scope .legend i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+  .transport .bigplay{width:100%;padding:12px;font-size:1rem}
+  .pos{font:600 1.4rem var(--mono);letter-spacing:.04em;color:var(--accent);text-align:center;margin:8px 0 4px}
+  .mini-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
+  .mini-row .lbl{font:600 .66rem var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);min-width:58px}
+  .lufs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}
+  .lufs .stat .v{font-size:1rem}
+  /* ---------- the console ---------- */
+  .console-wrap{margin-top:14px;border-radius:16px;border:1px solid #2b3240;background:linear-gradient(180deg,#14171d,#0c0e12);box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.05);overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
+  .console{display:flex;width:max-content;margin:0 auto;padding:10px 10px 12px;gap:0}
+  .strip{width:84px;flex:none;display:flex;flex-direction:column;align-items:center;padding:6px 3px 6px;background:linear-gradient(180deg,#2a2f38 0%,#22262d 40%,#1d2026 100%);border-left:1px solid #343b47;border-right:1px solid #0e1014;position:relative;user-select:none;-webkit-user-select:none}
+  .strip.sel{background:linear-gradient(180deg,#30293a 0%,#262130 40%,#1f1b26 100%);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 60%,transparent)}
+  .strip.fx{background:linear-gradient(180deg,#232a33,#1b2128)}
+  .strip.master{width:150px;background:linear-gradient(180deg,#2c2a24,#1f1d19);border-left:2px solid #0a0b0d;margin-left:6px;border-radius:0 10px 10px 0}
+  .strip .num{font:700 .62rem var(--mono);color:#7f8898;letter-spacing:.08em}
+  .sect{width:100%;font:700 .52rem var(--mono);letter-spacing:.16em;color:#6c7586;text-align:center;border-top:1px solid #3a414d;margin:3px 0 2px;padding-top:2px}
+  .krow{display:flex;justify-content:space-around;width:100%;align-items:flex-start;min-height:44px}
+  .kcell{display:flex;flex-direction:column;align-items:center;gap:1px;width:40px}
+  .kcell .kl{font:600 .5rem var(--mono);letter-spacing:.06em;color:#9aa4b5;white-space:nowrap}
+  .knob{width:28px;height:28px;position:relative;touch-action:none;cursor:ns-resize;border-radius:50%;margin-top:3px}
+  .knob .ring{position:absolute;inset:-4px;border-radius:50%;-webkit-mask:radial-gradient(circle,transparent 15.5px,#000 16.5px);mask:radial-gradient(circle,transparent 15.5px,#000 16.5px)}
+  .knob .cap{position:absolute;inset:1px;border-radius:50%;box-shadow:0 2px 3px rgba(0,0,0,.7),inset 0 1px 1px rgba(255,255,255,.25)}
+  .knob .cap::after{content:"";position:absolute;left:50%;top:2px;width:2px;height:8px;margin-left:-1px;border-radius:1px;background:#fff;box-shadow:0 0 3px rgba(255,255,255,.6)}
+  .knob:hover .cap{filter:brightness(1.18)}
+  .sbtn{all:unset;box-sizing:border-box;cursor:pointer;font:700 .55rem var(--mono);letter-spacing:.06em;color:#c9d1de;background:linear-gradient(#3a414d,#2a2f38);border:1px solid #12151a;border-radius:4px;padding:3px 0;width:36px;text-align:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
+  .sbtn.wide{width:74px}
+  .sbtn:hover{filter:brightness(1.2)}
+  .sbtn.on.mute{background:linear-gradient(#ff5c5c,#c22);color:#fff;box-shadow:0 0 10px rgba(255,60,60,.6)}
+  .sbtn.on.solo{background:linear-gradient(#ffd34d,#d9a300);color:#1a1400;box-shadow:0 0 10px rgba(255,200,40,.6)}
+  .sbtn.on.inb{background:linear-gradient(#5ee08a,#1f9d4c);color:#04140a;box-shadow:0 0 8px rgba(60,220,120,.45)}
+  .sbtn.on.sel{background:linear-gradient(#f9a8d4,#db2777);color:#fff}
+  .brow{display:flex;gap:4px;justify-content:center;margin:3px 0}
+  .gr{width:74px;height:6px;background:#0b0d10;border-radius:3px;overflow:hidden;margin:2px 0 1px;position:relative}
+  .gr i{position:absolute;right:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,#f59e0b,#ef4444)}
+  .fwrap{display:flex;gap:3px;height:176px;margin-top:6px;align-items:stretch}
+  .scale{position:relative;width:17px;font:500 .5rem var(--mono);color:#8a93a3}
+  .scale span{position:absolute;right:0;transform:translateY(-50%)}
+  .ftrack{position:relative;width:16px;margin-left:5px;touch-action:none;cursor:ns-resize}
+  .ftrack::before{content:"";position:absolute;left:6px;width:4px;top:6px;bottom:6px;border-radius:2px;background:#07080a;box-shadow:inset 0 1px 2px #000,0 1px 0 rgba(255,255,255,.07)}
+  .fcap{position:absolute;left:-6px;width:28px;height:38px;margin-top:-19px;border-radius:4px;background:linear-gradient(180deg,#4b5260 0%,#2a2f38 45%,#cfd5df 47%,#cfd5df 53%,#2a2f38 55%,#3c424e 100%);box-shadow:0 4px 6px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.25)}
+  .master .fcap{background:linear-gradient(180deg,#a5372f 0%,#7a2620 45%,#fff 47%,#fff 53%,#7a2620 55%,#a5372f 100%)}
+  .fx .fcap{background:linear-gradient(180deg,#2f6aa5 0%,#204a7a 45%,#fff 47%,#fff 53%,#204a7a 55%,#2f6aa5 100%)}
+  .meter{width:10px;height:100%;display:block;border-radius:2px;background:#050608}
+  .fval{font:600 .6rem var(--mono);color:#cfd6e2;margin-top:4px;text-align:center;min-height:1em}
+  .pk{font:600 .56rem var(--mono);color:#7f8898;text-align:center}
+  .pk.ok{color:#4ade80}.pk.hot{color:#f87171}.pk.lo{color:#93c5fd}
+  .scribble{margin-top:5px;width:76px;text-align:center;font:700 .64rem var(--font);padding:4px 2px;border-radius:4px;background:#0a0c10;border:1px solid #000;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .masterfx{display:flex;gap:6px;justify-content:center}
+  .kv-tip{position:fixed;z-index:500;pointer-events:none;font:600 .74rem var(--mono);background:#0b1020;border:1px solid var(--line2);color:#fff;padding:3px 7px;border-radius:6px;transform:translate(-50%,-130%);display:none;white-space:nowrap}
+  .chal{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-top:14px}
+  .chal .card{cursor:pointer;padding:14px}
+  .chal .card.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .chal .card h4{margin:0 0 4px;font-size:.98rem;display:flex;align-items:center;gap:8px}
+  .chal .card h4 svg{width:16px;height:16px;color:var(--accent)}
+  .chal .card p{font-size:.82rem}
+  .task{margin-top:12px}
+  .task .bar{height:8px;border-radius:5px;background:var(--line2);overflow:hidden;margin:6px 0}
+  .task .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),#22d3ee);transition:width .3s}
+  .checks{list-style:none;padding:0;margin:8px 0 0;font-size:.86rem}
+  .checks li{display:flex;gap:8px;align-items:center;padding:3px 0;color:var(--muted)}
+  .checks li.ok{color:var(--text)}
+  .checks .led{flex:none}
+  .route svg{width:100%;height:auto;display:block}
+  .gloss dt{font-weight:700;color:var(--text);margin-top:10px}
+  .gloss dd{margin:2px 0 0 0;color:var(--muted)}
+  .hint{font-size:.78rem;color:var(--dim);margin:6px 2px 0}
+@media (max-width:600px){.mx-scope .legend{display:none}.mx-scope .mini{width:80px;height:80px;top:auto;bottom:24px}.mx-scope .hud .readout{font-size:.62rem;padding:3px 6px}}
+</style>
+</head>
+<body data-page="mixer">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab full" style="padding-bottom:6px">
+    <div class="mx-top">
+      <div class="stage mx-scope" id="scope">
+        <canvas id="spec" aria-label="Spectrum analyser and EQ curve"></canvas>
+        <canvas id="compcv" class="mini" aria-label="Compressor transfer curve"></canvas>
+        <div class="hud"><span class="readout">Channel <b id="hudCh">Vocal</b></span><span class="readout">Pre-fader peak <b id="hudPk">–</b> dBFS</span><span class="readout">GR <b id="hudGr">0.0</b> dB</span></div>
+        <div class="legend"><span><i style="background:#22d3ee"></i>Master spectrum</span><span><i id="lgCh" style="background:#f472b6"></i>Selected channel (post-EQ)</span><span><i style="background:#facc15"></i>EQ curve (drag the dots)</span></div>
+      </div>
+      <aside class="panel transport">
+        <h3><i data-lucide="disc-3"></i> Transport &amp; monitoring</h3>
+        <button class="btn primary bigplay" id="play"><i data-lucide="play"></i> Play the multitrack</button>
+        <div class="pos" id="pos">Bar 1 · 1</div>
+        <div class="mini-row"><span class="lbl">Scenario</span><select id="scenario" style="flex:1">
+          <option value="default">Rough mix (start here)</option>
+          <option value="gain">Lesson 1: gain staging</option>
+          <option value="muddy">Fix 1: muddy low end</option>
+          <option value="harsh">Fix 2: harsh vocal</option>
+          <option value="dyn">Fix 3: vocal too dynamic</option>
+          <option value="balance">Challenge: match the reference</option>
+          <option value="flat">Blank desk (all flat)</option>
+        </select></div>
+        <div class="mini-row"><span class="lbl">Meters</span><div class="seg" id="mpoint"><button data-v="pre">Pre-fader</button><button data-v="post" class="on">Post-fader</button></div></div>
+        <div class="mini-row"><span class="lbl">Solo</span><div class="seg" id="smode"><button data-v="sip" class="on">SIP</button><button data-v="pfl">PFL</button></div></div>
+        <div class="mini-row"><span class="lbl">Listen</span><div class="seg" id="crsrc"><button data-v="main" class="on">Main mix</button><button data-v="mon">Stage monitor</button></div></div>
+        <div class="mini-row"><span class="lbl">A / B</span><button class="btn sm" id="abBtn" disabled><i data-lucide="headphones"></i> Hear reference</button></div>
+        <div class="ctl"><label for="bpm">Tempo</label><output>112 BPM</output><input type="range" id="bpm" min="80" max="140" step="1" value="112"></div>
+        <div class="panel-title">Loudness (approx. EBU R128, K-weighted)</div>
+        <div class="lufs">
+          <div class="stat"><div class="k">Momentary</div><div class="v" id="lM">–</div></div>
+          <div class="stat"><div class="k">Short-term</div><div class="v" id="lS">–</div></div>
+          <div class="stat"><div class="k">Integrated</div><div class="v" id="lI">–</div></div>
+          <div class="stat"><div class="k">Peak L/R</div><div class="v" id="lP">–</div></div>
+          <div class="stat"><div class="k">Correlation</div><div class="v" id="lC">–</div></div>
+          <div class="stat"><div class="k">Target</div><div class="v"><select id="target" style="padding:2px 4px;font-size:.78rem"><option value="-14">−14 Stream</option><option value="-23">−23 EBU</option><option value="-24">−24 ATSC</option><option value="-16">−16 Podcast</option></select></div></div>
+        </div>
+        <p class="hint" id="lufsNote">Values in LUFS. Approximate meter: K-weighting and 400 ms / 3 s windows follow ITU-R BS.1770, gating is simplified. Press <b>Play</b> to start.</p>
+      </aside>
+    </div>
+
+    <div class="console-wrap" id="cwrap"><div class="console" id="console"></div></div>
+    <p class="hint"><i data-lucide="mouse-pointer-2" style="width:13px;height:13px;vertical-align:-2px"></i> Knobs: drag up/down or use the mouse wheel (hold <kbd>Shift</kbd> for fine control), double-click to reset. Faders: drag. Click a channel name to inspect it in the analyser. On a phone, swipe the desk sideways.</p>
+
+    <div class="panel task" id="taskPanel">
+      <h3><i data-lucide="target"></i> <span id="taskTitle">Rough mix</span></h3>
+      <p class="muted small" id="taskDesc" style="margin:0">A balanced starting mix. Press Play, then try muting, soloing and moving faders to hear what each instrument contributes.</p>
+      <div class="bar"><i id="taskBar"></i></div>
+      <ul class="checks" id="taskChecks"></ul>
+    </div>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button><i data-lucide="git-branch"></i> Signal flow</button>
+      <button><i data-lucide="list"></i> Glossary</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+    <div class="tabpanel prose">
+      <h3>Decibels: the language of the desk</h3>
+      <p>Audio levels span an enormous range, so engineers use the logarithmic decibel. For amplitude-like quantities (voltage, sample value) the level relative to a reference is</p>
+      <div class="eq">$$L = 20\log_{10}\!\left(\frac{A}{A_\text{ref}}\right)\ \text{dB},\qquad L_P = 10\log_{10}\!\left(\frac{P}{P_\text{ref}}\right)\ \text{dB}$$</div>
+      <p>so doubling the amplitude adds about $6.02$ dB and doubling the power adds about $3.01$ dB. A fader at $-6$ dB halves the signal amplitude. Every digital meter on this desk reads in <b>dBFS</b> (decibels relative to full scale): $0$ dBFS is the largest sample value a fixed-point converter can represent, so all real levels are negative. Analogue desks use <b>dBu</b> ($0$ dBu $= 0.775$ V RMS); the EBU alignment maps $0$ dBu (≈ 0 VU) to $-18$ dBFS, which is why $-18$ dBFS is the classic gain-staging target.</p>
+      <p>Two <i>uncorrelated</i> signals of equal level sum to $+3$ dB (powers add); two identical (<i>correlated</i>) signals sum to $+6$ dB (amplitudes add). That is why ten channels each peaking at $-18$ dBFS can still drive the mix bus towards $-6$ dBFS.</p>
+
+      <h3>Signal flow through a channel strip</h3>
+      <p>Each channel on this console processes the signal in a fixed order, just like an analogue or digital desk: <b>input trim → high-pass filter → EQ → compressor (+ make-up) → mute → fader → pan → mix bus</b>. The <b>monitor</b> send taps the signal <i>before</i> the fader (pre-fader), so moving a fader for the audience does not change what the band hears in their wedges. <b>Reverb</b> and <b>delay</b> sends are <i>post-fader</i>, so the effect level follows the fader. See the <i>Signal flow</i> tab for the full diagram.</p>
+
+      <h3>Equalisation</h3>
+      <div class="grid2">
+        <div><p><b>High-pass filter (HPF)</b>: removes energy below the cut-off frequency $f_c$ with a slope of 12 dB/octave here (2nd-order Butterworth, $Q=0.707$). Use it on everything that does not need deep bass: vocals, keys, pads, guitars, hi-hats.</p>
+        <p><b>Shelving EQ (HF, LF)</b>: lifts or cuts everything above (HF, 8 kHz) or below (LF, 100 Hz) the corner frequency by a fixed amount.</p></div>
+        <div><p><b>Peaking / bell EQ (HM, LM)</b>: boosts or cuts a band centred on $f_0$. Its width is set by $Q$; the bandwidth in octaves $N$ relates to $Q$ by</p>
+        <div class="eq">$$Q = \frac{\sqrt{2^N}}{2^N-1}$$</div>
+        <p>so $Q\approx1.41$ is one octave. The mids on this desk are <i>sweepable</i> (you choose $f_0$) with $Q = 1.2$.</p></div>
+      </div>
+      <p>The yellow curve in the analyser is the exact combined magnitude response of the selected channel’s HPF and four bands, computed from the same digital biquad filters that process the audio.</p>
+
+      <h3>Compression</h3>
+      <p>A compressor turns down signals above its <b>threshold</b> $T$. With ratio $R$, the static (steady-state) curve is</p>
+      <div class="eq">$$L_\text{out} = \begin{cases} L_\text{in}, & L_\text{in} \le T\\[2pt] T + \dfrac{L_\text{in}-T}{R}, & L_\text{in} > T\end{cases}\qquad \text{GR} = (L_\text{in}-T)\left(1-\frac1R\right)$$</div>
+      <p><b>Attack</b> is how quickly gain reduction (GR) is applied after the signal crosses the threshold; <b>release</b> is how quickly it recovers. Fast attack tames transients (and can dull a kick); slow attack lets the transient through. Because compression lowers peaks, you add <b>make-up gain</b> to restore level, which raises the quieter parts: the net effect is a smaller dynamic range. A ratio of $\infty:1$ with a very fast attack is a <b>limiter</b>, used on the master here to stop the output exceeding the ceiling. (The desk uses the browser’s built-in compressor, which has a soft knee and a few ms of look-ahead, so measured GR differs slightly from the hard-knee formula.)</p>
+
+      <h3>Panning laws</h3>
+      <p>A pan pot splits a mono signal between left and right. To keep the perceived loudness constant as a source moves, consoles use a <b>constant-power</b> law. With pan position $p\in[-1,1]$ and $\theta = (p+1)\tfrac{\pi}{4}$:</p>
+      <div class="eq">$$g_L = \cos\theta,\qquad g_R = \sin\theta,\qquad g_L^2+g_R^2 = 1$$</div>
+      <p>At centre each side is $\cos 45^\circ = 0.707$, i.e. $-3$ dB: the “−3 dB pan law” used by this desk. Some consoles use $-4.5$ or $-6$ dB centre laws ($-6$ dB keeps mono sums constant). Keep kick, snare, bass and lead vocal central; spread hats, percussion, guitars and keys to create width.</p>
+
+      <h3>Loudness and broadcast standards</h3>
+      <p>Peak meters show how close you are to clipping, not how loud a mix sounds. Loudness meters (ITU-R BS.1770) first apply <b>K-weighting</b> (a high-frequency shelf of about $+4$ dB above 2 kHz plus a high-pass around 38 Hz, approximating the ear), then compute the mean square over a window:</p>
+      <div class="eq">$$\text{LUFS} = -0.691 + 10\log_{10}\sum_{i} G_i\,\overline{z_i^2}$$</div>
+      <p>where $\overline{z_i^2}$ is the mean square of channel $i$ and $G_i = 1$ for left and right. <b>Momentary</b> loudness uses a 400 ms window, <b>short-term</b> 3 s, and <b>integrated</b> loudness averages the whole programme with gating (blocks quieter than $-70$ LUFS, and then quieter than 10 LU below the ungated average, are ignored). Targets: EBU R128 broadcast $-23$ LUFS (Kenyan and many African broadcasters follow EBU or ATSC practice), ATSC A/85 $-24$ LKFS, most streaming platforms about $-14$ LUFS, podcasts about $-16$ LUFS. The meter on this page is a simplified real-time approximation, accurate to roughly ±1 LU.</p>
+      <div class="callout"><i data-lucide="info"></i><div>The instruments are synthesised live in your browser with the Web Audio API, so every change you make is processed in real time, exactly as on a digital console.</div></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. Fader moves in decibels</h3>
+      <div class="worked">
+        <p>A vocal peaks at $-12$ dBFS with the fader at $0$ dB. You pull the fader to $-6$ dB. New peak: $-12 + (-6) = -18$ dBFS. Amplitude ratio: $10^{-6/20} = 0.501$, so the waveform is half as tall.</p>
+        <p>Try it: solo the Vocal, switch meters to <b>Post-fader</b>, and watch the peak number under the fader drop by exactly the fader setting.</p>
+      </div>
+      <h3>2. Summing channels</h3>
+      <div class="worked">
+        <p>Two uncorrelated channels each at $-18$ dBFS RMS: total power $2\times10^{-18/10}$, so $L = 10\log_{10}(2\times 10^{-1.8}) = -18 + 3.01 = -14.99$ dBFS.</p>
+        <p>Ten such channels: $-18 + 10\log_{10}10 = -8$ dBFS RMS. This is why individual channels need headroom.</p>
+      </div>
+      <h3>3. Compressor gain reduction</h3>
+      <div class="worked">
+        <p>Threshold $T=-24$ dBFS, ratio $4:1$, input peak $-12$ dBFS.</p>
+        <ol><li>Overshoot: $-12-(-24) = 12$ dB.</li><li>Output: $-24 + 12/4 = -21$ dBFS.</li><li>Gain reduction: $12\times(1-\tfrac14) = 9$ dB.</li><li>A quiet passage at $-30$ dBFS is below threshold and stays at $-30$. The difference between loud and quiet shrinks from 18 dB to 9 dB.</li><li>Add 6 dB of make-up gain to bring the loud parts back up to about $-15$ dBFS.</li></ol>
+        <p>The mini graph in the analyser’s top-right corner draws this curve for the selected channel; the dot shows the live input level.</p>
+      </div>
+      <h3>4. Pan law</h3>
+      <div class="worked">
+        <p>Pan pot at $p = 0.5$ (half right): $\theta = 1.5\times 45^\circ = 67.5^\circ$. $g_L = \cos67.5^\circ = 0.383$ ($-8.3$ dB), $g_R = \sin 67.5^\circ = 0.924$ ($-0.7$ dB). Check: $0.383^2+0.924^2 = 1.00$, so the total power is unchanged.</p>
+      </div>
+      <h3>5. Hitting a loudness target</h3>
+      <div class="worked">
+        <p>Your mix measures $-19.5$ LUFS integrated and the platform target is $-14$ LUFS. You need $+5.5$ dB. If the true peak is already $-4$ dBFS, adding 5.5 dB would push peaks to $+1.5$ dBFS, so the limiter must reduce peaks by at least 2.5 dB (more, if the ceiling is $-1$ dBFS). Loudness is gained at the cost of crest factor (peak-to-loudness ratio).</p>
+      </div>
+      <h3>6. HPF slope</h3>
+      <div class="worked">
+        <p>A 12 dB/octave HPF at $f_c = 160$ Hz: at 80 Hz (one octave down) the response is about $-12$ dB (exactly $-12.3$ dB for a Butterworth), at 40 Hz about $-24$ dB. Set the Keys HPF to 160 Hz and look at the yellow curve to confirm.</p>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <p>Choose a scenario here or from the <b>Scenario</b> menu next to the transport. Each one changes the multitrack and checks your work live; a toast appears when you succeed.</p>
+      <div class="chal" id="chalCards"></div>
+      <h3>Free experiments</h3>
+      <ol class="steps">
+        <li><b>Pre vs post-fader.</b> Turn up the Vocal’s MON send, switch <i>Listen</i> to <b>Stage monitor</b>, then pull the Vocal fader down. The monitor mix does not change: MON is pre-fader.</li>
+        <li><b>Post-fader effects.</b> Give the Snare some REV send. Pull its fader down: the reverb disappears with it, because REV is post-fader.</li>
+        <li><b>SIP vs PFL.</b> Solo the Bass in SIP mode (solo-in-place mutes everything else in the main mix). Switch to PFL: the main mix keeps playing, and only your listening feed changes. Broadcast engineers use PFL so the audience never hears a solo.</li>
+        <li><b>Attack time.</b> Compress the Kick hard (threshold −40, ratio 8). Try ATK 0.5 ms vs 40 ms and listen to the click of the beater appear and disappear.</li>
+        <li><b>Mono compatibility.</b> Pan Keys hard left and Guitar hard right and watch the correlation meter; then pan both centre.</li>
+        <li><b>Loudness vs peaks.</b> Set the master limiter ceiling to −6 dB and push the master fader to +8: the integrated loudness rises while the peaks stay pinned. Listen for the loss of punch.</li>
+      </ol>
+    </div>
+
+    <div class="tabpanel">
+      <div class="route panel" id="route"></div>
+      <p class="muted small" style="margin-top:10px">Signal flow of one channel strip on this desk, plus the effect returns and master section. Green taps are pre-fader, blue taps are post-fader. Live: blocks light up when switched in on the selected channel.</p>
+    </div>
+
+    <div class="tabpanel prose">
+      <dl class="gloss">
+        <dt>Aux send</dt><dd>A separate, adjustable feed of a channel to a bus (monitor wedge, reverb, delay).</dd>
+        <dt>Bus</dt><dd>A mixing point where several signals are summed (mix bus, aux bus, PFL bus).</dd>
+        <dt>Clipping</dt><dd>Distortion when a signal exceeds the maximum level (0 dBFS in digital).</dd>
+        <dt>Crest factor / PLR</dt><dd>Difference between peak level and average (RMS) or loudness level, in dB.</dd>
+        <dt>dBFS / dBu / dBSPL</dt><dd>Decibels relative to digital full scale / 0.775 V / 20 µPa sound pressure.</dd>
+        <dt>Foldback</dt><dd>Monitor mixes for performers on stage; normally pre-fader.</dd>
+        <dt>Gain staging</dt><dd>Setting levels at each point of the chain so signals sit well above the noise floor and well below clipping.</dd>
+        <dt>Gain reduction (GR)</dt><dd>How much a compressor or limiter is currently turning the signal down, in dB.</dd>
+        <dt>Headroom</dt><dd>The margin between the operating level and the clipping point.</dd>
+        <dt>HPF / LPF</dt><dd>High-pass / low-pass filter: passes frequencies above / below the cut-off.</dd>
+        <dt>Insert</dt><dd>A point where a processor is placed in series with the channel.</dd>
+        <dt>K-weighting</dt><dd>The frequency weighting used for loudness measurement (BS.1770).</dd>
+        <dt>LUFS / LU</dt><dd>Loudness units relative to full scale; 1 LU = 1 dB difference in loudness.</dd>
+        <dt>Make-up gain</dt><dd>Gain added after a compressor to restore level.</dd>
+        <dt>Mud</dt><dd>Excess energy around 200–500 Hz that makes a mix sound thick and unclear.</dd>
+        <dt>PFL / AFL</dt><dd>Pre-fade listen / after-fade listen: hear a channel in headphones without affecting the main mix.</dd>
+        <dt>Q</dt><dd>Quality factor: the sharpness of a filter, centre frequency divided by bandwidth.</dd>
+        <dt>SIP</dt><dd>Solo-in-place: soloing mutes all other channels in the main mix (studio use only).</dd>
+        <dt>Sibilance / harshness</dt><dd>Excess energy at 2–8 kHz in vocals (“s” sounds, nasal or edgy tone).</dd>
+        <dt>Trim</dt><dd>The input gain control at the top of the strip.</dd>
+        <dt>VU</dt><dd>Volume unit meter: averaging meter with 300 ms ballistics; 0 VU ≈ +4 dBu (pro) or −18 dBFS (EBU alignment).</dd>
+      </dl>
+    </div>
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+<div class="kv-tip" id="tip"></div>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = s => document.querySelector(s);
+  const db2a = d => Math.pow(10, d / 20), a2db = a => a > 1e-9 ? 20 * Math.log10(a) : -180;
+  const clamp = SL.clamp;
+  const sgn = v => (v > 0.05 ? '+' : '') + v.toFixed(1);
+  const hz = v => v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k' : Math.round(v) + '';
+
+  /* ================= Channels & parameters ================= */
+  const CH = [
+    { id: 'kick', name: 'Kick', col: '#f87171' },
+    { id: 'snare', name: 'Snare', col: '#fb923c' },
+    { id: 'hats', name: 'Hi-hats', col: '#facc15' },
+    { id: 'perc', name: 'Shaker/Conga', col: '#a3e635' },
+    { id: 'bass', name: 'Bass', col: '#34d399' },
+    { id: 'gtr', name: 'Guitar', col: '#2dd4bf' },
+    { id: 'keys', name: 'Keys', col: '#38bdf8' },
+    { id: 'pad', name: 'Pad', col: '#818cf8' },
+    { id: 'lead', name: 'Lead synth', col: '#c084fc' },
+    { id: 'vox', name: 'Vocal', col: '#f472b6' },
+  ];
+  // Knob parameter definitions
+  const PD = {
+    trim: { l: 'GAIN', min: -24, max: 24, def: 0, bip: true, col: '#c0392b', f: v => sgn(v) + ' dB' },
+    hpf: { l: 'HPF', min: 20, max: 400, def: 80, log: true, col: '#7a8494', f: v => hz(v) + ' Hz' },
+    hf: { l: 'HF', min: -15, max: 15, def: 0, bip: true, col: '#2f6fd6', f: v => sgn(v) + ' dB' },
+    lf: { l: 'LF', min: -15, max: 15, def: 0, bip: true, col: '#8a5a2b', f: v => sgn(v) + ' dB' },
+    hmg: { l: 'HM', min: -15, max: 15, def: 0, bip: true, col: '#2a9d5c', f: v => sgn(v) + ' dB' },
+    hmf: { l: 'HM f', min: 500, max: 10000, def: 3000, log: true, col: '#1e6e42', f: v => hz(v) + ' Hz' },
+    lmg: { l: 'LM', min: -15, max: 15, def: 0, bip: true, col: '#2a9d5c', f: v => sgn(v) + ' dB' },
+    lmf: { l: 'LM f', min: 50, max: 2000, def: 400, log: true, col: '#1e6e42', f: v => hz(v) + ' Hz' },
+    thr: { l: 'THR', min: -50, max: 0, def: -12, col: '#c9a227', f: v => v.toFixed(1) + ' dB' },
+    ratio: { l: 'RATIO', min: 1, max: 20, def: 3, log: true, col: '#c9a227', f: v => v.toFixed(1) + ':1' },
+    atk: { l: 'ATK', min: 0.5, max: 100, def: 10, log: true, col: '#a8871f', f: v => v.toFixed(v < 10 ? 1 : 0) + ' ms' },
+    rel: { l: 'REL', min: 20, max: 1000, def: 150, log: true, col: '#a8871f', f: v => Math.round(v) + ' ms' },
+    mkp: { l: 'MAKE', min: 0, max: 24, def: 0, col: '#c9a227', f: v => '+' + v.toFixed(1) + ' dB' },
+    mon: { l: 'MON', min: -40, max: 6, def: -40, col: '#d7dce4', f: v => v <= -39.9 ? 'off' : sgn(v) + ' dB', send: true },
+    rev: { l: 'REV', min: -40, max: 6, def: -40, col: '#5aa9e6', f: v => v <= -39.9 ? 'off' : sgn(v) + ' dB', send: true },
+    dly: { l: 'DLY', min: -40, max: 6, def: -40, col: '#5aa9e6', f: v => v <= -39.9 ? 'off' : sgn(v) + ' dB', send: true },
+    pan: { l: 'PAN', min: -1, max: 1, def: 0, bip: true, col: '#1a1d22', f: v => Math.abs(v) < 0.02 ? 'C' : (v < 0 ? 'L' : 'R') + Math.round(Math.abs(v) * 100) },
+  };
+  const ROWS = [['trim', 'hpf'], 'EQ', ['hf', 'lf'], ['hmg', 'hmf'], ['lmg', 'lmf'], 'DYN', ['thr', 'ratio'], ['atk', 'rel'], ['mkp', 'mon'], 'FX', ['rev', 'dly'], ['pan']];
+  const defaults = () => ({ trim: 0, hpfOn: false, hpf: 80, eqOn: true, hf: 0, lf: 0, hmg: 0, hmf: 3000, lmg: 0, lmf: 400, compOn: false, thr: -12, ratio: 3, atk: 10, rel: 150, mkp: 0, mon: -40, rev: -40, dly: -40, pan: 0, mute: false, solo: false, fader: 0 });
+  CH.forEach(c => { c.p = defaults(); c.s = { gain: 0, fx: null, dyn: false }; c.k = {}; c.pkBars = []; c.barPk = -180; c.hold = -180; c.holdT = 0; c.disp = -80; });
+  const FXR = { rev: { decay: 2.2, pre: 20, fader: 0, mute: false }, dly: { time: 0, fb: 0.35, fader: -4, mute: false } };
+  const MST = { fader: 0, limOn: true, ceil: -1, mon: -6 };
+
+  // The "rough mix": a decent starting point
+  const ROUGH = {
+    kick: { fader: -3, hpfOn: false, lmg: -3, lmf: 350, compOn: true, thr: -20, ratio: 4, atk: 15, rel: 120, mkp: 3 },
+    snare: { fader: -6, hpfOn: true, hpf: 100, rev: -10, hmg: 2, hmf: 4000 },
+    hats: { fader: -12, hpfOn: true, hpf: 300, pan: 0.3 },
+    perc: { fader: -12, hpfOn: true, hpf: 150, pan: -0.4, rev: -16 },
+    bass: { fader: -4, compOn: true, thr: -24, ratio: 3, atk: 20, rel: 200, mkp: 3 },
+    gtr: { fader: -9, hpfOn: true, hpf: 140, pan: 0.45, dly: -18 },
+    keys: { fader: -10, hpfOn: true, hpf: 120, pan: -0.35, rev: -14 },
+    pad: { fader: -14, hpfOn: true, hpf: 150, rev: -10 },
+    lead: { fader: -8, hpfOn: true, hpf: 150, pan: 0.18, dly: -10, rev: -14 },
+    vox: { fader: -3, hpfOn: true, hpf: 100, compOn: true, thr: -24, ratio: 3, atk: 5, rel: 120, mkp: 4, rev: -8, mon: -4 },
+  };
+  // Reference mix for the balance challenge (faders and pans only)
+  const REF = { kick: [-4, 0], snare: [-7, 0], hats: [-15, 0.35], perc: [-17, -0.45], bass: [-5, 0], gtr: [-11, 0.5], keys: [-13, -0.4], pad: [-17, 0], lead: [-10, 0.2], vox: [-2, 0] };
+
+  /* ================= Audio engine ================= */
+  let ac = null, playing = false, noiseBuf = null, master = {}, schedT = 0, step = 0, timer = 0, startTime = 0;
+  let abRef = false, meterPoint = 'post', soloMode = 'sip', crSrc = 'main';
+  const offline = new OfflineAudioContext(1, 128, 44100);
+  const curveF = [];
+  const NPTS = 240, FREQS = new Float32Array(NPTS);
+  for (let i = 0; i < NPTS; i++) FREQS[i] = 20 * Math.pow(1000, i / (NPTS - 1));
+  // shadow filters (offline) for drawing the EQ curve without starting audio
+  const shadow = { hpf: offline.createBiquadFilter(), lf: offline.createBiquadFilter(), lm: offline.createBiquadFilter(), hm: offline.createBiquadFilter(), hf: offline.createBiquadFilter() };
+  shadow.hpf.type = 'highpass'; shadow.hpf.Q.value = 0.7071; shadow.lf.type = 'lowshelf'; shadow.lf.frequency.value = 100; shadow.hm.type = 'peaking'; shadow.lm.type = 'peaking'; shadow.hm.Q.value = shadow.lm.Q.value = 1.2; shadow.hf.type = 'highshelf'; shadow.hf.frequency.value = 8000;
+  const shadowSrc = offline.createBiquadFilter(); // scenario coloration (for net response checks)
+
+  function makeNoise() {
+    const b = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate), d = b.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return b;
+  }
+  function makeIR(decay, pre) {
+    const sr = ac.sampleRate, len = Math.floor(sr * (decay + 0.1)), buf = ac.createBuffer(2, len, sr);
+    for (let c = 0; c < 2; c++) {
+      const d = buf.getChannelData(c); let lp = 0;
+      for (let i = 0; i < len; i++) {
+        const t = i / sr, k = 0.15 + 0.8 * Math.min(1, t / decay);  // HF damps faster as the tail evolves
+        const n = (Math.random() * 2 - 1);
+        lp = lp + (n - lp) * (1 - k * 0.85);
+        d[i] = lp * Math.exp(-6.91 * t / decay) * (t < 0.003 ? t / 0.003 : 1);
+      }
+    }
+    return buf;
+  }
+  function buildAudio() {
+    ac = SL.audio();
+    noiseBuf = makeNoise();
+    const M = master;
+    M.bus = ac.createGain();
+    M.fader = ac.createGain();
+    M.lim = ac.createDynamicsCompressor(); M.lim.knee.value = 0; M.lim.ratio.value = 20; M.lim.attack.value = 0.001; M.lim.release.value = 0.08;
+    M.out = ac.createGain();
+    M.bus.connect(M.fader).connect(M.lim).connect(M.out);
+    M.split = ac.createChannelSplitter(2); M.out.connect(M.split);
+    M.anL = ac.createAnalyser(); M.anR = ac.createAnalyser(); M.anL.fftSize = M.anR.fftSize = 2048;
+    M.split.connect(M.anL, 0); M.split.connect(M.anR, 1);
+    // K-weighting for loudness (approx. BS.1770 stage 1 & 2)
+    M.k1 = ac.createBiquadFilter(); M.k1.type = 'highshelf'; M.k1.frequency.value = 1681; M.k1.gain.value = 4;
+    M.k2 = ac.createBiquadFilter(); M.k2.type = 'highpass'; M.k2.frequency.value = 38; M.k2.Q.value = 0.5;
+    M.ksplit = ac.createChannelSplitter(2);
+    M.out.connect(M.k1).connect(M.k2).connect(M.ksplit);
+    M.kL = ac.createAnalyser(); M.kR = ac.createAnalyser(); M.kL.fftSize = M.kR.fftSize = 2048;
+    M.ksplit.connect(M.kL, 0); M.ksplit.connect(M.kR, 1);
+    M.spec = ac.createAnalyser(); M.spec.fftSize = 4096; M.spec.smoothingTimeConstant = 0.82; M.out.connect(M.spec);
+    M.mainToMon = ac.createGain(); M.pflBus = ac.createGain(); M.pflToMon = ac.createGain(); M.pflToMon.gain.value = 0;
+    M.monBus = ac.createGain(); M.monToCR = ac.createGain(); M.monToCR.gain.value = 0;
+    M.monAn = ac.createAnalyser(); M.monAn.fftSize = 1024; M.monBus.connect(M.monAn);
+    M.crVol = ac.createGain();
+    M.out.connect(M.mainToMon).connect(M.crVol);
+    M.pflBus.connect(M.pflToMon).connect(M.crVol);
+    M.monBus.connect(M.monToCR).connect(M.crVol);
+    M.crVol.connect(ac.destination);
+    // FX returns
+    M.revIn = ac.createGain(); M.revPre = ac.createDelay(0.2); M.conv = ac.createConvolver(); M.revRet = ac.createGain(); M.revAn = ac.createAnalyser(); M.revAn.fftSize = 1024;
+    M.revIn.connect(M.revPre).connect(M.conv).connect(M.revRet).connect(M.bus); M.revRet.connect(M.revAn);
+    M.conv.buffer = makeIR(FXR.rev.decay, FXR.rev.pre);
+    M.dlyIn = ac.createGain(); M.dly = ac.createDelay(2); M.fb = ac.createGain(); M.fbLp = ac.createBiquadFilter(); M.fbLp.frequency.value = 3500; M.dlyRet = ac.createGain(); M.dlyPan = ac.createStereoPanner(); M.dlyPan.pan.value = -0.3; M.dlyAn = ac.createAnalyser(); M.dlyAn.fftSize = 1024;
+    M.dlyIn.connect(M.dly); M.dly.connect(M.fbLp).connect(M.fb).connect(M.dly); M.dly.connect(M.dlyRet).connect(M.dlyPan).connect(M.bus); M.dlyRet.connect(M.dlyAn);
+    M.anSel = ac.createAnalyser(); M.anSel.fftSize = 4096; M.anSel.smoothingTimeConstant = 0.8;
+
+    CH.forEach(c => {
+      const n = c.n = {};
+      n.inp = ac.createGain();
+      n.src = ac.createBiquadFilter(); n.src.type = 'peaking'; n.src.gain.value = 0;
+      n.trim = ac.createGain();
+      n.hpf = ac.createBiquadFilter(); n.hpf.type = 'highpass'; n.hpf.Q.value = 0.7071;
+      n.lf = ac.createBiquadFilter(); n.lf.type = 'lowshelf'; n.lf.frequency.value = 100;
+      n.lm = ac.createBiquadFilter(); n.lm.type = 'peaking'; n.lm.Q.value = 1.2;
+      n.hm = ac.createBiquadFilter(); n.hm.type = 'peaking'; n.hm.Q.value = 1.2;
+      n.hf = ac.createBiquadFilter(); n.hf.type = 'highshelf'; n.hf.frequency.value = 8000;
+      n.comp = ac.createDynamicsCompressor(); n.comp.knee.value = 6;
+      n.mkp = ac.createGain(); n.mute = ac.createGain(); n.solo = ac.createGain(); n.fader = ac.createGain(); n.pan = ac.createStereoPanner();
+      n.mon = ac.createGain(); n.rev = ac.createGain(); n.dly = ac.createGain(); n.pfl = ac.createGain(); n.pfl.gain.value = 0;
+      n.anPre = ac.createAnalyser(); n.anPre.fftSize = 1024; n.anPost = ac.createAnalyser(); n.anPost.fftSize = 1024;
+      n.inp.connect(n.src).connect(n.trim).connect(n.hpf).connect(n.lf).connect(n.lm).connect(n.hm).connect(n.hf).connect(n.comp).connect(n.mkp);
+      n.mkp.connect(n.anPre); n.mkp.connect(n.pfl).connect(M.pflBus);
+      n.mkp.connect(n.mute); n.mute.connect(n.mon).connect(M.monBus);
+      n.mute.connect(n.solo).connect(n.fader).connect(n.pan).connect(M.bus);
+      n.fader.connect(n.anPost); n.fader.connect(n.rev).connect(M.revIn); n.fader.connect(n.dly).connect(M.dlyIn);
+      n.buf = new Float32Array(1024);
+    });
+    selectChannel(sel, true);
+    applyAll();
+    applyMaster();
+  }
+  // The Web Audio compressor adds its own automatic make-up gain of 0.6 x (gain at 0 dBFS); undo it so MAKE is the only make-up.
+  const autoMk = (thr, ratio) => -0.6 * thr * (1 - 1 / ratio);
+  const T = (param, v, tc) => { if (!ac) return; param.setTargetAtTime(v, ac.currentTime, tc || 0.012); };
+  function applyChannel(c, p) {
+    if (!ac) return;
+    const n = c.n; p = p || c.p;
+    T(n.inp.gain, db2a(c.s.gain) * c.cal);
+    T(n.trim.gain, db2a(p.trim));
+    T(n.hpf.frequency, p.hpfOn ? p.hpf : 10);
+    const eq = p.eqOn ? 1 : 0;
+    T(n.lf.gain, p.lf * eq); T(n.hf.gain, p.hf * eq); T(n.lm.gain, p.lmg * eq); T(n.hm.gain, p.hmg * eq);
+    T(n.lm.frequency, p.lmf); T(n.hm.frequency, p.hmf);
+    T(n.comp.threshold, p.compOn ? p.thr : 0); T(n.comp.ratio, p.compOn ? p.ratio : 1);
+    n.comp.attack.value = p.atk / 1000; n.comp.release.value = p.rel / 1000;
+    T(n.mkp.gain, db2a(p.compOn ? p.mkp - autoMk(p.thr, p.ratio) : 0));
+    T(n.mute.gain, p.mute ? 0 : 1);
+    T(n.fader.gain, p.fader <= -79 ? 0 : db2a(p.fader), 0.02);
+    T(n.pan.pan, p.pan);
+    const snd = v => v <= -39.9 ? 0 : db2a(v);
+    T(n.mon.gain, snd(p.mon)); T(n.rev.gain, snd(p.rev)); T(n.dly.gain, snd(p.dly));
+    const fx = c.s.fx;
+    if (fx) { n.src.type = fx.type; n.src.frequency.value = fx.f; n.src.Q.value = fx.q || 1; n.src.gain.value = fx.g; } else { n.src.type = 'peaking'; n.src.gain.value = 0; }
+  }
+  function applySolo() {
+    if (!ac) return;
+    const any = CH.some(c => c.p.solo);
+    CH.forEach(c => {
+      T(c.n.solo.gain, soloMode === 'sip' && any && !c.p.solo ? 0 : 1);
+      T(c.n.pfl.gain, soloMode === 'pfl' && c.p.solo ? 1 : 0);
+    });
+    const pflActive = soloMode === 'pfl' && any;
+    T(master.mainToMon.gain, !pflActive && crSrc === 'main' ? 1 : 0, 0.02);
+    T(master.monToCR.gain, !pflActive && crSrc === 'mon' ? 1 : 0, 0.02);
+    T(master.pflToMon.gain, pflActive ? 1 : 0, 0.02);
+  }
+  function refParams(c) {
+    const p = Object.assign({}, c.p);
+    if (abRef && REF[c.id]) { p.fader = REF[c.id][0]; p.pan = REF[c.id][1]; p.mute = false; p.solo = false; }
+    return p;
+  }
+  function applyAll() { CH.forEach(c => applyChannel(c, refParams(c))); applySolo(); }
+  function applyMaster() {
+    if (!ac) return;
+    const M = master;
+    T(M.fader.gain, MST.fader <= -79 ? 0 : db2a(MST.fader));
+    T(M.lim.threshold, MST.limOn ? MST.ceil - 0.5 : 0); T(M.lim.ratio, MST.limOn ? 20 : 1); T(M.out.gain, MST.limOn ? db2a(-autoMk(MST.ceil - 0.5, 20)) : 1);
+    T(M.crVol.gain, db2a(MST.mon));
+    T(M.revRet.gain, FXR.rev.mute ? 0 : db2a(FXR.rev.fader));
+    T(M.dlyRet.gain, FXR.dly.mute ? 0 : db2a(FXR.dly.fader));
+    M.revPre.delayTime.value = FXR.rev.pre / 1000;
+    T(M.dly.delayTime, dlyTime(), 0.05); T(M.fb.gain, FXR.dly.fb);
+  }
+  const dlyTime = () => FXR.dly.time > 0 ? FXR.dly.time / 1000 : 0.75 * 60 / bpm;   // default: dotted eighth
+  let irTimer = 0;
+  function rebuildIR() { if (!ac) return; clearTimeout(irTimer); irTimer = setTimeout(() => { master.conv.buffer = makeIR(FXR.rev.decay, FXR.rev.pre); }, 150); }
+
+  /* ================= The song (synthesised multitrack) ================= */
+  let bpm = 112;
+  const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+  // vi–IV–I–V in C major, two passes (8 bars)
+  const CHORDS = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]];
+  const ROOTS = [45, 41, 36, 43];
+  const VOX = [ // [midi, step, len] per bar (bars 0-3, response on bars 4-7 by the lead)
+    [[69, 0, 3], [72, 3, 3], [76, 6, 4], [74, 10, 2], [72, 12, 4]],
+    [[69, 0, 6], [72, 6, 2], [69, 8, 4], [65, 12, 4]],
+    [[67, 0, 3], [72, 3, 3], [76, 6, 6], [74, 12, 4]],
+    [[74, 0, 4], [71, 4, 4], [67, 8, 8]],
+  ];
+  const LEAD = [
+    [[76, 0, 2], [81, 2, 2], [79, 4, 2], [76, 6, 2], [72, 8, 4], [74, 12, 2], [76, 14, 2]],
+    [[77, 0, 4], [76, 4, 2], [72, 6, 2], [69, 8, 8]],
+    [[79, 0, 2], [76, 2, 2], [72, 4, 4], [76, 8, 2], [79, 10, 2], [84, 12, 4]],
+    [[83, 0, 4], [81, 4, 2], [79, 6, 2], [74, 8, 8]],
+  ];
+  const VOWELS = { a: [800, 1150, 2900], o: [450, 800, 2830], e: [400, 2000, 2550], u: [325, 700, 2530] };
+  const VSEQ = ['a', 'o', 'a', 'e', 'a', 'u', 'o', 'a', 'e'];
+  let vIdx = 0;
+  const CHn = id => CH.find(c => c.id === id);
+  // per-instrument calibration so that GAIN 0 dB gives pre-fader peaks near -18 dBFS
+  const CAL = { kick: 0.105, snare: 0.068, hats: 0.063, perc: 0.099, bass: 0.041, gtr: 0.051, keys: 0.0295, pad: 0.0229, lead: 0.0383, vox: 0.0864 };
+  CH.forEach(c => c.cal = CAL[c.id]);
+
+  function envGain(t, a, peak, d, dest) {
+    const g = ac.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + d); g.connect(dest); return g;
+  }
+  function noiseSrc(t, dur) { const s = ac.createBufferSource(); s.buffer = noiseBuf; s.loopStart = 0; s.loop = true; s.start(t, Math.random() * 1.5); s.stop(t + dur + 0.05); return s; }
+  function osc(type, f, t, dur, dest) { const o = ac.createOscillator(); o.type = type; o.frequency.setValueAtTime(f, t); o.connect(dest); o.start(t); o.stop(t + dur + 0.05); return o; }
+
+  const INST = {
+    kick(t, v) {
+      const d = CHn('kick').n.inp;
+      const g = envGain(t, 0.002, v, 0.42, d);
+      const o = osc('sine', 150, t, 0.5, g); o.frequency.exponentialRampToValueAtTime(46, t + 0.11);
+      const cg = envGain(t, 0.0005, v * 0.35, 0.012, d); const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1500; hp.connect(cg); noiseSrc(t, 0.03).connect(hp);
+    },
+    snare(t, v) {
+      const d = CHn('snare').n.inp;
+      const g = envGain(t, 0.001, v, 0.19, d); const bp = ac.createBiquadFilter(); bp.type = 'highpass'; bp.frequency.value = 1400; bp.connect(g); noiseSrc(t, 0.25).connect(bp);
+      const g2 = envGain(t, 0.001, v * 0.7, 0.09, d); const o = osc('triangle', 210, t, 0.12, g2); o.frequency.exponentialRampToValueAtTime(170, t + 0.08);
+    },
+    hats(t, v, open) {
+      const d = CHn('hats').n.inp;
+      const g = envGain(t, 0.001, v, open ? 0.32 : 0.05, d); const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 7000; const bp = ac.createBiquadFilter(); bp.type = 'peaking'; bp.frequency.value = 10000; bp.gain.value = 6; hp.connect(bp).connect(g); noiseSrc(t, open ? 0.4 : 0.08).connect(hp);
+    },
+    shaker(t, v) { const d = CHn('perc').n.inp; const g = envGain(t, 0.008, v * 0.6, 0.05, d); const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 6500; bp.Q.value = 1.2; bp.connect(g); noiseSrc(t, 0.1).connect(bp); },
+    conga(t, v, f) { const d = CHn('perc').n.inp; const g = envGain(t, 0.001, v, 0.22, d); const o = osc('sine', f * 1.15, t, 0.3, g); o.frequency.exponentialRampToValueAtTime(f, t + 0.04); const g2 = envGain(t, 0.001, v * 0.25, 0.02, d); const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2500; bp.connect(g2); noiseSrc(t, 0.04).connect(bp); },
+    bass(t, m, dur, v) {
+      const d = CHn('bass').n.inp; const f = mtof(m);
+      const g = ac.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + 0.006); g.gain.setTargetAtTime(v * 0.6, t + 0.02, 0.15); g.gain.setTargetAtTime(0, t + dur, 0.03); g.connect(d);
+      const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 3; lp.frequency.setValueAtTime(1400, t); lp.frequency.exponentialRampToValueAtTime(380, t + 0.18); lp.connect(g);
+      osc('sawtooth', f, t, dur + 0.2, lp); const sg = ac.createGain(); sg.gain.value = 0.9; sg.connect(g); osc('sine', f, t, dur + 0.2, sg);
+    },
+    pluck(t, m, v) {
+      const d = CHn('gtr').n.inp; const g = envGain(t, 0.002, v, 0.32, d);
+      const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 2; lp.frequency.setValueAtTime(4200, t); lp.frequency.exponentialRampToValueAtTime(700, t + 0.2); lp.connect(g);
+      osc('sawtooth', mtof(m), t, 0.4, lp); osc('square', mtof(m) * 1.003, t, 0.4, lp);
+    },
+    ep(t, notes, dur, v) {
+      const d = CHn('keys').n.inp;
+      notes.forEach(m => {
+        const f = mtof(m); const g = ac.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + 0.004); g.gain.setTargetAtTime(v * 0.35, t + 0.01, 0.25); g.gain.setTargetAtTime(0, t + dur, 0.08); g.connect(d);
+        const car = osc('sine', f, t, dur + 0.5, g);
+        const mod = ac.createOscillator(); mod.frequency.value = f; const mi = ac.createGain(); mi.gain.setValueAtTime(f * 1.6, t); mi.gain.exponentialRampToValueAtTime(f * 0.25, t + 0.5); mod.connect(mi).connect(car.frequency); mod.start(t); mod.stop(t + dur + 0.5);
+      });
+    },
+    pad(t, notes, dur) {
+      const d = CHn('pad').n.inp; const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1300; lp.Q.value = 0.6;
+      const g = ac.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(1, t + 0.35); g.gain.setValueAtTime(1, t + dur); g.gain.linearRampToValueAtTime(0, t + dur + 0.6); lp.connect(g).connect(d);
+      notes.forEach(m => { osc('sawtooth', mtof(m) * 1.004, t, dur + 0.7, lp); osc('sawtooth', mtof(m) * 0.996, t, dur + 0.7, lp); });
+    },
+    lead(t, m, dur, v) {
+      const d = CHn('lead').n.inp; const f = mtof(m);
+      const g = ac.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + 0.01); g.gain.setTargetAtTime(v * 0.75, t + 0.02, 0.2); g.gain.setTargetAtTime(0, t + dur * 0.95, 0.04); g.connect(d);
+      const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600; lp.Q.value = 2; lp.connect(g);
+      const lfo = ac.createOscillator(); lfo.frequency.value = 5.5; const lg = ac.createGain(); lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(f * 0.012, t + 0.3); lfo.connect(lg); lfo.start(t); lfo.stop(t + dur + 0.3);
+      const o1 = osc('sawtooth', f, t, dur + 0.25, lp), o2 = osc('square', f * 1.005, t, dur + 0.25, lp); lg.connect(o1.frequency); lg.connect(o2.frequency);
+    },
+    vox(t, m, dur, v) {
+      const d = CHn('vox').n.inp; const f = mtof(m), vw = VOWELS[VSEQ[vIdx++ % VSEQ.length]];
+      const g = ac.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + 0.05); g.gain.setValueAtTime(v, t + dur * 0.85); g.gain.linearRampToValueAtTime(0, t + dur + 0.08); g.connect(d);
+      const src = ac.createGain(); const pre = ac.createBiquadFilter(); pre.type = 'lowpass'; pre.frequency.value = 3200; src.connect(pre);
+      const o = osc('sawtooth', f, t, dur + 0.15, src); o.frequency.setValueAtTime(f * 0.97, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.06);
+      const lfo = ac.createOscillator(); lfo.frequency.value = 5.2; const lg = ac.createGain(); lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(f * 0.018, t + Math.min(0.5, dur * 0.6)); lfo.connect(lg).connect(o.frequency); lfo.start(t); lfo.stop(t + dur + 0.15);
+      const br = ac.createGain(); br.gain.value = 0.05; noiseSrc(t, dur + 0.1).connect(br).connect(src);
+      [[vw[0], 1, 8], [vw[1], 0.5, 10], [vw[2], 0.3, 14]].forEach(([ff, a, q]) => { const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = ff; bp.Q.value = q; const fg = ac.createGain(); fg.gain.value = a * 3.2; pre.connect(bp).connect(fg).connect(g); });
+    },
+  };
+
+  function scheduleStep(s, t) {
+    const sd = 60 / bpm / 4;
+    const bar = Math.floor(s / 16) % 8, st = s % 16, ci = bar % 4, ch = CHORDS[ci], root = ROOTS[ci];
+    // drums
+    if (st === 0 || st === 8 || (st === 7 && bar % 2) || (st === 14 && bar === 7)) INST.kick(t, st === 7 ? 0.7 : 1);
+    if (st === 4 || st === 12) INST.snare(t, 1); if (st === 15 && bar % 4 === 3) INST.snare(t, 0.35);
+    if (st % 2 === 0) INST.hats(t, st % 4 === 2 ? 1 : 0.55, st === 14 && bar % 2 === 1);
+    INST.shaker(t, st % 4 === 2 ? 1 : 0.5);
+    if ([3, 6, 11, 13].includes(st)) INST.conga(t + 0.005, st === 6 ? 0.9 : 0.65, st === 13 ? 330 : 220);
+    // bass: syncopated
+    const bp = { 0: [root, 3], 3: [root, 2], 6: [root + 7, 2], 8: [root, 2], 10: [root + 12, 2], 11: [root, 2], 14: [root + 7, 2] };
+    if (bp[st]) INST.bass(t, bp[st][0], bp[st][1] * sd * 0.9, 1);
+    // benga-style picked guitar: chord tones, high register, busy sixteenths
+    const gpat = { 0: 0, 2: 1, 3: 2, 5: 1, 6: 3, 8: 0, 10: 1, 11: 2, 13: 3, 14: 1 };
+    if (st in gpat) { const tones = [ch[0] + 12, ch[1] + 12, ch[2] + 12, ch[0] + 24]; INST.pluck(t, tones[gpat[st]], st % 4 === 0 ? 1 : 0.7); }
+    // keys: off-beat stabs
+    if (st === 2 || st === 6 || st === 10 || st === 14) INST.ep(t, ch.map(m => m + 12), sd * 1.5, st === 2 ? 1 : 0.8);
+    if (st === 0) INST.pad(t, [ch[0], ch[1], ch[2], ch[0] + 12], sd * 16);
+    // melodies
+    if (bar < 4) { VOX[bar].forEach(([m, s0, len]) => { if (s0 === st) { let v = 1; const vc = CHn('vox'); if (vc.s.dyn) v = (bar % 2 === 0) ? 1.0 : 0.13; INST.vox(t, m, len * sd, v); } }); }
+    else LEAD[bar - 4].forEach(([m, s0, len]) => { if (s0 === st) INST.lead(t, m, len * sd, 1); });
+    if (st === 0) markBar(bar, t);
+  }
+  const barMarks = [];
+  function markBar(bar, t) { barMarks.push({ bar, t }); }
+  function scheduler() {
+    const sd = 60 / bpm / 4;
+    while (schedT < ac.currentTime + 0.12) { scheduleStep(step, schedT); schedT += sd; step++; }
+  }
+  function startPlay() {
+    if (!ac) buildAudio();
+    if (ac.state === 'suspended') ac.resume();
+    playing = true; step = 0; schedT = ac.currentTime + 0.08; startTime = schedT; vIdx = 0;
+    resetLoud();
+    timer = setInterval(scheduler, 25); scheduler();
+    $('#play').innerHTML = '<i data-lucide="square"></i> Stop'; SL.refreshIcons($('#play'));
+    $('#lufsNote').innerHTML = 'Values in LUFS. Approximate meter: K-weighting and 400 ms / 3 s windows follow ITU-R BS.1770, gating is simplified.';
+  }
+  function stopPlay() {
+    playing = false; clearInterval(timer);
+    $('#play').innerHTML = '<i data-lucide="play"></i> Play the multitrack'; SL.refreshIcons($('#play'));
+  }
+  $('#play').addEventListener('click', () => playing ? stopPlay() : startPlay());
+  SL.bind('#bpm', v => { bpm = v; applyMaster(); }, v => v + ' BPM');
+
+  /* ================= UI: knobs & faders ================= */
+  const tip = $('#tip');
+  const toN = (d, v) => d.log ? Math.log(v / d.min) / Math.log(d.max / d.min) : (v - d.min) / (d.max - d.min);
+  const fromN = (d, n) => d.log ? d.min * Math.pow(d.max / d.min, n) : d.min + n * (d.max - d.min);
+  function knob(d, get, set, colOverride) {
+    const cell = document.createElement('div'); cell.className = 'kcell';
+    cell.innerHTML = `<div class="knob" tabindex="0" role="slider" aria-label="${d.l}"><div class="ring"></div><div class="cap"></div></div><span class="kl">${d.l}</span>`;
+    const el = cell.querySelector('.knob'), ring = el.querySelector('.ring'), cap = el.querySelector('.cap');
+    const col = colOverride || d.col;
+    cap.style.background = `radial-gradient(circle at 35% 30%, ${shade(col, 50)}, ${col} 55%, ${shade(col, -45)})`;
+    const draw = () => {
+      const n = clamp(toN(d, get()), 0, 1), a = -135 + n * 270;
+      cap.style.transform = `rotate(${a}deg)`;
+      let s0 = 0, s1 = n * 270; if (d.bip) { const c = toN(d, d.bip === true ? (d.min + d.max) / 2 : d.bip) * 270; s0 = Math.min(c, s1); s1 = Math.max(c, s1); }
+      const on = 'var(--accent)';
+      ring.style.background = `conic-gradient(from 225deg, #0d0f13 0deg ${s0}deg, ${on} ${s0}deg ${Math.max(s1, s0 + 2)}deg, #0d0f13 ${Math.max(s1, s0 + 2)}deg 270deg, transparent 270deg)`;
+      el.setAttribute('aria-valuetext', d.f(get()));
+    };
+    const showTip = () => { const r = el.getBoundingClientRect(); tip.style.left = (r.left + r.width / 2) + 'px'; tip.style.top = r.top + 'px'; tip.textContent = d.l + ' ' + d.f(get()); tip.style.display = 'block'; };
+    let drag = null;
+    el.addEventListener('pointerdown', e => { e.preventDefault(); el.setPointerCapture(e.pointerId); drag = { y: e.clientY, n: toN(d, get()) }; showTip(); });
+    el.addEventListener('pointermove', e => { if (!drag) return; const n = clamp(drag.n + (drag.y - e.clientY) / (e.shiftKey ? 700 : 170), 0, 1); set(round(d, fromN(d, n))); draw(); showTip(); });
+    const end = () => { drag = null; tip.style.display = 'none'; };
+    el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+    el.addEventListener('pointerenter', showTip); el.addEventListener('pointerleave', () => { if (!drag) tip.style.display = 'none'; });
+    el.addEventListener('wheel', e => { e.preventDefault(); const n = clamp(toN(d, get()) - Math.sign(e.deltaY) * (e.shiftKey ? 0.005 : 0.025), 0, 1); set(round(d, fromN(d, n))); draw(); showTip(); }, { passive: false });
+    el.addEventListener('dblclick', () => { set(d.def); draw(); showTip(); });
+    el.addEventListener('keydown', e => { const k = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1 }[e.key]; if (k) { e.preventDefault(); set(round(d, fromN(d, clamp(toN(d, get()) + k * 0.02, 0, 1)))); draw(); showTip(); } });
+    draw();
+    return { cell, draw };
+  }
+  const round = (d, v) => d.log ? +v.toPrecision(3) : Math.round(v * 10) / 10;
+  function shade(hex, pct) {
+    const n = parseInt(hex.slice(1), 16); let r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+    const f = pct / 100; const m = x => Math.round(clamp(f > 0 ? x + (255 - x) * f : x * (1 + f), 0, 255));
+    return `rgb(${m(r)},${m(g)},${m(b)})`;
+  }
+  // Fader taper: [dB, position 0..1]
+  const TAPER = [[-80, 0], [-60, 0.04], [-40, 0.16], [-30, 0.28], [-20, 0.43], [-10, 0.61], [-5, 0.705], [0, 0.8], [5, 0.9], [10, 1]];
+  function db2pos(v) { if (v <= -80) return 0; for (let i = 1; i < TAPER.length; i++) if (v <= TAPER[i][0]) { const [a, pa] = TAPER[i - 1], [b, pb] = TAPER[i]; return pa + (v - a) / (b - a) * (pb - pa); } return 1; }
+  function pos2db(p) { for (let i = 1; i < TAPER.length; i++) if (p <= TAPER[i][1]) { const [a, pa] = TAPER[i - 1], [b, pb] = TAPER[i]; return a + (p - pa) / (pb - pa) * (b - a); } return 10; }
+  const fmtDb = v => v <= -79 ? '−∞' : (v > 0.05 ? '+' : '') + v.toFixed(1);
+  function fader(get, set, meters) {
+    const w = document.createElement('div'); w.className = 'fwrap';
+    const marks = [10, 5, 0, -5, -10, -20, -30, -40, -60, -80];
+    w.innerHTML = `<div class="scale">${marks.map(m => `<span style="top:${(1 - db2pos(m)) * 100}%">${m === -80 ? '∞' : (m > 0 ? '+' + m : m)}</span>`).join('')}</div><div class="ftrack" role="slider" tabindex="0" aria-label="Fader"><div class="fcap"></div></div>` + meters.map(() => '<canvas class="meter"></canvas>').join('');
+    const tr = w.querySelector('.ftrack'), cap = w.querySelector('.fcap');
+    const H = () => tr.clientHeight - 12;
+    const draw = () => { cap.style.top = (6 + (1 - db2pos(get())) * H()) + 'px'; };
+    let drag = null;
+    tr.addEventListener('pointerdown', e => {
+      e.preventDefault(); tr.setPointerCapture(e.pointerId);
+      const r = tr.getBoundingClientRect(), cy = 6 + (1 - db2pos(get())) * H();
+      const y = e.clientY - r.top;
+      drag = { off: Math.abs(y - cy) < 20 ? y - cy : 0 };
+      if (!drag.off && Math.abs(y - cy) >= 20) { set(Math.round(pos2db(clamp(1 - (y - 6) / H(), 0, 1)) * 10) / 10); draw(); }
+    });
+    tr.addEventListener('pointermove', e => { if (!drag) return; const r = tr.getBoundingClientRect(); const y = e.clientY - r.top - drag.off; set(Math.round(pos2db(clamp(1 - (y - 6) / H(), 0, 1)) * 10) / 10); draw(); });
+    tr.addEventListener('pointerup', () => drag = null); tr.addEventListener('pointercancel', () => drag = null);
+    tr.addEventListener('dblclick', () => { set(0); draw(); });
+    tr.addEventListener('wheel', e => { e.preventDefault(); set(clamp(Math.round((get() - Math.sign(e.deltaY) * (get() < -40 ? 3 : 0.5)) * 10) / 10, -80, 10)); draw(); }, { passive: false });
+    tr.addEventListener('keydown', e => { const k = { ArrowUp: 0.5, ArrowDown: -0.5 }[e.key]; if (k) { e.preventDefault(); set(clamp(get() + k, -80, 10)); draw(); } });
+    requestAnimationFrame(draw);
+    return { el: w, draw, cvs: [...w.querySelectorAll('canvas')] };
+  }
+
+  /* ================= Build the console ================= */
+  const consoleEl = $('#console');
+  let sel = 9;
+  CH.forEach((c, i) => {
+    const s = document.createElement('div'); s.className = 'strip'; c.el = s;
+    s.innerHTML = `<div class="num">CH ${i + 1}</div>`;
+    ROWS.forEach(r => {
+      if (typeof r === 'string') { s.insertAdjacentHTML('beforeend', `<div class="sect">${r}</div>`); if (r === 'EQ') addBtns(s, c, [['hpfOn', 'HPF', 'inb'], ['eqOn', 'EQ', 'inb']]); if (r === 'DYN') addBtns(s, c, [['compOn', 'COMP', 'inb', true]]); return; }
+      const row = document.createElement('div'); row.className = 'krow';
+      r.forEach(key => { const k = knob(PD[key], () => c.p[key], v => { c.p[key] = v; onParam(c, key); }); c.k[key] = k; row.appendChild(k.cell); });
+      s.appendChild(row);
+      if (r[0] === 'atk') { const g = document.createElement('div'); g.className = 'gr'; g.title = 'Gain reduction'; g.innerHTML = '<i></i>'; s.appendChild(g); c.grEl = g.firstChild; }
+    });
+    addBtns(s, c, [['mute', 'MUTE', 'mute'], ['solo', 'SOLO', 'solo']]);
+    const f = fader(() => c.p.fader, v => { c.p.fader = v; onParam(c, 'fader'); }, [1]);
+    c.fd = f; s.appendChild(f.el);
+    s.insertAdjacentHTML('beforeend', `<div class="fval"></div><div class="pk" title="Peak hold (dBFS)">–</div><div class="scribble" style="color:${c.col};border-bottom:2px solid ${c.col}">${c.name}</div>`);
+    c.fval = s.querySelector('.fval'); c.pkEl = s.querySelector('.pk');
+    s.querySelector('.scribble').addEventListener('click', () => selectChannel(i));
+    consoleEl.appendChild(s);
+  });
+  function addBtns(s, c, list) {
+    const row = document.createElement('div'); row.className = 'brow';
+    list.forEach(([key, lbl, cls, wide]) => {
+      const b = document.createElement('button'); b.className = 'sbtn ' + cls + (wide ? ' wide' : ''); b.textContent = lbl; b.setAttribute('aria-pressed', 'false');
+      const upd = () => { b.classList.toggle('on', !!c.p[key]); b.setAttribute('aria-pressed', !!c.p[key]); };
+      b.addEventListener('click', () => { c.p[key] = !c.p[key]; upd(); onParam(c, key); });
+      (c.btn = c.btn || {})[key] = upd; upd(); row.appendChild(b);
+    });
+    s.appendChild(row);
+  }
+  // FX return strips
+  function fxStrip(name, key, knobs) {
+    const s = document.createElement('div'); s.className = 'strip fx';
+    s.innerHTML = `<div class="num">FX RTN</div><div class="sect">${name.toUpperCase()}</div>`;
+    const ks = {};
+    for (let i = 0; i < knobs.length; i += 2) { const row = document.createElement('div'); row.className = 'krow'; knobs.slice(i, i + 2).forEach(([pk, d]) => { const k = knob(d, () => FXR[key][pk], v => { FXR[key][pk] = v; applyMaster(); if (key === 'rev') rebuildIR(); }); ks[pk] = k; row.appendChild(k.cell); }); s.appendChild(row); }
+    const sp = document.createElement('div'); sp.style.flex = '1'; s.appendChild(sp);
+    const row = document.createElement('div'); row.className = 'brow'; const b = document.createElement('button'); b.className = 'sbtn mute'; b.textContent = 'MUTE'; b.onclick = () => { FXR[key].mute = !FXR[key].mute; b.classList.toggle('on', FXR[key].mute); applyMaster(); }; row.appendChild(b); s.appendChild(row);
+    const f = fader(() => FXR[key].fader, v => { FXR[key].fader = v; applyMaster(); updFxVal(); }, [1]); s.appendChild(f.el);
+    s.insertAdjacentHTML('beforeend', `<div class="fval"></div><div class="pk">&nbsp;</div><div class="scribble" style="color:#7cc4ff;border-bottom:2px solid #7cc4ff;cursor:default">${name} rtn</div>`);
+    const fv = s.querySelector('.fval'); const updFxVal = () => fv.textContent = fmtDb(FXR[key].fader) + ' dB'; updFxVal();
+    consoleEl.appendChild(s);
+    return { f, ks, upd: () => { updFxVal(); f.draw(); Object.values(ks).forEach(k => k.draw()); } };
+  }
+  const fxRev = fxStrip('Reverb', 'rev', [['decay', { l: 'DECAY', min: 0.4, max: 6, def: 2.2, col: '#5aa9e6', f: v => v.toFixed(1) + ' s' }], ['pre', { l: 'PRE-DLY', min: 0, max: 120, def: 20, col: '#5aa9e6', f: v => Math.round(v) + ' ms' }]]);
+  const fxDly = fxStrip('Delay', 'dly', [['time', { l: 'TIME', min: 0, max: 1000, def: 0, col: '#5aa9e6', f: v => v < 1 ? 'sync ⅜' : Math.round(v) + ' ms' }], ['fb', { l: 'FDBK', min: 0, max: 0.9, def: 0.35, col: '#5aa9e6', f: v => Math.round(v * 100) + '%' }]]);
+  // master strip
+  const ms = document.createElement('div'); ms.className = 'strip master';
+  ms.innerHTML = `<div class="num">MASTER</div><div class="sect">LIMITER</div>`;
+  const limRow = document.createElement('div'); limRow.className = 'brow'; const limB = document.createElement('button'); limB.className = 'sbtn inb wide on'; limB.textContent = 'LIMIT'; limB.onclick = () => { MST.limOn = !MST.limOn; limB.classList.toggle('on', MST.limOn); applyMaster(); }; limRow.appendChild(limB); ms.appendChild(limRow);
+  const mrow = document.createElement('div'); mrow.className = 'krow';
+  const kCeil = knob({ l: 'CEILING', min: -12, max: 0, def: -1, col: '#c0392b', f: v => v.toFixed(1) + ' dB' }, () => MST.ceil, v => { MST.ceil = v; applyMaster(); });
+  const kMon = knob({ l: 'CR VOL', min: -40, max: 6, def: -6, col: '#d7dce4', f: v => sgn(v) + ' dB' }, () => MST.mon, v => { MST.mon = v; applyMaster(); });
+  mrow.append(kCeil.cell, kMon.cell); ms.appendChild(mrow);
+  ms.insertAdjacentHTML('beforeend', '<div class="gr" style="width:130px" title="Limiter gain reduction"><i id="limGr"></i></div><div class="sect">MON BUS</div><canvas id="monMeter" style="width:130px;height:8px;border-radius:2px;background:#050608"></canvas><div style="flex:1"></div>');
+  const mf = fader(() => MST.fader, v => { MST.fader = v; applyMaster(); updMv(); }, [1, 1]);
+  ms.appendChild(mf.el);
+  ms.insertAdjacentHTML('beforeend', '<div class="fval" id="mval"></div><div class="pk" id="mpk">L – / R –</div><div class="scribble" style="width:136px;color:#fbbf24;border-bottom:2px solid #fbbf24;cursor:default">Main L/R</div>');
+  consoleEl.appendChild(ms);
+  const updMv = () => $('#mval').textContent = fmtDb(MST.fader) + ' dB'; updMv();
+  // align bottoms: FX + master strips stretch with a spacer
+  const mstate = { L: -80, R: -80, hL: -80, hR: -80, ht: 0 };
+
+  function onParam(c, key) {
+    if (key === 'fader') updFval(c);
+    if (key === 'solo') { applySolo(); return; }
+    applyChannel(c, refParams(c));
+    if (CH[sel] === c) drawCurveNow = true;
+  }
+  const updFval = c => c.fval.textContent = fmtDb(c.p.fader) + ' dB';
+  function refreshChannelUI(c) { Object.values(c.k).forEach(k => k.draw()); Object.values(c.btn).forEach(u => u()); c.fd.draw(); updFval(c); }
+
+  /* ================= Selection, analyser & EQ display ================= */
+  let drawCurveNow = true;
+  const spec = SL.canvas($('#spec'), () => drawCurveNow = true);
+  const comp = SL.canvas($('#compcv'));
+  let curve = new Float32Array(NPTS), specData = null, selData = null;
+  function selectChannel(i, force) {
+    if (ac && master.anSel && CH[sel].n) { try { CH[sel].n.mkp.disconnect(master.anSel); } catch (e) {} }
+    sel = i; CH.forEach((c, j) => c.el.classList.toggle('sel', j === i));
+    if (ac && CH[i].n) CH[i].n.mkp.connect(master.anSel);
+    $('#hudCh').textContent = CH[i].name; $('#lgCh').style.background = CH[i].col;
+    drawCurveNow = true;
+  }
+  function computeCurve(c, withSrc) {
+    const p = c.p, out = new Float32Array(NPTS).fill(0), mag = new Float32Array(NPTS), ph = new Float32Array(NPTS);
+    shadow.hpf.frequency.value = p.hpfOn ? p.hpf : 10;
+    const eq = p.eqOn ? 1 : 0;
+    shadow.lf.gain.value = p.lf * eq; shadow.hf.gain.value = p.hf * eq; shadow.lm.gain.value = p.lmg * eq; shadow.hm.gain.value = p.hmg * eq;
+    shadow.lm.frequency.value = p.lmf; shadow.hm.frequency.value = p.hmf;
+    const list = [shadow.hpf, shadow.lf, shadow.lm, shadow.hm, shadow.hf];
+    if (withSrc && c.s.fx) { shadowSrc.type = c.s.fx.type; shadowSrc.frequency.value = c.s.fx.f; shadowSrc.Q.value = c.s.fx.q || 1; shadowSrc.gain.value = c.s.fx.g; list.push(shadowSrc); }
+    list.forEach(f => { f.getFrequencyResponse(FREQS, mag, ph); for (let i = 0; i < NPTS; i++) out[i] += 20 * Math.log10(Math.max(mag[i], 1e-6)); });
+    return out;
+  }
+  function respAt(c, f) { const cv = computeCurve(c, true); const x = Math.log(f / 20) / Math.log(1000) * (NPTS - 1); const i = Math.floor(x), t = x - i; return cv[i] * (1 - t) + cv[Math.min(NPTS - 1, i + 1)] * t; }
+  const fx2x = (f, w) => Math.log(f / 20) / Math.log(1000) * w;
+  const x2f = (x, w) => 20 * Math.pow(1000, x / w);
+  const EQR = 18;
+  function handles(w, h) {
+    const p = CH[sel].p, y = g => h / 2 - g / EQR * (h / 2 - 20);
+    return [
+      { k: 'hpf', x: fx2x(p.hpfOn ? p.hpf : 20, w), y: y(0), col: '#9aa4b5', on: p.hpfOn },
+      { k: 'lf', x: fx2x(100, w), y: y(p.lf), col: '#c08a4b' },
+      { k: 'lm', x: fx2x(p.lmf, w), y: y(p.lmg), col: '#34d399' },
+      { k: 'hm', x: fx2x(p.hmf, w), y: y(p.hmg), col: '#34d399' },
+      { k: 'hf', x: fx2x(8000, w), y: y(p.hf), col: '#60a5fa' },
+    ];
+  }
+  function drawSpec() {
+    const { ctx, w, h } = spec; ctx.clearRect(0, 0, w, h);
+    const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#0a1222'); g.addColorStop(1, '#04070e'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    ctx.font = '10px JetBrains Mono, monospace'; ctx.lineWidth = 1;
+    [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000].forEach(f => { const x = fx2x(f, w); ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'center'; if (f > 20 && f < 20000) ctx.fillText(hz(f), x, h - 4); });
+    const yEq = gdb => h / 2 - gdb / EQR * (h / 2 - 20);
+    [-12, -6, 0, 6, 12].forEach(d => { const y = yEq(d); ctx.strokeStyle = d === 0 ? 'rgba(250,204,21,.25)' : 'rgba(255,255,255,.05)'; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); ctx.fillStyle = '#7d6f2a'; ctx.textAlign = 'left'; ctx.fillText((d > 0 ? '+' : '') + d + ' dB', 4, y - 3); });
+    // spectrum (dBFS per bin; display -100..-10)
+    const ySp = v => h - 16 - (clamp(v, -100, -10) + 100) / 90 * (h - 40);
+    const drawBins = (an, arr, stroke, fill) => {
+      if (!an) return; an.getFloatFrequencyData(arr); const sr = ac.sampleRate, n = arr.length;
+      ctx.beginPath(); let started = false;
+      for (let px = 0; px <= w; px += 2) {
+        const f = x2f(px, w), bin = f / (sr / 2) * n; const b0 = Math.floor(bin), b1 = Math.min(n - 1, Math.floor(x2f(px + 2, w) / (sr / 2) * n));
+        let v = -140; for (let b = b0; b <= Math.max(b0, b1); b++) v = Math.max(v, arr[Math.min(n - 1, b)]);
+        const y = ySp(v); if (!started) { ctx.moveTo(px, y); started = true; } else ctx.lineTo(px, y);
+      }
+      if (fill) { ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); } else { ctx.strokeStyle = stroke; ctx.lineWidth = 1.5; ctx.stroke(); }
+    };
+    if (ac && playing) {
+      if (!specData) { specData = new Float32Array(master.spec.frequencyBinCount); selData = new Float32Array(master.anSel.frequencyBinCount); }
+      const gf = ctx.createLinearGradient(0, h * 0.2, 0, h); gf.addColorStop(0, 'rgba(34,211,238,.45)'); gf.addColorStop(1, 'rgba(34,211,238,.02)');
+      drawBins(master.spec, specData, null, gf);
+      drawBins(master.anSel, selData, CH[sel].col, null);
+    } else {
+      ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'center'; ctx.font = '13px Inter, sans-serif'; ctx.fillText('Press Play to see the live spectrum', w / 2, h * 0.3);
+    }
+    // EQ curve
+    if (drawCurveNow) { curve = computeCurve(CH[sel], false); drawCurveNow = false; drawComp(); }
+    ctx.beginPath(); for (let i = 0; i < NPTS; i++) { const x = i / (NPTS - 1) * w, y = yEq(clamp(curve[i], -EQR - 4, EQR + 4)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2.2; ctx.shadowColor = 'rgba(250,204,21,.6)'; ctx.shadowBlur = 8; ctx.stroke(); ctx.shadowBlur = 0;
+    ctx.lineTo(w, yEq(0)); ctx.lineTo(0, yEq(0)); ctx.closePath(); ctx.fillStyle = 'rgba(250,204,21,.07)'; ctx.fill();
+    handles(w, h).forEach(hd => { ctx.beginPath(); ctx.arc(hd.x, hd.y, hover === hd.k ? 8 : 6, 0, 7); ctx.fillStyle = hd.on === false ? 'rgba(154,164,181,.3)' : hd.col; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.fillStyle = '#cfd6e2'; ctx.font = '600 9px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(hd.k.toUpperCase(), hd.x, (hd.k === 'lf' || hd.k === 'hf') ? hd.y + 19 : hd.y - 11); });
+  }
+  let hover = null, edrag = null;
+  const scopeCv = $('#spec');
+  scopeCv.style.touchAction = 'none';
+  const hitHandle = (x, y) => { let best = null, bd = 18; handles(spec.w, spec.h).forEach(hd => { const d = Math.hypot(hd.x - x, hd.y - y); if (d < bd) { bd = d; best = hd.k; } }); return best; };
+  scopeCv.addEventListener('pointermove', e => {
+    const p = SL.ptr(e, scopeCv);
+    if (!edrag) { hover = hitHandle(p.x, p.y); scopeCv.style.cursor = hover ? 'grab' : 'default'; return; }
+    const c = CH[sel], w = spec.w, h = spec.h, g = clamp(Math.round((h / 2 - p.y) / (h / 2 - 20) * EQR * 2) / 2, -15, 15), f = x2f(clamp(p.x, 0, w), w);
+    const pp = c.p;
+    if (edrag === 'hpf') { pp.hpfOn = true; pp.hpf = +clamp(f, 20, 400).toPrecision(3); }
+    if (edrag === 'lf') pp.lf = g; if (edrag === 'hf') pp.hf = g;
+    if (edrag === 'lm') { pp.lmg = g; pp.lmf = +clamp(f, 50, 2000).toPrecision(3); }
+    if (edrag === 'hm') { pp.hmg = g; pp.hmf = +clamp(f, 500, 10000).toPrecision(3); }
+    pp.eqOn = true; refreshChannelUI(c); onParam(c, 'eq');
+  });
+  scopeCv.addEventListener('pointerdown', e => { const p = SL.ptr(e, scopeCv); edrag = hitHandle(p.x, p.y); if (edrag) { scopeCv.setPointerCapture(e.pointerId); e.preventDefault(); } });
+  scopeCv.addEventListener('pointerup', () => edrag = null);
+  scopeCv.addEventListener('pointerleave', () => { if (!edrag) hover = null; });
+
+  function drawComp() {
+    const { ctx, w, h } = comp; const p = CH[sel].p; ctx.clearRect(0, 0, w, h);
+    const pad = 14, X = d => pad + (d + 60) / 60 * (w - pad - 6), Y = d => h - pad - (d + 60) / 60 * (h - pad - 6);
+    ctx.strokeStyle = 'rgba(255,255,255,.08)'; [-48, -36, -24, -12].forEach(d => { ctx.beginPath(); ctx.moveTo(X(d), Y(-60)); ctx.lineTo(X(d), Y(0)); ctx.moveTo(X(-60), Y(d)); ctx.lineTo(X(0), Y(d)); ctx.stroke(); });
+    ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(X(-60), Y(-60)); ctx.lineTo(X(0), Y(0)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = p.compOn ? '#facc15' : '#5f6d8a'; ctx.lineWidth = 2; ctx.beginPath();
+    for (let i = -60; i <= 0; i += 0.5) { const o = !p.compOn || i <= p.thr ? i : p.thr + (i - p.thr) / p.ratio; i === -60 ? ctx.moveTo(X(i), Y(o)) : ctx.lineTo(X(i), Y(o)); }
+    ctx.stroke();
+    ctx.fillStyle = '#93a1bd'; ctx.font = '600 9px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText(p.compOn ? `COMP ${p.ratio.toFixed(1)}:1` : 'COMP OFF', 6, 11);
+    ctx.fillStyle = '#5f6d8a'; ctx.fillText('in →', w - 34, h - 3);
+    if (compDot) { ctx.beginPath(); ctx.arc(X(compDot[0]), Y(compDot[1]), 4, 0, 7); ctx.fillStyle = '#f472b6'; ctx.fill(); }
+  }
+  let compDot = null;
+
+  /* ================= Metering ================= */
+  const MT = [[-60, 0], [-40, 0.14], [-30, 0.26], [-20, 0.42], [-18, 0.46], [-12, 0.6], [-6, 0.78], [-3, 0.89], [0, 1]];
+  const m2y = v => { if (v <= -60) return 0; for (let i = 1; i < MT.length; i++) if (v <= MT[i][0]) { const [a, pa] = MT[i - 1], [b, pb] = MT[i]; return pa + (v - a) / (b - a) * (pb - pa); } return 1; };
+  function drawMeter(cv, level, hold) {
+    const r = cv.getBoundingClientRect(); const W = Math.round(r.width), H = Math.round(r.height);
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+    const ctx = cv.getContext('2d'); ctx.fillStyle = '#050608'; ctx.fillRect(0, 0, W, H);
+    const segs = Math.floor(H / 4), lit = m2y(level) * segs, hs = Math.floor(m2y(hold) * segs);
+    for (let i = 0; i < segs; i++) {
+      const db = segLevel(i / segs); const col = db > -6 ? '#ef4444' : db > -18 ? '#facc15' : '#22c55e';
+      const y = H - (i + 1) * 4 + 1;
+      ctx.fillStyle = i < lit ? col : 'rgba(255,255,255,.05)'; if (i === hs && hold > -59) ctx.fillStyle = col;
+      ctx.fillRect(1, y, W - 2, 3);
+    }
+  }
+  const segLevel = y => { for (let i = 1; i < MT.length; i++) if (y <= MT[i][1]) { const [a, pa] = MT[i - 1], [b, pb] = MT[i]; return a + (y - pa) / (pb - pa) * (b - a); } return 0; };
+  const peakOf = (an, buf) => { an.getFloatTimeDomainData(buf); let m = 0; for (let i = 0; i < buf.length; i++) { const a = Math.abs(buf[i]); if (a > m) m = a; } return a2db(m); };
+  const bufL = new Float32Array(2048), bufR = new Float32Array(2048), bufM = new Float32Array(1024);
+  // loudness state
+  let loud = { blocks: [], ms: [], int: null };
+  function resetLoud() { loud = { blocks: [], ms: [], last: 0, sumL: 0, sumR: 0 }; }
+  function measureLoud(now) {
+    const M = master; M.kL.getFloatTimeDomainData(bufL); M.kR.getFloatTimeDomainData(bufR);
+    let sl = 0, sr = 0, cross = 0, el = 0, er = 0;
+    for (let i = 0; i < 2048; i++) { sl += bufL[i] * bufL[i]; sr += bufR[i] * bufR[i]; }
+    const z = (sl + sr) / 2048;
+    loud.ms.push({ t: now, z }); while (loud.ms.length && loud.ms[0].t < now - 3) loud.ms.shift();
+    const win = s => { const a = loud.ms.filter(x => x.t >= now - s); return a.length ? a.reduce((p, x) => p + x.z, 0) / a.length : 0; };
+    const lu = z => z > 1e-12 ? -0.691 + 10 * Math.log10(z) : -Infinity;
+    const Mz = win(0.4), Sz = win(3);
+    if (now - loud.last >= 0.1) { loud.last = now; if (lu(Mz) > -70) loud.blocks.push(Mz); }
+    let I = -Infinity;
+    if (loud.blocks.length > 5) { const ung = loud.blocks.reduce((a, b) => a + b, 0) / loud.blocks.length; const rel = lu(ung) - 10; const g = loud.blocks.filter(b => lu(b) > rel); if (g.length) I = lu(g.reduce((a, b) => a + b, 0) / g.length); }
+    // correlation from un-weighted output
+    M.anL.getFloatTimeDomainData(bufL); M.anR.getFloatTimeDomainData(bufR);
+    for (let i = 0; i < 2048; i++) { cross += bufL[i] * bufR[i]; el += bufL[i] * bufL[i]; er += bufR[i] * bufR[i]; }
+    const corr = el > 1e-9 && er > 1e-9 ? cross / Math.sqrt(el * er) : 0;
+    return { M: lu(Mz), S: lu(Sz), I, corr };
+  }
+  const fL = v => isFinite(v) && v > -70 ? v.toFixed(1) : '–';
+
+  let lastT = 0, chkT = 0;
+  const loopFn = SL.loop((dt, t) => {
+    drawSpec();
+    if ((!ac || !playing) && t - chkT > 0.25) { chkT = t; checkTask(); }
+    if (!ac || !playing) {
+      CH.forEach(c => { c.disp = Math.max(-80, c.disp - 40 * dt); drawMeter(c.fd.cvs[0], c.disp, -80); });
+      ['L', 'R'].forEach((k, i) => { mstate[k] = Math.max(-80, mstate[k] - 40 * dt); drawMeter(mf.cvs[i], mstate[k], -80); });
+      drawMeter(fxRev.f.cvs[0], -80, -80); drawMeter(fxDly.f.cvs[0], -80, -80);
+      return;
+    }
+    const now = ac.currentTime;
+    // position
+    const el = Math.max(0, now - startTime), beat = el * bpm / 60, bar = Math.floor(beat / 4) % 8;
+    $('#pos').textContent = `Bar ${bar + 1} · ${Math.floor(beat % 4) + 1}`;
+    // bar boundaries → per-bar peak storage
+    while (barMarks.length && barMarks[0].t <= now) { const bm = barMarks.shift(); CH.forEach(c => { c.pkBars.push(c.barPk); if (c.pkBars.length > 8) c.pkBars.shift(); c.barPk = -180; }); }
+    CH.forEach((c, i) => {
+      const pre = peakOf(c.n.anPre, c.n.buf);
+      const post = peakOf(c.n.anPost, c.n.buf);
+      c.barPk = Math.max(c.barPk, pre);
+      const v = meterPoint === 'pre' ? pre : post;
+      c.disp = v > c.disp ? v : Math.max(v, c.disp - 26 * dt);   // fall 26 dB/s
+      if (v > c.hold || t - c.holdT > 2) { c.hold = v; c.holdT = t; }
+      drawMeter(c.fd.cvs[0], c.disp, c.hold);
+      const gr = c.n.comp.reduction; c.grEl.style.width = Math.min(100, -gr / 20 * 100) + '%';
+      const shown = Math.max(...c.pkBars, c.barPk);
+      c.pkEl.textContent = shown > -90 ? shown.toFixed(1) : '–';
+      c.pkEl.className = 'pk ' + (shown > -15 ? 'hot' : shown < -21 && shown > -90 ? 'lo' : shown > -90 ? 'ok' : '');
+      if (i === sel) { $('#hudPk').textContent = pre > -90 ? pre.toFixed(1) : '–'; $('#hudGr').textContent = (-gr).toFixed(1); if (c.p.compOn && pre > -60) { compDot = [clamp(pre - c.p.mkp - gr, -60, 0), clamp(pre - c.p.mkp, -60, 0)]; } else compDot = null; }
+    });
+    if (Math.floor(t * 15) !== Math.floor(lastT * 15)) drawComp();
+    lastT = t;
+    // FX & master meters
+    drawMeter(fxRev.f.cvs[0], peakOf(master.revAn, bufM), -80); drawMeter(fxDly.f.cvs[0], peakOf(master.dlyAn, bufM), -80);
+    const L = peakOf(master.anL, bufL), R = peakOf(master.anR, bufR);
+    ['L', 'R'].forEach((k, i) => { const v = k === 'L' ? L : R; mstate[k] = v > mstate[k] ? v : Math.max(v, mstate[k] - 26 * dt); const hk = 'h' + k; if (v > mstate[hk] || t - mstate.ht > 2) { mstate[hk] = v; if (k === 'R') mstate.ht = t; } drawMeter(mf.cvs[i], mstate[k], mstate[hk]); });
+    $('#mpk').textContent = `L ${mstate.hL > -90 ? mstate.hL.toFixed(1) : '–'} / R ${mstate.hR > -90 ? mstate.hR.toFixed(1) : '–'}`;
+    $('#limGr').style.width = Math.min(100, -master.lim.reduction / 12 * 100) + '%';
+    const mm = $('#monMeter'); { const ctx = mm.getContext('2d'); if (mm.width !== 130) { mm.width = 130; mm.height = 8; } const v = peakOf(master.monAn, bufM); ctx.fillStyle = '#050608'; ctx.fillRect(0, 0, 130, 8); const g = ctx.createLinearGradient(0, 0, 130, 0); g.addColorStop(0, '#22c55e'); g.addColorStop(0.7, '#facc15'); g.addColorStop(1, '#ef4444'); ctx.fillStyle = g; ctx.fillRect(0, 0, m2y(v) * 130, 8); }
+    const ld = measureLoud(now);
+    $('#lM').textContent = fL(ld.M); $('#lS').textContent = fL(ld.S); $('#lI').textContent = fL(ld.I);
+    $('#lP').textContent = `${mstate.hL > -90 ? mstate.hL.toFixed(0) : '–'}/${mstate.hR > -90 ? mstate.hR.toFixed(0) : '–'}`;
+    $('#lC').textContent = ld.corr.toFixed(2);
+    const tg = +$('#target').value; const lI = $('#lI'); lI.style.color = isFinite(ld.I) ? (Math.abs(ld.I - tg) <= 1 ? 'var(--ok)' : 'var(--warn)') : '';
+    window.__mx = { ld, peaks: CH.map(c => Math.max(...c.pkBars, c.barPk)) };
+    if (t - chkT > 0.25) { chkT = t; checkTask(); }
+  }).start();
+  document.addEventListener('visibilitychange', () => document.hidden ? loopFn.stop() : loopFn.start());
+
+  /* ================= Global switches ================= */
+  function seg(id, cb) { const el = $(id); el.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; el.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); cb(b.dataset.v); }); }
+  seg('#mpoint', v => meterPoint = v);
+  seg('#smode', v => { soloMode = v; applySolo(); });
+  seg('#crsrc', v => { crSrc = v; applySolo(); });
+  $('#abBtn').addEventListener('click', () => { abRef = !abRef; $('#abBtn').classList.toggle('on', abRef); $('#abBtn').innerHTML = abRef ? '<i data-lucide="headphones"></i> Hearing reference (B)' : '<i data-lucide="headphones"></i> Hear reference'; SL.refreshIcons($('#abBtn')); applyAll(); });
+
+  /* ================= Scenarios & tasks ================= */
+  const SCN = {
+    default: { t: 'Rough mix', icon: 'sliders-horizontal', d: 'A balanced starting mix. Press Play, then try muting, soloing and moving faders to hear what each instrument contributes. Click a channel name to see its spectrum and EQ curve.' },
+    gain: { t: 'Lesson 1: gain staging', icon: 'gauge', d: 'The band has just plugged in and the input levels are all over the place. Using only the GAIN (trim) knobs, bring every channel to peak between −21 and −15 dBFS pre-fader. The number under each fader is the highest pre-fader peak over the last 8 bars (green = on target, red = too hot, blue = too low). Switch the meters to Pre-fader to watch them live.' },
+    muddy: { t: 'Fix 1: muddy low end', icon: 'waves', d: 'The bass has a big boom around 250 Hz and the Keys and Pad are full of low-mids, so the mix sounds thick and unclear. Use HPFs on Keys and Pad and a low-mid (LM) cut on the Bass, without removing the bass fundamental (keep the Bass within 6 dB of flat at 80 Hz).' },
+    harsh: { t: 'Fix 2: harsh vocal', icon: 'mic-vocal', d: 'The vocal sounds edgy and piercing: there is a strong resonance somewhere between 2 and 5 kHz. Find it (boost the HM band and sweep its frequency to hear where it jumps out), then cut it. Do not hollow out the voice: keep 1 kHz within 4 dB.' },
+    dyn: { t: 'Fix 3: vocal too dynamic', icon: 'activity', d: 'The singer alternates between belting and whispering, so the vocal jumps in and out of the mix. Switch in the vocal compressor and set threshold, ratio and make-up so that the loud and soft phrases end up within 8 dB of each other (pre-fader), without making the vocal quieter overall.' },
+    balance: { t: 'Challenge: match the reference', icon: 'scale', d: 'All faders and pans have been reset. Use “Hear reference” to A/B against a professional balance, then match it using faders and pan pots only. Your score compares relative fader levels (the overall level does not matter) and pan positions.' },
+    flat: { t: 'Blank desk', icon: 'eraser', d: 'Every control at its default: no filters, no EQ, no compression, faders at 0 dB. Build your own mix from scratch.' },
+  };
+  let task = 'default', done = {};
+  function setScenario(k, fromCard) {
+    task = k; $('#scenario').value = k;
+    if (abRef) $('#abBtn').click();
+    CH.forEach(c => { c.p = defaults(); c.s = { gain: 0, fx: null, dyn: false }; c.pkBars = []; c.barPk = -180; });
+    FXR.rev.fader = 0; FXR.dly.fader = -4;
+    if (k !== 'flat') CH.forEach(c => Object.assign(c.p, ROUGH[c.id] || {}));
+    if (k === 'gain') { const offs = [9, -11, 7, -13, 12, -8, 10, -6, -12, 6]; CH.forEach((c, i) => { c.s.gain = offs[i]; c.p.trim = 0; }); }
+    if (k === 'muddy') { const b = CHn('bass'); b.s.fx = { type: 'peaking', f: 250, g: 11, q: 0.9 }; b.p.compOn = false; ['keys', 'pad'].forEach(id => { const c = CHn(id); c.p.hpfOn = false; c.s.fx = { type: 'lowshelf', f: 250, g: 9 }; }); }
+    if (k === 'harsh') { const v = CHn('vox'); v.s.fx = { type: 'peaking', f: 3150, g: 13, q: 1.6 }; }
+    if (k === 'dyn') { const v = CHn('vox'); v.s.dyn = true; v.p.compOn = false; v.p.mkp = 0; v.p.thr = -12; v.p.ratio = 2; }
+    if (k === 'balance') CH.forEach(c => { c.p.fader = -6; c.p.pan = 0; });
+    CH.forEach(c => refreshChannelUI(c)); fxRev.upd(); fxDly.upd();
+    $('#abBtn').disabled = k !== 'balance';
+    applyAll(); applyMaster(); drawCurveNow = true;
+    $('#taskTitle').textContent = SCN[k].t; $('#taskDesc').textContent = SCN[k].d;
+    if (k === 'muddy') selectChannel(4); else if (k === 'harsh' || k === 'dyn') selectChannel(9);
+    done[k] = false; renderCards(); checkTask();
+    if (fromCard) $('#taskPanel').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (k !== 'default' && k !== 'flat' && !playing) SL.toast('Scenario loaded. Press <b>Play</b> to hear it.', 'warn');
+  }
+  $('#scenario').addEventListener('change', e => setScenario(e.target.value));
+  function renderCards() {
+    $('#chalCards').innerHTML = Object.entries(SCN).filter(([k]) => k !== 'flat' && k !== 'default').map(([k, s]) => `<div class="card ${task === k ? 'on' : ''}" data-k="${k}"><h4><i data-lucide="${s.icon}"></i>${s.t}${done[k] ? ' <span class="led on" style="margin-left:auto"></span>' : ''}</h4><p>${s.d}</p></div>`).join('');
+    SL.refreshIcons($('#chalCards'));
+  }
+  $('#chalCards').addEventListener('click', e => { const c = e.target.closest('.card'); if (c) setScenario(c.dataset.k, true); });
+  function checks(k) {
+    const r = [];
+    if (k === 'gain') {
+      CH.forEach(c => { const pk = Math.max(...c.pkBars, c.barPk); r.push([`${c.name}: ${pk > -90 ? pk.toFixed(1) + ' dBFS' : 'waiting for signal'}`, pk >= -21 && pk <= -15 && c.pkBars.length >= 1]); });
+    } else if (k === 'muddy') {
+      const b = CHn('bass');
+      r.push([`Bass at 250 Hz: ${sgn(respAt(b, 250))} dB net (target ≤ +3)`, respAt(b, 250) <= 3]);
+      r.push([`Bass at 80 Hz: ${sgn(respAt(b, 80))} dB (keep within ±6)`, Math.abs(respAt(b, 80)) <= 6]);
+      ['keys', 'pad'].forEach(id => { const c = CHn(id), v = respAt(c, 150); r.push([`${c.name} at 150 Hz: ${sgn(v)} dB net (target ≤ +1)`, v <= 1]); });
+    } else if (k === 'harsh') {
+      const v = CHn('vox'), a = respAt(v, 3150), b1 = respAt(v, 1000);
+      r.push([`Vocal net response at 3.15 kHz: ${sgn(a)} dB (target ≤ +3)`, a <= 3]);
+      r.push([`Vocal at 1 kHz: ${sgn(b1)} dB (keep within ±4)`, Math.abs(b1) <= 4]);
+    } else if (k === 'dyn') {
+      const v = CHn('vox'); const pk = v.pkBars.slice(-8).filter(x => x > -90);
+      const recent = pk.length >= 4 ? pk.slice(-4) : [];
+      const range = recent.length ? Math.max(...recent) - Math.min(...recent) : NaN;
+      r.push(['Compressor switched in', v.p.compOn]);
+      r.push([`Ratio ${v.p.ratio.toFixed(1)}:1 (≥ 3:1)`, v.p.compOn && v.p.ratio >= 3]);
+      r.push([`Loud vs soft phrases: ${isFinite(range) ? range.toFixed(1) + ' dB apart' : 'measuring (play 4 vocal bars)'} (≤ 8 dB)`, isFinite(range) && range <= 8]);
+      r.push([`Loudest phrase ≥ −24 dBFS pre-fader (${recent.length ? Math.max(...recent).toFixed(1) : '–'})`, recent.length && Math.max(...recent) >= -24]);
+    } else if (k === 'balance') {
+      const s = balanceScore(); r.push([`Balance score ${s.score.toFixed(0)} / 100 (fader RMS error ${s.rms.toFixed(1)} dB, pan error ${s.pan.toFixed(2)})`, s.score >= 85]);
+    }
+    return r;
+  }
+  function balanceScore() {
+    const d = CH.map(c => Math.max(c.p.fader, -60) - REF[c.id][0]); const mean = d.reduce((a, b) => a + b, 0) / d.length;
+    const rms = Math.sqrt(d.reduce((a, b) => a + (b - mean) ** 2, 0) / d.length);
+    const pan = CH.reduce((a, c) => a + Math.abs(c.p.pan - REF[c.id][1]), 0) / CH.length;
+    const anyMute = CH.some(c => c.p.mute);
+    return { score: clamp(100 * Math.exp(-rms / 7) - pan * 60 - (anyMute ? 20 : 0), 0, 100), rms, pan };
+  }
+  function checkTask() {
+    const r = checks(task);
+    $('#taskChecks').innerHTML = r.map(([t, ok]) => `<li class="${ok ? 'ok' : ''}"><span class="led ${ok ? 'on' : ''}"></span>${t}</li>`).join('');
+    const frac = r.length ? r.filter(x => x[1]).length / r.length : 0;
+    $('#taskBar').style.width = (task === 'balance' ? balanceScore().score : frac * 100) + '%';
+    if (r.length && frac === 1 && !done[task]) { done[task] = true; SL.toast(`<b>${SCN[task].t}</b>: complete. Nice mixing!`, 'ok', 5000); renderCards(); }
+  }
+  window.__mixer = { CH, setScenario, respAt, balanceScore, master: () => master, MST, FXR, get ac() { return ac; } };
+
+  /* ================= Routing diagram ================= */
+  function routeSVG() {
+    const box = (x, y, w, t, sub, col, id) => `<g id="${id || ''}"><rect x="${x}" y="${y}" width="${w}" height="44" rx="9" fill="#131d33" stroke="${col || '#2a3a5c'}" stroke-width="1.5"/><text x="${x + w / 2}" y="${y + 20}" text-anchor="middle" fill="#e6ecf7" font-size="13" font-weight="600">${t}</text><text x="${x + w / 2}" y="${y + 35}" text-anchor="middle" fill="#93a1bd" font-size="10">${sub}</text></g>`;
+    const ar = (x1, y1, x2, y2, c) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c || '#5f6d8a'}" stroke-width="1.6" marker-end="url(#ah${c ? 'c' : ''})"/>`;
+    const chain = [['Source', 'mic / line', 'src'], ['Trim', 'input gain', 'tr'], ['HPF', '12 dB/oct', 'hp'], ['EQ', 'LF · LM · HM · HF', 'eq'], ['Comp', '+ make-up', 'cp'], ['Mute', '', 'mu'], ['Fader', 'level', 'fd'], ['Pan', '−3 dB law', 'pn']];
+    let s = `<svg viewBox="0 0 1000 330" font-family="Inter, sans-serif"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#5f6d8a"/></marker><marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#22d3ee"/></marker></defs>`;
+    s += `<text x="10" y="22" fill="#93a1bd" font-size="11" font-family="JetBrains Mono" letter-spacing="2">CHANNEL STRIP (×10)</text>`;
+    chain.forEach(([t, sub, id], i) => { const x = 10 + i * 122; s += box(x, 34, 104, t, sub, null, 'rt-' + id); if (i) s += ar(x - 18, 56, x - 2, 56); });
+    // taps
+    s += `<path d="M 540 78 C 540 100 528 100 528 120" stroke="#22c55e" stroke-width="1.6" fill="none"/>` + box(470, 122, 116, 'PFL', 'pre-fader listen', '#22c55e');
+    s += `<path d="M 680 78 L 680 120" stroke="#22c55e" stroke-width="1.6" fill="none"/>` + box(620, 122, 120, 'MON send', 'pre-fader → stage', '#22c55e');
+    s += `<path d="M 794 78 L 794 100 L 940 100 L 940 120 M 820 100 L 820 120" stroke="#60a5fa" stroke-width="1.6" fill="none"/>` + box(765, 122, 110, 'REV send', 'post-fader', '#60a5fa') + box(885, 122, 110, 'DLY send', 'post-fader', '#60a5fa');
+    // bus
+    s += `<text x="10" y="200" fill="#93a1bd" font-size="11" font-family="JetBrains Mono" letter-spacing="2">BUSES &amp; MASTER</text>`;
+    s += box(10, 212, 150, 'Reverb return', 'convolution IR', '#60a5fa') + box(10, 270, 150, 'Delay return', 'feedback + LPF', '#60a5fa');
+    s += box(220, 240, 130, 'Mix bus L/R', 'Σ of all channels', '#facc15') + ar(160, 234, 218, 254) + ar(160, 292, 218, 270);
+    s += `<path d="M 980 56 L 990 56 L 990 190 L 285 190 L 285 238" stroke="#facc15" stroke-width="1.6" fill="none" marker-end="url(#ah)"/>`;
+    s += box(400, 240, 120, 'Master fader', '') + ar(350, 262, 398, 262) + box(560, 240, 120, 'Limiter', 'ceiling') + ar(520, 262, 558, 262) + box(720, 240, 120, 'Meters', 'peak · LUFS') + ar(680, 262, 718, 262) + box(870, 240, 120, 'Output', 'to air / file') + ar(840, 262, 868, 262);
+    s += '</svg>';
+    return s;
+  }
+  $('#route').innerHTML = routeSVG();
+  function updRoute() {
+    const p = CH[sel].p; const set = (id, on) => { const r = document.querySelector('#rt-' + id + ' rect'); if (r) r.setAttribute('stroke', on ? '#f472b6' : '#2a3a5c'); };
+    set('hp', p.hpfOn); set('eq', p.eqOn && (p.hf || p.lf || p.hmg || p.lmg)); set('cp', p.compOn); set('mu', p.mute); set('fd', true); set('tr', true); set('pn', true); set('src', true);
+  }
+  setInterval(updRoute, 500);
+
+  /* ================= Quiz ================= */
+  SL.quiz('#quiz', [
+    { q: 'A channel peaks at −12 dBFS. You lower its fader by 6 dB. Approximately what fraction of the original amplitude remains?', options: ['One quarter', 'One half', 'Two thirds', 'It depends on the pan law'], answer: 1, why: '−6 dB corresponds to an amplitude ratio of 10^(−6/20) ≈ 0.50.' },
+    { q: 'Why is the monitor (MON) send normally pre-fader?', options: ['It sounds brighter', 'So the performers’ foldback mix is not changed when the engineer moves the audience mix faders', 'Because effects must always be pre-fader', 'To save CPU'], answer: 1, why: 'Pre-fader sends are independent of the channel fader, giving performers a stable monitor mix.' },
+    { q: 'A compressor has threshold −20 dBFS and ratio 5:1. A peak arrives at −5 dBFS. How much gain reduction is applied (static curve)?', options: ['3 dB', '5 dB', '12 dB', '15 dB'], answer: 2, why: 'Overshoot 15 dB; output = −20 + 15/5 = −17 dBFS; GR = 15 × (1 − 1/5) = 12 dB.' },
+    { q: 'Which tool best removes low-frequency rumble and mud from a vocal without changing its tone above 200 Hz?', options: ['High shelf cut', 'High-pass filter around 80–120 Hz', 'Raising the trim', 'More reverb'], answer: 1, why: 'A HPF removes energy below its cut-off and leaves the rest largely untouched.' },
+    { q: 'With a −3 dB constant-power pan law, what is the gain of each side when the pan pot is centred?', options: ['1.0 each', '0.5 each', '0.707 each', '0 and 1'], answer: 2, why: 'cos 45° = sin 45° ≈ 0.707 (−3 dB); 0.707² + 0.707² = 1, so power is constant.' },
+    { q: 'Two identical (fully correlated) signals at −20 dBFS are summed. The result peaks at about…', options: ['−20 dBFS', '−17 dBFS', '−14 dBFS', '−10 dBFS'], answer: 2, why: 'Correlated signals add in amplitude: doubling amplitude adds 6 dB.' },
+    { q: 'EBU R128 specifies a programme loudness target of…', options: ['−14 LUFS', '−16 LUFS', '−23 LUFS', '0 dBFS'], answer: 2, why: 'EBU R128 broadcast target is −23 LUFS integrated (±0.5 LU for most programmes).' },
+    { q: 'You solo a channel in PFL mode during a live broadcast. What does the audience hear?', options: ['Only the soloed channel', 'The unchanged main mix', 'Nothing', 'The main mix with the soloed channel louder'], answer: 1, why: 'PFL routes the channel to the engineer’s headphones/monitors only; the main mix is untouched. Solo-in-place would mute the others.' },
+    { q: 'A vocal has a piercing resonance. Which EQ approach is most appropriate?', options: ['Boost a wide band at 100 Hz', 'Find it by sweeping a narrow boost, then cut that frequency', 'Raise the high shelf', 'Compress harder'], answer: 1, why: 'Sweep to locate the offending frequency (typically 2–5 kHz), then apply a cut at that frequency.' },
+  ]);
+
+  setScenario('default');
+  selectChannel(9);
+})();
+</script>
+</body>
+</html>

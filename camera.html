@@ -1,0 +1,851 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Camera &amp; Exposure · Pentarch SimLab</title>
+<meta name="description" content="A virtual camera on a Nairobi street: set aperture, shutter speed, ISO, focal length, focus and white balance, and see exposure, depth of field, motion blur, noise and colour change in a physically based render.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .cstage{min-height:0;aspect-ratio:3/2;background:#000}
+  .cstage canvas{width:100%;height:100%;display:block;cursor:crosshair}
+  .vf{position:absolute;left:0;right:0;bottom:0;display:flex;gap:14px;align-items:center;justify-content:center;flex-wrap:wrap;padding:7px 10px;background:linear-gradient(transparent,rgba(0,0,0,.75));font:600 .82rem var(--mono);color:#b9f6ca;pointer-events:none;text-shadow:0 0 6px rgba(0,255,120,.35)}
+  .vf .warn{color:#fca5a5;animation:blink 0.8s infinite}
+  .vf .scale{letter-spacing:0;white-space:nowrap}
+  .shutter-btn{position:absolute;right:14px;top:50%;transform:translateY(-50%);width:62px;height:62px;border-radius:50%;border:3px solid #fff;background:radial-gradient(circle,#f472b6 0 55%,rgba(255,255,255,.12) 56%);cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.6)}
+  .shutter-btn:active{transform:translateY(-50%) scale(.94)}
+  .flashw{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}
+  .modeseg{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px}
+  .modeseg button{all:unset;cursor:pointer;text-align:center;padding:8px 0;border-radius:9px;font:700 .95rem var(--mono);color:var(--muted);background:var(--bg2);border:1px solid var(--line)}
+  .modeseg button small{display:block;font:500 .6rem var(--font);color:var(--dim)}
+  .modeseg button.on{background:var(--accent);color:#06101f;border-color:var(--accent)}
+  .modeseg button.on small{color:#4a0f2c}
+  .ctl.auto output{color:var(--accent)}
+  .ctl.auto input{opacity:.55}
+  .ctl.auto label::after{content:" · auto";color:var(--accent);font-size:.75rem}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0}
+  .row2 label{font-size:.78rem;color:var(--muted);display:block;margin-bottom:3px}
+  #hist,#meterCv,#dofCv{width:100%;display:block;border-radius:10px;background:#050913;border:1px solid var(--line)}
+  #hist{height:90px} #meterCv{height:96px} #dofCv{height:96px}
+  .strip{display:flex;gap:10px;overflow-x:auto;padding:12px 0 4px}
+  .shot{flex:none;width:190px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px;font:500 .7rem var(--mono);color:var(--muted)}
+  .shot canvas{width:100%;border-radius:6px;display:block;margin-bottom:5px}
+  .shot b{color:var(--text)}
+  .chal{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+  .chal .card{padding:14px;cursor:pointer}
+  .chal .card.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .chal .card h4{margin:0 0 4px;font-size:.98rem;display:flex;gap:8px;align-items:center}
+  .chal .card h4 svg{width:16px;height:16px;color:var(--accent)}
+  .chal .card p{font-size:.82rem}
+  .checks{list-style:none;padding:0;margin:8px 0 0;font-size:.86rem}
+  .checks li{display:flex;gap:8px;align-items:center;padding:3px 0;color:var(--muted)}
+  .checks li.ok{color:var(--text)}
+  #tri{width:100%;display:block}
+  .wbchips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+  .wbchips button{all:unset;cursor:pointer;font-size:.72rem;padding:3px 7px;border-radius:7px;border:1px solid var(--line2);color:var(--muted)}
+  .wbchips button.on{border-color:var(--accent);color:var(--text);background:color-mix(in srgb,var(--accent) 18%,transparent)}
+  @media (max-width:600px){.cstage .hud .readout{font-size:.62rem;padding:3px 6px}.shot{white-space:normal}.shutter-btn{width:46px;height:46px;right:8px}.vf{font-size:.66rem;gap:8px}}
+</style>
+</head>
+<body data-page="camera">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab wide-controls">
+    <div style="min-width:0">
+      <div class="stage cstage" id="cstage">
+        <canvas id="cv" aria-label="Camera live view of a Nairobi street"></canvas>
+        <div class="hud"><span class="readout">EV<sub>100</sub> scene <b id="hEV">12</b></span><span class="readout">Exposure <b id="hDelta">0.0</b> stops</span><span class="readout">Subject blur <b id="hBlur">0</b> px</span></div>
+        <div class="vf" id="vf"></div>
+        <button class="shutter-btn" id="shoot" aria-label="Take photo" title="Take photo"></button>
+        <div class="flashw" id="flashw"></div>
+      </div>
+      <div class="strip" id="strip"><div class="shot" style="width:auto;color:var(--dim);padding:10px 12px"><i data-lucide="images" style="width:14px;height:14px;vertical-align:-2px"></i> Your photos appear here. Tap the image to focus on that point; press the round button to take a photo.</div></div>
+      <div class="grid2" style="margin-top:8px">
+        <div class="panel"><h3><i data-lucide="bar-chart-3"></i> Histogram &amp; light meter</h3><canvas id="hist"></canvas><div style="height:8px"></div><canvas id="meterCv"></canvas></div>
+        <div class="panel"><h3><i data-lucide="ruler"></i> Depth-of-field calculator</h3><canvas id="dofCv"></canvas>
+          <div class="stats" style="margin-top:8px"><div class="stat"><div class="k">Near limit</div><div class="v" id="dNear">–</div></div><div class="stat"><div class="k">Far limit</div><div class="v" id="dFar">–</div></div><div class="stat"><div class="k">Total DoF</div><div class="v" id="dTot">–</div></div><div class="stat"><div class="k">Hyperfocal</div><div class="v" id="dH">–</div></div></div>
+        </div>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="camera"></i> Camera</h3>
+        <div class="modeseg" id="mode"><button data-m="P">P<small>Program</small></button><button data-m="Av" class="on">Av<small>Aperture</small></button><button data-m="Tv">Tv<small>Shutter</small></button><button data-m="M">M<small>Manual</small></button></div>
+        <div class="ctl" id="cN"><label for="N">Aperture</label><output></output><input type="range" id="N" min="0" max="8" step="1" value="2"></div>
+        <div class="ctl" id="cT"><label for="T">Shutter speed</label><output></output><input type="range" id="T" min="0" max="13" step="1" value="5"></div>
+        <div class="ctl" id="cBulb" style="display:none"><label for="bulb">Bulb time</label><output></output><input type="range" id="bulb" min="2" max="30" step="1" value="4"></div>
+        <div class="ctl" id="cISO"><label for="ISO">ISO</label><output></output><input type="range" id="ISO" min="0" max="7" step="1" value="0"></div>
+        <div class="ctl" id="cEC"><label for="EC">Exposure compensation</label><output></output><input type="range" id="EC" min="-3" max="3" step="0.3333" value="0"></div>
+        <div class="ctl"><label for="FL">Focal length</label><output></output><input type="range" id="FL" min="0" max="10" step="1" value="5"></div>
+        <div class="ctl"><label for="FD">Focus distance</label><output></output><input type="range" id="FD" min="0" max="1" step="0.001" value="0.5"></div>
+        <label class="toggle"><span>Focus follows subject (AF)</span><input type="checkbox" id="af" checked></label>
+        <div class="ctl"><label for="WB">White balance</label><output></output><input type="range" id="WB" min="2500" max="10000" step="100" value="5500"></div>
+        <div class="wbchips" id="wbchips"><button data-k="auto" class="on">Auto</button><button data-k="5500">Daylight</button><button data-k="6500">Cloudy</button><button data-k="7500">Shade</button><button data-k="3200">Tungsten</button><button data-k="4000">Fluorescent</button></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="map-pin"></i> Scene &amp; kit</h3>
+        <div class="row2"><div><label for="scene">Light</label><select id="scene"><option value="sunny">Sunny afternoon</option><option value="overcast">Overcast</option><option value="golden" selected>Golden hour</option><option value="dusk">Blue hour</option><option value="night">Night street</option></select></div>
+          <div><label for="sensor">Sensor</label><select id="sensor"><option value="ff">Full frame</option><option value="apsc">APS-C (1.5×)</option><option value="m43">Micro 4/3 (2×)</option><option value="phone">Phone (≈3.7×)</option></select></div></div>
+        <div class="row2"><div><label for="nd">ND filter</label><select id="nd"><option value="0">None</option><option value="3">ND8 (3 stops)</option><option value="6">ND64 (6 stops)</option><option value="10">ND1000 (10 stops)</option></select></div><div><label>&nbsp;</label><button class="btn sm" id="afBtn" style="width:100%"><i data-lucide="scan-face"></i> Focus on subject</button></div></div>
+        <label class="toggle"><span>Keep subject framed (walk back as you zoom)</span><input type="checkbox" id="keep" checked></label>
+        <label class="toggle"><span>Tripod</span><input type="checkbox" id="tripod"></label>
+        <label class="toggle"><span>Image stabiliser (≈3 stops)</span><input type="checkbox" id="is"></label>
+        <label class="toggle"><span>Pan with the cyclist</span><input type="checkbox" id="pan"></label>
+        <label class="toggle"><span>Foreground leaves</span><input type="checkbox" id="fg" checked></label>
+        <label class="toggle"><span>Rule-of-thirds grid</span><input type="checkbox" id="thirds"></label>
+        <label class="toggle"><span>Highlight warning (blinkies)</span><input type="checkbox" id="blink"></label>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="triangle"></i> Exposure triangle</h3>
+        <svg id="tri" viewBox="0 0 320 220"></svg>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button><i data-lucide="frame"></i> Composition</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+    <div class="tabpanel prose">
+      <h3>Exposure: stops and the exposure value</h3>
+      <p>A <b>stop</b> is a factor of two in light. Three controls set how much light makes the picture: the <b>aperture</b> (f-number $N = f/D$, the focal length divided by the entrance-pupil diameter), the <b>shutter speed</b> $t$ and the sensor gain, <b>ISO</b> $S$. Light through the lens is proportional to the pupil area, $\propto 1/N^2$, so the standard f-stops $1.4, 2, 2.8, 4, 5.6, 8, 11, 16, 22$ go up by $\sqrt2$ and each halves the light. The <b>exposure value</b> combines aperture and time:</p>
+      <div class="eq">$$\mathrm{EV} = \log_2\frac{N^2}{t}\qquad\text{and, referred to ISO 100,}\qquad \mathrm{EV}_{100} = \log_2\frac{N^2}{t} - \log_2\frac{S}{100}$$</div>
+      <p>A scene is correctly exposed when the camera’s $\mathrm{EV}_{100}$ equals the scene’s light level, $\mathrm{EV}_{100,\text{scene}}$. In this simulator the exposure error in stops is $\Delta = \mathrm{EV}_\text{scene} - \mathrm{EV}_{100} - n_\text{ND}$, where $n_\text{ND}$ is the number of stops of neutral-density filter. Positive $\Delta$ is overexposure; the light meter needle and the brightness of the render follow $2^{\Delta}$. Typical scene values: full sun ≈ 15, overcast ≈ 12–13, golden hour ≈ 11, blue hour ≈ 7, a lit city street at night ≈ 4.</p>
+      <div class="callout"><i data-lucide="sun"></i><div><b>Sunny 16 rule.</b> In bright sun, correct exposure is about $f/16$ at $t = 1/S$. At ISO 100: $\log_2(16^2\times100) = 14.6 \approx 15$, matching the EV of a sunny scene.</div></div>
+      <h3>Reciprocity: equivalent exposures</h3>
+      <p>Any combination with the same EV gives the same brightness: $f/2.8$ at $1/1000$ s ≡ $f/4$ at $1/500$ ≡ $f/5.6$ at $1/250$. What changes is the <i>look</i>: aperture controls depth of field, shutter speed controls motion blur, ISO controls noise. That trade-off is the <b>exposure triangle</b>. The semi-automatic modes do the reciprocity for you: in <b>Av</b> (aperture priority) you choose $N$ and the camera picks $t$; in <b>Tv</b> (shutter priority) you choose $t$; <b>P</b> picks both along a program line; <b>M</b> is fully manual and the meter tells you how far off you are.</p>
+      <h3>Depth of field</h3>
+      <p>A point not at the focus distance $s$ images as a blur disc. With focal length $f$, the diameter on the sensor of the blur of an object at distance $d$ is</p>
+      <div class="eq">$$b = \frac{f^2}{N\,(s-f)}\cdot\frac{|d-s|}{d}$$</div>
+      <p>It counts as sharp if $b$ is smaller than the acceptable <b>circle of confusion</b> $c$ (≈ 0.030 mm on full frame, about $1/1500$ of the sensor diagonal). Setting $b=c$ gives the <b>hyperfocal distance</b> and the near and far limits:</p>
+      <div class="eq">$$H = \frac{f^2}{N c} + f,\qquad D_\text{near} = \frac{s\,(H-f)}{H + s - 2f},\qquad D_\text{far} = \frac{s\,(H-f)}{H - s}\ \ (s&lt;H,\ \text{else } \infty)$$</div>
+      <p>Depth of field gets shallower with a wider aperture (small $N$), a longer focal length and a closer subject. Focusing at $H$ makes everything from $H/2$ to infinity acceptably sharp. In the render every layer (subject, cyclist, matatu, buildings, road, foreground leaves) is blurred by its own $b$, and point lights become <b>bokeh</b> discs of diameter $b$, hexagonal when the six-bladed aperture is stopped down.</p>
+      <h3>Crop factor</h3>
+      <p>Smaller sensors see a narrower angle with the same lens. The <b>crop factor</b> $k$ is the ratio of the full-frame diagonal (43.3 mm) to the sensor diagonal. Angle of view: $\alpha = 2\arctan\!\big(\tfrac{w}{2f}\big)$ for sensor width $w$. A 50 mm lens on APS-C ($k≈1.5$) frames like 75 mm on full frame; to get the same framing you step back, and the depth of field at the same f-number becomes deeper by about $k$, because $c$ shrinks with the sensor. The equivalent full-frame aperture for the same depth of field is $N\cdot k$.</p>
+      <h3>Motion blur and camera shake</h3>
+      <p>An object moving at speed $v$, at distance $d$, smears across the frame by $\approx \frac{f\,v\,t}{d}$ on the sensor. To freeze a cyclist at 18 km/h about 8 m away you need roughly $1/500$ s or faster. Hand-holding adds shake; the <b>reciprocal rule</b> suggests $t \le 1/f_\text{eq}$ (with $f_\text{eq} = k f$), and an image stabiliser buys about 3 stops. <b>Panning</b> (rotating the camera with the subject) keeps the subject sharp while the background streaks.</p>
+      <h3>Noise and ISO</h3>
+      <p>ISO does not add light; it amplifies the signal. Fewer photons means more <b>shot noise</b> (Poisson: $\sigma = \sqrt{n}$, so signal-to-noise $=\sqrt n$). Each doubling of ISO for a correct exposure halves the photons collected, so SNR drops by $\sqrt2$. Read noise from the electronics dominates in deep shadows. Smaller sensors collect fewer photons for the same picture, so they are noisier at the same ISO. The simulator models shot noise plus read noise per pixel at the displayed resolution.</p>
+      <h3>Colour temperature and white balance</h3>
+      <p>Light sources are described by their correlated <b>colour temperature</b> in kelvin: candle ≈ 1900 K, tungsten ≈ 3200 K, golden-hour sun ≈ 3500 K, noon daylight ≈ 5500 K, overcast ≈ 6500 K, shade and blue hour ≈ 7500–9000 K. The camera’s white balance setting divides out the colour of the light it assumes. If the WB setting is lower than the light’s temperature the picture turns blue; if higher, orange. Here the cast is computed from a black-body colour model: (light colour) ÷ (WB setting colour), channel by channel.</p>
+      <p class="small muted">Model notes: the scene is drawn in depth layers rather than ray-traced, the blur is Gaussian except for the bokeh discs, and the meter is an average meter. Shutter speeds and apertures use nominal marked values.</p>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. Equivalent exposure</h3>
+      <div class="worked"><p>The meter says $f/8$, $1/250$ s, ISO 200. You want $f/2.8$ for a blurred background. $f/8 \to f/2.8$ is 3 stops more light ($8 \to 5.6 \to 4 \to 2.8$), so shorten the shutter by 3 stops: $1/250 \to 1/500 \to 1/1000 \to 1/2000$ s. Check: $\log_2(8^2\cdot250) = 13.97$ and $\log_2(2.8^2\cdot2000) = 13.94$. The same.</p></div>
+      <h3>2. Scene EV from settings</h3>
+      <div class="worked"><p>A correctly exposed night street at $f/1.4$, $1/60$ s, ISO 3200: $\mathrm{EV}_{100} = \log_2(1.96\times60) - \log_2(32) = 6.88 - 5 = 1.9$. So that street is about EV 2, a fairly dark scene.</p></div>
+      <h3>3. Hyperfocal distance</h3>
+      <div class="worked"><p>24 mm lens, $f/8$, full frame ($c = 0.03$ mm): $H = 24^2/(8\times0.03) + 24 = 2400 + 24 = 2424$ mm ≈ 2.4 m. Focus at 2.4 m and everything from 1.2 m to infinity is acceptably sharp, a landscape trick.</p></div>
+      <h3>4. Portrait depth of field</h3>
+      <div class="worked"><p>85 mm, $f/1.8$, subject at $s = 3$ m on full frame. $H = 85^2/(1.8\times0.03) + 85 = 133\,880$ mm ≈ 133.9 m.</p>
+      <p>$D_\text{near} = \dfrac{3000(133\,880-85)}{133\,880+3000-170} = 2934$ mm, $D_\text{far} = \dfrac{3000(133\,795)}{133\,880-3000} = 3067$ mm. Total ≈ 13 cm: enough for the eyes, not the ears. Set 85 mm, f/1.8 (choose f/2 here) and look at the DoF panel.</p></div>
+      <h3>5. Background blur disc</h3>
+      <div class="worked"><p>Same lens, focus 3 m, buildings at 20 m: $b = \dfrac{85^2}{1.8(3000-85)}\cdot\dfrac{17\,000}{20\,000} = 1.38\times0.85 = 1.17$ mm. On a 36 mm-wide frame that is 3.3 % of the width: very creamy bokeh.</p></div>
+      <h3>6. Freezing motion</h3>
+      <div class="worked"><p>Cyclist at 5 m/s (18 km/h), 8 m away, 50 mm lens. Sensor blur at $1/125$ s: $50\times5\times0.008/8 = 0.25$ mm = 0.69 % of the frame width (visible). At $1/1000$ s: 0.031 mm = 0.09 % (frozen).</p></div>
+      <h3>7. ND filter for panning in sunlight</h3>
+      <div class="worked"><p>Sunny EV 14, you want $1/30$ s for a panning shot at ISO 100. Required: $\log_2(N^2\cdot30) = 14 \Rightarrow N = \sqrt{2^{14}/30} = 23.4$, slightly beyond $f/22$. With an ND8 (3 stops) the scene behaves like EV 11: $N = \sqrt{2^{11}/30} = 8.3$, so $f/8$ works.</p></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <p>Pick a challenge, set up the camera, and press the round shutter button. Each photo is checked automatically.</p>
+      <div class="chal" id="chal"></div>
+      <div class="panel" style="margin-top:12px"><h3><i data-lucide="target"></i> <span id="cTitle">Choose a challenge</span></h3><p class="small muted" id="cDesc" style="margin:0">Your last photo’s results appear here.</p><ul class="checks" id="cChecks"></ul></div>
+      <h3>Experiments</h3>
+      <ol class="steps">
+        <li><b>Perspective compression.</b> With “Keep subject framed” on, go from 14 mm to 200 mm. The subject stays the same size but the buildings loom larger and fewer fit in: background magnification is $\propto f$ when the subject size is fixed.</li>
+        <li><b>Equivalent exposures.</b> In Av mode change the aperture from f/1.4 to f/16 and watch the camera lengthen the shutter one stop per stop, while the depth of field grows and the matatu begins to blur.</li>
+        <li><b>Crop factor.</b> Keep 50 mm, f/2 and switch Full frame → Phone. The subject is framed the same (you walk back), but the background becomes much sharper.</li>
+        <li><b>White balance.</b> In golden hour set WB to Daylight (warm) and then to Tungsten (blue). Auto white balance sits between.</li>
+        <li><b>Light trails.</b> Night scene, tripod on, Bulb 8 s, f/8, ISO 100: the matatu becomes streaks of head- and tail-lights.</li>
+        <li><b>Hyperfocal focusing.</b> Set 24 mm, f/11, untick “Focus follows subject”, and set the focus distance to the hyperfocal distance shown in the DoF panel.</li>
+      </ol>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Rule of thirds</h3>
+      <p>Divide the frame into a 3 × 3 grid (switch on the grid overlay). Placing the subject’s eyes on or near an intersection usually gives a more dynamic picture than dead centre, and leaves “looking room” in the direction the subject faces. The subject in this scene stands on the left third line.</p>
+      <h3>Lens choice and perspective</h3>
+      <p>Perspective depends only on camera position. A telephoto lens used from further away makes the background appear larger relative to the subject (“compression”); a wide-angle lens used close exaggerates depth and distorts faces. Classic portrait lenses are 85–135 mm on full frame.</p>
+      <h3>Separation</h3>
+      <p>Separate the subject from the background with shallow depth of field, a darker or plainer background, a rim of light, or colour contrast. Watch for distracting elements “growing” out of the subject’s head, such as lamp posts.</p>
+      <h3>Reading the histogram</h3>
+      <p>The histogram plots how many pixels fall at each brightness from black (left) to white (right). A graph piled against the right edge means clipped highlights (lost detail, shown by the blinkies); piled at the left means crushed shadows. Night scenes legitimately sit to the left, snow scenes to the right: the meter averages to mid-grey, so use exposure compensation (+1 to +2 for snow, −1 for dark scenes).</p>
+    </div>
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = s => document.querySelector(s), clamp = SL.clamp;
+  /* ================= camera model ================= */
+  const NS = [1.4, 2, 2.8, 4, 5.6, 8, 11, 16, 22];
+  const TS = [1 / 4000, 1 / 2000, 1 / 1000, 1 / 500, 1 / 250, 1 / 125, 1 / 60, 1 / 30, 1 / 15, 1 / 8, 1 / 4, 1 / 2, 1, 'B'];
+  const ISOS = [100, 200, 400, 800, 1600, 3200, 6400, 12800];
+  const FLS = [14, 18, 24, 28, 35, 50, 70, 85, 105, 135, 200];
+  const SENS = { ff: { w: 36, c: 0.030, k: 1, area: 1, n: 'Full frame' }, apsc: { w: 23.6, c: 0.020, k: 1.53, area: 0.43, n: 'APS-C' }, m43: { w: 17.3, c: 0.015, k: 2.0, area: 0.26, n: 'Micro 4/3' }, phone: { w: 9.8, c: 0.008, k: 3.7, area: 0.075, n: 'Phone' } };
+  const SCENES = {
+    sunny: { n: 'Sunny afternoon', EV: 14, K: 5600, sky: ['#3d8ee0', '#a9d6f5'], amb: 1, lights: 0, sun: 1, key: [1, 0.97, 0.92], fac: 1 },
+    overcast: { n: 'Overcast', EV: 12, K: 6500, sky: ['#9aa5b1', '#d6dbe0'], amb: 0.9, lights: 0, sun: 0, key: [0.95, 0.96, 1], fac: 0.9 },
+    golden: { n: 'Golden hour', EV: 11, K: 3600, sky: ['#7fa8d6', '#f7c58c'], amb: 0.95, lights: 0.15, sun: 0.8, key: [1, 0.9, 0.78], fac: 0.95 },
+    dusk: { n: 'Blue hour', EV: 7, K: 8500, sky: ['#18245a', '#6a5a9a'], amb: 0.55, lights: 1, sun: 0, key: [0.9, 0.9, 1], fac: 0.6 },
+    night: { n: 'Night street', EV: 4, K: 3800, sky: ['#03050c', '#121833'], amb: 0.3, lights: 1, sun: 0, key: [1, 0.85, 0.65], fac: 0.32 },
+  };
+  const st = { mode: 'Av', Ni: 2, Ti: 5, ISOi: 0, EC: 0, FLi: 5, fd: 2.6, af: true, wbAuto: true, wb: 5500, scene: 'golden', sensor: 'ff', nd: 0, keep: true, tripod: false, is: false, pan: false, fg: true, thirds: false, blink: false, bulb: 4 };
+  const fmtT = t => t === 'B' ? 'Bulb' : t >= 1 ? t + '″' : '1/' + Math.round(1 / t);
+  const T = () => TS[st.Ti] === 'B' ? st.bulb : TS[st.Ti];
+  const N = () => NS[st.Ni], ISO = () => ISOS[st.ISOi], f = () => FLS[st.FLi], S = () => SENS[st.sensor], SC = () => SCENES[st.scene];
+  const subjDist = () => st.keep ? 2.6 * f() * S().k / 50 : 2.6;
+  const camEV = () => Math.log2(N() * N() / T()) - Math.log2(ISO() / 100);
+  const delta = () => SC().EV - st.nd - camEV();    // stops over-exposed
+  const shakeOmega = () => st.tripod ? 0 : 0.045 / (st.is ? 8 : 1);
+
+  function autoExpose() {
+    const target = SC().EV - st.nd - st.EC;   // desired camera EV100
+    const lgISO = Math.log2(ISO() / 100);
+    if (st.mode === 'Av') { const tt = N() * N() / Math.pow(2, target + lgISO); st.Ti = nearestT(tt); }
+    else if (st.mode === 'Tv') { if (TS[st.Ti] === 'B') st.Ti = 12; const nn = Math.sqrt(T() * Math.pow(2, target + lgISO)); st.Ni = nearest(NS, nn, true); }
+    else if (st.mode === 'P') {
+      const ev = target + lgISO; // APEX: Av + Tv = EV
+      let av = clamp(Math.round((ev - 6) / 2 + 2), 1, 9);   // APEX Av: 1 = f/1.4 … 9 = f/22
+      // keep shutter hand-holdable: at least 1/(f_eq) when possible
+      const minTv = Math.log2(f() * S().k);
+      while (av > 1 && ev - av < minTv) av--;
+      st.Ni = clamp(av - 1, 0, 8); st.Ti = nearestT(N() * N() / Math.pow(2, ev));
+    }
+  }
+  function nearest(arr, v, log) { let bi = 0, bd = 1e9; arr.forEach((a, i) => { if (typeof a !== 'number') return; const d = log ? Math.abs(Math.log2(a / v)) : Math.abs(a - v); if (d < bd) { bd = d; bi = i; } }); return bi; }
+  const nearestT = v => nearest(TS.slice(0, 13), v, true);
+
+  /* ================= DOF ================= */
+  function dof() {
+    const fm = f(), Nn = N(), c = S().c, s = st.fd * 1000;
+    const H = fm * fm / (Nn * c) + fm;
+    const near = s * (H - fm) / (H + s - 2 * fm), far = s < H ? s * (H - fm) / (H - s) : Infinity;
+    return { H: H / 1000, near: near / 1000, far: far / 1000 };
+  }
+  // blur disc on the sensor (mm) of an object at distance d (m)
+  function blurMM(d) { const fm = f(), s = Math.max(st.fd * 1000, fm * 1.01), dd = d * 1000; if (dd <= 0) return 0; return fm * fm / (N() * (s - fm)) * Math.abs(dd - s) / dd; }
+
+  /* ================= rendering setup ================= */
+  const cv = $('#cv'), stage = $('#cstage');
+  let RW = 800, RH = 533, Q = 1;
+  const mk = () => { const c = document.createElement('canvas'); c.width = RW; c.height = RH; return c; };
+  let comp, light, layer, acc, out, octx, imgOut;
+  function setupRes() {
+    const w = stage.clientWidth || 800; RW = Math.round(clamp(w, 300, 720) * Q); RH = Math.round(RW * 2 / 3);
+    cv.width = RW; cv.height = RH;
+    comp = mk(); light = mk(); layer = mk(); acc = mk();
+    octx = cv.getContext('2d', { willReadFrequently: true });
+    comp.ctx = comp.getContext('2d', { willReadFrequently: true }); light.ctx = light.getContext('2d', { willReadFrequently: true });
+    layer.ctx = layer.getContext('2d'); acc.ctx = acc.getContext('2d');
+    imgOut = octx.createImageData(RW, RH);
+  }
+  setupRes();
+  new ResizeObserver(() => { const w = stage.clientWidth; if (Math.abs(Math.round(clamp(w, 300, 720) * Q) - RW) > 4) setupRes(); }).observe(stage);
+
+  // seeded random
+  function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  // buildings along the far side of the street
+  const BUILD = []; (() => { const r = rng(7); let x = -90; const cols = ['#d9c7a7', '#c98f6b', '#e7d9b8', '#8fa7b8', '#d4b483', '#b9b2a8', '#e2a76f', '#9db48f', '#cbbfd6', '#f0e0c0'];
+    const signs = ['DUKA', 'HOTELI', 'KINYOZI', 'DAWA', 'CYBER', 'SALON', 'MAMA MBOGA', 'BUTCHERY', 'M-SHOP', 'CHIPS', 'FASHION', 'HARDWARE'];
+    let i = 0; while (x < 90) { const w = 7 + r() * 9, h = 8 + r() * 18; BUILD.push({ x, w, h, col: cols[Math.floor(r() * cols.length)], sign: signs[i++ % signs.length], sc: ['#e11d48', '#2563eb', '#16a34a', '#f59e0b', '#7c3aed', '#0891b2'][Math.floor(r() * 6)], lit: Array.from({ length: 40 }, () => r() < 0.45), tank: r() < 0.6 }); x += w + 0.4; } })();
+  const Z_FAC = 24, Z_LAMP = 21.6, Z_MAT = 15, Z_CYC = 8, CAMY = 1.45, SUBX = -0.32;
+  // movers: positions as functions of time (world X, metres)
+  const V_MAT = 8.3, V_CYC = -5;   // m/s: matatu ≈ 30 km/h to the right, cyclist 18 km/h to the left
+  function moverX(t, v, z) { const half = viewHalf(z) + (z === Z_MAT ? 3.3 : 1.5); const span = 2 * half; const p = ((t * v) % span + span) % span; return v > 0 ? -half + p : half - (span - p) + 0 - 0; }
+  function viewHalf(zw) { return (zw + subjDist()) * (S().w / 2) / f(); }
+
+  /* projection: world (X,Y,Zw) with camera at (0,CAMY,-dS) */
+  let PJ = null;
+  function setProj() { const dS = subjDist(); const F = f() / S().w * RW; PJ = { dS, F, cx: RW / 2, cy: RH / 2 }; }
+  const zc = Z => Z + PJ.dS;
+  const px = (X, Z) => PJ.cx + X * PJ.F / zc(Z);
+  const py = (Y, Z) => PJ.cy - (Y - CAMY) * PJ.F / zc(Z);
+  const sc = Z => PJ.F / zc(Z);
+
+  /* ================= scene painting ================= */
+  function paintSky(c, S_) {
+    const g = c.createLinearGradient(0, 0, 0, py(0, 400)); g.addColorStop(0, S_.sky[0]); g.addColorStop(1, S_.sky[1]); c.fillStyle = g; c.fillRect(0, 0, RW, RH);
+    if (S_.sun && st.scene === 'golden') { const sx = px(-60, 400), sy = py(18, 400); const rg = c.createRadialGradient(sx, sy, 0, sx, sy, RW * 0.5); rg.addColorStop(0, 'rgba(255,230,180,.55)'); rg.addColorStop(1, 'rgba(255,230,180,0)'); c.fillStyle = rg; c.fillRect(0, 0, RW, RH); }
+    // distant hills (Ngong hills silhouette)
+    c.fillStyle = mixc('#5b6b7e', S_.sky[1], 0.5); c.beginPath(); c.moveTo(0, py(0, 3000)); for (let i = 0; i <= 40; i++) { const X = -3000 + i * 150; c.lineTo(px(X, 3000), py(60 + 90 * Math.abs(Math.sin(i * 0.9)) + 40 * Math.sin(i * 2.3), 3000)); } c.lineTo(RW, RH); c.lineTo(0, RH); c.fill();
+  }
+  function paintFacade(c, L, S_, t, lights) {
+    const z = Z_FAC, s = sc(z), half = viewHalf(z) + 3, amb = S_.fac;
+    BUILD.forEach(b => {
+      if (b.x + b.w < -half - 2 || b.x > half + 2) return;
+      const x0 = px(b.x, z), x1 = px(b.x + b.w, z), y0 = py(b.h, z), y1 = py(0, z);
+      c.fillStyle = shadeC(b.col, amb); c.fillRect(x0, y0, x1 - x0, y1 - y0);
+      // side shading and cornice
+      c.fillStyle = 'rgba(0,0,0,.18)'; c.fillRect(x1 - 0.3 * s, y0, 0.3 * s, y1 - y0); c.fillStyle = 'rgba(255,255,255,.12)'; c.fillRect(x0, y0, x1 - x0, 0.25 * s);
+      if (b.tank) { c.fillStyle = shadeC('#1f2933', amb); const tx = px(b.x + b.w * 0.7, z); c.fillRect(tx, py(b.h + 1.4, z), 1.2 * s, 1.4 * s); c.fillRect(tx - 0.1 * s, py(b.h + 1.45, z), 1.4 * s, 0.15 * s); }
+      // windows
+      const rows = Math.floor((b.h - 4) / 3), colsN = Math.max(1, Math.floor(b.w / 2.6));
+      let k = 0;
+      for (let r = 0; r < rows; r++) for (let q = 0; q < colsN; q++) {
+        const wx = b.x + (q + 0.5) * b.w / colsN - 0.6, wy = 4.6 + r * 3;
+        const X0 = px(wx, z), Y0 = py(wy + 1.5, z), W = 1.2 * s, H = 1.5 * s;
+        const lit = b.lit[k++ % 40] && S_.lights;
+        c.fillStyle = lit ? (st.scene === 'night' ? '#e9b56e' : '#c9a27a') : (st.scene === 'night' || st.scene === 'dusk' ? '#0b0f1c' : mixc('#2c3e50', S_.sky[1], 0.35)); c.fillRect(X0, Y0, W, H);
+        c.fillStyle = 'rgba(255,255,255,.18)'; c.fillRect(X0, Y0 + H, W, 0.12 * s);
+      }
+      // shop front and sign
+      const sx0 = px(b.x + 0.5, z), sx1 = px(b.x + b.w - 0.5, z);
+      const shopLit = S_.lights > 0.5;
+      c.fillStyle = shopLit ? (st.scene === 'night' ? '#d8a868' : '#a8845c') : shadeC('#2b2b2b', amb * 0.8); c.fillRect(sx0, py(3, z), sx1 - sx0, 3 * s);
+      if (shopLit) { c.fillStyle = 'rgba(40,25,15,.55)'; for (let q = 0; q < 3; q++) c.fillRect(px(b.x + 1 + q * (b.w - 2) / 3, z), py(1.9, z), 0.8 * s, 1.9 * s); }
+      c.fillStyle = shopLit ? shadeC(b.sc, 1.25) : shadeC(b.sc, Math.max(amb, 0.5)); c.fillRect(sx0, py(4.1, z), sx1 - sx0, 1.0 * s);
+      if (shopLit && lights) for (let bx = b.x + 0.8; bx < b.x + b.w - 0.5; bx += 1.6) lights.push({ X: bx, Y: 4.35 + 0.08 * Math.sin(bx * 3), Z: z - 0.3, col: BULBS[Math.abs(Math.round(bx * 7)) % 4], I: 0.16, r: 0.03 });
+      c.fillStyle = '#fff'; c.font = `800 ${0.62 * s}px Inter, sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(b.sign, (sx0 + sx1) / 2, py(3.58, z));
+    });
+  }
+  function paintGround(c, z0, z1, S_) {
+    const amb = S_.amb;
+    const y0 = py(0, z1), y1 = Math.min(RH + 2, py(0, z0));
+    if (y1 <= y0) return;
+    // band colour: far sidewalk, road, near kerb
+    const g = c.createLinearGradient(0, y0, 0, y1);
+    g.addColorStop(0, shadeC('#5f6366', amb)); g.addColorStop(1, shadeC('#3d4043', amb)); c.fillStyle = g; c.fillRect(0, y0, RW, y1 - y0);
+    // kerbs and sidewalk at far side (z 12..15)
+    if (z1 >= 20.5 && z0 <= 20.5) { c.fillStyle = shadeC('#a7a29a', amb); c.fillRect(0, py(0, Z_FAC), RW, py(0, 20.4) - py(0, Z_FAC)); for (let X = -120; X < 120; X += 1) { c.fillStyle = (Math.floor(X) % 2 === 0) ? shadeC('#f2f2f2', amb) : shadeC('#1a1a1a', amb); c.fillRect(px(X, 20.4), py(0.15, 20.4), px(X + 1, 20.4) - px(X, 20.4) + 0.5, py(0, 20.4) - py(0.15, 20.4) + 1); } }
+    // lane markings at z = 7.8 (centre line)
+    if (z0 <= 12.5 && z1 >= 12.6) { c.fillStyle = shadeC('#e8e2c8', amb); for (let X = -160; X < 160; X += 6) { const a = px(X, 12.5), b2 = px(X + 3, 12.5); c.fillRect(a, py(0, 12.65), b2 - a, Math.max(1, py(0, 12.35) - py(0, 12.65))); } }
+    // near kerb at z = 3.4
+    if (z0 <= 5 && z1 >= 5) { c.fillStyle = shadeC('#b8b2a4', amb); c.fillRect(0, py(0.15, 5), RW, Math.max(1, py(0, 4.6) - py(0.15, 5))); }
+  }
+  function paintLampPosts(c, S_, lights) {
+    const z = Z_LAMP, s = sc(z), half = viewHalf(z) + 3, amb = S_.amb;
+    for (let X = -96; X <= 96; X += 16) {
+      if (X < -half || X > half) continue;
+      c.strokeStyle = shadeC('#3a3f45', amb); c.lineWidth = Math.max(1, 0.18 * s);
+      c.beginPath(); c.moveTo(px(X, z), py(0, z)); c.lineTo(px(X, z), py(7.5, z)); c.lineTo(px(X - 1.6, z), py(7.8, z)); c.stroke();
+      c.fillStyle = shadeC('#2a2d31', amb); c.fillRect(px(X - 2.1, z), py(7.9, z), 0.9 * s, 0.25 * s);
+      if (S_.lights) lights.push({ X: X - 1.65, Y: 7.65, Z: z, col: [255, 196, 120], I: 1.0, r: 0.2 });
+    }
+  }
+  function paintMatatu(c, X, S_, lights) {
+    const z = Z_MAT, s = sc(z), amb = Math.max(S_.amb, 0.35), L = 5.6, Hh = 2.45;
+    const x0 = px(X - L / 2, z), x1 = px(X + L / 2, z), yT = py(Hh + 0.3, z), yB = py(0.35, z);
+    c.save();
+    // body
+    const g = c.createLinearGradient(0, yT, 0, yB); g.addColorStop(0, shadeC('#f8fafc', amb)); g.addColorStop(1, shadeC('#d4d4d8', amb));
+    c.fillStyle = g; rr(c, x0, yT, x1 - x0, yB - yT, 0.35 * s); c.fill();
+    // graffiti stripes
+    c.save(); rr(c, x0, yT, x1 - x0, yB - yT, 0.35 * s); c.clip();
+    const cols = ['#ec4899', '#facc15', '#14b8a6', '#8b5cf6'];
+    cols.forEach((cl, i) => { c.fillStyle = shadeC(cl, amb); c.beginPath(); c.moveTo(x0, py(0.9 + i * 0.22, z)); c.bezierCurveTo(px(X - 1, z), py(0.6 + i * 0.25, z), px(X + 1, z), py(1.6 + i * 0.12, z), x1, py(1.0 + i * 0.2, z)); c.lineTo(x1, py(0.88 + i * 0.2, z)); c.bezierCurveTo(px(X + 1, z), py(1.45 + i * 0.12, z), px(X - 1, z), py(0.48 + i * 0.25, z), x0, py(0.78 + i * 0.22, z)); c.fill(); });
+    c.restore();
+    // windows
+    c.fillStyle = st.scene === 'night' || st.scene === 'dusk' ? '#1c2233' : mixc('#1f2937', S_.sky[1], 0.25);
+    for (let i = 0; i < 5; i++) { const wx = X - L / 2 + 0.45 + i * 0.95; rr(c, px(wx, z), py(Hh + 0.12, z), 0.8 * s, 0.75 * s, 0.1 * s); c.fill(); }
+    rr(c, px(X + L / 2 - 0.55, z), py(Hh + 0.1, z), 0.45 * s, 0.9 * s, 0.1 * s); c.fill();
+    // roof carrier
+    c.fillStyle = shadeC('#27272a', amb); c.fillRect(px(X - L / 2 + 0.6, z), py(Hh + 0.48, z), (L - 1.4) * s, 0.12 * s);
+    // text
+    c.fillStyle = shadeC('#111827', amb); c.font = `800 ${0.34 * s}px Inter, sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('TOWN · 46 · KAWANGWARE', px(X - 0.2, z), py(1.18, z));
+    // wheels
+    [X - L / 2 + 1.1, X + L / 2 - 1.1].forEach(wx => { c.fillStyle = '#111'; c.beginPath(); c.arc(px(wx, z), py(0.38, z), 0.38 * s, 0, 7); c.fill(); c.fillStyle = shadeC('#9ca3af', amb); c.beginPath(); c.arc(px(wx, z), py(0.38, z), 0.17 * s, 0, 7); c.fill(); });
+    c.restore();
+    const on = S_.lights > 0.5 ? 1 : 0.25;
+    lights.push({ X: X + L / 2 - 0.08, Y: 0.85, Z: z - 0.2, col: [255, 244, 220], I: 2.2 * on, r: 0.12, mv: 1 });
+    lights.push({ X: X - L / 2 + 0.06, Y: 0.95, Z: z - 0.2, col: [255, 40, 30], I: 0.9 * on, r: 0.1, mv: 1 });
+    return [x0, yT, x1, yB];
+  }
+  function paintCyclist(c, X, S_, lights, t) {
+    const z = Z_CYC, s = sc(z), amb = Math.max(S_.amb, 0.4);
+    c.save(); c.lineCap = 'round'; c.lineJoin = 'round';
+    const wr = 0.34, wb = 1.05, xr = X + wb / 2, xf = X - wb / 2; // facing left (moving left)
+    c.strokeStyle = shadeC('#1f2937', amb); c.lineWidth = Math.max(1, 0.035 * s);
+    [xf, xr].forEach(wx => { c.beginPath(); c.arc(px(wx, z), py(wr, z), wr * s, 0, 7); c.stroke(); for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3 + t * 12; c.beginPath(); c.moveTo(px(wx, z), py(wr, z)); c.lineTo(px(wx, z) + Math.cos(a) * wr * s, py(wr, z) + Math.sin(a) * wr * s); c.stroke(); } });
+    c.strokeStyle = shadeC('#dc2626', amb); c.lineWidth = Math.max(1, 0.05 * s);
+    const bb = [X + 0.05, 0.36], seat = [X + 0.25, 0.92], head = [X - 0.38, 0.95];
+    c.beginPath(); c.moveTo(px(xr, z), py(wr, z)); c.lineTo(px(bb[0], z), py(bb[1], z)); c.lineTo(px(seat[0], z), py(seat[1], z)); c.lineTo(px(xr, z), py(wr, z)); c.moveTo(px(bb[0], z), py(bb[1], z)); c.lineTo(px(head[0], z), py(head[1], z)); c.lineTo(px(xf, z), py(wr, z)); c.moveTo(px(seat[0], z), py(seat[1], z)); c.lineTo(px(head[0], z), py(head[1], z)); c.stroke();
+    // rider
+    const ca = t * 6;
+    const hip = [X + 0.22, 1.0], sh = [X - 0.12, 1.5], hd = [X - 0.22, 1.72];
+    const ped = [bb[0] + Math.cos(ca) * 0.17, bb[1] + Math.sin(ca) * 0.17];
+    const knee = [(hip[0] + ped[0]) / 2 - 0.12, (hip[1] + ped[1]) / 2 + 0.14];
+    c.strokeStyle = shadeC('#1e3a8a', amb); c.lineWidth = Math.max(1.5, 0.11 * s);
+    c.beginPath(); c.moveTo(px(hip[0], z), py(hip[1], z)); c.lineTo(px(knee[0], z), py(knee[1], z)); c.lineTo(px(ped[0], z), py(ped[1], z)); c.stroke();
+    c.strokeStyle = shadeC('#f59e0b', amb); c.lineWidth = Math.max(2, 0.2 * s);
+    c.beginPath(); c.moveTo(px(hip[0], z), py(hip[1], z)); c.lineTo(px(sh[0], z), py(sh[1], z)); c.stroke();
+    c.strokeStyle = shadeC('#5b3a29', amb); c.lineWidth = Math.max(1, 0.07 * s);
+    c.beginPath(); c.moveTo(px(sh[0], z), py(sh[1], z)); c.lineTo(px(head[0] + 0.02, z), py(head[1] + 0.05, z)); c.stroke();
+    c.fillStyle = shadeC('#5b3a29', amb); c.beginPath(); c.arc(px(hd[0], z), py(hd[1], z), 0.12 * s, 0, 7); c.fill();
+    c.fillStyle = shadeC('#16a34a', amb); c.beginPath(); c.arc(px(hd[0], z), py(hd[1] + 0.03, z), 0.13 * s, Math.PI, 0); c.fill();
+    c.restore();
+    if (S_.lights > 0.5) lights.push({ X: head[0] - 0.05, Y: 0.95, Z: z - 0.1, col: [240, 248, 255], I: 1.2, r: 0.05, mv: 2 });
+    return [px(xf - wr, z), py(1.9, z), px(xr + wr, z), py(0, z)];
+  }
+  function paintSubject(c, S_, t) {
+    const z = 0, s = sc(z), X = SUBX + Math.sin(t * 0.8) * 0.01, amb = 1, key = S_.key;
+    const dark = st.scene === 'night' ? 0.62 : st.scene === 'dusk' ? 0.78 : 1;
+    const skin = '#6b4330', skinHi = '#9a6748', skinLo = '#3e2419';
+    const lx = st.scene === 'night' ? -1 : 1; // key light side (night: shop light from the left)
+    c.save();
+    // torso with a kitenge-pattern shirt
+    const shY = 1.47, waist = 0.6;
+    c.beginPath();
+    c.moveTo(px(X - 0.08, z), py(shY + 0.02, z));
+    c.bezierCurveTo(px(X - 0.2, z), py(shY + 0.0, z), px(X - 0.245, z), py(shY - 0.04, z), px(X - 0.25, z), py(shY - 0.16, z));
+    c.lineTo(px(X - 0.235, z), py(waist, z));
+    c.lineTo(px(X + 0.235, z), py(waist, z));
+    c.lineTo(px(X + 0.25, z), py(shY - 0.16, z));
+    c.bezierCurveTo(px(X + 0.245, z), py(shY - 0.04, z), px(X + 0.2, z), py(shY + 0.0, z), px(X + 0.08, z), py(shY + 0.02, z));
+    c.closePath();
+    const tg = c.createLinearGradient(px(X - 0.25, z), 0, px(X + 0.25, z), 0); tg.addColorStop(lx > 0 ? 1 : 0, shadeC('#f97316', dark * 1.05)); tg.addColorStop(lx > 0 ? 0 : 1, shadeC('#c2410c', dark * 0.55)); c.fillStyle = tg; c.fill();
+    c.save(); c.clip();
+    for (let yy = waist; yy < shY + 0.1; yy += 0.08) for (let xx = -0.3; xx < 0.3; xx += 0.08) {
+      const cx = px(X + xx + ((yy * 10 | 0) % 2) * 0.06, z), cy = py(yy, z);
+      c.fillStyle = shadeC('#1e3a8a', dark * (0.75 + 0.25 * lx * xx / 0.3 + 0.25)); c.beginPath(); c.moveTo(cx, cy - 0.027 * s); c.lineTo(cx + 0.027 * s, cy); c.lineTo(cx, cy + 0.027 * s); c.lineTo(cx - 0.027 * s, cy); c.fill();
+      c.fillStyle = shadeC('#fde047', dark * 0.9); c.beginPath(); c.arc(cx + 0.04 * s, cy + 0.04 * s, 0.01 * s, 0, 7); c.fill();
+    }
+    c.restore();
+    // neck
+    c.fillStyle = shadeC(skin, dark * 0.85); c.beginPath(); c.moveTo(px(X - 0.06, z), py(1.58, z)); c.lineTo(px(X - 0.075, z), py(shY - 0.02, z)); c.quadraticCurveTo(px(X, z), py(shY - 0.07, z), px(X + 0.075, z), py(shY - 0.02, z)); c.lineTo(px(X + 0.06, z), py(1.58, z)); c.fill();
+    // collar
+    c.strokeStyle = shadeC('#fde047', dark); c.lineWidth = 0.012 * s; c.beginPath(); c.moveTo(px(X - 0.09, z), py(shY, z)); c.quadraticCurveTo(px(X, z), py(shY - 0.1, z), px(X + 0.09, z), py(shY, z)); c.stroke();
+    // head
+    const hx = X, hy = 1.68, hw = 0.082, hh = 0.112;
+    const hg = c.createRadialGradient(px(hx + lx * 0.03, z), py(hy + 0.03, z), 0.01 * s, px(hx, z), py(hy, z), 0.13 * s);
+    hg.addColorStop(0, shadeC(skinHi, dark)); hg.addColorStop(0.6, shadeC(skin, dark)); hg.addColorStop(1, shadeC(skinLo, dark));
+    c.fillStyle = hg; c.beginPath(); c.ellipse(px(hx, z), py(hy, z), hw * s, hh * s, 0, 0, 7); c.fill();
+    // ears
+    c.fillStyle = shadeC(skin, dark * 0.85); [-1, 1].forEach(sd => { c.beginPath(); c.ellipse(px(hx + sd * hw * 0.98, z), py(hy, z), 0.016 * s, 0.03 * s, 0, 0, 7); c.fill(); });
+    // hair (short)
+    c.fillStyle = '#120c09'; c.beginPath(); c.ellipse(px(hx, z), py(hy + 0.035, z), hw * 1.04 * s, hh * 0.78 * s, 0, Math.PI * 1.03, Math.PI * 1.97); c.fill();
+    c.beginPath(); c.ellipse(px(hx, z), py(hy + 0.04, z), hw * 1.03 * s, 0.03 * s, 0, 0, Math.PI); c.fill();
+    // face features
+    const fy = hy - 0.005;
+    [-1, 1].forEach(sd => {
+      const ex = hx + sd * 0.03;
+      c.fillStyle = '#f4efe6'; c.beginPath(); c.ellipse(px(ex, z), py(fy + 0.012, z), 0.012 * s, 0.006 * s, 0, 0, 7); c.fill();
+      c.fillStyle = '#1b0f0a'; c.beginPath(); c.arc(px(ex, z), py(fy + 0.012, z), 0.0055 * s, 0, 7); c.fill();
+      c.fillStyle = 'rgba(255,255,255,.9)'; c.beginPath(); c.arc(px(ex + 0.002 * lx, z), py(fy + 0.0145, z), 0.0016 * s, 0, 7); c.fill();
+      c.strokeStyle = '#120c09'; c.lineWidth = 0.005 * s; c.beginPath(); c.moveTo(px(ex - 0.014, z), py(fy + 0.027, z)); c.quadraticCurveTo(px(ex, z), py(fy + 0.033, z), px(ex + 0.014, z), py(fy + 0.027, z)); c.stroke();
+    });
+    c.fillStyle = shadeC(skinLo, dark); c.beginPath(); c.ellipse(px(hx - lx * 0.006, z), py(fy - 0.02, z), 0.014 * s, 0.009 * s, 0, 0, 7); c.fill();
+    c.fillStyle = shadeC('#4a2420', dark); c.beginPath(); c.ellipse(px(hx, z), py(fy - 0.05, z), 0.022 * s, 0.008 * s, 0, 0, 7); c.fill();
+    c.fillStyle = shadeC('#7a3b33', dark); c.beginPath(); c.ellipse(px(hx, z), py(fy - 0.054, z), 0.02 * s, 0.005 * s, 0, 0, Math.PI); c.fill();
+    // rim light at night from the shop window
+    if (st.scene === 'night' || st.scene === 'dusk') { c.strokeStyle = 'rgba(255,190,120,.55)'; c.lineWidth = 0.01 * s; c.beginPath(); c.ellipse(px(hx, z), py(hy, z), hw * s, hh * s, 0, Math.PI * 0.6, Math.PI * 1.4); c.stroke(); }
+    c.restore();
+    return [px(X - 0.27, z), py(1.82, z), px(X + 0.27, z), RH];
+  }
+  function paintLeaves(c, S_) {
+    // foliage hanging into the top-right corner, 35 % of the way to the subject
+    const amb = S_.amb, r = rng(3);
+    for (let i = 0; i < 26; i++) {
+      const u = 0.72 + r() * 0.3, v = -0.05 + r() * 0.32, a = r() * 6.3, L = (0.05 + r() * 0.05) * RW;
+      c.save(); c.translate(u * RW, v * RH); c.rotate(a);
+      c.fillStyle = shadeC(i % 5 === 0 ? '#db2777' : (i % 2 ? '#2f6b2f' : '#3f8a3a'), amb * 0.8);
+      c.beginPath(); c.ellipse(0, 0, L, L * 0.38, 0, 0, 7); c.fill(); c.restore();
+    }
+  }
+  /* small colour helpers */
+  function hex(h) { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+  function shadeC(h, k) { const [r, g, b] = hex(h); return `rgb(${clamp(r * k, 0, 255) | 0},${clamp(g * k, 0, 255) | 0},${clamp(b * k, 0, 255) | 0})`; }
+  function mixc(a, b, t) { const A = hex(a), B = hex(b); return `rgb(${A.map((x, i) => (x + (B[i] - x) * t) | 0).join(',')})`; }
+  function hexA(h, a) { const [r, g, b] = hex(h); return `rgba(${r},${g},${b},${a})`; }
+  function rr(c, x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+
+  /* ================= compositing with DoF + motion blur ================= */
+  const pxPerMM = () => RW / S().w;
+  function blurPx(dist) { return blurMM(dist) * pxPerMM(); }
+  // camera rotation (panning) in pixels at time tau (relative to the cyclist)
+  const panV = () => st.pan ? -PJ.F * V_CYC / zc(Z_CYC) : 0;   // px/s image shift caused by rotating the camera
+  let shakeDir = [1, 0.4];
+  const shakePx = tau => shakeOmega() * PJ.F * tau;   // linear drift during exposure
+  window.__prof = {};
+  const PT = (k, t0) => { window.__prof[k] = (window.__prof[k] || 0) + performance.now() - t0; };
+  const small = document.createElement('canvas'), smc = small.getContext('2d'), small2 = document.createElement('canvas'), smc2 = small2.getContext('2d');
+  function drawLayer(paint, opts) {
+    let _t0 = performance.now();
+    const { t, Texp } = opts, n0 = opts.samples;
+    const lc = layer.ctx; lc.setTransform(1, 0, 0, 1, 0, 0); lc.clearRect(0, 0, RW, RH);
+    let bb = paint(lc) || [0, 0, RW, RH];
+    PT('paint', _t0); _t0 = performance.now();
+    // offsets over the exposure window [t - Texp, t]
+    const offs = []; let mnx = 0, mxx = 0, mny = 0, mxy = 0;
+    for (let k = 0; k < n0; k++) {
+      const tau = n0 === 1 ? 0 : -Texp * (k / (n0 - 1));
+      let dx = panV() * tau + shakePx(tau) * shakeDir[0], dy = shakePx(tau) * shakeDir[1];
+      if (opts.vel) dx += opts.vel * tau * PJ.F / zc(opts.z);
+      offs.push([dx, dy]); mnx = Math.min(mnx, dx); mxx = Math.max(mxx, dx); mny = Math.min(mny, dy); mxy = Math.max(mxy, dy);
+    }
+    const sig = blurPx(opts.dist) / 2.6, m = Math.ceil(sig * 3) + 2;
+    // region touched by this layer (bounding box + motion + blur margin), clipped to the frame
+    const x0 = Math.max(0, Math.floor(bb[0] + mnx - m)), y0 = Math.max(0, Math.floor(bb[1] + mny - m));
+    const x1 = Math.min(RW, Math.ceil(bb[2] + mxx + m)), y1 = Math.min(RH, Math.ceil(bb[3] + mxy + m));
+    if (x1 <= x0 || y1 <= y0) return;
+    const w = x1 - x0, h = y1 - y0;
+    const C = comp.ctx;
+    const motion = Math.max(mxx - mnx, mxy - mny);
+    const k = Math.max(sig > 2 ? Math.min(8, sig / 1.6) : 1, motion > 8 ? Math.min(2.5, motion / 8) : 1);
+    const LL = light.ctx;
+    if (k === 1 && offs.length === 1) {
+      [C, LL].forEach((X, q) => { X.globalCompositeOperation = q ? 'destination-out' : 'source-over'; X.filter = sig > 0.35 ? `blur(${sig.toFixed(2)}px)` : 'none'; X.drawImage(layer, x0, y0, w, h, x0, y0, w, h); X.filter = 'none'; X.globalCompositeOperation = 'source-over'; });
+      PT('blur', _t0); return;
+    }
+    // work on a down-sampled copy: motion smear (running average of shifted copies) then defocus blur
+    const sw = Math.max(1, Math.ceil(w / k)), sh = Math.max(1, Math.ceil(h / k));
+    if (small.width < sw + 2 || small.height < sh + 2) { small.width = Math.max(small.width, sw + 2); small.height = Math.max(small.height, sh + 2); }
+    if (small2.width < small.width || small2.height < small.height) { small2.width = small.width; small2.height = small.height; }
+    let src = layer, sx = x0, sy = y0, swd = w, sht = h;
+    if (offs.length > 1) {
+      const a = smc2; a.setTransform(1, 0, 0, 1, 0, 0); a.clearRect(0, 0, sw + 2, sh + 2);
+      offs.forEach(([dx, dy], i) => { a.globalAlpha = 1 / (i + 1); a.drawImage(layer, x0 - dx, y0 - dy, w, h, 0, 0, sw, sh); });
+      a.globalAlpha = 1; src = small2; sx = 0; sy = 0; swd = sw; sht = sh;
+    }
+    PT('acc', _t0); _t0 = performance.now();
+    smc.setTransform(1, 0, 0, 1, 0, 0); smc.clearRect(0, 0, sw + 2, sh + 2);
+    smc.filter = `blur(${Math.max(sig / k, k > 1.5 ? 0.6 : 0).toFixed(2)}px)`; smc.drawImage(src, sx, sy, swd, sht, 0, 0, sw, sh); smc.filter = 'none';
+    C.imageSmoothingEnabled = true; C.imageSmoothingQuality = 'high'; C.drawImage(small, 0, 0, sw, sh, x0, y0, w, h);
+    LL.globalCompositeOperation = 'destination-out'; LL.drawImage(small, 0, 0, sw, sh, x0, y0, w, h); LL.globalCompositeOperation = 'source-over';   // objects hide the lights behind them
+    PT('blur', _t0);
+  }
+  function samplesFor(maxPx) { const k = maxPx > 8 ? Math.min(2.5, maxPx / 8) : 1; return clamp(Math.ceil(maxPx / k / 1.4), 1, 24); }
+  // light buffer: linear, 255 = LMAX x mid-exposure; point-light brightness relative to the ambient scene
+  const LMAX = 3, BULBS = [[255, 214, 150], [255, 170, 90], [255, 120, 170], [140, 220, 255]];
+  const lightK = () => Math.pow(2, 10.5 - SC().EV) * 0.5 * SC().lights;
+  function drawLights(list, t, Texp) {
+    const L = light.ctx; L.globalCompositeOperation = 'lighter';
+    const poly = N() >= 2.8;
+    list.forEach(p => {
+      const d = zc(p.Z); if (d <= 0.2) return;
+      const core = Math.max(1.4, p.r * PJ.F / d * 2), D = Math.max(core, blurPx(d)), R = D / 2;
+      const I = p.I * lightK() / LMAX * Math.min(1, (core / D) ** 2);      // the same energy spread over a larger disc
+      const x = px(p.X, p.Z), y = py(p.Y, p.Z);
+      const v = lightVel(p), shx = shakeOmega() * PJ.F * shakeDir[0], shy = shakeOmega() * PJ.F * shakeDir[1];
+      const ex = x - (v + shx) * Texp, ey = y - shy * Texp, len = Math.hypot(ex - x, ey - y);
+      const col = (a) => `rgba(${p.col[0]},${p.col[1]},${p.col[2]},${clamp(a, 0, 1)})`;
+      if (len > D * 1.5) {      // a moving light during the exposure draws a trail
+        L.strokeStyle = col(I * D / len); L.lineWidth = D; L.lineCap = 'round'; L.beginPath(); L.moveTo(x, y); L.lineTo(ex, ey); L.stroke();
+        return;
+      }
+      L.fillStyle = col(I);
+      if (poly && R > 4) { L.beginPath(); for (let i = 0; i < 6; i++) { const an = i * Math.PI / 3 + 0.3; L.lineTo(x + R * Math.cos(an), y + R * Math.sin(an)); } L.closePath(); L.fill(); }
+      else { L.beginPath(); L.arc(x, y, R, 0, 7); L.fill(); }
+      if (R <= 5) { const g = L.createRadialGradient(x, y, 0, x, y, R * 5 + 5); g.addColorStop(0, col(I * 0.18)); g.addColorStop(1, col(0)); L.fillStyle = g; L.beginPath(); L.arc(x, y, R * 5 + 5, 0, 7); L.fill(); }
+    });
+    L.globalCompositeOperation = 'source-over';
+  }
+  function lightVel(p) { let v = panV(); if (p.mv === 1) v += V_MAT * PJ.F / zc(Z_MAT); if (p.mv === 2) v += V_CYC * PJ.F / zc(Z_CYC); return v; }
+  function motionPxLight(p, Texp) { return Math.abs(lightVel(p)) * Texp + shakeOmega() * PJ.F * Texp; }
+
+  /* ================= colour & pixel pipeline ================= */
+  const LIN = new Float32Array(256); for (let i = 0; i < 256; i++) { const c = i / 255; LIN[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+  const TONE = new Uint8ClampedArray(4097); for (let i = 0; i <= 4096; i++) { let x = i / 1024; // 0..4 linear
+    x = x < 0.8 ? x : 0.8 + 0.2 * (1 - Math.exp(-(x - 0.8) / 0.2)); const v = x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055; TONE[i] = Math.round(clamp(v, 0, 1) * 255); }
+  // black-body approximation (Tanner Helland), returns linear-ish RGB normalised to G
+  function kelvin(K) { const t = K / 100; let r, g, b; if (t <= 66) { r = 255; g = 99.47 * Math.log(t) - 161.12; b = t <= 19 ? 0 : 138.52 * Math.log(t - 10) - 305.04; } else { r = 329.7 * Math.pow(t - 60, -0.1332); g = 288.12 * Math.pow(t - 60, -0.0755); b = 255; } const lr = LIN[clamp(Math.round(r), 0, 255)], lg = LIN[clamp(Math.round(g), 0, 255)], lb = LIN[clamp(Math.round(b), 0, 255)]; return [lr / lg, 1, lb / lg]; }
+  const NOISE = new Float32Array(1 << 19); { for (let i = 0; i < NOISE.length; i += 2) { const u = Math.random() || 1e-9, v = Math.random(); const m = Math.sqrt(-2 * Math.log(u)); NOISE[i] = m * Math.cos(6.2832 * v); NOISE[i + 1] = m * Math.sin(6.2832 * v); } }
+  const hist = { l: new Uint32Array(64), r: new Uint32Array(64), g: new Uint32Array(64), b: new Uint32Array(64), clip: 0 };
+  const camWB = () => st.wbAuto ? Math.round(SC().K * 0.8 + 5200 * 0.2) : st.wb;
+  function pixelPass(tNow) {
+    const sd = SC(), E = Math.pow(2, delta());
+    const ill = kelvin(sd.K), wbc = kelvin(camWB()), dayL = kelvin(5600);
+    const gR = ill[0] / wbc[0] * E, gG = E, gB = ill[2] / wbc[2] * E;
+    const K = LMAX;
+    const lR = dayL[0] / wbc[0] * E * K / 255, lG = E * K / 255, lB = dayL[2] / wbc[2] * E * K / 255;   // light buffer is stored linearly
+    const base = comp.ctx.getImageData(0, 0, RW, RH).data, lt = light.ctx.getImageData(0, 0, RW, RH).data, o = imgOut.data;
+    // noise: photons per output pixel at ISO 100 for a linear value of 1
+    const P0 = 60000 * S().area, k = ISO() / (100 * P0) * Math.pow(2, Math.max(0, -0)) , rd = 4 * k;
+    const noiseOn = ISO() >= 200 || S().area < 0.5;
+    const off = (Math.random() * (NOISE.length - 4 * RW)) | 0, mask = NOISE.length - 1;
+    const blinkOn = st.blink && (Math.floor(tNow * 3) % 2 === 0);
+    hist.l.fill(0); hist.r.fill(0); hist.g.fill(0); hist.b.fill(0); let clip = 0;
+    for (let i = 0, p = 0; i < o.length; i += 4, p++) {
+      const la = lt[i + 3] * (1 / 255);   // getImageData is un-premultiplied: weight by alpha
+      let r = LIN[base[i]] * gR + lt[i] * la * lR, g = LIN[base[i + 1]] * gG + lt[i + 1] * la * lG, b = LIN[base[i + 2]] * gB + lt[i + 2] * la * lB;
+      if (noiseOn) {
+        const j = (off + p * 2) & mask, nl = NOISE[j], nc = NOISE[(j + 1) & mask], nc2 = NOISE[(j + 7919) & mask];
+        const y = 0.3 * r + 0.6 * g + 0.1 * b, sg = Math.sqrt(Math.max(y, 0) * k + rd * rd);
+        r += sg * (0.75 * nl + 0.6 * nc); g += sg * (0.8 * nl + 0.35 * nc2); b += sg * (0.75 * nl - 0.6 * nc);
+      }
+      let R = TONE[r <= 0 ? 0 : r >= 4 ? 4096 : (r * 1024) | 0], G = TONE[g <= 0 ? 0 : g >= 4 ? 4096 : (g * 1024) | 0], B = TONE[b <= 0 ? 0 : b >= 4 ? 4096 : (b * 1024) | 0];
+      const isClip = R >= 254 || G >= 254 || B >= 254; if (isClip) clip++;
+      if (blinkOn && isClip) { R = 255; G = 0; B = 60; }
+      o[i] = R; o[i + 1] = G; o[i + 2] = B; o[i + 3] = 255;
+      if ((p & 3) === 0) { hist.l[(0.2126 * R + 0.7152 * G + 0.0722 * B) >> 2]++; hist.r[R >> 2]++; hist.g[G >> 2]++; hist.b[B >> 2]++; }
+    }
+    hist.clip = clip / (RW * RH);
+    octx.putImageData(imgOut, 0, 0);
+  }
+
+  /* ================= frame render ================= */
+  let simT = 0, lastInfo = {}, boxes = {};
+  function render(t) {
+    setProj();
+    const sd = SC(), Texp = T();
+    const C = comp.ctx, L = light.ctx;
+    C.setTransform(1, 0, 0, 1, 0, 0); L.setTransform(1, 0, 0, 1, 0, 0);
+    C.clearRect(0, 0, RW, RH); L.clearRect(0, 0, RW, RH);
+    const lights = [];
+    // estimate motion extents to choose sample counts
+    const pv = panV(), panRate = Math.abs(pv), sh = shakeOmega() * PJ.F;
+    const staticPx = (panRate + sh) * Texp;
+    const matPx = (Math.abs(V_MAT * PJ.F / zc(Z_MAT) + pv) + sh) * Texp;
+    const cycPx = (Math.abs(V_CYC * PJ.F / zc(Z_CYC) + pv) + sh) * Texp;
+    const subjPx = (Math.abs(0.012 * PJ.F / zc(0) + pv) + sh) * Texp;
+    const sS = samplesFor(staticPx);
+    // background (sky + facade); its window/sign glow goes to the light layer, blurred the same way
+    const facDist = zc(Z_FAC);
+    drawLayer(c => { paintSky(c, sd); paintFacade(c, L, sd, t, lights); }, { dist: facDist, t, Texp, samples: sS });
+    drawLights(lights.splice(0), t, Texp);
+    drawLayer(c => (paintGround(c, 14, 25, sd), [0, py(0.2, 25), RW, py(0, 14)]), { dist: zc(19), t, Texp, samples: sS });
+    drawLayer(c => (paintGround(c, 7, 14, sd), [0, py(0.2, 14), RW, py(0, 7)]), { dist: zc(10.5), t, Texp, samples: sS });
+    drawLayer(c => (paintGround(c, -1, 7, sd), [0, py(0.2, 7), RW, RH]), { dist: zc(5), t, Texp, samples: sS });
+    drawLayer(c => (paintLampPosts(c, sd, lights), [0, py(8.3, Z_LAMP), RW, py(0, Z_LAMP)]), { dist: zc(Z_LAMP), t, Texp, samples: sS });
+    drawLights(lights.splice(0), t, Texp);
+    const mX = moverX(t, V_MAT, Z_MAT);
+    drawLayer(c => (boxes.mat = paintMatatu(c, mX, sd, lights)), { dist: zc(Z_MAT), t, Texp, samples: samplesFor(matPx), vel: V_MAT, z: Z_MAT });
+    drawLights(lights.splice(0), t, Texp);
+    const cX = moverX(t, V_CYC, Z_CYC);
+    drawLayer(c => (boxes.cyc = paintCyclist(c, cX, sd, lights, t)), { dist: zc(Z_CYC), t, Texp, samples: samplesFor(cycPx), vel: V_CYC, z: Z_CYC });
+    drawLights(lights.splice(0), t, Texp);
+    drawLayer(c => (boxes.sub = paintSubject(c, sd, t)), { dist: zc(0), t, Texp, samples: samplesFor(subjPx), vel: 0.012, z: 0 });
+    if (st.fg && PJ.dS > 0.5) drawLayer(c => (paintLeaves(c, sd), [RW * 0.55, 0, RW, RH * 0.5]), { dist: PJ.dS * 0.35, t, Texp, samples: sS });
+    let _q = performance.now();
+    pixelPass(t); PT('pixel', _q);
+    overlays();
+    // info for HUD/challenges (fractions of frame width)
+    const cycBlur = cycPx / RW;
+    const bgMotion = staticPx / RW;
+    const cx = (boxes.cyc[0] + boxes.cyc[2]) / 2;
+    lastInfo = { cycBlur, bgMotion, subjBlur: subjPx / RW, subjDof: blurMM(zc(0)) / S().w, bgDof: blurMM(facDist) / S().w, cycIn: cx > RW * 0.05 && cx < RW * 0.95, subjPx: subjPx + blurPx(zc(0)) };
+  }
+  function overlays() {
+    const c = octx;
+    if (st.thirds) { c.strokeStyle = 'rgba(255,255,255,.45)'; c.lineWidth = 1; for (let i = 1; i < 3; i++) { c.beginPath(); c.moveTo(RW * i / 3, 0); c.lineTo(RW * i / 3, RH); c.moveTo(0, RH * i / 3); c.lineTo(RW, RH * i / 3); c.stroke(); } }
+    // AF point
+    const fx = focusPt ? focusPt[0] : px(SUBX, 0), fy = focusPt ? focusPt[1] : py(1.69, 0);
+    const sharp = blurMM(st.fd) * 0 + (focusOK() ? 1 : 0);
+    c.strokeStyle = sharp ? 'rgba(74,222,128,.95)' : 'rgba(255,255,255,.6)'; c.lineWidth = 1.5; const a = Math.max(10, RW * 0.025);
+    c.beginPath(); [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy]) => { c.moveTo(fx + sx * a, fy + sy * a * 0.6); c.lineTo(fx + sx * a, fy + sy * a); c.lineTo(fx + sx * a * 0.6, fy + sy * a); }); c.stroke();
+  }
+  let focusPt = null;
+  const focusOK = () => { const d = dof(); const target = focusTarget(); return target >= d.near && target <= d.far; };
+  let focusTargetDist = null;
+  const focusTarget = () => focusTargetDist ?? subjDist();
+
+  /* ================= UI ================= */
+  const outN = $('#cN output'), outT = $('#cT output'), outI = $('#cISO output');
+  function sync() {
+    if (st.mode !== 'M') autoExpose();
+    if (st.af && focusTargetDist === null) st.fd = subjDist();
+    if (st.af && focusTargetDist !== null) st.fd = focusTargetDist;
+    $('#N').value = st.Ni; $('#T').value = st.Ti; $('#ISO').value = st.ISOi; $('#FL').value = st.FLi;
+    outN.textContent = 'f/' + N(); outT.textContent = fmtT(TS[st.Ti]); outI.textContent = ISO();
+    $('#cEC output').textContent = (st.EC > 0 ? '+' : '') + (Math.round(st.EC * 3) / 3).toFixed(1) + ' EV';
+    $('#FL').closest('.ctl').querySelector('output').textContent = f() + ' mm' + (S().k !== 1 ? ` (≈${Math.round(f() * S().k)} eq.)` : '');
+    $('#FD').value = fdToSlider(st.fd); $('#FD').closest('.ctl').querySelector('output').textContent = st.fd > 99 ? '∞' : st.fd.toFixed(st.fd < 10 ? 2 : 1) + ' m';
+    $('#WB').value = camWB(); $('#WB').closest('.ctl').querySelector('output').textContent = camWB() + ' K' + (st.wbAuto ? ' (auto)' : '');
+    $('#cN').classList.toggle('auto', st.mode === 'Tv' || st.mode === 'P'); $('#cT').classList.toggle('auto', st.mode === 'Av' || st.mode === 'P');
+    $('#cEC').style.opacity = st.mode === 'M' ? 0.45 : 1;
+    $('#cBulb').style.display = TS[st.Ti] === 'B' ? '' : 'none'; $('#cBulb output').textContent = st.bulb + ' s';
+    document.querySelectorAll('input[type=range]').forEach(r => r.dispatchEvent(new Event('sl-fill')));
+    document.querySelectorAll('input[type=range]').forEach(r => { const min = +r.min || 0, max = +r.max || 100; r.style.setProperty('--p', ((r.value - min) / (max - min) * 100) + '%'); });
+    updPanels();
+  }
+  const fdToSlider = d => clamp(Math.log(d / 0.3) / Math.log(100 / 0.3), 0, 1);
+  const sliderToFd = v => v >= 0.999 ? 1e6 : 0.3 * Math.pow(100 / 0.3, v);
+  $('#mode').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; st.mode = b.dataset.m; $('#mode').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); sync(); });
+  $('#N').addEventListener('input', e => { if (st.mode === 'Tv' || st.mode === 'P') { if (st.mode === 'P') { st.mode = 'Av'; $('#mode').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.m === 'Av')); } else { st.mode = 'Av'; $('#mode').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.m === 'Av')); } } st.Ni = +e.target.value; sync(); });
+  $('#T').addEventListener('input', e => { if (st.mode === 'Av' || st.mode === 'P') { st.mode = 'Tv'; $('#mode').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.m === 'Tv')); } st.Ti = +e.target.value; sync(); });
+  $('#bulb').addEventListener('input', e => { st.bulb = +e.target.value; sync(); });
+  $('#ISO').addEventListener('input', e => { st.ISOi = +e.target.value; sync(); });
+  $('#EC').addEventListener('input', e => { st.EC = Math.round(+e.target.value * 3) / 3; sync(); });
+  $('#FL').addEventListener('input', e => { st.FLi = +e.target.value; focusPt = null; if (st.af) focusTargetDist = null; sync(); });
+  $('#FD').addEventListener('input', e => { st.af = false; $('#af').checked = false; st.fd = sliderToFd(+e.target.value); focusPt = null; sync(); });
+  $('#af').addEventListener('change', e => { st.af = e.target.checked; focusTargetDist = null; focusPt = null; sync(); });
+  $('#afBtn').addEventListener('click', () => { st.af = true; $('#af').checked = true; focusTargetDist = null; focusPt = null; sync(); });
+  $('#WB').addEventListener('input', e => { st.wbAuto = false; st.wb = +e.target.value; $('#wbchips').querySelectorAll('button').forEach(b => b.classList.remove('on')); sync(); });
+  $('#wbchips').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $('#wbchips').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); if (b.dataset.k === 'auto') st.wbAuto = true; else { st.wbAuto = false; st.wb = +b.dataset.k; } sync(); });
+  $('#scene').addEventListener('change', e => { st.scene = e.target.value; sync(); });
+  $('#sensor').addEventListener('change', e => { st.sensor = e.target.value; focusTargetDist = null; sync(); });
+  $('#nd').addEventListener('change', e => { st.nd = +e.target.value; sync(); });
+  ['keep', 'tripod', 'is', 'pan', 'fg', 'thirds', 'blink'].forEach(k => $('#' + k).addEventListener('change', e => { st[k] = e.target.checked; if (k === 'keep') focusTargetDist = null; sync(); }));
+  // tap to focus
+  cv.addEventListener('click', e => {
+    const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * RW, y = (e.clientY - r.top) / r.height * RH;
+    const inB = b => b && x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3];
+    let d, what;
+    if (inB(boxes.sub)) { d = subjDist(); what = 'subject'; }
+    else if (inB(boxes.cyc)) { d = zc(Z_CYC); what = 'cyclist'; }
+    else if (inB(boxes.mat)) { d = zc(Z_MAT); what = 'matatu'; }
+    else if (st.fg && x > RW * 0.7 && y < RH * 0.3) { d = PJ.dS * 0.35; what = 'leaves'; }
+    else if (y > py(0, Z_FAC)) { // ground: invert the projection
+      const zz = (CAMY * PJ.F) / Math.max(1, y - PJ.cy); d = zz; what = 'road'; }
+    else { d = zc(Z_FAC); what = 'buildings'; }
+    focusTargetDist = d; st.fd = d; st.af = true; $('#af').checked = true; focusPt = [x, y];
+    SL.toast(`Focused on the ${what}: ${d.toFixed(1)} m`, 'ok', 1600); sync();
+  });
+
+  /* ================= panels ================= */
+  const histC = SL.canvas($('#hist')), meterC = SL.canvas($('#meterCv')), dofC = SL.canvas($('#dofCv'));
+  function drawHist() {
+    const { ctx, w, h } = histC; ctx.clearRect(0, 0, w, h);
+    let mx = 1; for (let i = 1; i < 63; i++) mx = Math.max(mx, hist.l[i], hist.r[i], hist.g[i], hist.b[i]);
+    const draw = (arr, col, fill) => { ctx.beginPath(); ctx.moveTo(0, h); for (let i = 0; i < 64; i++) ctx.lineTo(i / 63 * w, h - Math.min(1, arr[i] / mx) * (h - 6)); ctx.lineTo(w, h); ctx.closePath(); if (fill) { ctx.fillStyle = col; ctx.fill(); } else { ctx.strokeStyle = col; ctx.lineWidth = 1.2; ctx.stroke(); } };
+    ctx.globalCompositeOperation = 'lighter'; draw(hist.r, 'rgba(239,68,68,.35)', 1); draw(hist.g, 'rgba(34,197,94,.35)', 1); draw(hist.b, 'rgba(59,130,246,.35)', 1); ctx.globalCompositeOperation = 'source-over';
+    draw(hist.l, 'rgba(255,255,255,.9)', 0);
+    ctx.strokeStyle = 'rgba(255,255,255,.1)'; for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.moveTo(i * w / 4, 0); ctx.lineTo(i * w / 4, h); ctx.stroke(); }
+    ctx.fillStyle = '#93a1bd'; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText('shadows', 4, 11); ctx.textAlign = 'right'; ctx.fillText(`highlights${hist.clip > 0.002 ? ' · clipped ' + (hist.clip * 100).toFixed(1) + '%' : ''}`, w - 4, 11);
+  }
+  let needle = 0;
+  function drawMeter(dt) {
+    const { ctx, w, h } = meterC; ctx.clearRect(0, 0, w, h);
+    const d = clamp(delta(), -3.6, 3.6); needle += (d - needle) * Math.min(1, dt * 8);
+    const cx = w / 2, cy = h + 30, R = h + 10, a0 = -0.62, a1 = 0.62;
+    const ang = v => a0 + (v + 3) / 6 * (a1 - a0);
+    ctx.lineWidth = 6; [[-3, -1, '#3b82f6'], [-1, 1, '#22c55e'], [1, 3, '#ef4444']].forEach(([s, e, c]) => { ctx.strokeStyle = c; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.arc(cx, cy, R - 14, ang(s) - Math.PI / 2, ang(e) - Math.PI / 2); ctx.stroke(); }); ctx.globalAlpha = 1;
+    ctx.fillStyle = '#93a1bd'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+    for (let v = -3; v <= 3; v += 1 / 3) { const a = ang(v) - Math.PI / 2, maj = Math.abs(v - Math.round(v)) < 0.01; ctx.strokeStyle = '#93a1bd'; ctx.lineWidth = maj ? 1.6 : 1; ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * (R - 8), cy + Math.sin(a) * (R - 8)); ctx.lineTo(cx + Math.cos(a) * (R - (maj ? 22 : 16)), cy + Math.sin(a) * (R - (maj ? 22 : 16))); ctx.stroke(); if (maj) ctx.fillText((v > 0 ? '+' : '') + Math.round(v), cx + Math.cos(a) * (R + 2), cy + Math.sin(a) * (R + 2)); }
+    const a = ang(clamp(needle, -3.3, 3.3)) - Math.PI / 2; ctx.strokeStyle = '#f472b6'; ctx.lineWidth = 2.5; ctx.shadowColor = '#f472b6'; ctx.shadowBlur = 8; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * (R - 6), cy + Math.sin(a) * (R - 6)); ctx.stroke(); ctx.shadowBlur = 0;
+    ctx.fillStyle = '#e6ecf7'; ctx.font = '600 11px Inter, sans-serif'; ctx.textAlign = 'left'; ctx.fillText('Light meter (stops)', 8, 14);
+    ctx.textAlign = 'right'; ctx.fillStyle = Math.abs(d) <= 0.34 ? '#4ade80' : '#fbbf24'; ctx.fillText(Math.abs(d) <= 0.17 ? 'correct' : d > 0 ? 'over ' + d.toFixed(1) : 'under ' + (-d).toFixed(1), w - 8, 14);
+  }
+  function drawDof() {
+    const { ctx, w, h } = dofC; ctx.clearRect(0, 0, w, h);
+    const d = dof(), lo = 0.5, hi = 120, X = m => 14 + Math.log(clamp(m, lo, hi) / lo) / Math.log(hi / lo) * (w - 40);
+    const y = h * 0.58;
+    ctx.strokeStyle = '#2a3a5c'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(14, y); ctx.lineTo(w - 26, y); ctx.stroke();
+    const xn = X(d.near), xf = isFinite(d.far) ? X(d.far) : w - 26;
+    const g = ctx.createLinearGradient(xn, 0, xf, 0); g.addColorStop(0, 'rgba(34,197,94,.15)'); g.addColorStop(0.5, 'rgba(34,197,94,.45)'); g.addColorStop(1, 'rgba(34,197,94,.15)');
+    ctx.fillStyle = g; ctx.fillRect(xn, y - 16, Math.max(2, xf - xn), 32);
+    ctx.fillStyle = '#5f6d8a'; ctx.font = '9.5px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+    [0.5, 1, 2, 5, 10, 20, 50, 100].forEach(m => { ctx.fillRect(X(m) - 0.5, y + 16, 1, 5); ctx.fillText(m + 'm', X(m), y + 31); });
+    ctx.fillText('∞', w - 14, y + 4);
+    const mark = (m, lab, col, up) => { const x = X(m); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 7); ctx.fill(); ctx.fillText(lab, x, up ? y - 22 : y - 22); };
+    mark(subjDist(), 'subject', '#f472b6', 1); if (zc(Z_CYC) < hi) mark(zc(Z_CYC), 'bike', '#fbbf24'); mark(zc(Z_FAC), 'shops', '#93c5fd');
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; const xs = X(Math.min(st.fd, hi)); ctx.beginPath(); ctx.moveTo(xs, y - 20); ctx.lineTo(xs, y + 14); ctx.stroke();
+    ctx.fillStyle = '#e6ecf7'; ctx.textAlign = 'left'; ctx.font = '600 11px Inter, sans-serif'; ctx.fillText(`focus ${st.fd > 99 ? '∞' : st.fd.toFixed(2) + ' m'} · c = ${S().c} mm`, 8, 13);
+    const fm = v => !isFinite(v) ? '∞' : v < 10 ? v.toFixed(2) + ' m' : v.toFixed(1) + ' m';
+    $('#dNear').textContent = fm(d.near); $('#dFar').textContent = fm(d.far); $('#dTot').textContent = isFinite(d.far) ? (d.far - d.near < 1 ? ((d.far - d.near) * 100).toFixed(1) + ' cm' : fm(d.far - d.near)) : '∞'; $('#dH').textContent = fm(d.H);
+  }
+  function updPanels() {
+    // exposure triangle
+    const tri = $('#tri'); const P = [[160, 22], [30, 196], [290, 196]];
+    const nA = st.Ni / 8, nT = st.Ti >= 13 ? 1 : st.Ti / 12, nI = st.ISOi / 7;
+    const lerpP = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    const pa = lerpP(P[0], P[1], nA), pt = lerpP(P[1], P[2], nT), pi = lerpP(P[2], P[0], nI);
+    tri.innerHTML = `<polygon points="${P.map(p => p.join(',')).join(' ')}" fill="rgba(244,114,182,.06)" stroke="#2a3a5c" stroke-width="2"/>
+      <polygon points="${[pa, pt, pi].map(p => p.join(',')).join(' ')}" fill="rgba(244,114,182,.2)" stroke="#f472b6" stroke-width="1.5"/>
+      ${[[pa, 'f/' + N(), '#f472b6'], [pt, fmtT(TS[st.Ti]), '#fbbf24'], [pi, 'ISO ' + ISO(), '#22d3ee']].map(([p, l, c]) => `<circle cx="${p[0]}" cy="${p[1]}" r="5" fill="${c}"/><text x="${p[0]}" y="${p[1] - 9}" fill="${c}" font-size="11" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">${l}</text>`).join('')}
+      <text x="70" y="96" fill="#93a1bd" font-size="10" text-anchor="middle" transform="rotate(-53 70 96)">APERTURE: f/1.4 → f/22 · deeper DoF</text>
+      <text x="160" y="214" fill="#93a1bd" font-size="10" text-anchor="middle">SHUTTER: 1/4000 → 1 s · more motion blur</text>
+      <text x="250" y="96" fill="#93a1bd" font-size="10" text-anchor="middle" transform="rotate(53 250 96)">ISO: 100 → 12800 · more noise</text>
+      <text x="160" y="140" fill="#e6ecf7" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">EV₁₀₀ ${camEV().toFixed(1)}</text>`;
+    $('#hEV').textContent = (SC().EV - st.nd).toFixed(0) + (st.nd ? ` (ND −${st.nd})` : '');
+  }
+
+  /* ================= viewfinder strip ================= */
+  function vf() {
+    const d = delta(), dd = clamp(Math.round(d * 3) / 3, -3, 3);
+    let sc = ''; for (let v = -3; v <= 3.001; v += 1 / 3) { const m = Math.abs(v - Math.round(v)) < 0.01; sc += Math.abs(v - dd) < 0.17 ? '▲' : (m ? (Math.round(v) === 0 ? '0' : '|') : '·'); }
+    const shakeWarn = !st.tripod && T() > 1 / (f() * S().k) * (st.is ? 8 : 1);
+    $('#vf').innerHTML = `<span>${st.mode}</span><span>${fmtT(TS[st.Ti])}</span><span>F${N()}</span><span>ISO ${ISO()}</span><span class="scale">−${sc}+</span><span>${f()}mm</span>${shakeWarn ? '<span class="warn">SHAKE</span>' : ''}${Math.abs(d) > 3 ? `<span class="warn">${d > 0 ? 'OVER' : 'UNDER'}</span>` : ''}`;
+    $('#hDelta').textContent = (d > 0 ? '+' : '') + d.toFixed(1);
+    $('#hBlur').textContent = lastInfo.subjPx ? lastInfo.subjPx.toFixed(1) : '0';
+  }
+
+  /* ================= capture & challenges ================= */
+  const CH = {
+    freeze: { t: 'Freeze the cyclist', icon: 'bike', d: 'Take a photo with the cyclist in frame and frozen (motion blur ≤ 0.2 % of the frame width), exposure within ±1 stop. Hint: think 1/500 s or faster, then fix the exposure with aperture or ISO.' },
+    portrait: { t: 'Creamy-background portrait', icon: 'user-round', d: 'Make the subject sharp (inside the depth of field) with a background blur disc of at least 1.5 % of the frame width, and exposure within ±0.7 stop. Long lens, wide aperture.' },
+    night: { t: 'Night street, low noise', icon: 'moon-star', d: 'Switch the light to Night street. Expose correctly (±0.7 stop) with ISO 3200 or lower, keeping the subject sharp (blur ≤ 0.15 % of the frame) without a tripod. Fast lenses help.' },
+    panning: { t: 'Panning shot', icon: 'move-horizontal', d: 'Tick “Pan with the cyclist”. Keep the cyclist sharp (≤ 0.3 %) while the background streaks by at least 2 % of the frame width, exposure within ±1 stop. In bright light you may need an ND filter.' },
+  };
+  let chal = null;
+  $('#chal').innerHTML = Object.entries(CH).map(([k, c]) => `<div class="card" data-k="${k}"><h4><i data-lucide="${c.icon}"></i>${c.t}<span class="led" style="margin-left:auto" id="led-${k}"></span></h4><p>${c.d}</p></div>`).join('');
+  $('#chal').addEventListener('click', e => { const c = e.target.closest('.card'); if (!c) return; chal = c.dataset.k; $('#chal').querySelectorAll('.card').forEach(x => x.classList.toggle('on', x === c)); $('#cTitle').textContent = CH[chal].t; $('#cDesc').textContent = CH[chal].d; $('#cChecks').innerHTML = ''; if (chal === 'night' && st.scene !== 'night') { st.scene = 'night'; $('#scene').value = 'night'; sync(); } document.querySelector('.cstage').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+  function evaluate(info, k) {
+    const d = delta(), pc = v => (v * 100).toFixed(2) + ' %';
+    const inDof = focusOK() || (blurMM(subjDist()) <= S().c);
+    if (k === 'freeze') return [[`Cyclist in frame`, info.cycIn], [`Cyclist blur ${pc(info.cycBlur)} (≤ 0.20 %)`, info.cycBlur <= 0.002], [`Exposure ${d.toFixed(1)} stops (±1)`, Math.abs(d) <= 1]];
+    if (k === 'portrait') return [[`Subject in focus (blur disc ${(blurMM(subjDist()) * 1000).toFixed(0)} µm ≤ c = ${S().c * 1000} µm)`, blurMM(subjDist()) <= S().c], [`Background blur ${pc(info.bgDof)} of frame (≥ 1.5 %)`, info.bgDof >= 0.015], [`Exposure ${d.toFixed(1)} stops (±0.7)`, Math.abs(d) <= 0.7]];
+    if (k === 'night') return [[`Night street scene`, st.scene === 'night'], [`ISO ${ISO()} (≤ 3200)`, ISO() <= 3200], [`No tripod`, !st.tripod], [`Subject blur ${pc(info.subjBlur)} (≤ 0.15 %)`, info.subjBlur <= 0.0015], [`Subject in focus`, blurMM(subjDist()) <= S().c * 1.5], [`Exposure ${d.toFixed(1)} stops (±0.7)`, Math.abs(d) <= 0.7]];
+    if (k === 'panning') return [[`Panning on`, st.pan], [`Cyclist blur ${pc(info.cycBlur)} (≤ 0.30 %)`, info.cycBlur <= 0.003], [`Background streak ${pc(info.bgMotion)} (≥ 2 %)`, info.bgMotion >= 0.02], [`Exposure ${d.toFixed(1)} stops (±1)`, Math.abs(d) <= 1]];
+    return [];
+  }
+  let shots = 0;
+  $('#shoot').addEventListener('click', () => {
+    shutterSound();
+    const fl = $('#flashw'); fl.style.transition = 'none'; fl.style.opacity = 0.7; requestAnimationFrame(() => { fl.style.transition = 'opacity .35s'; fl.style.opacity = 0; });
+    // render a frame exactly now and store it
+    render(simT);
+    const th = document.createElement('div'); th.className = 'shot';
+    const c = document.createElement('canvas'); c.width = 360; c.height = 240; c.getContext('2d').drawImage(cv, 0, 0, 360, 240);
+    th.appendChild(c);
+    const d = delta();
+    th.insertAdjacentHTML('beforeend', `<b>#${++shots}</b> ${fmtT(TS[st.Ti])} · f/${N()} · ISO ${ISO()} · ${f()} mm<br>${SC().n} · ${(d > 0 ? '+' : '') + d.toFixed(1)} EV${chal ? '' : ''}`);
+    const strip = $('#strip'); if (strip.firstElementChild && !strip.firstElementChild.querySelector('canvas')) strip.innerHTML = '';
+    strip.prepend(th); while (strip.children.length > 8) strip.lastElementChild.remove();
+    if (chal) {
+      const r = evaluate(lastInfo, chal), ok = r.every(x => x[1]);
+      $('#cChecks').innerHTML = r.map(([t, o]) => `<li class="${o ? 'ok' : ''}"><span class="led ${o ? 'on' : 'bad'}"></span>${t}</li>`).join('');
+      th.insertAdjacentHTML('beforeend', `<br><span style="color:${ok ? 'var(--ok)' : 'var(--warn)'}">${CH[chal].t}: ${ok ? 'passed' : 'not yet'}</span>`);
+      if (ok) { SL.toast(`<b>${CH[chal].t}</b>: challenge complete!`, 'ok', 5000); $('#led-' + chal).className = 'led on'; }
+      else SL.toast(`${CH[chal].t}: ${r.filter(x => !x[1]).length} check(s) not met. See the Experiments tab.`, 'warn');
+    }
+  });
+  function shutterSound() { const ac = SL.audio(); if (!ac) return; const t = ac.currentTime; [0, Math.min(0.25, T())].forEach((dt, i) => { const b = ac.createBuffer(1, 2205, 44100), d = b.getChannelData(0); for (let j = 0; j < d.length; j++) d[j] = (Math.random() * 2 - 1) * Math.exp(-j / 220); const s = ac.createBufferSource(), g = ac.createGain(), bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = i ? 2500 : 1800; g.gain.value = 0.35; s.buffer = b; s.connect(bp).connect(g).connect(ac.destination); s.start(t + dt + 0.001); }); }
+
+  /* ================= loop ================= */
+  let acc_t = 0, frames = 0, slow = false, slowN = 0, fastN = 0;
+  // adaptive live-view resolution: keep the frame rate usable on slower devices
+  function adapt(ms) {
+    if (ms > 70) { slowN++; fastN = 0; } else if (ms < 22) { fastN++; slowN = 0; } else { slowN = fastN = 0; }
+    if (slowN > 4 && Q > 0.6) { Q = Math.round((Q - 0.2) * 10) / 10; slowN = 0; setupRes(); }
+    if (fastN > 40 && Q < 1) { Q = Math.round((Q + 0.2) * 10) / 10; fastN = 0; setupRes(); }
+  }
+  const loop = SL.loop((dt, t) => {
+    simT += dt;
+    acc_t += dt;
+    const interval = slow ? 1 / 15 : 1 / 30;
+    if (acc_t >= interval) { acc_t = 0; const t0 = performance.now(); render(simT); const ms = performance.now() - t0; slow = ms > 45; frames++; window.__camMs = ms; adapt(ms); drawHist(); vf(); drawDof(); }
+    drawMeter(dt);
+  });
+  const io = new IntersectionObserver(es => es.forEach(e => e.isIntersecting && !document.hidden ? loop.start() : loop.stop()));
+  io.observe(stage);
+  document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
+  loop.start();
+  sync();
+  window.__cam = { st, sync, delta, dof, blurMM, lastInfo: () => lastInfo, evaluate, render: () => render(simT), camEV, subjDist };
+
+  SL.quiz('#quiz', [
+    { q: 'You change from f/4 to f/5.6 and keep the exposure the same. What must happen to the shutter speed?', options: ['Halve the time (one stop faster)', 'Double the time (one stop slower)', 'Nothing', 'Quadruple the time'], answer: 1, why: 'f/5.6 lets in half the light of f/4 (area ∝ 1/N²), so the shutter must stay open twice as long.' },
+    { q: 'What is EV for f/16 at 1/125 s (ISO 100)?', options: ['≈ 12', '≈ 13', '≈ 15', '≈ 17'], answer: 2, why: 'log₂(16² × 125) = log₂(32 000) ≈ 14.97: the sunny 16 rule.' },
+    { q: 'Which change gives the shallowest depth of field for a head-and-shoulders portrait?', options: ['24 mm at f/8', '50 mm at f/4', '85 mm at f/1.8', '35 mm at f/11'], answer: 2, why: 'Wide aperture plus longer focal length (with the subject framed the same) gives the smallest DoF and the largest background blur.' },
+    { q: 'A 50 mm lens on a 1.5× crop sensor gives roughly the field of view of…', options: ['33 mm on full frame', '50 mm on full frame', '75 mm on full frame', '100 mm on full frame'], answer: 2, why: 'Equivalent focal length = crop factor × focal length = 75 mm.' },
+    { q: 'For hand-holding a 200 mm lens on full frame without stabilisation, the reciprocal rule suggests at least…', options: ['1/30 s', '1/60 s', '1/200 s (use 1/250)', '1/1000 s'], answer: 2, why: 'Shutter time ≤ 1/(equivalent focal length) = 1/200 s.' },
+    { q: 'Doubling ISO while keeping the image brightness constant (by using a faster shutter) changes the shot-noise SNR by…', options: ['×2', '×√2', '÷√2', 'No change'], answer: 2, why: 'Half the photons are collected; shot-noise SNR = √n falls by √2.' },
+    { q: 'Under tungsten light (≈3200 K) the camera is set to Daylight (5500 K) white balance. The photo looks…', options: ['Too blue', 'Too orange', 'Neutral', 'Green'], answer: 1, why: 'The camera assumes bluer light than is present, so it does not remove the orange cast.' },
+    { q: 'What is the hyperfocal distance of a 35 mm lens at f/8 on full frame (c = 0.03 mm)?', options: ['≈ 1.3 m', '≈ 5.1 m', '≈ 10 m', '≈ 51 m'], answer: 1, why: 'H = 35²/(8 × 0.03) + 35 = 5104 + 35 mm ≈ 5.1 m.' },
+    { q: 'Why do panning shots use a relatively slow shutter (e.g. 1/30 s)?', options: ['To reduce noise', 'So the background streaks while the tracked subject stays sharp', 'To increase depth of field', 'Because fast shutters cannot pan'], answer: 1, why: 'The camera’s rotation smears the static background; the subject, moving with the camera, stays sharp.' },
+  ]);
+})();
+</script>
+</body>
+</html>

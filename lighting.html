@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Studio Lighting · Pentarch SimLab</title>
+<meta name="description" content="Drag key, fill, back, background and kicker lights around a studio floor plan and see a live, physically lit portrait: inverse-square falloff, soft and hard light, colour temperature, lighting ratios and classic portrait patterns.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .lstage{min-height:0;display:grid;grid-template-columns:1fr 1fr;height:auto}
+  .lstage .pane{position:relative;min-height:440px}
+  .lstage .pane canvas{position:absolute;inset:0;width:100%;height:100%}
+  .lstage .pane + .pane{border-left:1px solid var(--line)}
+  #plan{touch-action:none;cursor:grab}
+  .pane .tag{position:absolute;left:10px;bottom:10px;font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);pointer-events:none}
+  @media (max-width:700px){table.meter td,table.meter th{font-size:.72rem;padding:4px}.lstage .hud .readout{font-size:.64rem}.lstage{grid-template-columns:1fr}.lstage .pane{min-height:340px}.lstage .pane + .pane{border-left:0;border-top:1px solid var(--line)}}
+  .lights{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:10px}
+  .lights button{all:unset;cursor:pointer;text-align:center;padding:7px 2px;border-radius:9px;font-size:.72rem;font-weight:600;color:var(--muted);background:var(--bg2);border:1px solid var(--line);position:relative}
+  .lights button i.dot{display:block;width:10px;height:10px;border-radius:50%;margin:0 auto 3px;box-shadow:0 0 8px currentColor}
+  .lights button.on{border-color:var(--accent);color:var(--text);background:color-mix(in srgb,var(--accent) 16%,var(--bg2))}
+  .lights button.off{opacity:.45}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0}
+  .row2 label{font-size:.78rem;color:var(--muted);display:block;margin-bottom:3px}
+  .presets{display:flex;flex-wrap:wrap;gap:5px}
+  .presets .btn{padding:6px 9px;font-size:.76rem}
+  table.meter td,table.meter th{padding:5px 6px;font-size:.8rem}
+  .chalbox{display:grid;grid-template-columns:180px 1fr;gap:14px;align-items:start}
+  .chalbox canvas{width:180px;height:216px;border-radius:10px;border:1px solid var(--line2);background:#000}
+  @media (max-width:600px){.chalbox{grid-template-columns:1fr}.chalbox canvas{width:150px;height:180px}}
+  .scorebar{height:10px;border-radius:6px;background:var(--line2);overflow:hidden;margin:8px 0}
+  .scorebar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ef4444,#f59e0b,#22c55e);transition:width .3s}
+  .checks{list-style:none;padding:0;margin:8px 0 0;font-size:.86rem}
+  .checks li{display:flex;gap:8px;align-items:center;padding:3px 0;color:var(--muted)}
+  .checks li.ok{color:var(--text)}
+</style>
+</head>
+<body data-page="lighting">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab wide-controls">
+    <div style="min-width:0">
+      <div class="stage lstage" id="lstage">
+        <div class="pane"><canvas id="plan" aria-label="Studio floor plan: drag the lights"></canvas><span class="tag">Floor plan · top view · 0.5 m grid</span></div>
+        <div class="pane"><canvas id="view" aria-label="Camera view of the lit subject"></canvas>
+          <div class="hud"><span class="readout">Pattern <b id="hPat">–</b></span><span class="readout">Key:fill <b id="hRatio">–</b></span></div>
+          <span class="tag">Camera view</span></div>
+      </div>
+      <div class="panel" style="margin-top:14px">
+        <h3><i data-lucide="gauge"></i> Light meter at the subject</h3><p class="small muted" style="margin:-6px 0 8px">Incident readings at the face, dome towards the camera; “Needs” is the aperture for ISO <span id="mISO">100</span> at 1/50 s.</p>
+        <div style="overflow-x:auto"><table class="data meter" id="meter"></table></div>
+        <div class="stats" style="margin-top:10px">
+          <div class="stat"><div class="k">Key + fill</div><div class="v" id="sKF">–</div></div>
+          <div class="stat"><div class="k">Lighting ratio</div><div class="v" id="sLR">–</div></div>
+          <div class="stat"><div class="k">Key vs fill</div><div class="v" id="sKvF">–</div></div>
+          <div class="stat"><div class="k">Exposure</div><div class="v" id="sExp">–</div></div>
+        </div>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="lightbulb"></i> Lights</h3>
+        <div class="lights" id="lights"></div>
+        <label class="toggle"><span id="onLbl">Light on</span><input type="checkbox" id="lOn" checked></label>
+        <div class="ctl"><label for="lPow">Output</label><output></output><input type="range" id="lPow" min="-5" max="3" step="0.1" value="0"></div>
+        <div class="ctl"><label for="lH">Height</label><output></output><input type="range" id="lH" min="0.3" max="3.2" step="0.05" value="2"></div>
+        <div class="ctl"><label for="lK">Colour temperature</label><output></output><input type="range" id="lK" min="2700" max="7500" step="100" value="5600"></div>
+        <div class="row2"><div><label for="lMod">Modifier</label><select id="lMod"></select></div><div><label for="lGel">Gel</label><select id="lGel"></select></div></div>
+        <p class="small muted" style="margin:4px 0 0">Drag lights on the floor plan; they always aim at the subject (the background light aims at the backdrop). Use the mouse wheel over a light to change its height.</p>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="user-round"></i> Subject &amp; camera</h3>
+        <div class="ctl"><label for="yaw">Head turn</label><output></output><input type="range" id="yaw" min="-40" max="40" step="1" value="0"></div>
+        <div class="row2"><div><label for="bd">Backdrop</label><select id="bd"><option value="grey">Mid grey</option><option value="white">White</option><option value="black">Black</option><option value="blue">Studio blue</option><option value="green">Chroma green</option></select></div><div><label for="wb">Camera WB</label><select id="wb"><option value="5600">Daylight 5600 K</option><option value="4300">4300 K</option><option value="3200">Tungsten 3200 K</option></select></div></div>
+        <div class="ctl"><label for="ap">Aperture</label><output></output><input type="range" id="ap" min="0" max="7" step="1" value="2"></div>
+        <div class="ctl"><label for="iso">ISO</label><output></output><input type="range" id="iso" min="0" max="4" step="1" value="0"></div>
+        <button class="btn sm" id="autoExp"><i data-lucide="aperture"></i> Expose for the key light</button>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="layout-template"></i> Presets</h3>
+        <div class="presets" id="presets"></div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+    <div class="tabpanel prose">
+      <h3>Three-point lighting</h3>
+      <p>The standard interview and portrait setup uses three roles. The <b>key</b> light is the main, brightest source; it sets the direction of the shadows and the mood. The <b>fill</b> light, usually on the opposite side of the camera and softer, lifts the shadows the key creates; its strength relative to the key sets the contrast. The <b>back</b> light (hair or rim light) sits behind the subject, opposite the camera, and draws a bright outline that separates the subject from the background. A fourth <b>background</b> light controls the backdrop independently, and a <b>kicker</b> (a low rim light from behind and to the side) adds a highlight along the cheek or jaw.</p>
+      <h3>The inverse square law</h3>
+      <p>A small source radiates its intensity $I$ (candela) into a sphere, so the illuminance on a surface at distance $d$ facing the light is</p>
+      <div class="eq">$$E = \frac{I}{d^2}\cos\theta \quad\text{(lux)}$$</div>
+      <p>Double the distance and the light falls to a quarter: <b>two stops</b>. Moving a light from 1 m to 1.4 m costs one stop. Close lights also fall off quickly <i>across</i> the subject (the far ear receives noticeably less than the near cheek), while a distant light gives even illumination. Large sources (softboxes) only behave as points when you are a few times their size away, but the law is a good guide.</p>
+      <h3>Exposure from illuminance</h3>
+      <p>An incident light meter converts illuminance to exposure with the calibration constant $C \approx 250$:</p>
+      <div class="eq">$$\frac{N^2}{t} = \frac{E\,S}{C}\qquad\Longrightarrow\qquad N = \sqrt{\frac{E\,t\,S}{C}},\qquad \mathrm{EV}_{100} = \log_2\frac{E}{2.5}$$</div>
+      <p>At 1/50 s (25 fps video) and ISO 100, 800 lux needs $N = \sqrt{800\times0.02\times100/250} = 2.5$, close to f/2.8.</p>
+      <h3>Lighting ratio</h3>
+      <p>Contrast is described by the <b>lighting ratio</b>: illuminance on the lit side (key + fill) to the shadow side (fill only), $R = (E_K + E_F)/E_F$, often quoted in stops, $\log_2 R$. 2:1 (1 stop) is flat and friendly (news, corporate); 3:1 to 4:1 (1.6–2 stops) is classic portraiture; 8:1 (3 stops) and beyond is dramatic, low-key work.</p>
+      <h3>Hard and soft light</h3>
+      <p>Softness depends on the <b>apparent size</b> of the source as seen from the subject, i.e. its angular size $\alpha \approx D/d$. A bare bulb or a distant sun is small and gives crisp shadow edges, sharp specular highlights and texture. A softbox, umbrella or bounce is large and gives wide, gradual shadow transitions (penumbra) and broad highlights. Moving a softbox closer makes the light <i>softer</i> (larger apparent size) and brighter, but with more falloff. In this simulator the penumbra width and the size of the highlights come from $\alpha$, computed live.</p>
+      <h3>Classic portrait patterns (named after the nose shadow)</h3>
+      <ul>
+        <li><b>Butterfly / Paramount</b>: key in front of the face, high above the camera; a small butterfly-shaped shadow under the nose. Glamour and beauty.</li>
+        <li><b>Loop</b>: key 30–45° to the side and a little high; the nose shadow makes a small loop on the cheek that does not touch the cheek shadow.</li>
+        <li><b>Rembrandt</b>: key about 45° to the side and high; the nose and cheek shadows join, leaving a small triangle of light under the far eye.</li>
+        <li><b>Split</b>: key at 90°; half the face lit, half in shadow.</li>
+        <li><b>Broad vs short</b>: with the face turned, broad lighting lights the side of the face turned towards the camera (widens the face), short lighting lights the side turned away (slims it and adds depth).</li>
+        <li><b>High-key</b>: bright, low-contrast, white background lit about 1–2 stops over the subject. <b>Low-key</b>: dark background, strong contrast, rim light for separation.</li>
+      </ul>
+      <h3>Colour temperature and colour rendering</h3>
+      <p>Light sources have a correlated colour temperature: tungsten ≈ 3200 K, daylight and most studio LEDs ≈ 5600 K. Mixing sources of different temperature produces colour casts unless corrected with gels (CTO warms a daylight source towards tungsten, CTB cools a tungsten source towards daylight). The camera’s white balance should match the key light. <b>CRI</b> (Colour Rendering Index, max 100) and the newer <b>TLCI</b> measure how faithfully a source renders colours, particularly skin tones; for broadcast use CRI/TLCI ≥ 90. Cheap LEDs with spiky spectra can make skin look green or grey even when the colour temperature is correct.</p>
+      <p class="small muted">Model notes: the bust is a signed-distance model rendered with Lambert diffuse light (with a wrap term for large sources), Blinn–Phong highlights, ambient occlusion and soft shadows traced through the depth map; the view is orthographic, light falloff is exact inverse square from the light centre, and modifiers are characterised by size, efficiency and beam spread. Skin rendering is simplified (no sub-surface scattering).</p>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. Inverse square in stops</h3>
+      <div class="worked"><p>A key light gives 1600 lux at 1 m. At 2 m: $1600/2^2 = 400$ lux, a quarter, $\log_2 4 = 2$ stops less. At 1.41 m: $1600/2 = 800$ lux, one stop less. Move the key on the floor plan and watch its lux reading follow $1/d^2$.</p></div>
+      <h3>2. From lux to f-number</h3>
+      <div class="worked"><p>Key + fill = 1000 lux, video at 1/50 s, ISO 100: $N = \sqrt{1000\times 0.02\times 100/250} = \sqrt{8} = 2.83$, so f/2.8. At ISO 400 you could use f/5.6 (two stops).</p></div>
+      <h3>3. Setting a 3:1 ratio</h3>
+      <div class="worked"><p>Key alone measures 1000 lux at the face. For a 3:1 ratio $(E_K+E_F)/E_F = 3 \Rightarrow E_F = E_K/2 = 500$ lux. If the fill gives 1500 lux at 1 m, place it at $d = \sqrt{1500/500} = 1.73$ m, or keep it where it is and reduce its output by $\log_2(1500/500)$ ≈ 1.6 stops.</p></div>
+      <h3>4. Apparent size and softness</h3>
+      <div class="worked"><p>A 90 cm softbox at 1.2 m subtends $\alpha \approx 0.9/1.2 = 0.75$ rad (43°): very soft. At 3 m it subtends 0.3 rad (17°): noticeably harder, and the illuminance falls by $(3/1.2)^2 = 6.25\times$, 2.6 stops.</p></div>
+      <h3>5. Gels and white balance</h3>
+      <div class="worked"><p>Camera at 5600 K. A tungsten 3200 K lamp renders orange. A full CTB gel converts 3200 K to about 5600 K (shift ≈ −131 mired: $10^6/3200 - 10^6/5600 = 312.5 - 178.6 = 134$ mired) at the cost of about 1.5–2 stops of light.</p></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Challenge: match the reference look</h3>
+      <div class="chalbox">
+        <canvas id="target" width="200" height="240" aria-label="Target lighting"></canvas>
+        <div>
+          <div class="row2"><div><label for="tSel">Reference</label><select id="tSel"></select></div><div><label>&nbsp;</label><button class="btn sm" id="tReveal" style="width:100%"><i data-lucide="eye"></i> Reveal setup</button></div></div>
+          <p class="small muted" style="margin:4px 0">Recreate the reference image: move, switch and adjust the lights (and head turn, backdrop and exposure). The score compares the two images pixel by pixel (brightness and colour), live.</p>
+          <div class="scorebar"><i id="tBar"></i></div>
+          <div class="stat" style="display:inline-block;min-width:150px"><div class="k">Similarity</div><div class="v" id="tScore">–</div></div>
+        </div>
+      </div>
+      <h3>More challenges (auto-checked)</h3>
+      <ul class="checks" id="cList"></ul>
+      <h3>Experiments</h3>
+      <ol class="steps">
+        <li><b>Inverse square.</b> Load <i>Rembrandt</i>, select the key and drag it from about 1 m to 2 m from the subject: the meter drops by about 2 stops, and the falloff across the face becomes gentler.</li>
+        <li><b>Hard vs soft.</b> With the same position, switch the key from <i>Bare bulb</i> to <i>Large octabox</i>. Watch the nose shadow edge and the highlight on the forehead spread out.</li>
+        <li><b>Broad vs short.</b> Turn the head 25° and move the key from one side to the other.</li>
+        <li><b>Fill and contrast.</b> Lower the fill output in 1-stop steps from a 2:1 to an 8:1 ratio.</li>
+        <li><b>Colour mixing.</b> Set the fill to 3200 K with the camera at 5600 K: the shadows turn orange. Then switch the camera to tungsten white balance.</li>
+        <li><b>Separation.</b> Turn the back light on and off on the black backdrop.</li>
+      </ol>
+    </div>
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = s => document.querySelector(s), clamp = SL.clamp;
+  const HEADY = 1.6, CAMZ = 3.0, BDZ = -1.5;
+  /* ================= lights ================= */
+  const MODS = {
+    bare: { n: 'Bare bulb', D: 0.08, eff: 1.0, spread: 75 },
+    reflector: { n: '18 cm reflector', D: 0.18, eff: 1.8, spread: 35 },
+    snoot: { n: 'Snoot', D: 0.06, eff: 2.5, spread: 10 },
+    dish: { n: 'Beauty dish', D: 0.55, eff: 1.1, spread: 45 },
+    umbrella: { n: 'Umbrella', D: 1.0, eff: 0.75, spread: 70 },
+    softbox: { n: 'Softbox 90 cm', D: 0.9, eff: 0.6, spread: 60 },
+    strip: { n: 'Strip box', D: 0.5, eff: 0.6, spread: 50 },
+    octa: { n: 'Large octabox', D: 1.5, eff: 0.5, spread: 65 },
+    tube: { n: 'LED tube', D: 0.3, eff: 0.7, spread: 80 },
+  };
+  const GELS = { none: ['None', [1, 1, 1]], cto: ['½ CTO (warm)', [1, 0.86, 0.66]], ctb: ['½ CTB (cool)', [0.78, 0.88, 1]], red: ['Red', [1, 0.12, 0.12]], blue: ['Blue', [0.15, 0.35, 1]], magenta: ['Magenta', [1, 0.2, 0.85]], teal: ['Teal', [0.1, 0.85, 0.8]], amber: ['Amber', [1, 0.62, 0.15]] };
+  const BASE_CD = 3000;   // candela at output 0 with a bare bulb
+  const NAMES = [['key', 'Key', '#fbbf24'], ['fill', 'Fill', '#60a5fa'], ['back', 'Back', '#f472b6'], ['bg', 'Backgr.', '#a78bfa'], ['kick', 'Kicker', '#34d399']];
+  const mkL = (id, on, x, z, h, p, mod, K = 5600, gel = 'none') => ({ id, on, x, z, h, p, mod, K, gel });
+  const S = {
+    L: {}, yaw: 0, bd: 'grey', wb: 5600, api: 2, isoi: 0,
+  };
+  const APS = [1.4, 2, 2.8, 4, 5.6, 8, 11, 16], ISOS = [100, 200, 400, 800, 1600];
+  const PRESETS = {
+    interview: { n: 'Three-point interview', yaw: 12, bd: 'grey', L: [mkL('key', 1, -1.3, 1.3, 2.0, 0, 'softbox'), mkL('fill', 1, 1.5, 1.6, 1.7, -1.0, 'softbox'), mkL('back', 1, 0.6, -1.0, 2.4, -0.5, 'reflector'), mkL('bg', 1, 0.3, -1.0, 0.7, -3.5, 'reflector'), mkL('kick', 0, 1.2, -0.6, 1.6, -1, 'strip')] },
+    rembrandt: { n: 'Rembrandt', yaw: 0, bd: 'grey', L: [mkL('key', 1, -1.05, 1.05, 2.35, 0, 'reflector'), mkL('fill', 1, 1.2, 1.8, 1.6, -2.0, 'umbrella'), mkL('back', 0, 0.6, -1, 2.4, -1, 'reflector'), mkL('bg', 0, 0.3, -1.1, 0.7, -2, 'reflector'), mkL('kick', 0, 1.2, -0.6, 1.6, -1, 'strip')] },
+    butterfly: { n: 'Butterfly / Paramount', yaw: 0, bd: 'grey', L: [mkL('key', 1, 0, 1.3, 2.45, 0, 'dish'), mkL('fill', 1, 0, 1.1, 1.0, -2.2, 'umbrella'), mkL('back', 0, 0.6, -1, 2.4, -1, 'reflector'), mkL('bg', 1, 0, -1.0, 0.6, -3.5, 'reflector'), mkL('kick', 0, 1.2, -0.6, 1.6, -1, 'strip')] },
+    split: { n: 'Split', yaw: 0, bd: 'black', L: [mkL('key', 1, -1.5, 0.0, 1.65, 0, 'reflector'), mkL('fill', 0, 1.2, 1.6, 1.6, -3, 'umbrella'), mkL('back', 0, 0.6, -1, 2.4, -1, 'reflector'), mkL('bg', 0, 0.3, -1.1, 0.7, -2, 'reflector'), mkL('kick', 0, 1.2, -0.6, 1.6, -1, 'strip')] },
+    loop: { n: 'Loop', yaw: 0, bd: 'grey', L: [mkL('key', 1, -0.75, 1.35, 2.15, 0, 'softbox'), mkL('fill', 1, 1.2, 1.7, 1.6, -2.5, 'umbrella'), mkL('back', 1, 0.5, -1, 2.4, -1.2, 'reflector'), mkL('bg', 0, 0.3, -1.1, 0.7, -2, 'reflector'), mkL('kick', 0, 1.2, -0.6, 1.6, -1, 'strip')] },
+    broad: { n: 'Broad', yaw: 28, bd: 'grey', L: [mkL('key', 1, -1.2, 1.2, 2.2, 0, 'softbox'), mkL('fill', 1, 1.2, 1.8, 1.6, -2.5, 'umbrella'), mkL('back', 0, 0.6, -1, 2.4, -1, 'reflector'), mkL('bg', 0, 0.3, -1.1, 0.7, -2, 'reflector'), mkL('kick', 0, 1.2, -0.6, 1.6, -1, 'strip')] },
+    short: { n: 'Short', yaw: 28, bd: 'grey', L: [mkL('key', 1, 1.2, 1.0, 2.2, 0, 'softbox'), mkL('fill', 1, -1.3, 1.8, 1.6, -2.5, 'umbrella'), mkL('back', 0, -0.6, -1, 2.4, -1, 'reflector'), mkL('bg', 0, 0.3, -1.1, 0.7, -2, 'reflector'), mkL('kick', 0, -1.2, -0.6, 1.6, -1, 'strip')] },
+    highkey: { n: 'High-key', yaw: 0, bd: 'white', L: [mkL('key', 1, -0.6, 1.6, 2.1, 0, 'octa'), mkL('fill', 1, 0.8, 1.7, 1.6, -0.8, 'octa'), mkL('back', 1, 0.5, -0.9, 2.4, -1, 'softbox'), mkL('bg', 1, 0, -0.9, 0.9, -0.6, 'umbrella'), mkL('kick', 0, 1.2, -0.6, 1.6, -1, 'strip')] },
+    lowkey: { n: 'Low-key', yaw: -10, bd: 'black', L: [mkL('key', 1, -1.4, 0.55, 2.1, 0, 'strip'), mkL('fill', 0, 1.2, 1.8, 1.6, -3, 'umbrella'), mkL('back', 1, 0.9, -1.0, 2.2, 0.3, 'reflector'), mkL('bg', 0, 0.3, -1.1, 0.7, -2, 'reflector'), mkL('kick', 1, 1.3, -0.4, 1.55, -0.6, 'strip')] },
+    news: { n: 'News desk', yaw: 0, bd: 'blue', L: [mkL('key', 1, -0.7, 1.7, 2.3, 0, 'softbox'), mkL('fill', 1, 0.8, 1.7, 2.1, -0.8, 'softbox'), mkL('back', 1, 0.3, -1.0, 2.5, -0.5, 'reflector'), mkL('bg', 1, 0, -0.9, 0.8, -2.2, 'umbrella'), mkL('kick', 0, 1.2, -0.6, 1.6, -1, 'strip')] },
+    podcast: { n: 'YouTube / podcast', yaw: 18, bd: 'grey', L: [mkL('key', 1, -0.95, 1.15, 1.85, 0, 'softbox'), mkL('fill', 0, 1.2, 1.8, 1.6, -3, 'umbrella'), mkL('back', 1, 0.9, -0.75, 1.9, 0.8, 'tube', 5600, 'teal'), mkL('bg', 1, -0.4, -1.0, 0.8, -2.0, 'reflector', 5600, 'magenta'), mkL('kick', 0, 1.2, -0.6, 1.6, -1, 'strip')] },
+  };
+  let sel = 'key';
+  function loadPreset(k, target) {
+    const p = PRESETS[k], o = target || S;
+    o.L = {}; p.L.forEach(l => o.L[l.id] = Object.assign({}, l, { on: !!l.on }));
+    o.yaw = p.yaw; o.bd = p.bd; if (!target) { o.api = S.api; }
+    if (!target) { autoExpose(); syncUI(); dirty = true; manual = false; }
+    return o;
+  }
+
+  /* ================= geometry: signed distance bust ================= */
+  const W = 240, H = 288, X0 = -0.27, X1 = 0.27, Y0 = -0.378, Y1 = 0.27;  // head-centre coordinates
+  const DX = (X1 - X0) / W, DY = (Y1 - Y0) / H;
+  const sminK = (a, b, k) => { const h = clamp(0.5 + 0.5 * (b - a) / k, 0, 1); return b + (a - b) * h - k * h * (1 - h); };
+  const smaxK = (a, b, k) => -sminK(-a, -b, k);
+  function ell(px, py, pz, cx, cy, cz, rx, ry, rz) { const x = (px - cx) / rx, y = (py - cy) / ry, z = (pz - cz) / rz; const k0 = Math.sqrt(x * x + y * y + z * z); const k1 = Math.sqrt(x * x / (rx * rx) + y * y / (ry * ry) + z * z / (rz * rz)); return k1 > 1e-9 ? k0 * (k0 - 1) / k1 : -Math.min(rx, ry, rz); }
+  const sph = (px, py, pz, cx, cy, cz, r) => Math.hypot(px - cx, py - cy, pz - cz) - r;
+  function cap(px, py, pz, ax, ay, az, bx, by, bz, r) { const pax = px - ax, pay = py - ay, paz = pz - az, bax = bx - ax, bay = by - ay, baz = bz - az; const h = clamp((pax * bax + pay * bay + paz * baz) / (bax * bax + bay * bay + baz * baz), 0, 1); return Math.hypot(pax - bax * h, pay - bay * h, paz - baz * h) - r; }
+  // returns distance; sets MAT for the last evaluation when wantMat
+  let MAT = 0;
+  function sdf(x, y, z, cy, sy, wantMat) {
+    // head (rotated by yaw about the vertical axis)
+    const hx = cy * x - sy * z, hz = sy * x + cy * z, hy = y;
+    let head = ell(hx, hy, hz, 0, 0.025, -0.01, 0.074, 0.094, 0.094);
+    head = sminK(head, ell(hx, hy, hz, 0, -0.035, 0.012, 0.067, 0.074, 0.079), 0.03);
+    head = sminK(head, sph(hx, hy, hz, 0, -0.094, 0.045, 0.024), 0.02);
+    const ax = Math.abs(hx);
+    head = sminK(head, ell(ax, hy, hz, 0.038, -0.07, 0.02, 0.03, 0.03, 0.05), 0.025);
+    head = sminK(head, sph(ax, hy, hz, 0.043, -0.02, 0.05, 0.028), 0.02);
+    head = sminK(head, ell(hx, hy, hz, 0, 0.032, 0.068, 0.058, 0.014, 0.022), 0.015);
+    // eye sockets
+    head = smaxK(head, -sph(ax, hy, hz, 0.031, 0.011, 0.086, 0.019), 0.008);
+    // nose
+    let nose = cap(hx, hy, hz, 0, 0.024, 0.08, 0, -0.02, 0.104, 0.0105);
+    nose = sminK(nose, sph(hx, hy, hz, 0, -0.024, 0.099, 0.014), 0.008);
+    nose = sminK(nose, sph(ax, hy, hz, 0.015, -0.03, 0.087, 0.0105), 0.008);
+    head = sminK(head, nose, 0.008);
+    // lips
+    const lips = Math.min(ell(hx, hy, hz, 0, -0.052, 0.08, 0.023, 0.0065, 0.01), ell(hx, hy, hz, 0, -0.062, 0.078, 0.02, 0.007, 0.01));
+    head = sminK(head, lips, 0.006);
+    // ears
+    const ears = ell(ax, hy, hz, 0.075, 0.0, -0.008, 0.013, 0.031, 0.021);
+    head = sminK(head, ears, 0.006);
+    // eyes
+    const eyes = sph(ax, hy, hz, 0.031, 0.011, 0.0655, 0.0122);
+    // neck and torso (not rotated)
+    let body = cap(x, y, z, 0, -0.06, -0.015, 0, -0.19, -0.015, 0.047);
+    const sh = sminK(cap(x, y, z, -0.175, -0.3, -0.02, -0.04, -0.24, -0.02, 0.052), cap(x, y, z, 0.175, -0.3, -0.02, 0.04, -0.24, -0.02, 0.052), 0.03);
+    let torso = sminK(sh, ell(x, y, z, 0, -0.47, -0.02, 0.2, 0.22, 0.1), 0.06);
+    body = sminK(body, torso, 0.045);
+    let d = sminK(head, body, 0.03);
+    d = Math.min(d, eyes);
+    if (wantMat) {
+      if (eyes <= d + 1e-4) MAT = (hz > 0.0745 && Math.hypot(ax - 0.031, hy - 0.0105) < 0.0058) ? 3 : 2;   // iris / sclera
+      else if (torso < head - 0.004 && y < -0.16 && torso < cap(x, y, z, 0, -0.06, -0.015, 0, -0.19, -0.015, 0.047) + 0.012) MAT = 5;   // shirt
+      else if (lips < 0.004) MAT = 4;
+      else if (hy > 0.045 - Math.max(0, hz - 0.02) * 0.6 && hy > 0.025 && !(hz > 0.055 && hy < 0.07) && ears > 0.003) MAT = 1;   // hair
+      else MAT = 0;   // skin
+    }
+    return d;
+  }
+  // geometry buffers per yaw (cached)
+  const geoCache = new Map();
+  function geometry(yawDeg) {
+    const key = Math.round(yawDeg);
+    if (geoCache.has(key)) return geoCache.get(key);
+    const a = key * Math.PI / 180, cy = Math.cos(a), sy = Math.sin(a);
+    const N = W * H, g = { z: new Float32Array(N).fill(-9), nx: new Float32Array(N), ny: new Float32Array(N), nz: new Float32Array(N), mat: new Uint8Array(N).fill(255), ao: new Float32Array(N) };
+    const e = 0.0007;
+    for (let j = 0; j < H; j++) {
+      const y = Y1 - (j + 0.5) * DY;
+      for (let i = 0; i < W; i++) {
+        const x = X0 + (i + 0.5) * DX;
+        // quick reject outside the bust's silhouette envelope
+        if (y > -0.14 && Math.abs(x) > 0.12) continue;
+        let z = 0.2, hit = false;
+        for (let s = 0; s < 70; s++) { const d = sdf(x, y, z, cy, sy, false); if (d < 0.0004) { hit = true; break; } z -= Math.max(d * 0.9, 0.0006); if (z < -0.25) break; }
+        if (!hit) continue;
+        const k = j * W + i;
+        g.z[k] = z;
+        let nx = sdf(x + e, y, z, cy, sy) - sdf(x - e, y, z, cy, sy), ny = sdf(x, y + e, z, cy, sy) - sdf(x, y - e, z, cy, sy), nz = sdf(x, y, z + e, cy, sy) - sdf(x, y, z - e, cy, sy);
+        const nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
+        g.nx[k] = nx; g.ny[k] = ny; g.nz[k] = nz;
+        sdf(x, y, z, cy, sy, true); g.mat[k] = MAT;
+        let ao = 0; for (const [h, w] of [[0.006, 1], [0.016, 0.6], [0.03, 0.35]]) ao += w * Math.max(0, h - sdf(x + nx * h, y + ny * h, z + nz * h, cy, sy)) / h;
+        g.ao[k] = clamp(1 - ao * 0.55, 0.15, 1);
+      }
+    }
+    geoCache.set(key, g);
+    if (geoCache.size > 30) geoCache.delete(geoCache.keys().next().value);
+    return g;
+  }
+
+  /* ================= shading ================= */
+  const LIN = v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  const hexLin = h => { const n = parseInt(h.slice(1), 16); return [LIN((n >> 16) / 255), LIN(((n >> 8) & 255) / 255), LIN((n & 255) / 255)]; };
+  const ALB = [hexLin('#7a4a34'), hexLin('#1a1210'), hexLin('#b9b0a4'), hexLin('#2a160e'), hexLin('#5e2e2a'), hexLin('#2f5f8a'), hexLin('#e8e4dc')];
+  const SPEC = [[0.05, 30], [0.03, 12], [0.9, 900], [0.9, 900], [0.08, 50], [0.02, 8], [0.03, 10]];
+  const BD = { grey: hexLin('#7b7b7b'), white: hexLin('#f2f2f2'), black: hexLin('#1a1a1a'), blue: hexLin('#2b4a8a'), green: hexLin('#2fa24a') };
+  const TONE = new Uint8ClampedArray(2049); for (let i = 0; i <= 2048; i++) { let x = i / 512; x = x < 0.75 ? x : 0.75 + 0.25 * (1 - Math.exp(-(x - 0.75) / 0.25)); TONE[i] = Math.round(255 * (x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055)); }
+  function kelvin(K) { const t = K / 100; let r, g, b; if (t <= 66) { r = 255; g = 99.47 * Math.log(t) - 161.12; b = t <= 19 ? 0 : 138.52 * Math.log(t - 10) - 305.04; } else { r = 329.7 * Math.pow(t - 60, -0.1332); g = 288.12 * Math.pow(t - 60, -0.0755); b = 255; } const c = v => LIN(clamp(v, 0, 255) / 255); return [c(r) / c(g), 1, c(b) / c(g)]; }
+  // derive each light's world data
+  function lightData(o) {
+    const wbc = kelvin(o.wb || S.wb);
+    return NAMES.map(([id]) => o.L[id]).filter(l => l && l.on).map(l => {
+      const m = MODS[l.mod], I = BASE_CD * Math.pow(2, l.p) * m.eff, kc = kelvin(l.K), gel = GELS[l.gel][1];
+      const col = [kc[0] / wbc[0] * gel[0], gel[1], kc[2] / wbc[2] * gel[2]];
+      const pos = [l.x, l.h, l.z];
+      const tgt = l.id === 'bg' ? [l.x * 0.5, 1.2, BDZ] : [0, HEADY, 0];
+      let ax = tgt[0] - pos[0], ay = tgt[1] - pos[1], az = tgt[2] - pos[2]; const al = Math.hypot(ax, ay, az); ax /= al; ay /= al; az /= al;
+      return { id: l.id, I, col, pos, aim: [ax, ay, az], cosOut: Math.cos(m.spread * Math.PI / 180), cosIn: Math.cos(m.spread * 0.55 * Math.PI / 180), R: m.D / 2, bgOnly: l.id === 'bg' };
+    });
+  }
+  function beam(L, dx, dy, dz) { const c = -(dx * L.aim[0] + dy * L.aim[1] + dz * L.aim[2]); if (c <= L.cosOut) return 0; if (c >= L.cosIn) return 1; const t = (c - L.cosOut) / (L.cosIn - L.cosOut); return t * t * (3 - 2 * t); }
+  const Eref = o => 2.5 * APS[o.api] * APS[o.api] / (1 / 50) * 100 / ISOS[o.isoi];   // lux that renders as mid grey
+  function renderTo(img, o) {
+    const g = geometry(o.yaw), Ls = lightData(o), d = img.data, er = Eref(o), bd = BD[o.bd];
+    const amb = 4;   // lux of ambient spill in the studio
+    const mask = g.mat;
+    for (let j = 0; j < H; j++) {
+      const y = Y1 - (j + 0.5) * DY, wy = y + HEADY;
+      for (let i = 0; i < W; i++) {
+        const k = j * W + i, x = X0 + (i + 0.5) * DX;
+        let r = 0, gg = 0, b = 0;
+        if (mask[k] === 255) {
+          // backdrop (orthographic: the backdrop point behind this pixel)
+          const bz = BDZ; r = gg = b = amb * 0.5;
+          for (const L of Ls) {
+            let dx = L.pos[0] - x, dy = L.pos[1] - wy, dz = L.pos[2] - bz; const d2 = dx * dx + dy * dy + dz * dz, dl = Math.sqrt(d2); dx /= dl; dy /= dl; dz /= dl;
+            if (dz <= 0) continue;
+            let E = L.I / d2 * dz * beam(L, dx, dy, dz);
+            if (E <= 0) continue;
+            // shadow of the subject: where the ray to the light crosses the subject plane (z = 0)
+            if (!L.bgOnly && L.pos[2] > 0) {
+              const t = (0 - bz) / (L.pos[2] - bz), sxw = x + t * (L.pos[0] - x), syw = wy + t * (L.pos[1] - wy) - HEADY;
+              const pen = L.R * (-bz) / (L.pos[2]) + 0.004;
+              let occ = 0; for (const [ox, oy] of [[0, 0], [pen, 0], [-pen, 0], [0, pen], [0, -pen]]) { const ii = Math.floor((sxw + ox - X0) / DX), jj = Math.floor((Y1 - (syw + oy)) / DY); if (ii >= 0 && ii < W && jj >= 0 && jj < H ? mask[jj * W + ii] !== 255 : (jj >= H && Math.abs(sxw + ox) < 0.22)) occ++; }
+              E *= 1 - occ / 5;
+            }
+            r += E * L.col[0]; gg += E * L.col[1]; b += E * L.col[2];
+          }
+          r *= bd[0] / er; gg *= bd[1] / er; b *= bd[2] / er;
+          // gentle vignette of the backdrop paper
+          const v = 1 - 0.2 * ((x / 0.32) ** 2 + ((y + 0.05) / 0.45) ** 2); r *= v; gg *= v; b *= v;
+        } else {
+          const z = g.z[k], nx = g.nx[k], ny = g.ny[k], nz = g.nz[k], m = mask[k], alb = ALB[m], ao = g.ao[k], [ks, shin] = SPEC[m];
+          r = gg = b = amb * ao * (0.6 + 0.4 * ny);
+          let sr = 0, sg = 0, sb = 0;
+          for (const L of Ls) {
+            if (L.bgOnly) continue;
+            let dx = L.pos[0] - x, dy = L.pos[1] - wy, dz = L.pos[2] - z; const d2 = dx * dx + dy * dy + dz * dz, dl = Math.sqrt(d2); dx /= dl; dy /= dl; dz /= dl;
+            const alpha = Math.min(0.9, L.R / dl);   // angular radius of the source
+            const ndl = nx * dx + ny * dy + nz * dz, w = 0.05 + alpha * 0.7;
+            const diff = (ndl + w) / (1 + w);
+            if (diff <= 0) continue;
+            let E = L.I / d2 * beam(L, dx, dy, dz);
+            if (E <= 0) continue;
+            // soft shadow through the depth map
+            let vis = 1;
+            if (dz > -0.35) {
+              for (let t = 0.004; t < 0.3; t *= 1.18) {
+                const qx = x + dx * t, qy = y + dy * t, qz = z + dz * t;
+                const ii = ((qx - X0) / DX) | 0, jj = ((Y1 - qy) / DY) | 0;
+                if (ii < 0 || ii >= W || jj < 0 || jj >= H) break;
+                const zf = g.z[jj * W + ii];
+                if (zf > -1) { const gap = qz - zf; if (gap < 0.25) vis = Math.min(vis, clamp(0.5 + 0.5 * (gap / t) / (alpha + 0.02), 0, 1)); }
+                if (vis <= 0 || qz > 0.16) break;
+              }
+            }
+            if (vis <= 0) continue;
+            const f = E * diff * vis;
+            r += f * L.col[0]; gg += f * L.col[1]; b += f * L.col[2];
+            // Blinn-Phong highlight; large sources give broader, dimmer highlights
+            let hx = dx, hy = dy, hz = dz + 1; const hl = Math.hypot(hx, hy, hz); const ndh = (nx * hx + ny * hy + nz * hz) / hl;
+            if (ndh > 0 && ndl > 0) { const n = shin / (1 + 60 * alpha * alpha); const sp = ks * Math.pow(ndh, n) * (n + 8) / 25 * E * vis; sr += sp * L.col[0]; sg += sp * L.col[1]; sb += sp * L.col[2]; }
+          }
+          r = (r * alb[0] * ao + sr) / er; gg = (gg * alb[1] * ao + sg) / er; b = (b * alb[2] * ao + sb) / er;
+        }
+        const p = k * 4;
+        d[p] = TONE[r >= 4 ? 2048 : (r * 512) | 0]; d[p + 1] = TONE[gg >= 4 ? 2048 : (gg * 512) | 0]; d[p + 2] = TONE[b >= 4 ? 2048 : (b * 512) | 0]; d[p + 3] = 255;
+      }
+    }
+    return img;
+  }
+
+  /* ================= canvases ================= */
+  const off = document.createElement('canvas'); off.width = W; off.height = H; const offc = off.getContext('2d'); const img = offc.createImageData(W, H);
+  const view = SL.canvas($('#view'), () => dirty = true), plan = SL.canvas($('#plan'), () => dirty = true);
+  let dirty = true;
+  function drawView() {
+    renderTo(img, S); offc.putImageData(img, 0, 0);
+    const { ctx, w, h } = view; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
+    const sc = Math.min(w / W, h / H), dw = W * sc, dh = H * sc; ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(off, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  }
+  // floor plan
+  const PX0 = -2.8, PX1 = 2.8, PZ0 = -2.0, PZ1 = 3.4;
+  function pm() { const { w, h } = plan; const s = Math.min(w / (PX1 - PX0), h / (PZ1 - PZ0)); const ox = w / 2 - (PX0 + PX1) / 2 * s, oy = h / 2 - (PZ0 + PZ1) / 2 * s; return { s, X: x => ox + x * s, Y: z => oy + z * s, ix: px => (px - ox) / s, iz: py => (py - oy) / s }; }
+  function drawPlan() {
+    const { ctx, w, h } = plan, M = pm(); ctx.clearRect(0, 0, w, h);
+    const bg = ctx.createRadialGradient(M.X(0), M.Y(0), 10, M.X(0), M.Y(0), M.s * 4); bg.addColorStop(0, '#111a30'); bg.addColorStop(1, '#070b16'); ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.lineWidth = 1;
+    for (let x = Math.ceil(PX0 * 2) / 2; x <= PX1; x += 0.5) { ctx.beginPath(); ctx.moveTo(M.X(x), M.Y(PZ0)); ctx.lineTo(M.X(x), M.Y(PZ1)); ctx.stroke(); }
+    for (let z = Math.ceil(PZ0 * 2) / 2; z <= PZ1; z += 0.5) { ctx.beginPath(); ctx.moveTo(M.X(PX0), M.Y(z)); ctx.lineTo(M.X(PX1), M.Y(z)); ctx.stroke(); }
+    // backdrop
+    const bdc = { grey: '#7b7b7b', white: '#f2f2f2', black: '#333', blue: '#2b4a8a', green: '#2fa24a' }[S.bd];
+    ctx.fillStyle = bdc; ctx.fillRect(M.X(-2.2), M.Y(BDZ) - 5, M.X(2.2) - M.X(-2.2), 6);
+    ctx.fillStyle = '#93a1bd'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText('BACKDROP', M.X(0), M.Y(BDZ) - 10);
+    // camera + field of view
+    const cx = M.X(0), cz = M.Y(CAMZ); ctx.strokeStyle = 'rgba(147,161,189,.35)'; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(cx, cz); ctx.lineTo(M.X(-0.6), M.Y(BDZ)); ctx.moveTo(cx, cz); ctx.lineTo(M.X(0.6), M.Y(BDZ)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#cbd5e1'; ctx.fillRect(cx - 13, cz - 6, 26, 16); ctx.fillStyle = '#475569'; ctx.fillRect(cx - 6, cz - 13, 12, 8); ctx.fillStyle = '#93a1bd'; ctx.fillText('CAMERA', cx, cz + 24);
+    // light beams first
+    const Ls = lightData(S);
+    NAMES.forEach(([id, name, colr]) => {
+      const l = S.L[id]; if (!l) return; const x = M.X(l.x), y = M.Y(l.z); const m = MODS[l.mod];
+      const tgt = id === 'bg' ? [l.x * 0.5, BDZ] : [0, 0]; const a = Math.atan2(M.Y(tgt[1]) - y, M.X(tgt[0]) - x), spread = m.spread * Math.PI / 180;
+      if (l.on) { const L = Ls.find(q => q.id === id); const c = L ? L.col : [1, 1, 1]; const rgb = `${clamp(c[0] * 255, 0, 255) | 0},${clamp(c[1] * 255, 0, 255) | 0},${clamp(c[2] * 255, 0, 255) | 0}`;
+        const gr = ctx.createRadialGradient(x, y, 4, x, y, M.s * 2.2); gr.addColorStop(0, `rgba(${rgb},.32)`); gr.addColorStop(1, `rgba(${rgb},0)`); ctx.fillStyle = gr; ctx.beginPath(); ctx.moveTo(x, y); ctx.arc(x, y, M.s * 2.2, a - spread * 0.6, a + spread * 0.6); ctx.closePath(); ctx.fill(); }
+    });
+    // subject (top view)
+    const sx = M.X(0), sz = M.Y(0);
+    ctx.fillStyle = '#2f5f8a'; ctx.beginPath(); ctx.ellipse(sx, sz + 2, 0.22 * M.s, 0.12 * M.s, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#7a4a34'; ctx.beginPath(); ctx.arc(sx, sz, 0.085 * M.s, 0, 7); ctx.fill();
+    const ya = S.yaw * Math.PI / 180; ctx.strokeStyle = '#fde68a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(sx, sz); ctx.lineTo(sx + Math.sin(ya) * 0.16 * M.s, sz + Math.cos(ya) * 0.16 * M.s); ctx.stroke();
+    ctx.fillStyle = '#1a1210'; ctx.beginPath(); ctx.arc(sx - Math.sin(ya) * 0.02 * M.s, sz - Math.cos(ya) * 0.02 * M.s, 0.07 * M.s, Math.PI / 2 - ya + 0.6, Math.PI / 2 - ya + Math.PI * 2 - 0.6 + 0.0, false); ctx.fill();
+    // lights
+    NAMES.forEach(([id, name, colr]) => {
+      const l = S.L[id]; if (!l) return; const x = M.X(l.x), y = M.Y(l.z), m = MODS[l.mod];
+      const tgt = id === 'bg' ? [l.x * 0.5, BDZ] : [0, 0]; const a = Math.atan2(M.Y(tgt[1]) - y, M.X(tgt[0]) - x);
+      ctx.save(); ctx.translate(x, y); ctx.rotate(a);
+      const wd = Math.max(10, m.D * M.s * 0.5);
+      ctx.fillStyle = l.on ? colr : '#334155'; ctx.strokeStyle = id === sel ? '#fff' : 'rgba(0,0,0,.6)'; ctx.lineWidth = id === sel ? 2.5 : 1.5;
+      ctx.beginPath(); ctx.moveTo(-9, -6); ctx.lineTo(4, -wd / 2); ctx.lineTo(4, wd / 2); ctx.lineTo(-9, 6); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = l.on ? '#e6ecf7' : '#5f6d8a'; ctx.font = '600 11px Inter, sans-serif'; ctx.textAlign = 'center';
+      const dist = Math.hypot(l.x, l.h - HEADY, l.z);
+      ctx.fillText(name, x, y - 14); ctx.fillStyle = '#93a1bd'; ctx.font = '10px JetBrains Mono, monospace'; ctx.fillText(`${id === 'bg' ? '' : dist.toFixed(2) + ' m · '}h ${l.h.toFixed(1)}`, x, y + 22);
+    });
+  }
+
+  /* ================= metering & analysis ================= */
+  const fNum = E => Math.sqrt(E * (1 / 50) * ISOS[S.isoi] / 250);
+  const fmtN = n => n < 1 ? '< f/1' : 'f/' + (n < 10 ? n.toFixed(1) : n.toFixed(0));
+  function incident(L) {   // dome meter at the face pointing at the camera
+    const p = [0, HEADY, 0.09]; let dx = L.pos[0] - p[0], dy = L.pos[1] - p[1], dz = L.pos[2] - p[2]; const d2 = dx * dx + dy * dy + dz * dz, dl = Math.sqrt(d2); dx /= dl; dy /= dl; dz /= dl;
+    if (L.bgOnly) return 0; return L.I / d2 * beam(L, dx, dy, dz) * (1 + dz) / 2;
+  }
+  function analyse() {
+    const Ls = lightData(S), by = {}; Ls.forEach(L => by[L.id] = incident(L));
+    const rows = NAMES.map(([id, name, colr]) => { const l = S.L[id]; const L = Ls.find(q => q.id === id); const E = L ? (id === 'bg' ? bgLux(L) : by[id]) : 0; const dist = Math.hypot(l.x, l.h - (id === 'bg' ? 1.2 : HEADY), l.z - (id === 'bg' ? BDZ : 0));
+      return `<tr><td><span class="led ${l.on ? 'on' : ''}" style="background:${l.on ? colr : ''};box-shadow:${l.on ? '0 0 8px ' + colr : 'none'}"></span> ${name}</td><td class="num">${dist.toFixed(2)} m</td><td class="num">${l.on ? Math.round(E) + ' lx' : 'off'}</td><td class="num">${l.on && E > 0.5 ? 'EV ' + Math.log2(E / 2.5).toFixed(1) : '–'}</td><td class="num">${l.on && E > 0.5 ? fmtN(fNum(E)) : '–'}</td><td class="small muted">${MODS[l.mod].n}${id === 'bg' ? ' (on backdrop)' : ''}</td></tr>`; }).join('');
+    $('#meter').innerHTML = `<tr><th>Light</th><th>Distance</th><th>Illuminance</th><th>EV₁₀₀</th><th>Needs</th><th>Modifier</th></tr>` + rows;
+    const K = by.key || 0, F = by.fill || 0;
+    $('#sKF').innerHTML = Math.round(K + F) + '<small>lx</small>';
+    if (K > 0 && F > 0.5) { const R = (K + F) / F; $('#sLR').textContent = R.toFixed(1) + ':1'; $('#sKvF').innerHTML = Math.log2(K / F).toFixed(1) + '<small>stops</small>'; $('#hRatio').textContent = `${R.toFixed(1)}:1 (${Math.log2(R).toFixed(1)} st)`; }
+    else { $('#sLR').textContent = K > 0 ? 'no fill' : '–'; $('#sKvF').textContent = '–'; $('#hRatio').textContent = K > 0 ? 'no fill' : '–'; }
+    const need = fNum(K + F), set = APS[S.api], dEv = 2 * Math.log2(need / set);
+    $('#sExp').innerHTML = (K + F > 0 ? (dEv > 0 ? '+' : '') + dEv.toFixed(1) : '–') + '<small>stops vs f/' + set + '</small>';
+    $('#mISO').textContent = ISOS[S.isoi];
+    $('#hPat').textContent = pattern();
+    return { K, F, by };
+  }
+  function bgLux(L) { const p = [L.pos[0] * 0.5, 1.2, BDZ]; const dx = L.pos[0] - p[0], dy = L.pos[1] - p[1], dz = L.pos[2] - p[2]; const d2 = dx * dx + dy * dy + dz * dz; return L.I / d2 * dz / Math.sqrt(d2); }
+  function pattern() {
+    const k = S.L.key; if (!k || !k.on) return 'no key';
+    const az = Math.atan2(k.x, k.z) * 180 / Math.PI, rel = az - S.yaw, el = Math.atan2(k.h - HEADY, Math.hypot(k.x, k.z)) * 180 / Math.PI, a = Math.abs(rel);
+    let p = a < 12 && el > 20 ? 'Butterfly' : a < 12 ? 'Flat / frontal' : a < 38 ? 'Loop' : a < 62 ? (el > 15 ? 'Rembrandt' : 'Loop / Rembrandt') : a < 110 ? 'Split' : 'Rim';
+    if (Math.abs(S.yaw) > 10 && a < 110 && a >= 12) { const broad = Math.sign(k.x) !== Math.sign(S.yaw); p += broad ? ' · broad' : ' · short'; }
+    return `${p} (${Math.round(rel)}°, ${Math.round(el)}° up)`;
+  }
+  function autoExpose() { const Ls = lightData(S); let E = 0; Ls.forEach(L => { if (L.id === 'key' || L.id === 'fill') E += incident(L); }); if (E <= 0) return; const n = fNum(E); let bi = 0, bd = 1e9; APS.forEach((a, i) => { const d = Math.abs(Math.log2(a / n)); if (d < bd) { bd = d; bi = i; } }); S.api = bi; }
+
+  /* ================= UI ================= */
+  $('#lMod').innerHTML = Object.entries(MODS).map(([k, m]) => `<option value="${k}">${m.n}</option>`).join('');
+  $('#lGel').innerHTML = Object.entries(GELS).map(([k, g]) => `<option value="${k}">${g[0]}</option>`).join('');
+  $('#presets').innerHTML = Object.entries(PRESETS).map(([k, p]) => `<button class="btn sm" data-k="${k}">${p.n}</button>`).join('');
+  $('#presets').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { loadPreset(b.dataset.k); SL.toast(`Preset: <b>${PRESETS[b.dataset.k].n}</b>`, 'ok', 1500); } });
+  function renderLightBtns() { $('#lights').innerHTML = NAMES.map(([id, n, c]) => `<button data-id="${id}" class="${id === sel ? 'on' : ''} ${S.L[id] && S.L[id].on ? '' : 'off'}"><i class="dot" style="color:${c};background:${c}"></i>${n}</button>`).join(''); }
+  $('#lights').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { sel = b.dataset.id; syncUI(); } });
+  function syncUI() {
+    const l = S.L[sel];
+    $('#lOn').checked = l.on; $('#onLbl').textContent = NAMES.find(n => n[0] === sel)[1] + ' light on';
+    $('#lPow').value = l.p; $('#lH').value = l.h; $('#lK').value = l.K; $('#lMod').value = l.mod; $('#lGel').value = l.gel;
+    $('#yaw').value = S.yaw; $('#bd').value = S.bd; $('#wb').value = S.wb; $('#ap').value = S.api; $('#iso').value = S.isoi;
+    outs(); renderLightBtns();
+    document.querySelectorAll('input[type=range]').forEach(r => { const min = +r.min || 0, max = +r.max || 100; r.style.setProperty('--p', ((r.value - min) / (max - min) * 100) + '%'); });
+  }
+  function outs() {
+    const l = S.L[sel], o = (id, t) => $(id).closest('.ctl').querySelector('output').textContent = t;
+    o('#lPow', (l.p > 0 ? '+' : '') + l.p.toFixed(1) + ' st · ' + Math.round(BASE_CD * Math.pow(2, l.p) * MODS[l.mod].eff) + ' cd'); o('#lH', l.h.toFixed(2) + ' m'); o('#lK', l.K + ' K');
+    o('#yaw', (S.yaw > 0 ? '+' : '') + S.yaw + '°'); o('#ap', 'f/' + APS[S.api]); o('#iso', ISOS[S.isoi]);
+  }
+  let manual = false;
+  const upd = () => { manual = true; outs(); dirty = true; renderLightBtns(); };
+  $('#lOn').addEventListener('change', e => { S.L[sel].on = e.target.checked; upd(); });
+  $('#lPow').addEventListener('input', e => { S.L[sel].p = +e.target.value; upd(); });
+  $('#lH').addEventListener('input', e => { S.L[sel].h = +e.target.value; upd(); });
+  $('#lK').addEventListener('input', e => { S.L[sel].K = +e.target.value; upd(); });
+  $('#lMod').addEventListener('change', e => { S.L[sel].mod = e.target.value; upd(); });
+  $('#lGel').addEventListener('change', e => { S.L[sel].gel = e.target.value; upd(); });
+  $('#yaw').addEventListener('input', e => { S.yaw = +e.target.value; upd(); });
+  $('#bd').addEventListener('change', e => { S.bd = e.target.value; upd(); });
+  $('#wb').addEventListener('change', e => { S.wb = +e.target.value; upd(); });
+  $('#ap').addEventListener('input', e => { S.api = +e.target.value; upd(); });
+  $('#iso').addEventListener('input', e => { S.isoi = +e.target.value; upd(); });
+  $('#autoExp').addEventListener('click', () => { autoExpose(); syncUI(); dirty = true; });
+  // dragging on the plan
+  const pc = $('#plan'); let drag = null;
+  function pickLight(p) { const M = pm(); let best = null, bd = 26; NAMES.forEach(([id]) => { const l = S.L[id]; const d = Math.hypot(M.X(l.x) - p.x, M.Y(l.z) - p.y); if (d < bd) { bd = d; best = id; } }); return best; }
+  pc.addEventListener('pointerdown', e => { const p = SL.ptr(e, pc), id = pickLight(p); if (!id) return; e.preventDefault(); pc.setPointerCapture(e.pointerId); sel = id; drag = id; pc.style.cursor = 'grabbing'; syncUI(); dirty = true; });
+  pc.addEventListener('pointermove', e => { const p = SL.ptr(e, pc); if (!drag) { pc.style.cursor = pickLight(p) ? 'grab' : 'default'; return; } const M = pm(); const l = S.L[drag]; manual = true; l.x = clamp(M.ix(p.x), -2.6, 2.6); l.z = clamp(M.iz(p.y), -1.35, 3.2); if (Math.hypot(l.x, l.z) < 0.35) { const a = Math.atan2(l.z, l.x); l.x = Math.cos(a) * 0.35; l.z = Math.sin(a) * 0.35; } dirty = true; });
+  const endDrag = () => { drag = null; pc.style.cursor = 'grab'; };
+  pc.addEventListener('pointerup', endDrag); pc.addEventListener('pointercancel', endDrag);
+  pc.addEventListener('wheel', e => { const id = pickLight(SL.ptr(e, pc)); if (!id) return; e.preventDefault(); S.L[id].h = clamp(S.L[id].h - Math.sign(e.deltaY) * 0.05, 0.3, 3.2); sel = id; syncUI(); dirty = true; }, { passive: false });
+
+  /* ================= challenges ================= */
+  const tc = $('#target'), tctx = tc.getContext('2d'), timg = tctx.createImageData(W, H);
+  const TARGETS = ['rembrandt', 'butterfly', 'split', 'lowkey', 'podcast', 'highkey', 'short'];
+  $('#tSel').innerHTML = TARGETS.map((k, i) => `<option value="${k}">Reference ${i + 1}</option>`).join('');
+  let tgt = null, tgtLum = null, tDone = {};
+  function setTarget(k) {
+    tgt = loadPreset(k, { L: {}, yaw: 0, bd: 'grey', wb: 5600, api: 0, isoi: 0 });
+    // expose the reference for its key + fill
+    let E = 0; lightData(tgt).forEach(L => { if (L.id === 'key' || L.id === 'fill') E += incident(L); });
+    const n = Math.sqrt(E * 0.02 * 100 / 250); let bi = 0, bd = 1e9; APS.forEach((a, i) => { const d = Math.abs(Math.log2(a / n)); if (d < bd) { bd = d; bi = i; } }); tgt.api = bi;
+    renderTo(timg, tgt); tctx.putImageData(timg, 0, 0); tgtLum = small(timg.data); dirty = true;
+  }
+  $('#tSel').addEventListener('change', e => setTarget(e.target.value));
+  $('#tReveal').addEventListener('click', () => { const k = $('#tSel').value; SL.modal(`<h3>Reference setup</h3><p>This is the <b>${PRESETS[k].n}</b> preset (head turn ${PRESETS[k].yaw}°, ${PRESETS[k].bd} backdrop). Load it from the Presets panel to compare with your version.</p>`); });
+  function small(data) { const G = 25, out = new Float32Array(G * 30 * 3); for (let j = 0; j < 30; j++) for (let i = 0; i < G; i++) { let r = 0, g = 0, b = 0; for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const p = ((j * 8 + y) * W + i * 8 + x) * 4; r += data[p]; g += data[p + 1]; b += data[p + 2]; } const k = (j * G + i) * 3; out[k] = r / 64 / 255; out[k + 1] = g / 64 / 255; out[k + 2] = b / 64 / 255; } return out; }
+  function similarity() { if (!tgtLum) return 0; const cur = small(img.data); let e = 0; for (let i = 0; i < cur.length; i++) e += (cur[i] - tgtLum[i]) ** 2; const rmse = Math.sqrt(e / cur.length); return clamp(100 * (1 - rmse / 0.25), 0, 100); }
+  const CHECKS = [
+    ['ratio2', 'Corporate interview: key + fill on, lighting ratio between 1.8:1 and 2.3:1 (about 1 stop)', a => a.K > 0 && a.F > 0 && (a.K + a.F) / a.F >= 1.8 && (a.K + a.F) / a.F <= 2.3],
+    ['ratio8', 'Dramatic portrait: lighting ratio of 8:1 or more with the fill still on', a => a.K > 0 && a.F > 0 && (a.K + a.F) / a.F >= 8],
+    ['rem', 'Rembrandt: key 40–60° to the side of the face and 25–50° above the eyes', () => { const k = S.L.key; const az = Math.abs(Math.atan2(k.x, k.z) * 180 / Math.PI - S.yaw), el = Math.atan2(k.h - HEADY, Math.hypot(k.x, k.z)) * 180 / Math.PI; return k.on && az >= 40 && az <= 60 && el >= 25 && el <= 50; }],
+    ['sep', 'Separation: back light on and placed behind the subject (z < 0), brighter than 300 lux at the head', () => { const l = S.L.back; if (!l.on || l.z >= 0) return false; const L = lightData(S).find(q => q.id === 'back'); const d2 = l.x * l.x + (l.h - HEADY) ** 2 + l.z * l.z; return L.I / d2 > 300; }],
+    ['expo', 'Correct exposure: aperture within ⅓ stop of what the meter needs for key + fill', a => a.K > 0 && Math.abs(2 * Math.log2(fNum(a.K + a.F) / APS[S.api])) <= 0.5],
+  ];
+  function checkAll(a) {
+    $('#cList').innerHTML = CHECKS.map(([id, t, f]) => { const ok = f(a); if (ok && !tDone[id] && manual) { tDone[id] = true; SL.toast('Challenge complete: ' + t.split(':')[0], 'ok'); } return `<li class="${ok ? 'ok' : ''}"><span class="led ${ok || tDone[id] ? 'on' : ''}"></span>${t}</li>`; }).join('');
+    const sc = similarity(); $('#tScore').textContent = sc.toFixed(0) + ' %'; $('#tBar').style.width = sc + '%';
+    const k = $('#tSel').value; if (sc >= 92 && !tDone['t-' + k] && manual) { tDone['t-' + k] = true; SL.toast(`Reference matched: ${sc.toFixed(0)} % similarity!`, 'ok', 5000); }
+  }
+
+  /* ================= loop ================= */
+  let lastA = 0;
+  SL.loop(() => {
+    if (!dirty) return; dirty = false;
+    const t0 = performance.now(); drawView(); window.__lightMs = performance.now() - t0;
+    drawPlan(); const a = analyse();
+    if (performance.now() - lastA > 120 || !drag) { lastA = performance.now(); checkAll(a); }
+  }).start();
+
+  loadPreset('interview');
+  setTarget('rembrandt');
+  window.__light = { S, loadPreset, analyse, similarity, lightData, setTarget, get dirty() { return dirty; }, set dirty(v) { dirty = v; } };
+
+  SL.quiz('#quiz', [
+    { q: 'A light is moved from 1 m to 2 m from the subject. The illuminance falls by…', options: ['1 stop (half)', '2 stops (quarter)', '3 stops', 'It stays the same'], answer: 1, why: 'Inverse square: (2/1)² = 4, a quarter of the light, which is 2 stops.' },
+    { q: 'Which change makes a light source softer?', options: ['Moving it further away', 'Making its apparent size larger (bigger modifier or closer)', 'Raising its colour temperature', 'Adding a snoot'], answer: 1, why: 'Softness depends on the angular size of the source as seen from the subject.' },
+    { q: 'Key gives 1200 lux, fill gives 400 lux on the shadow side. What is the lighting ratio?', options: ['3:1', '4:1', '2:1', '1.5:1'], answer: 1, why: '(1200 + 400)/400 = 4:1, i.e. 2 stops.' },
+    { q: 'The small triangle of light on the shadow-side cheek is the signature of…', options: ['Butterfly lighting', 'Split lighting', 'Rembrandt lighting', 'High-key lighting'], answer: 2, why: 'Rembrandt: key about 45° to the side and high, so nose and cheek shadows enclose a triangle of light.' },
+    { q: 'What is the main job of a back (rim/hair) light?', options: ['Fill the shadows', 'Light the backdrop', 'Separate the subject from the background', 'Set the exposure'], answer: 2, why: 'It outlines the head and shoulders so they stand out from the background.' },
+    { q: 'Your camera is set to 5600 K and the fill light is a 3200 K tungsten lamp. The shadows will look…', options: ['Blue', 'Orange', 'Neutral', 'Green'], answer: 1, why: 'A lower colour temperature than the white balance renders warm (orange).' },
+    { q: 'With an incident meter reading of 800 lux, 1/50 s and ISO 100, the correct aperture is about…', options: ['f/1.4', 'f/2.5–2.8', 'f/5.6', 'f/11'], answer: 1, why: 'N = √(E t S / C) = √(800 × 0.02 × 100 / 250) = √6.4 ≈ 2.5.' },
+    { q: 'Short lighting means…', options: ['Lighting the side of the face turned towards the camera', 'Lighting the side of the face turned away from the camera', 'A very short exposure', 'Light from below'], answer: 1, why: 'Short lighting lights the far side of the face (turned away), slimming it; broad lighting lights the near side.' },
+    { q: 'CRI and TLCI describe…', options: ['Light output in lumens', 'Beam angle', 'How faithfully a source renders colours', 'Colour temperature'], answer: 2, why: 'They score colour fidelity, especially skin tones; ≥ 90 is the usual broadcast standard.' },
+  ]);
+})();
+</script>
+</body>
+</html>
