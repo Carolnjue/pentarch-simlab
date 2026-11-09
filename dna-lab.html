@@ -1,0 +1,1667 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DNA Lab: Splicing &amp; Protein Synthesis · Pentarch SimLab</title>
+<meta name="description" content="Interactive DNA lab: rotate a double helix, watch replication and transcription, splice introns out of pre-mRNA yourself, translate codons on a ribosome, engineer mutations and edit genes with CRISPR-Cas9.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .stations{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-top:22px}
+  .stations button{all:unset;box-sizing:border-box;cursor:pointer;position:relative;display:flex;flex-direction:column;gap:3px;padding:11px 12px 10px;border-radius:12px;background:var(--panel);border:1px solid var(--line);transition:.18s;min-width:0}
+  .stations button:hover{border-color:var(--line2);transform:translateY(-1px)}
+  .stations button .n{font:600 .64rem var(--mono);letter-spacing:.12em;color:var(--dim);text-transform:uppercase;display:flex;align-items:center;gap:6px}
+  .stations button .n svg{width:15px;height:15px;color:var(--accent)}
+  .stations button b{font:600 .92rem var(--display);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .stations button span.s{font-size:.74rem;color:var(--muted);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .stations button.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--panel));box-shadow:0 8px 28px -14px var(--accent)}
+  .stations button .done{position:absolute;right:9px;top:9px;width:8px;height:8px;border-radius:50%;background:var(--line2)}
+  .stations button .done.ok{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+  @media (max-width:980px){.stations{grid-template-columns:repeat(3,minmax(0,1fr))}}
+  @media (max-width:520px){.stations{grid-template-columns:repeat(2,minmax(0,1fr))}.stations button span.s{display:none}}
+  #stage{height:610px;touch-action:pan-y}
+  @media (max-width:600px){#stage{height:560px}}
+  .tip{position:absolute;z-index:5;pointer-events:none;background:rgba(10,15,29,.95);border:1px solid var(--line2);border-radius:9px;padding:7px 10px;font-size:.78rem;line-height:1.4;max-width:260px;display:none;box-shadow:var(--shadow)}
+  .tip b{color:var(--accent)}
+  .spanel{display:none}.spanel.on{display:block}
+  .seqbox{font:500 .76rem/1.5 var(--mono);background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:8px 10px;word-break:break-all;max-height:120px;overflow:auto;color:var(--muted)}
+  .seqbox b{color:var(--text);font-weight:600}
+  .steplist{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+  .steplist li{display:flex;gap:9px;align-items:flex-start;padding:7px 9px;border-radius:9px;border:1px solid transparent;cursor:pointer;font-size:.84rem;color:var(--muted);line-height:1.35}
+  .steplist li i{font:600 .7rem var(--mono);color:var(--dim);flex:none;width:18px;height:18px;border-radius:6px;display:grid;place-items:center;background:var(--bg2);font-style:normal}
+  .steplist li.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent);color:var(--text)}
+  .steplist li.on i{background:var(--accent);color:#06101f}
+  .checks{display:grid;gap:5px;font-size:.84rem}
+  .checks div{display:flex;align-items:center;gap:8px;color:var(--muted)}
+  .checks div.ok{color:var(--text)}
+  .basepick{display:flex;gap:6px}
+  .basepick button{all:unset;cursor:pointer;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font:700 .95rem var(--mono);border:1px solid var(--line2);background:var(--bg2)}
+  .basepick button.on{outline:2px solid #fff;outline-offset:1px}
+  .wheel{width:100%;max-width:330px;display:block;margin:0 auto}
+  .wheel path{stroke:#070b16;stroke-width:.8;cursor:pointer;transition:opacity .15s}
+  .wheel text{pointer-events:none;font-family:var(--mono);fill:#06101f;font-weight:600}
+  .wheel .hl{stroke:#fff;stroke-width:2}
+  .codeinfo{min-height:44px;font-size:.84rem;color:var(--muted);text-align:center;margin-top:6px}
+  .codeinfo b{color:var(--text)}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:.76rem;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .legend i{width:11px;height:11px;border-radius:50%;display:inline-block}
+  .codetable{border-collapse:collapse;width:100%;font:500 .78rem var(--mono);min-width:620px}
+  .codetable td,.codetable th{border:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top}
+  .codetable th{color:var(--dim);font-weight:600;text-align:center;background:var(--bg2)}
+  .codetable td span{display:block;padding:2px 4px;border-radius:5px;cursor:default;white-space:nowrap}
+  .codetable td span:hover{background:rgba(255,255,255,.08)}
+  .codetable td span em{font-style:normal;font-weight:600}
+  .scrollx{overflow-x:auto;max-width:100%}
+  .isos{display:grid;gap:6px;margin-top:8px}
+  .isos div{font:500 .74rem var(--mono);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:6px 8px;word-break:break-all;color:var(--muted)}
+  .isos div b{color:var(--text)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .small-note{font-size:.78rem;color:var(--dim);margin-top:8px;line-height:1.45}
+  .diag{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:10px;margin:12px 0}
+  .diag svg{width:100%;height:auto;display:block}
+</style>
+</head>
+<body data-page="dna-lab">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <nav class="stations" id="stations" aria-label="Lab stations">
+    <button data-st="dna" class="on"><span class="n"><i data-lucide="dna"></i>Station 1</span><b>DNA</b><span class="s">Helix, base pairs, replication</span><span class="done" data-done="dna"></span></button>
+    <button data-st="tx"><span class="n"><i data-lucide="scroll-text"></i>Station 2</span><b>Transcription</b><span class="s">RNA polymerase builds pre-mRNA</span><span class="done" data-done="tx"></span></button>
+    <button data-st="sp"><span class="n"><i data-lucide="scissors"></i>Station 3</span><b>Splicing</b><span class="s">Cut introns, join exons, cap &amp; tail</span><span class="done" data-done="sp"></span></button>
+    <button data-st="tl"><span class="n"><i data-lucide="factory"></i>Station 4</span><b>Translation</b><span class="s">Ribosome, tRNAs, codons</span><span class="done" data-done="tl"></span></button>
+    <button data-st="mu"><span class="n"><i data-lucide="zap"></i>Station 5</span><b>Mutation lab</b><span class="s">Point mutations &amp; frameshifts</span><span class="done" data-done="mu"></span></button>
+    <button data-st="cr"><span class="n"><i data-lucide="crosshair"></i>Station 6</span><b>CRISPR-Cas9</b><span class="s">Guide, PAM, cut and repair</span><span class="done" data-done="cr"></span></button>
+  </nav>
+
+  <section class="lab wide-controls" style="padding-top:14px">
+    <div class="stage" id="stage">
+      <canvas id="cv"></canvas>
+      <div class="hud" id="hud"></div>
+      <div class="tip" id="tip"></div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="library"></i> Gene</h3>
+        <select id="geneSel" aria-label="Choose a gene"></select>
+        <p class="small-note" id="geneNote"></p>
+      </div>
+
+      <!-- DNA -->
+      <div class="spanel" data-p="dna">
+        <div class="panel">
+          <h3><i data-lucide="dna"></i> Double helix</h3>
+          <div class="seg" id="dnaMode"><button data-v="helix" class="on">Helix &amp; base pairs</button><button data-v="fork">Replication fork</button></div>
+          <div id="dnaHelixCtl">
+            <div class="ctl"><label for="dnaOff">Window along the gene</label><output id="dnaOffOut">0</output><input type="range" id="dnaOff" min="0" max="100" step="1" value="0"></div>
+            <label class="toggle">Rotate helix<input type="checkbox" id="dnaSpin" checked></label>
+            <label class="toggle">Show hydrogen bonds<input type="checkbox" id="dnaHb" checked></label>
+            <p class="small-note">Click any base on the ladder to change it (A → C → G → T); its partner on the other strand updates automatically. Edits flow through to every station.</p>
+            <div class="panel-title">Both strands of this window</div>
+            <div class="seqbox" id="dnaText"></div>
+            <div class="panel-title">Build your own gene</div>
+            <textarea id="customSeq" rows="3" placeholder="Coding strand 5′→3′, e.g. ATGGCTAAAGGCTGA" spellcheck="false" style="font-family:var(--mono);font-size:.82rem"></textarea>
+            <div class="btn-row" style="margin-top:8px"><button class="btn sm" id="customGo"><i data-lucide="wand-2"></i> Use as gene</button><button class="btn sm" id="restoreGene"><i data-lucide="rotate-ccw"></i> Restore preset</button></div>
+          </div>
+          <div id="dnaForkCtl" style="display:none">
+            <div class="btn-row" style="margin:10px 0"><button class="btn sm" id="forkPrev"><i data-lucide="chevron-left"></i></button><button class="btn sm primary" id="forkPlay"><i data-lucide="pause"></i> Pause</button><button class="btn sm" id="forkNext"><i data-lucide="chevron-right"></i></button><button class="btn sm" id="forkReset"><i data-lucide="rotate-ccw"></i></button></div>
+            <div class="ctl"><label for="forkSpeed">Fork speed</label><output>1×</output><input type="range" id="forkSpeed" min="0.25" max="3" step="0.25" value="1"></div>
+            <ol class="steplist" id="forkSteps"></ol>
+          </div>
+        </div>
+        <div class="panel"><h3><i data-lucide="gauge"></i> Gene statistics</h3><div class="stats" id="dnaStats"></div></div>
+      </div>
+
+      <!-- TRANSCRIPTION -->
+      <div class="spanel" data-p="tx">
+        <div class="panel">
+          <h3><i data-lucide="scroll-text"></i> RNA polymerase II</h3>
+          <div class="btn-row"><button class="btn primary" id="txPlay"><i data-lucide="play"></i> Transcribe</button><button class="btn" id="txStep"><i data-lucide="step-forward"></i> +1 nt</button><button class="btn" id="txReset"><i data-lucide="rotate-ccw"></i></button><button class="btn" id="txSkip" title="Finish instantly"><i data-lucide="fast-forward"></i></button></div>
+          <div class="ctl"><label for="txSpeed">Speed (animation)</label><output>8 nt/s</output><input type="range" id="txSpeed" min="1" max="60" step="1" value="8"></div>
+          <p class="small-note">The template strand is read 3′→5′, so the RNA grows 5′→3′. Its sequence matches the coding strand, with U in place of T. Real RNA polymerase II runs at roughly 20–70 nt/s.</p>
+          <div class="checks" id="txChecks"></div>
+        </div>
+        <div class="panel"><h3><i data-lucide="gauge"></i> Live readouts</h3><div class="stats" id="txStats"></div>
+          <div class="panel-title">Transcript so far (5′→3′)</div><div class="seqbox" id="txText">Not started.</div>
+        </div>
+      </div>
+
+      <!-- SPLICING -->
+      <div class="spanel" data-p="sp">
+        <div class="panel">
+          <h3><i data-lucide="scissors"></i> Splice the pre-mRNA</h3>
+          <div class="seg" id="spMode"><button data-v="cut" class="on">Cut &amp; join</button><button data-v="alt">Alternative splicing</button></div>
+          <div id="spCutCtl">
+            <p class="small-note" style="margin-top:10px">Click between two nucleotides to place a cut. Cuts work in pairs: everything between cut 1 and cut 2 (and 3 and 4, …) is removed as an intron. Drag a cut to move it; click it again to delete it.</p>
+            <div class="btn-row"><button class="btn primary" id="spGo"><i data-lucide="scissors"></i> Splice</button><button class="btn" id="spUndo"><i data-lucide="undo-2"></i></button><button class="btn" id="spClear"><i data-lucide="eraser"></i> Clear</button><button class="btn" id="spAuto"><i data-lucide="sparkles"></i> Show me</button></div>
+            <div id="spVarWrap" style="margin-top:10px"><label class="small muted" for="spVar">Splice-site variant</label><select id="spVar"></select></div>
+            <label class="toggle" style="margin-top:6px">Show every nucleotide (no compression)<input type="checkbox" id="spFull"></label>
+            <label class="toggle">Animate the spliceosome<input type="checkbox" id="spAnim" checked></label>
+          </div>
+          <div id="spAltCtl" style="display:none">
+            <p class="small-note" style="margin-top:10px">Click exons on the stage to include or skip them, then compare the protein isoforms they produce.</p>
+            <div class="btn-row"><button class="btn primary" id="altSave"><i data-lucide="bookmark-plus"></i> Save isoform</button><button class="btn" id="altAll"><i data-lucide="list-checks"></i> Include all</button><button class="btn" id="altClear"><i data-lucide="trash-2"></i></button></div>
+            <div class="isos" id="isoList"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3><i data-lucide="package-check"></i> mRNA processing</h3>
+          <div class="btn-row"><button class="btn sm" id="spCap"><i data-lucide="hard-hat"></i> Add 5′ cap</button><button class="btn sm" id="spTail"><i data-lucide="tally-5"></i> Cleave + poly(A)</button><button class="btn sm" id="spReset"><i data-lucide="rotate-ccw"></i> Reset</button></div>
+          <div class="checks" id="spChecks" style="margin-top:10px"></div>
+        </div>
+      </div>
+
+      <!-- TRANSLATION -->
+      <div class="spanel" data-p="tl">
+        <div class="panel">
+          <h3><i data-lucide="factory"></i> Ribosome</h3>
+          <div class="seg" id="tlSrc"><button data-v="mine" class="on">Your mRNA</button><button data-v="ref">Reference mRNA</button></div>
+          <div class="btn-row" style="margin-top:10px"><button class="btn primary" id="tlPlay"><i data-lucide="play"></i> Translate</button><button class="btn" id="tlStep"><i data-lucide="step-forward"></i> Step</button><button class="btn" id="tlReset"><i data-lucide="rotate-ccw"></i></button><button class="btn" id="tlSkip"><i data-lucide="fast-forward"></i></button></div>
+          <div class="ctl"><label for="tlSpeed">Speed</label><output>1×</output><input type="range" id="tlSpeed" min="0.25" max="6" step="0.25" value="1"></div>
+          <p class="small-note" id="tlNote"></p>
+        </div>
+        <div class="panel">
+          <h3><i data-lucide="orbit"></i> Genetic code wheel</h3>
+          <svg class="wheel" id="wheel" viewBox="0 0 320 320" aria-label="Standard genetic code wheel"></svg>
+          <div class="codeinfo" id="codeInfo">Read from the centre outwards: 1st, 2nd, 3rd base (5′→3′). Hover a codon.</div>
+          <div class="legend" id="aaLegend" style="justify-content:center;margin-top:6px"></div>
+        </div>
+        <div class="panel"><h3><i data-lucide="gauge"></i> Live readouts</h3><div class="stats" id="tlStats"></div>
+          <div class="panel-title">Polypeptide (N → C)</div><div class="seqbox" id="tlText">—</div></div>
+      </div>
+
+      <!-- MUTATION -->
+      <div class="spanel" data-p="mu">
+        <div class="panel">
+          <h3><i data-lucide="zap"></i> Mutate the coding sequence</h3>
+          <div class="seg" id="muTool"><button data-v="sub" class="on">Substitute</button><button data-v="ins">Insert</button><button data-v="del">Delete</button></div>
+          <div class="panel-title">Base to use</div>
+          <div class="basepick" id="muBase"></div>
+          <p class="small-note">Click a base on the stage. Substitute replaces it; Insert adds the chosen base before it; Delete removes it.</p>
+          <div class="btn-row"><button class="btn sm" id="muUndo"><i data-lucide="undo-2"></i> Undo</button><button class="btn sm" id="muReset"><i data-lucide="rotate-ccw"></i> Reset</button></div>
+          <div class="panel-title">Presets</div>
+          <div class="btn-row" id="muPresets"></div>
+        </div>
+        <div class="panel"><h3><i data-lucide="microscope"></i> Effect on the protein</h3><div id="muResult" class="small"></div><div class="stats" id="muStats" style="margin-top:10px"></div></div>
+      </div>
+
+      <!-- CRISPR -->
+      <div class="spanel" data-p="cr">
+        <div class="panel">
+          <h3><i data-lucide="crosshair"></i> Design a guide RNA</h3>
+          <div id="crAlleleWrap"><label class="small muted" for="crAllele">Target allele</label><select id="crAllele"></select></div>
+          <div class="ctl"><label for="crWin">Scroll along the gene</label><output id="crWinOut">0</output><input type="range" id="crWin" min="0" max="100" step="1" value="0"></div>
+          <p class="small-note">Green flags mark NGG PAMs on the top strand, violet flags mark PAMs on the bottom strand (CCN on top). Click a flag, or click a base to start a 20-nt guide there.</p>
+          <div class="panel-title">Repair pathway</div>
+          <div class="seg" id="crRepair"><button data-v="nhej" class="on">NHEJ (no template)</button><button data-v="hdr">HDR (donor template)</button></div>
+          <div id="crDonorWrap" style="margin-top:8px;display:none"><label class="small muted" for="crDonor">Donor template</label><select id="crDonor"></select></div>
+          <div class="btn-row" style="margin-top:10px"><button class="btn primary" id="crGo"><i data-lucide="play"></i> Run Cas9</button><button class="btn" id="crAgain"><i data-lucide="dices"></i> Repair again</button><button class="btn" id="crReset"><i data-lucide="rotate-ccw"></i></button></div>
+        </div>
+        <div class="panel"><h3><i data-lucide="clipboard-list"></i> Guide &amp; outcome</h3><div class="stats" id="crStats"></div><div id="crResult" class="small" style="margin-top:10px"></div></div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button><i data-lucide="table"></i> Genetic code</button>
+      <button><i data-lucide="globe-2"></i> Real-world</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. DNA: structure and base pairing</h3>
+      <p>DNA is a double helix of two antiparallel polynucleotide strands. Each nucleotide has a deoxyribose sugar, a phosphate and one of four bases: adenine (A), thymine (T), guanine (G) or cytosine (C). The sugar–phosphate backbone is joined by 3′→5′ phosphodiester bonds, so each strand has a 5′ end (free phosphate) and a 3′ end (free OH). Bases pair by hydrogen bonds: A with T (2 H-bonds) and G with C (3 H-bonds). Chargaff’s rule follows directly: in double-stranded DNA, $[A]=[T]$ and $[G]=[C]$.</p>
+      <div class="diag"><svg viewBox="0 0 640 150" aria-label="Antiparallel base pairing">
+        <g font-family="JetBrains Mono" font-size="13" fill="#e6ecf7">
+        <text x="20" y="40" fill="#22d3ee">5′</text><text x="600" y="40" fill="#22d3ee">3′</text>
+        <text x="20" y="122" fill="#a78bfa">3′</text><text x="600" y="122" fill="#a78bfa">5′</text>
+        <line x1="50" y1="36" x2="590" y2="36" stroke="#22d3ee" stroke-width="3"/><line x1="50" y1="118" x2="590" y2="118" stroke="#a78bfa" stroke-width="3"/>
+        <g id="bpd"></g>
+        </g>
+        <text x="320" y="146" text-anchor="middle" font-size="11" fill="#93a1bd" font-family="Inter">A=T: 2 hydrogen bonds · G≡C: 3 hydrogen bonds · strands run in opposite directions</text>
+      </svg></div>
+      <p>B-DNA has about 10.5 base pairs per helical turn, a rise of 0.34 nm per base pair (so one turn ≈ 3.4–3.6 nm) and a diameter of about 2 nm. Because the glycosidic bonds of a base pair are not diametrically opposite, the helix has a wide <em>major groove</em> and a narrow <em>minor groove</em>, which proteins read to recognise sequences.</p>
+      <div class="eq">$$L \approx 0.34\,\text{nm} \times N_{bp},\qquad \text{turns} \approx \frac{N_{bp}}{10.5},\qquad T_m \approx 81.5 + 0.41(\%GC) - \frac{675}{N}\;\;(^{\circ}\text{C})$$</div>
+      <p>The melting-temperature formula is an empirical approximation for long DNA at fixed salt; more G–C pairs mean more hydrogen bonds and stronger base stacking, so higher $T_m$.</p>
+
+      <h3>2. Replication is semi-conservative</h3>
+      <p>Each daughter duplex keeps one parental strand (Meselson–Stahl, 1958). At the replication fork, <b>topoisomerase</b> relieves the supercoiling ahead, <b>helicase</b> unwinds the strands, <b>single-strand binding proteins</b> stop them re-annealing, and <b>primase</b> lays short RNA primers because DNA polymerases can only <em>extend</em> an existing 3′-OH. Polymerases synthesise only 5′→3′, so one strand (the <b>leading strand</b>) is made continuously towards the fork, while the other (the <b>lagging strand</b>) is made in short <b>Okazaki fragments</b> (≈1000–2000 nt in bacteria, ≈100–200 nt in eukaryotes) away from it. In <i>E. coli</i>, DNA polymerase I removes the RNA primers and fills the gaps; in eukaryotes RNase H and FEN1 remove them and polymerase δ fills in. <b>DNA ligase</b> seals the final nicks.</p>
+
+      <h3>3. Transcription</h3>
+      <p>RNA polymerase II binds the promoter with general transcription factors. TFIID’s TATA-binding protein recognises the <b>TATA box</b> (consensus TATAAA, about 25–30 bp upstream of the transcription start site, +1). The polymerase opens a ~12–14 bp bubble, reads the <b>template (antisense) strand</b> 3′→5′ and joins ribonucleotides 5′→3′. The RNA therefore has the same sequence as the <b>coding (sense) strand</b>, with uracil in place of thymine.</p>
+      <div class="eq">$$\text{template }3'\text{-TAC GGA-}5' \;\longrightarrow\; \text{mRNA }5'\text{-AUG CCU-}3' \;=\; \text{coding }5'\text{-ATG CCT-}3'\ (T\to U)$$</div>
+      <p>In eukaryotes, the AAUAAA poly(A) signal near the 3′ end directs cleavage of the transcript 10–30 nt downstream; the polymerase continues for a while and is then released (the “torpedo” model).</p>
+
+      <h3>4. Processing and splicing</h3>
+      <p>The primary transcript (pre-mRNA) is processed in the nucleus:</p>
+      <ul>
+        <li><b>5′ cap</b>: a 7-methylguanosine joined by an unusual 5′–5′ triphosphate bridge. It protects the mRNA from 5′ exonucleases and recruits the ribosome (via eIF4E).</li>
+        <li><b>Splicing</b>: introns are removed and exons joined by the <b>spliceosome</b> (snRNPs U1, U2, U4, U5, U6 plus ~150 proteins). Almost all introns obey the <b>GU–AG rule</b>: they start with GU at the 5′ splice site and end with AG at the 3′ splice site, with a <b>branch-point A</b> about 18–40 nt upstream of the 3′ end followed by a polypyrimidine tract.</li>
+        <li><b>3′ cleavage and polyadenylation</b>: poly(A) polymerase adds ~200 adenines (the length varies by species and transcript).</li>
+      </ul>
+      <p>Splicing is two transesterifications. <b>Step 1:</b> the 2′-OH of the branch-point A attacks the phosphate at the 5′ splice site, releasing exon 1 and forming a <b>lariat</b> with a 2′–5′ phosphodiester bond. <b>Step 2:</b> the free 3′-OH of exon 1 attacks the 3′ splice site, joining the exons and releasing the lariat intron, which is debranched and degraded.</p>
+      <div class="callout"><i data-lucide="info"></i><div>Because the genetic code is read in triplets, cutting even one nucleotide off target shifts the reading frame for everything downstream. This is why splice sites must be precise, and why many disease mutations (including several β-thalassaemias) act on splicing.</div></div>
+      <p><b>Alternative splicing</b> lets one gene make several proteins (isoforms) by including or skipping exons, choosing alternative 5′ or 3′ splice sites, or retaining introns. Over 90% of human multi-exon genes are alternatively spliced. An exon whose length is a multiple of 3 can be skipped “in frame”; skipping an exon of $3k+1$ or $3k+2$ nt shifts the frame.</p>
+
+      <h3>5. Translation</h3>
+      <p>The small ribosomal subunit binds the cap and scans 5′→3′ to the first AUG in a good context (Kozak sequence, e.g. GCCACC<u>AUG</u>G). The initiator Met-tRNA sits in the <b>P site</b>; the large subunit joins. Each elongation cycle: (1) an aminoacyl-tRNA whose anticodon pairs with the codon enters the <b>A site</b>; (2) the ribosome (a ribozyme: the peptidyl transferase is rRNA) moves the growing chain onto the A-site amino acid, forming a peptide bond; (3) the ribosome translocates one codon, moving tRNAs from A→P and P→<b>E</b> (exit). A stop codon (UAA, UAG, UGA) is recognised by a release factor, and the polypeptide is freed.</p>
+      <div class="eq">$$\text{codons} = 4^3 = 64:\quad 61\ \text{sense codons} \to 20\ \text{amino acids},\quad 3\ \text{stop codons}$$</div>
+      <div class="eq">$$M_r(\text{protein}) \approx \sum_i m_{\text{residue},i} + 18.02\ \text{Da}\qquad(\text{average residue} \approx 110\ \text{Da})$$</div>
+      <p>The code is <em>degenerate</em> (several codons per amino acid, usually differing at the third base, which also allows <em>wobble</em> pairing), <em>unambiguous</em> (each codon means one thing) and nearly <em>universal</em>.</p>
+
+      <h3>6. Mutations</h3>
+      <table class="data">
+        <tr><th>Type</th><th>DNA change</th><th>Protein effect</th></tr>
+        <tr><td>Silent</td><td>Substitution, usually 3rd base</td><td>Same amino acid</td></tr>
+        <tr><td>Missense</td><td>Substitution</td><td>Different amino acid (conservative or not)</td></tr>
+        <tr><td>Nonsense</td><td>Substitution creating UAA/UAG/UGA</td><td>Truncated protein; often mRNA decay (NMD)</td></tr>
+        <tr><td>Frameshift</td><td>Insertion/deletion not a multiple of 3</td><td>Garbled sequence downstream, usually an early stop</td></tr>
+        <tr><td>In-frame indel</td><td>Insertion/deletion of 3n nt</td><td>Amino acids added or removed</td></tr>
+        <tr><td>Splice-site</td><td>Changes GU/AG or creates a cryptic site</td><td>Exon skipping, intron retention, frameshift</td></tr>
+      </table>
+      <p>Sickle-cell anaemia is caused by a single substitution in <i>HBB</i>: c.20A&gt;T changes codon GAG (Glu) to GTG (Val). The β-globin residue is traditionally called Glu6Val because numbering starts after the initiator methionine (HGVS: p.Glu7Val).</p>
+
+      <h3>7. CRISPR-Cas9</h3>
+      <p>Cas9 from <i>Streptococcus pyogenes</i> is guided by a single-guide RNA (sgRNA) whose 20-nt spacer pairs with the DNA strand opposite the protospacer. Cas9 only binds where the protospacer is immediately followed by a <b>PAM</b>, 5′-NGG-3′. Its HNH and RuvC nuclease domains cut both strands 3 bp upstream (5′) of the PAM, leaving a blunt double-strand break. Cells repair it by <b>non-homologous end joining</b> (NHEJ: error-prone, small insertions or deletions, often a frameshift that knocks the gene out) or, if a donor template is supplied and the cell is dividing, by <b>homology-directed repair</b> (HDR: precise edits copied from the template).</p>
+      <div class="callout warn"><i data-lucide="triangle-alert"></i><div>Model simplifications: sequences are shown as straight strands; nucleotide positions of enzymes and the number of hydrogen bonds per pair are exact, but distances and rates on the stage are not to scale. Real introns are usually much longer (median ≈1.5 kb in humans); teaching genes use short introns so you can see every base.</div></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Example 1: from template strand to protein</h3>
+      <div class="worked">
+        <p>Template strand: <code>3′-TAC CGA TTT GTC ACT-5′</code></p>
+        <ol>
+          <li>Pair each base (A→U, T→A, G→C, C→G) and keep the direction antiparallel: mRNA <code>5′-AUG GCU AAA CAG UGA-3′</code>.</li>
+          <li>The coding strand is identical with T: <code>5′-ATG GCT AAA CAG TGA-3′</code>.</li>
+          <li>Translate from AUG in triplets: AUG Met, GCU Ala, AAA Lys, CAG Gln, UGA stop.</li>
+          <li>Protein: <b>Met-Ala-Lys-Gln</b> (MAKQ), 4 residues. Type <code>ATGGCTAAACAGTGA</code> into “Build your own gene” on Station 1 and run it through Stations 2 and 4 to check.</li>
+        </ol>
+      </div>
+      <h3>Example 2: splice sites in the Message gene</h3>
+      <div class="worked">
+        <p>The Message teaching gene has four exons of 63, 15, 13 and 78 nt. Exon 1 holds a 39-nt 5′ UTR, so the coding part of exon 1 is $63-39=24$ nt (8 codons: M S P L I C E D).</p>
+        <ol>
+          <li>Exon 2 is 15 nt $=5$ codons, a multiple of 3. Skipping it removes R I G H T and keeps the frame: <b>MSPLICED·THEN·TRANSLATED</b> (22 aa).</li>
+          <li>Exon 3 is 13 nt $=3\times4+1$. Skipping it shifts the frame by +1 in exon 4: GAG CCA ATT CCC <b>TAG</b>, giving <b>MSPLICEDRIGHTREPIP</b> then stop (18 aa).</li>
+          <li>Correct splicing gives MSPLICEDRIGHTTHENTRANSLATED: 27 residues and a stop codon, so the CDS is $28\times3=84$ nt.</li>
+        </ol>
+      </div>
+      <h3>Example 3: sickle-cell haemoglobin</h3>
+      <div class="worked">
+        <p><i>HBB</i> coding sequence starts <code>ATG GTG CAT CTG ACT CCT GAG GAG</code> = M V H L T P E E.</p>
+        <ol>
+          <li>The 7th codon (6th after Met) is GAG = Glu. Changing nucleotide 20 (A→T) gives GTG = Val.</li>
+          <li>Glu is acidic (charged, hydrophilic); Val is hydrophobic. On the surface of deoxy-haemoglobin, Val6 sticks into a hydrophobic pocket on a neighbouring molecule, so HbS polymerises into fibres that sickle the red cell.</li>
+          <li>Only 1 of 444 coding nucleotides changed (0.23%), and only 1 of 146 residues of the mature chain.</li>
+        </ol>
+      </div>
+      <h3>Example 4: frameshift β-thalassaemia (codons 41/42, −CTTT)</h3>
+      <div class="worked">
+        <ol>
+          <li>Codons 41–44 (traditional numbering) are <code>TTC TTT GAG TCC</code> = F F E S.</li>
+          <li>Deleting 4 nt (CTTT) leaves <code>TT<u>G</u> AGT CCT TTG GGG ATC TGT CCA CTC CTG ATG CTG TTA TGG GCA ACC CTA AGG TGA</code>…</li>
+          <li>4 is not a multiple of 3, so every downstream codon is misread; a new UGA stop appears 18 codons later. Try it in the Mutation lab (preset “codons 41/42”).</li>
+        </ol>
+      </div>
+      <h3>Example 5: where does Cas9 cut?</h3>
+      <div class="worked">
+        <p>Top strand: <code>5′-…GCC GTT ACT GCC CTG TGG GGC AAG G…-3′</code>. Candidate PAMs (NGG) here include <code>TGG</code> and <code>GGG</code>; <code>GGC</code> is not a PAM.</p>
+        <ol>
+          <li>Choose PAM = <code>TGG</code> (codon 16). The 20 nt immediately 5′ of it are the protospacer; the guide RNA has the same sequence (with U) and pairs with the bottom strand.</li>
+          <li>Cas9 cuts between protospacer nucleotides 17 and 18, i.e. 3 bp upstream of the PAM, on both strands: a blunt break.</li>
+          <li>A 1-nt insertion by NHEJ at that point shifts the frame; HDR with a donor can instead write in a precise change.</li>
+        </ol>
+      </div>
+      <h3>Example 6: protein mass</h3>
+      <div class="worked">
+        <p>The mature β-globin chain has 146 residues (the initiator Met is removed after translation). Sum of residue masses ≈ 15 849 Da; add 18.02 for the terminal H and OH: $M_r \approx 15\,867$ Da, close to the measured 15 867 Da. The lab’s readout includes Met (147 residues ≈ 15.998 kDa).</p>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Guided experiments</h3>
+      <ol class="steps">
+        <li><b>Chargaff check.</b> On Station 1, find a window with many G–C pairs and one rich in A–T. Compare hydrogen bonds per base pair and the melting temperature readout.</li>
+        <li><b>Follow a base.</b> Change a T in exon 1 of the Message gene to C on Station 1, then transcribe on Station 2: which RNA base appears at that position?</li>
+        <li><b>Splice by hand.</b> On Station 3 (Message gene), place 6 cuts so that all three introns are removed exactly. Use the GU…AG rule and the branch-point A.</li>
+        <li><b>Break it on purpose.</b> Cut one nucleotide too early at the end of intron 1 and splice. Where does the protein first differ and why?</li>
+        <li><b>Isoforms.</b> In Alternative splicing, skip exon 2, then exon 3. Explain why one isoform is only shorter while the other is scrambled.</li>
+        <li><b>Cryptic splice site.</b> Load HBB, choose the IVS-I-110 G&gt;A variant and press “Show me”. How many intron nucleotides are kept, and what happens to the protein?</li>
+        <li><b>Sickle cell.</b> Apply the HbS preset in the Mutation lab and read the property change. Then on Station 6 choose the sickle allele and repair it by HDR.</li>
+      </ol>
+      <h3>Auto-checked challenges</h3>
+      <div class="grid2" id="challenges"></div>
+    </div>
+
+    <div class="tabpanel">
+      <div class="prose"><h3>The standard genetic code (mRNA codons)</h3><p>Rows: first base; columns: second base; within a cell: third base. Colours show the side-chain class. Hover any codon.</p></div>
+      <div class="scrollx"><table class="codetable" id="codeTable"></table></div>
+      <div class="legend" id="aaLegend2" style="margin-top:10px"></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Sickle cell in East Africa</h3>
+      <p>The HbS allele is common where malaria has been common, because carriers (HbAS) are partly protected against severe <i>Plasmodium falciparum</i> malaria: heterozygote advantage. In Kenya, sickle-cell trait frequencies are highest around the Lake Victoria basin and along the coast, where the allele can reach 15–20% or more of the population carrying it. Newborn screening, hydroxyurea (which raises fetal haemoglobin, HbF) and penicillin prophylaxis greatly improve survival.</p>
+      <h3>Gene editing reaches the clinic</h3>
+      <p>In 2023 the UK and US approved exagamglogene autotemcel (Casgevy), the first CRISPR-Cas9 medicine, for sickle-cell disease and transfusion-dependent β-thalassaemia. It does not repair <i>HBB</i>: it uses NHEJ to disrupt an erythroid enhancer of <i>BCL11A</i>, a repressor of fetal γ-globin, so patients’ red cells make HbF again. Research groups are also testing HDR and base editing to correct the HbS mutation directly.</p>
+      <h3>Splicing as a drug target</h3>
+      <p>Spinal muscular atrophy is treated with nusinersen, an antisense oligonucleotide that blocks a splicing silencer in <i>SMN2</i> intron 7 so that exon 7 is included and a working SMN protein is made. Risdiplam, a small molecule taken by mouth, does the same job. About 10–15% of disease-causing point mutations act on splicing.</p>
+      <h3>Insulin made by microbes</h3>
+      <p>Human insulin was the first recombinant medicine (1982). Bacteria cannot splice introns, so manufacturers express an intron-free coding sequence. One yeast process makes a single-chain precursor, B(1–29)–Ala–Ala–Lys–A(1–21), which is cut and modified into insulin aspart; the Mini-insulin teaching gene in this lab encodes that precursor.</p>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const PI2 = Math.PI * 2;
+const ease = t => t < 0 ? 0 : t > 1 ? 1 : t * t * (3 - 2 * t);
+const seg01 = (u, a, b) => ease((u - a) / (b - a));
+
+/* ================= Molecular biology core ================= */
+const COMP = { A: 'T', T: 'A', G: 'C', C: 'G', U: 'A', N: 'N' };
+const RCOMP = { A: 'U', U: 'A', G: 'C', C: 'G' };
+const BCOL = { A: '#34d399', T: '#f87171', U: '#f472b6', G: '#facc15', C: '#60a5fa', N: '#93a1bd' };
+const B4 = 'UCAG', AAS = 'FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG';
+const CODE = {}; { let k = 0; for (const a of B4) for (const b of B4) for (const c of B4) CODE[a + b + c] = AAS[k++]; }
+const AA = {
+  A: ['Ala', 'Alanine', 'np', 71.08], R: ['Arg', 'Arginine', 'pos', 156.19], N: ['Asn', 'Asparagine', 'pol', 114.10], D: ['Asp', 'Aspartate', 'neg', 115.09],
+  C: ['Cys', 'Cysteine', 'pol', 103.14], E: ['Glu', 'Glutamate', 'neg', 129.12], Q: ['Gln', 'Glutamine', 'pol', 128.13], G: ['Gly', 'Glycine', 'np', 57.05],
+  H: ['His', 'Histidine', 'pos', 137.14], I: ['Ile', 'Isoleucine', 'np', 113.16], L: ['Leu', 'Leucine', 'np', 113.16], K: ['Lys', 'Lysine', 'pos', 128.17],
+  M: ['Met', 'Methionine', 'np', 131.19], F: ['Phe', 'Phenylalanine', 'np', 147.18], P: ['Pro', 'Proline', 'np', 97.12], S: ['Ser', 'Serine', 'pol', 87.08],
+  T: ['Thr', 'Threonine', 'pol', 101.10], W: ['Trp', 'Tryptophan', 'np', 186.21], Y: ['Tyr', 'Tyrosine', 'pol', 163.18], V: ['Val', 'Valine', 'np', 99.13],
+  '*': ['Stop', 'Stop codon', 'stop', 0],
+};
+const CLS = { np: ['#f5a524', 'Hydrophobic'], pol: ['#34d399', 'Polar'], neg: ['#f87171', 'Acidic (−)'], pos: ['#60a5fa', 'Basic (+)'], stop: ['#93a1bd', 'Stop'] };
+const aaCol = a => CLS[(AA[a] || AA['*'])[2]][0];
+const toRNA = s => s.replace(/T/g, 'U');
+const toDNA = s => s.replace(/U/g, 'T');
+const comp = s => s.split('').map(c => COMP[c] || 'N').join('');
+const revcomp = s => comp(s).split('').reverse().join('');
+function translate(rna, start) {
+  const out = []; if (start < 0) return { aa: '', stop: -1, complete: false };
+  for (let i = start; i + 3 <= rna.length; i += 3) { const a = CODE[rna.substr(i, 3)] || 'X'; if (a === '*') return { aa: out.join(''), stop: i, complete: true }; out.push(a); }
+  return { aa: out.join(''), stop: -1, complete: false };
+}
+const mass = p => p ? p.split('').reduce((s, a) => s + (AA[a] ? AA[a][3] : 110), 0) + 18.02 : 0;
+const three = p => p.split('').map(a => (AA[a] || ['Xaa'])[0]).join('-');
+
+/* ================= Genes ================= */
+const PROM = 'GGCCAATCTGCTCAGAGGTCGGGCTATAAAAGGCGCTCGCAGTCCTCGCAGCC'; // simplified promoter: CAAT box and TATA box
+const GENE_DEFS = [
+  { id: 'msg', name: 'Message gene (teaching)', real: false,
+    note: 'Teaching sequence with 4 exons and 3 short introns. Splice it correctly and the protein spells a message in one-letter amino-acid code.',
+    prom: PROM, downTx: 'GTGTTCTGTTTGTGTTTCTGTGG', down: 'TTCAGGACC',
+    segs: [
+      { t: 'E', name: 'Exon 1', s: 'GCACTCTTCTGGTCCCCACAGACTCAGAGAGAACCCACC' + 'ATGAGCCCTCTGATCTGCGAGGAC' },
+      { t: 'I', s: 'GTAAGTATCCGGGACTTGGAGCATCTGTGCTAACACTCTTCCTTTCTCTCAG', bp: 32 },
+      { t: 'E', name: 'Exon 2', s: 'CGGATTGGCCACACC' },
+      { t: 'I', s: 'GTGAGTCCAGGGCTCTGGAACTGAGCTTGGGTTCTGACCTTCCCTGTCTTTGCAG', bp: 36 },
+      { t: 'E', name: 'Exon 3', s: 'ACACATGAAAACA' },
+      { t: 'I', s: 'GTAAGGGCCTCAGTTCCCTGGTGGATCCTCACTCTAACCCCTTTGTTCCTCCTCCCAG', bp: 36 },
+      { t: 'E', name: 'Exon 4', s: 'CGAGAGCCAATTCCCTAGCTACTGAGGATTGA' + 'GCGGCCGCTCCAGCTTGCCTAATAAAGTTGCTTTCGAAAGCCTCCA' },
+    ] },
+  { id: 'hbb', name: 'Human HBB (β-globin) minigene', real: true,
+    note: 'Real human HBB sequence (NM_000518): 5′ UTR, exon 1, the 130-nt intron 1 and the full coding sequence of exons 2–3. Intron 2 (850 nt) is omitted, as in a minigene; promoter and 3′ end are simplified.',
+    prom: PROM, downTx: 'GTGTGCTGTTTGTGTTCTCTGAG', down: 'GTCAGGA',
+    segs: [
+      { t: 'E', name: 'Exon 1', s: 'ACATTTGCTTCTGACACAACTGTGTTCACTAGCAACCTCAAACAGACACC' + 'ATGGTGCATCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAACGTGGATGAAGTTGGTGGTGAGGCCCTGGGCAG' },
+      { t: 'I', s: 'GTTGGTATCAAGGTTACAAGACAGGTTTAAGGAGACCAATAGAAACTGGGCATGTGGAGACAGAGAAGACTCTTGGGTTTCTGATAGGCACTGACTCTCTCTGCCTATTGGTCTATTTTCCCACCCTTAG', bp: 93 },
+      { t: 'E', name: 'Exons 2–3', s: 'GCTGCTGGTGGTCTACCCTTGGACCCAGAGGTTCTTTGAGTCCTTTGGGGATCTGTCCACTCCTGATGCTGTTATGGGCAACCCTAAGGTGAAGGCTCATGGCAAGAAAGTGCTCGGTGCCTTTAGTGATGGCCTGGCTCACCTGGACAACCTCAAGGGCACCTTTGCCACACTGAGTGAGCTGCACTGTGACAAGCTGCACGTGGATCCTGAGAACTTCAGGCTCCTGGGCAACGTGCTGGTCTGTGTGCTGGCCCATCACTTTGGCAAAGAATTCACCCCACCAGTGCAGGCTGCCTATCAGAAAGTGGTGGCTGGTGTGGCTAATGCCCTGGCCCACAAGTATCACTAA' + 'GCTCGCTTTCTTGCTGTCCAATTTCTATTAAAGGCTGCCTAATAAAAAACATTTATTTTCATTGCA' },
+    ] },
+  { id: 'ins', name: 'Mini-insulin precursor (teaching)', real: false,
+    note: 'Teaching gene encoding the real single-chain insulin precursor B(1–29)–AAK–A(1–21) used in yeast manufacture. Intron positions and sequences are illustrative.',
+    prom: PROM, downTx: 'GTGTCTTGTGTTTCTGTGTGG', down: 'CAGGTCC',
+    segs: [
+      { t: 'E', name: 'Exon 1', s: 'AGCCCTCCAGGACAGGCTGCATCAGAAGAGGCCACC' + 'ATGTTTGTGAACCAACACCTGTGCGGCTCACACCTG' },
+      { t: 'I', s: 'GTAAGCTCTGCCTGGGGCCTGGCTCCACCCCTCACCCTACTAACTCCTTTTGCCCTTCCACAG', bp: 42 },
+      { t: 'E', name: 'Exon 2', s: 'GTGGAAGCTCTCTACCTAGTGTGCGGGGAACGAGGCTTCTTCTACACACCCAAG' + 'GCCGCAAAG' + 'GGCATTGTGGAACAATGCTGTACCA' },
+      { t: 'I', s: 'GTGAGTCTCACCTCTCCCCACCCTGAGCCTGACCCCTTCTCCCTGTCCCAG', bp: 31 },
+      { t: 'E', name: 'Exon 3', s: 'GCATCTGCTCCCTCTACCAGCTGGAGAACTACTGCAACTAG' + 'ACGCAGCCCGCAGGCAGCCCCACACCCGCCGCCTCCTGCACCGAGAGAGATGGAATAAAGCCCTTGAACCAGCCA' },
+    ] },
+];
+const TATA = { s: PROM.indexOf('TATAAAA'), n: 7 }, CAAT = { s: PROM.indexOf('CCAAT'), n: 5 };
+
+function buildGene(def) {
+  const g = JSON.parse(JSON.stringify(def));
+  g.def = def; rebuild(g); return g;
+}
+function rebuild(g) {
+  let p = 0, ni = 0, ne = 0; g.exons = []; g.introns = [];
+  g.segs.forEach(s => { s.a = p; s.b = p + s.s.length; p = s.b; if (s.t === 'E') { ne++; s.idx = g.exons.length; g.exons.push(s); } else { ni++; s.name = 'Intron ' + ni; s.idx = g.introns.length; s.bpAbs = s.a + s.bp; g.introns.push(s); } });
+  g.cleave = p;
+  g.tx = g.segs.map(s => s.s).join('') + g.downTx;
+  g.pre = toRNA(g.tx);
+  g.genomic = g.prom + g.tx + g.down; g.tss = g.prom.length;
+  g.mature = g.exons.map(e => g.pre.slice(e.a, e.b)).join('');
+  g.m2p = []; g.exons.forEach(e => { for (let i = e.a; i < e.b; i++) g.m2p.push(i); });
+  g.start = g.mature.indexOf('AUG');
+  const t = translate(g.mature, g.start); g.protein = t.aa; g.stopAt = t.stop;
+  g.cdsRNA = g.mature.slice(g.start, t.stop >= 0 ? t.stop + 3 : g.mature.length); g.cds = toDNA(g.cdsRNA);
+  g.pas = g.pre.lastIndexOf('AAUAAA', g.cleave);
+  // genomic index of each CDS nucleotide
+  g.cdsG = []; for (let i = 0; i < g.cdsRNA.length; i++) g.cdsG.push(g.tss + g.m2p[g.start + i]);
+}
+function customGene(seq) {
+  return buildGene({ id: 'custom', name: 'Your gene (no introns)', real: false, note: 'Your own intron-free coding sequence with a simplified promoter and a terminator region added. Bacterial genes and cDNA look like this.',
+    prom: PROM, downTx: 'GTGTTCTGTTTGTGTTTC', down: 'CAGG', segs: [{ t: 'E', name: 'Exon 1', s: 'GCCACC' + seq + 'GCGGCTAATAAAGCCTCTTCA' }] });
+}
+const VARIANTS = {
+  hbb: [
+    { id: 'normal', name: 'Normal (reference)' },
+    { id: 'ivs110', name: 'IVS-I-110 G>A (β+-thalassaemia)', intron: 0, pos: 109, to: 'A', auto3: 111, note: 'G>A at intron position 110 creates a new AG 19 nt upstream of the normal 3′ splice site. The spliceosome mostly uses this cryptic site, so 19 intron nucleotides are kept in the mRNA.' },
+    { id: 'ivs1', name: 'IVS-I-1 G>A (β0-thalassaemia)', intron: 0, pos: 0, to: 'A', retain: true, note: 'The invariant G of the 5′ GU is lost, so U1 snRNP cannot recognise this 5′ splice site. Normal splicing of intron 1 is abolished; here the intron is retained.' },
+  ],
+};
+
+/* ================= State ================= */
+const S = { gene: null, station: 'dna', done: {} };
+const cv = $('#cv'), st = SL.canvas(cv), tip = $('#tip'), hud = $('#hud');
+let mouse = null;
+
+function showTip(html, x, y) { tip.innerHTML = html; tip.style.display = 'block'; const r = cv.getBoundingClientRect(); const tw = tip.offsetWidth, th = tip.offsetHeight; let tx = x + 14, ty = y + 14; if (tx + tw > r.width - 6) tx = x - tw - 12; if (ty + th > r.height - 6) ty = y - th - 12; tip.style.left = Math.max(4, tx) + 'px'; tip.style.top = Math.max(4, ty) + 'px'; }
+function hideTip() { tip.style.display = 'none'; }
+function setHud(arr) { hud.innerHTML = arr.map(([k, v]) => `<span class="readout">${k} <b>${v}</b></span>`).join(''); }
+function stats(el, arr) { $(el).innerHTML = arr.map(([k, v, u]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u ? `<small>${u}</small>` : ''}</div></div>`).join(''); }
+function markDone(id) { if (!S.done[id]) { S.done[id] = 1; const d = $(`[data-done="${id}"]`); d && d.classList.add('ok'); } }
+function fontM(px, wt) { return `${wt || 600} ${px}px "JetBrains Mono", ui-monospace, monospace`; }
+function fontS(px, wt) { return `${wt || 500} ${px}px Inter, system-ui, sans-serif`; }
+function rrect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
+function label(ctx, txt, x, y, col, size, align, wt) { ctx.font = fontS(size || 11, wt || 600); ctx.fillStyle = col || '#93a1bd'; ctx.textAlign = align || 'left'; ctx.textBaseline = 'middle'; ctx.fillText(txt, x, y); }
+function tile(ctx, x, y, s, b, opt) {
+  opt = opt || {};
+  const c = BCOL[b] || '#93a1bd';
+  ctx.globalAlpha = opt.alpha ?? 1;
+  rrect(ctx, x + .5, y + .5, s - 1, s - 1, Math.min(4, s * .22));
+  ctx.fillStyle = opt.bg || (c + (opt.dim ? '33' : '2e')); ctx.fill();
+  ctx.strokeStyle = opt.stroke || (c + (opt.dim ? '55' : 'aa')); ctx.lineWidth = opt.lw || 1; ctx.stroke();
+  if (s >= 9) { ctx.font = fontM(Math.round(s * .62), 700); ctx.fillStyle = opt.dim ? c + '99' : c; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(b, x + s / 2, y + s / 2 + .5); }
+  ctx.globalAlpha = 1;
+}
+function bead(ctx, x, y, r, a, ring) {
+  const c = aaCol(a);
+  const g = ctx.createRadialGradient(x - r * .35, y - r * .35, r * .1, x, y, r);
+  g.addColorStop(0, '#ffffff'); g.addColorStop(.25, c); g.addColorStop(1, c + '88');
+  ctx.beginPath(); ctx.arc(x, y, r, 0, PI2); ctx.fillStyle = g; ctx.fill();
+  if (ring) { ctx.strokeStyle = ring; ctx.lineWidth = 2; ctx.stroke(); }
+  if (r >= 6) { ctx.font = fontM(Math.round(r * 1.05), 700); ctx.fillStyle = '#06101f'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(a === '*' ? '■' : a, x, y + .5); }
+}
+function fitR(n, w, hA, rmax) { for (let r = rmax || 11; r > 4; r -= .5) { const st = 2 * r + 2, per = Math.max(1, Math.floor(w / st)); if (Math.ceil(n / per) * st <= hA) return r; } return 4; }
+// draw a protein as wrapped bead rows; returns used height
+function beadRows(ctx, p, x, y, w, r, cmp, maxRows) {
+  const step = r * 2 + 2, per = Math.max(1, Math.floor(w / step)); let rows = Math.ceil(p.length / per) || 1;
+  if (maxRows && rows > maxRows) rows = maxRows;
+  for (let i = 0; i < Math.min(p.length, rows * per); i++) {
+    const rr = Math.floor(i / per), cc = i % per; const bx = x + cc * step + r, by = y + rr * step + r;
+    if (cc > 0) { ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(bx - step + r, by); ctx.lineTo(bx - r, by); ctx.stroke(); }
+    bead(ctx, bx, by, r, p[i], cmp != null && cmp[i] !== p[i] ? '#ff4d6d' : null);
+  }
+  if (p.length > rows * per) label(ctx, '+' + (p.length - rows * per) + ' more', x + w - 2, y + rows * step + 6, '#5f6d8a', 10, 'right');
+  return rows * step;
+}
+
+/* ================= Gene selection ================= */
+const geneSel = $('#geneSel');
+geneSel.innerHTML = GENE_DEFS.map(d => `<option value="${d.id}">${d.name}${d.real ? '' : ''}</option>`).join('') + `<option value="custom" disabled>Your gene (build on Station 1)</option>`;
+function setGene(g, keepStation) {
+  S.gene = g;
+  $('#geneNote').innerHTML = (g.real ? '<span class="chip" style="color:var(--ok);margin-right:6px">Real sequence</span>' : '<span class="chip" style="margin-right:6px">Teaching sequence</span>') + g.note;
+  if (g.id === 'custom') { geneSel.querySelector('option[value=custom]').disabled = false; geneSel.value = 'custom'; } else geneSel.value = g.id;
+  dnaInit(); txReset(); spResetAll(); tlReset(); muReset(); crReset();
+}
+geneSel.addEventListener('change', () => { const d = GENE_DEFS.find(x => x.id === geneSel.value); if (d) setGene(buildGene(d)); });
+
+/* ================= Stations ================= */
+const ST = {};
+function setStation(id) {
+  S.station = id;
+  $$('#stations button').forEach(b => b.classList.toggle('on', b.dataset.st === id));
+  $$('.spanel').forEach(p => p.classList.toggle('on', p.dataset.p === id));
+  hideTip(); mouse = null; setHud([]);
+  ST[id].enter && ST[id].enter();
+}
+$$('#stations button').forEach(b => b.addEventListener('click', () => setStation(b.dataset.st)));
+
+/* ---------- Station 1: DNA ---------- */
+const dna = { mode: 'helix', off: 0, rot: 0, spin: true, hb: true, n: 24, tw: 22, hover: null, drag: null, fork: null, step: 0, fplay: true, fspeed: 1, narr: 0 };
+const FORK_STEPS = [
+  ['topo', 'Topoisomerase', 'Cuts and rejoins DNA ahead of the fork to relieve the supercoiling (overwinding) that unwinding creates.'],
+  ['heli', 'Helicase', 'A hexameric ring that uses ATP to break the hydrogen bonds between base pairs and unzip the parental duplex.'],
+  ['ssb', 'SSB proteins', 'Single-strand binding proteins coat exposed template so the strands cannot re-pair or fold back.'],
+  ['prim', 'Primase', 'Lays a short RNA primer (~10 nt). DNA polymerase cannot start a chain; it can only add to a 3′-OH.'],
+  ['lead', 'Leading strand', 'DNA polymerase III adds nucleotides continuously 5′→3′, moving towards the fork.'],
+  ['lag', 'Lagging strand', 'Made 5′→3′ away from the fork in short Okazaki fragments, each starting from its own primer.'],
+  ['pol1', 'DNA polymerase I', 'Removes each RNA primer with its 5′→3′ exonuclease and replaces it with DNA.'],
+  ['lig', 'DNA ligase', 'Seals the nick between neighbouring fragments with a phosphodiester bond, using ATP (NAD⁺ in E. coli).'],
+];
+$('#forkSteps').innerHTML = FORK_STEPS.map((s, i) => `<li data-i="${i}"><i>${i + 1}</i><span><b>${s[1]}</b>: ${s[2]}</span></li>`).join('');
+$$('#forkSteps li').forEach(li => li.addEventListener('click', () => { dna.step = +li.dataset.i; dna.narr = 0; forkStepUI(); }));
+function forkStepUI() { $$('#forkSteps li').forEach((li, i) => li.classList.toggle('on', i === dna.step)); }
+$('#forkPrev').onclick = () => { dna.step = (dna.step + 7) % 8; dna.narr = 0; forkStepUI(); };
+$('#forkNext').onclick = () => { dna.step = (dna.step + 1) % 8; dna.narr = 0; forkStepUI(); if (dna.step === 7) markDone('dna'); };
+$('#forkPlay').onclick = () => { dna.fplay = !dna.fplay; $('#forkPlay').innerHTML = dna.fplay ? '<i data-lucide="pause"></i> Pause' : '<i data-lucide="play"></i> Play'; SL.refreshIcons($('#forkPlay')); };
+$('#forkReset').onclick = () => { dna.fork = null; };
+SL.bind('#forkSpeed', v => dna.fspeed = v, v => v + '×');
+$$('#dnaMode button').forEach(b => b.onclick = () => { $$('#dnaMode button').forEach(x => x.classList.toggle('on', x === b)); dna.mode = b.dataset.v; $('#dnaHelixCtl').style.display = dna.mode === 'helix' ? '' : 'none'; $('#dnaForkCtl').style.display = dna.mode === 'fork' ? '' : 'none'; forkStepUI(); });
+$('#dnaSpin').onchange = e => dna.spin = e.target.checked;
+$('#dnaHb').onchange = e => dna.hb = e.target.checked;
+SL.bind('#dnaOff', v => { dna.off = v | 0; dnaText(); }, v => { const g = S.gene; return g ? posLabel(v | 0) : v; });
+function posLabel(gi) { const r = gi - S.gene.tss; return r >= 0 ? '+' + (r + 1) : String(r); }
+function regionOf(gi) {
+  const g = S.gene; if (gi < g.tss) { if (gi >= TATA.s && gi < TATA.s + TATA.n) return ['TATA box', '#f5a524']; if (gi >= CAAT.s && gi < CAAT.s + CAAT.n) return ['CAAT box', '#fb923c']; return ['Promoter', '#5f6d8a']; }
+  const t = gi - g.tss; if (t >= g.pre.length) return ['Downstream', '#3b4660'];
+  if (t >= g.cleave) return ['Transcribed, cleaved off', '#64748b'];
+  const s = g.segs.find(s => t >= s.a && t < s.b);
+  if (s.t === 'I') return [s.name, '#7c5cff'];
+  const ci = g.cdsG.indexOf(gi);
+  return [s.name + (ci >= 0 ? ' · CDS' : ' · UTR'), exonCol(s.idx)];
+}
+const EXC = ['#22d3ee', '#34d399', '#a3e635', '#2dd4bf', '#60a5fa'];
+const exonCol = i => EXC[i % EXC.length];
+function dnaInit() {
+  const g = S.gene; const r = $('#dnaOff'); r.max = Math.max(0, g.genomic.length - 10);
+  dna.off = Math.max(0, Math.min(+r.max, g.tss - 8)); r.value = dna.off; r.dispatchEvent(new Event('input'));
+  dnaStats(); dnaText();
+}
+function dnaText() {
+  const g = S.gene; if (!g) return; const n = Math.min(dna.n, g.genomic.length - dna.off); const s = g.genomic.substr(dna.off, n);
+  $('#dnaText').innerHTML = `Coding <b>5′-${s}-3′</b><br>Template <b>3′-${comp(s)}-5′</b><br><span class="dim">Template written 5′→3′: ${revcomp(s)}</span>`;
+}
+function dnaStats() {
+  const g = S.gene, s = g.genomic, N = s.length; const gc = (s.match(/[GC]/g) || []).length; const pgc = gc / N * 100;
+  const hb = 2 * (N - gc) + 3 * gc; const tm = 81.5 + 0.41 * pgc - 675 / N;
+  stats('#dnaStats', [['Length', N, 'bp'], ['GC content', SL.fmt(pgc, 1), '%'], ['H-bonds', hb.toLocaleString()], ['Tm (approx.)', SL.fmt(tm, 1), '°C'], ['Helix turns', SL.fmt(N / 10.5, 1)], ['Length', SL.fmt(N * 0.34, 1), 'nm'], ['Mass (ds)', SL.fmt((N * 607.4 + 157.9) / 1000, 1), 'kDa'], ['Exons / introns', g.exons.length + ' / ' + g.introns.length]]);
+}
+function editGenomic(gi, b) {
+  const g = S.gene; const old = g.genomic[gi]; if (old === b) return;
+  if (gi < g.tss) g.prom = g.prom.slice(0, gi) + b + g.prom.slice(gi + 1);
+  else { const t = gi - g.tss; if (t >= g.cleave + g.downTx.length) { const d = t - g.cleave - g.downTx.length; g.down = g.down.slice(0, d) + b + g.down.slice(d + 1); } else if (t >= g.cleave) { const d = t - g.cleave; g.downTx = g.downTx.slice(0, d) + b + g.downTx.slice(d + 1); } else { const sgm = g.segs.find(s => t >= s.a && t < s.b); const d = t - sgm.a; sgm.s = sgm.s.slice(0, d) + b + sgm.s.slice(d + 1); } }
+  rebuild(g); dnaStats(); dnaText(); txReset(); spResetAll(); tlReset(); muReset(); crReset();
+  const [reg] = regionOf(gi);
+  SL.toast(`Edited ${posLabel(gi)} (${reg}): ${old}→${b}. Stations 2–6 now use the edited gene.`, 'ok', 2600);
+}
+$('#customGo').onclick = () => {
+  const raw = $('#customSeq').value.toUpperCase().replace(/U/g, 'T').replace(/[^ACGT]/g, '');
+  if (raw.length < 9) { SL.toast('Enter at least 9 bases (A, C, G, T).', 'warn'); return; }
+  if (raw.length > 600) { SL.toast('Please keep it under 600 bases.', 'warn'); return; }
+  const g = customGene(raw); setGene(g);
+  SL.toast(g.start >= 0 ? `Gene built: ${raw.length} bp, ORF of ${g.protein.length} aa.` : 'Gene built, but it has no ATG start codon.', g.start >= 0 ? 'ok' : 'warn');
+};
+$('#restoreGene').onclick = () => { const d = GENE_DEFS.find(x => x.id === (S.gene.id === 'custom' ? 'msg' : S.gene.id)); setGene(buildGene(d)); };
+
+function helixLayout(w, h) {
+  const g = S.gene; dna.tw = w < 560 ? 15 : 21;
+  dna.n = Math.max(8, Math.min(32, Math.floor((w - (w < 560 ? 40 : 140)) / dna.tw)));
+  const n = Math.min(dna.n, g.genomic.length - dna.off);
+  return { n, x0: (w - n * dna.tw) / 2, ladY: h * 0.62 };
+}
+function drawHelix(ctx, w, h, dt) {
+  const g = S.gene; if (dna.spin) dna.rot += dt * 0.7;
+  const { n, x0, ladY } = helixLayout(w, h); const tw = dna.tw; const seq = g.genomic.substr(dna.off, n);
+  const cy = h * 0.31, R = Math.min(h * 0.16, 82, w * 0.13);
+  // title
+  label(ctx, 'B-DNA · 10.5 bp per turn · 0.34 nm per bp', w - 14, h - 14, '#5f6d8a', 10.5, 'right');
+  // collect drawables
+  const items = []; const OFF = 2.45;
+  const P = (i, ph) => { const th = (dna.off + i) * PI2 / 10.5 + dna.rot + ph; return { x: x0 + tw / 2 + i * tw, y: cy - R * Math.cos(th), z: Math.sin(th) }; };
+  const SUB = 6;
+  for (let sd = 0; sd < 2; sd++) {
+    for (let i = 0; i < n - 1 + (n === 1 ? 1 : 0); i++) for (let k = 0; k < SUB; k++) {
+      const a = P(i + k / SUB, sd ? OFF : 0), b = P(i + (k + 1) / SUB, sd ? OFF : 0);
+      items.push({ z: (a.z + b.z) / 2, f: () => { const zz = (a.z + b.z) / 2; ctx.strokeStyle = sd ? `rgba(167,139,250,${.25 + .7 * (zz + 1) / 2})` : `rgba(34,211,238,${.25 + .7 * (zz + 1) / 2})`; ctx.lineWidth = 4 + 3 * (zz + 1) / 2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); } });
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    const a = P(i, 0), b = P(i, OFF), z = (a.z + b.z) / 2, B1 = seq[i], B2 = COMP[B1];
+    items.push({ z: z - .001, f: () => {
+      const al = .35 + .65 * (z + 1) / 2; const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      ctx.globalAlpha = al; ctx.lineCap = 'round'; ctx.lineWidth = 5;
+      ctx.strokeStyle = BCOL[B1]; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(mx, my); ctx.stroke();
+      ctx.strokeStyle = BCOL[B2]; ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(b.x, b.y); ctx.stroke();
+      if (dna.hb && Math.abs(a.y - b.y) > 14) { const nh = (B1 === 'G' || B1 === 'C') ? 3 : 2; ctx.fillStyle = '#e6ecf7'; for (let k = 0; k < nh; k++) { const f = .5 + (k - (nh - 1) / 2) * .09; ctx.beginPath(); ctx.arc(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f, 1.4, 0, PI2); ctx.fill(); } }
+      ctx.globalAlpha = 1;
+    } });
+    items.push({ z: a.z + .01, f: () => { const al = .3 + .7 * (a.z + 1) / 2; ctx.globalAlpha = al; ctx.beginPath(); ctx.arc(a.x, a.y, 4.2 + 1.5 * a.z, 0, PI2); ctx.fillStyle = '#7dd3fc'; ctx.fill(); if (a.z > .25 && tw > 16) { ctx.font = fontM(10, 700); ctx.fillStyle = BCOL[B1]; ctx.textAlign = 'center'; ctx.fillText(B1, a.x, a.y + (a.y < cy ? -11 : 13)); } ctx.globalAlpha = 1; } });
+    items.push({ z: b.z + .01, f: () => { const al = .3 + .7 * (b.z + 1) / 2; ctx.globalAlpha = al; ctx.beginPath(); ctx.arc(b.x, b.y, 4.2 + 1.5 * b.z, 0, PI2); ctx.fillStyle = '#c4b5fd'; ctx.fill(); if (b.z > .25 && tw > 16) { ctx.font = fontM(10, 700); ctx.fillStyle = BCOL[B2]; ctx.textAlign = 'center'; ctx.fillText(B2, b.x, b.y + (b.y < cy ? -11 : 13)); } ctx.globalAlpha = 1; } });
+  }
+  items.sort((p, q) => p.z - q.z); ctx.save(); ctx.shadowColor = 'rgba(34,211,238,.25)'; ctx.shadowBlur = 8; items.forEach(it => it.f()); ctx.restore();
+  // strand end labels
+  const s1a = P(0, 0), s1b = P(n - 1, 0);
+  label(ctx, '5′', x0 - 16, s1a.y, '#22d3ee', 12, 'center', 700); label(ctx, '3′', x0 + n * tw + 12, s1b.y, '#22d3ee', 12, 'center', 700);
+  const s2a = P(0, OFF), s2b = P(n - 1, OFF);
+  label(ctx, '3′', x0 - 16, s2a.y, '#a78bfa', 12, 'center', 700); label(ctx, '5′', x0 + n * tw + 12, s2b.y, '#a78bfa', 12, 'center', 700);
+  // groove labels
+  if (w > 600) { label(ctx, 'major groove', x0 + n * tw * .5, cy - R - 20, '#5f6d8a', 10, 'center'); }
+
+  // ladder
+  const y1 = ladY + 26, y2 = y1 + tw + 18;
+  // region band
+  for (let i = 0; i < n; i++) { const gi = dna.off + i; const [, c] = regionOf(gi); ctx.fillStyle = c; ctx.globalAlpha = .9; ctx.fillRect(x0 + i * tw + 1, ladY + 6, tw - 2, 6); ctx.globalAlpha = 1; }
+  // region labels (first appearance)
+  let lastReg = ''; ctx.save();
+  for (let i = 0; i < n; i++) { const gi = dna.off + i; const [r, c] = regionOf(gi); const short = r.split(' · ')[0]; if (short !== lastReg) { lastReg = short; label(ctx, short, x0 + i * tw + 1, ladY - 4, c, 10, 'left', 600); } }
+  ctx.restore();
+  const nar = x0 < 70;
+  label(ctx, nar ? '5′' : 'coding 5′', x0 - 6, y1 + tw / 2, '#22d3ee', 10, 'right'); label(ctx, '3′', x0 + n * tw + 6, y1 + tw / 2, '#22d3ee', 10, 'left');
+  label(ctx, nar ? '3′' : 'template 3′', x0 - 6, y2 + tw / 2, '#a78bfa', 10, 'right'); label(ctx, '5′', x0 + n * tw + 6, y2 + tw / 2, '#a78bfa', 10, 'left');
+  if (nar) label(ctx, 'top: coding strand · bottom: template strand', w / 2, y2 + tw + 30, '#93a1bd', 10.5, 'center');
+  for (let i = 0; i < n; i++) {
+    const x = x0 + i * tw, b1 = seq[i], b2 = COMP[b1]; const hv = dna.hover && dna.hover.i === i;
+    tile(ctx, x, y1, tw, b1, { lw: hv && dna.hover.s === 0 ? 2.5 : 1, stroke: hv && dna.hover.s === 0 ? '#fff' : null });
+    tile(ctx, x, y2, tw, b2, { lw: hv && dna.hover.s === 1 ? 2.5 : 1, stroke: hv && dna.hover.s === 1 ? '#fff' : null });
+    const nh = (b1 === 'G' || b1 === 'C') ? 3 : 2; ctx.strokeStyle = 'rgba(230,236,247,.5)'; ctx.lineWidth = 1;
+    for (let k = 0; k < nh; k++) { const xx = x + tw / 2 + (k - (nh - 1) / 2) * 4; ctx.setLineDash([2, 2]); ctx.beginPath(); ctx.moveTo(xx, y1 + tw + 2); ctx.lineTo(xx, y2 - 2); ctx.stroke(); }
+    ctx.setLineDash([]);
+    const gi = dna.off + i; const rel = gi - g.tss;
+    if ((rel >= 0 && (rel + 1) % 10 === 0) || rel === 0 || (rel < 0 && rel % 10 === 0)) label(ctx, posLabel(gi), x + tw / 2, y2 + tw + 12, '#5f6d8a', 9.5, 'center');
+  }
+  // TSS arrow
+  const ti = g.tss - dna.off; if (ti >= 0 && ti < n) { const x = x0 + ti * tw + 2; ctx.strokeStyle = '#f5a524'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y1 - 2); ctx.lineTo(x, y1 - 14); ctx.lineTo(x + 14, y1 - 14); ctx.stroke(); SL.arrow(ctx, x + 8, y1 - 14, x + 16, y1 - 14, '#f5a524', 2, 6); }
+  dna.lay = { x0, y1, y2, tw, n };
+  // HUD
+  const s = g.genomic.substr(dna.off, n), gc = (s.match(/[GC]/g) || []).length;
+  setHud([['Window', `${posLabel(dna.off)} … ${posLabel(dna.off + n - 1)}`], ['GC', Math.round(gc / n * 100) + '%'], ['H-bonds', 2 * (n - gc) + 3 * gc]]);
+}
+function helixHit(p) {
+  const L = dna.lay; if (!L) return null; const i = Math.floor((p.x - L.x0) / L.tw); if (i < 0 || i >= L.n) return null;
+  if (p.y >= L.y1 && p.y <= L.y1 + L.tw) return { i, s: 0 }; if (p.y >= L.y2 && p.y <= L.y2 + L.tw) return { i, s: 1 }; return null;
+}
+
+// replication fork
+function forkInit(w, h) {
+  dna.fork = { x: w * 0.3, origin: 26, frags: [], last: 0, w, h };
+  const f = dna.fork; f.frags.push({ x5: f.x - 52, x3: f.x - 52, pr: 1, st: 'ext', p1: 0, lig: 0 }); f.last = f.x - 52;
+}
+function drawFork(ctx, w, h, dt, t) {
+  if (!dna.fork || Math.abs(dna.fork.w - w) > 2 || Math.abs(dna.fork.h - h) > 2) forkInit(w, h);
+  const f = dna.fork, v = 26 * dna.fspeed, cy = h * 0.5, gap = Math.min(120, h * 0.2), PL = 14, FL = Math.max(90, w * .14);
+  if (dna.fplay) {
+    f.x += v * dt;
+    if (f.x > w - 150) forkInit(w, h);
+    // new primer
+    const pp = f.x - 52; if (pp - f.last >= FL) { f.frags.push({ x5: pp, x3: pp, pr: 0, st: 'primer', p1: 0, lig: 0 }); f.last = pp; }
+    f.frags.forEach((fr, i) => {
+      if (fr.st === 'primer') { fr.pr += dt * 1.6 * dna.fspeed; if (fr.pr >= 1) { fr.pr = 1; fr.st = 'ext'; fr.x3 = fr.x5 - PL; } }
+      else if (fr.st === 'ext') { const lim = i > 0 ? f.frags[i - 1].x5 : f.origin; fr.x3 -= v * 1.9 * dt; if (fr.x3 <= lim) { fr.x3 = lim; fr.st = 'done'; } }
+      if (i > 0 && f.frags[i].st === 'done') { const pv = f.frags[i - 1]; if (pv.p1 < 1) pv.p1 = Math.min(1, pv.p1 + dt * .9 * dna.fspeed); else if (pv.lig < 1) pv.lig = Math.min(1, pv.lig + dt * 1.2 * dna.fspeed); }
+    });
+    dna.narr += dt; if (dna.narr > 6) { dna.narr = 0; dna.step = (dna.step + 1) % 8; forkStepUI(); if (dna.step === 7) markDone('dna'); }
+  }
+  const topY = cy - gap + 0, botY = cy + gap, newTop = topY + 15, newBot = botY - 15, J = 46;
+  const armY = (x, top) => { const d = f.x - x; if (d >= J) return top ? topY : botY; if (d <= 0) return top ? cy - 7 : cy + 7; const u = ease(d / J); return top ? SL.lerp(cy - 7, topY, u) : SL.lerp(cy + 7, botY, u); };
+  const hl = FORK_STEPS[dna.step][0]; const pulse = .5 + .5 * Math.sin(t * 5);
+  // parental duplex ahead (twisted)
+  ctx.lineWidth = 3;
+  for (let sd = 0; sd < 2; sd++) { ctx.strokeStyle = sd ? '#a78bfa' : '#22d3ee'; ctx.beginPath(); for (let x = f.x; x <= w + 4; x += 3) { const ph = (x - f.x) / 22 + (sd ? Math.PI : 0); const y = cy + 7 * Math.cos(ph); x === f.x ? ctx.moveTo(x, y) : ctx.lineTo(x, y); } ctx.stroke(); }
+  ctx.strokeStyle = 'rgba(230,236,247,.25)'; ctx.lineWidth = 1.5; for (let x = f.x + 6; x < w; x += 9) { const ph = (x - f.x) / 22; ctx.beginPath(); ctx.moveTo(x, cy + 7 * Math.cos(ph)); ctx.lineTo(x, cy - 7 * Math.cos(ph)); ctx.stroke(); }
+  // template arms
+  for (const top of [true, false]) { ctx.strokeStyle = top ? '#22d3ee' : '#a78bfa'; ctx.lineWidth = 3; ctx.beginPath(); for (let x = f.origin - 14; x <= f.x; x += 3) { const y = armY(x, top); x === f.origin - 14 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); } ctx.stroke(); }
+  // leading strand
+  const lx = f.x - J - 2; ctx.strokeStyle = '#34d399'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(f.origin, newTop); ctx.lineTo(lx, newTop); ctx.stroke();
+  ctx.fillStyle = '#f472b6'; ctx.fillRect(f.origin, newTop - 1.5, PL, 3);
+  ctx.strokeStyle = 'rgba(230,236,247,.18)'; ctx.lineWidth = 1; for (let x = f.origin + 4; x < lx; x += 9) { ctx.beginPath(); ctx.moveTo(x, topY + 2); ctx.lineTo(x, newTop - 2); ctx.stroke(); }
+  // lagging fragments
+  let newest = f.frags[f.frags.length - 1];
+  f.frags.forEach((fr, i) => {
+    if (fr.st === 'primer') { ctx.fillStyle = '#f472b6'; ctx.fillRect(fr.x5 - PL * fr.pr, newBot - 1.5, PL * fr.pr, 3); return; }
+    ctx.strokeStyle = '#34d399'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(fr.x3, newBot); ctx.lineTo(fr.x5 - PL, newBot); ctx.stroke();
+    // primer (partly replaced by pol I)
+    const rep = PL * fr.p1; ctx.fillStyle = '#34d399'; ctx.fillRect(fr.x5 - PL, newBot - 1.5, rep, 3); ctx.fillStyle = '#f472b6'; ctx.fillRect(fr.x5 - PL + rep, newBot - 1.5, PL - rep, 3);
+    ctx.strokeStyle = 'rgba(230,236,247,.18)'; ctx.lineWidth = 1; for (let x = Math.ceil(fr.x3 / 9) * 9; x < fr.x5; x += 9) { ctx.beginPath(); ctx.moveTo(x, newBot + 2); ctx.lineTo(x, botY - 2); ctx.stroke(); }
+    // nick at 5' end (right) of the fragment to its left? nick is at the junction of fragment i (left end x3) with i-1 (right end x5)
+    if (i > 0 && fr.st === 'done') { const pv = f.frags[i - 1]; const nx = pv.x5; if (pv.lig < 1) { ctx.fillStyle = '#070b16'; ctx.fillRect(nx - 1.5, newBot - 3, 3, 6); } }
+    if (i === f.frags.length - 1 || i === f.frags.length - 2) { label(ctx, '3′', fr.x3 - 9, newBot + 1, '#34d399', 10, 'center', 700); label(ctx, '5′', fr.x5 + 8, newBot + 1, '#f472b6', 10, 'center', 700); }
+  });
+  // end labels
+  label(ctx, '3′', f.origin - 24, topY, '#22d3ee', 11, 'center', 700); label(ctx, '5′', w - 12, cy - 16, '#22d3ee', 11, 'center', 700);
+  label(ctx, '5′', f.origin - 24, botY, '#a78bfa', 11, 'center', 700); label(ctx, '3′', w - 12, cy + 18, '#a78bfa', 11, 'center', 700);
+  label(ctx, '5′', f.origin - 10, newTop + 12, '#34d399', 10, 'center', 700); label(ctx, '3′', lx + 8, newTop + 12, '#34d399', 10, 'center', 700);
+  label(ctx, 'Leading strand (continuous)', f.origin + 20, newTop + 22, '#34d399', 11);
+  label(ctx, 'Lagging strand (Okazaki fragments)', f.origin + 20, newBot - 14, '#34d399', 11);
+  label(ctx, 'Parental DNA', w - 16, cy - 34, '#93a1bd', 11, 'right');
+  // enzymes
+  const enz = (key, draw, lx, ly, txt) => {
+    const on = hl === key; ctx.save(); if (on) { ctx.shadowColor = '#fff'; ctx.shadowBlur = 14 + 10 * pulse; } draw(on); ctx.restore();
+    if (on || w > 700) { label(ctx, txt, lx, ly, on ? '#fff' : '#93a1bd', on ? 12 : 10.5, 'center', on ? 700 : 600); }
+  };
+  const blob = (x, y, rx, ry, c, on) => { ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, PI2); ctx.fillStyle = c + (on ? 'dd' : '99'); ctx.fill(); ctx.strokeStyle = on ? '#fff' : c; ctx.lineWidth = on ? 2 : 1.2; ctx.stroke(); };
+  const tx = f.x + 92; enz('topo', on => blob(tx, cy, 20, 17, '#fb923c', on), tx + 10, cy + 34, 'Topoisomerase');
+  enz('heli', on => { ctx.beginPath(); ctx.arc(f.x + 2, cy, 17, 0, PI2); ctx.lineWidth = 9; ctx.strokeStyle = on ? '#fde047' : '#eab308bb'; ctx.stroke(); }, f.x + 30, cy - 30, 'Helicase');
+  enz('ssb', on => { const x1 = newest.st === 'primer' ? newest.x5 : newest.x5 + 6; for (let k = 0; k < 3; k++) { const x = x1 + 8 + k * 13; if (x > f.x - 14) break; blob(x, armY(x, false) + 1, 5.5, 5.5, '#94a3b8', on); } }, Math.min(newest.x5 + 22, f.x - 26), botY + 22, 'SSBs');
+  if (newest.st === 'primer') enz('prim', on => blob(newest.x5 - 4, newBot - 6, 15, 11, '#f472b6', on), newest.x5 - 4, newBot - 28, 'Primase');
+  else enz('prim', on => blob(f.x - 30, cy + 34, 11, 9, '#f472b6', on), f.x - 62, cy + 34, 'Primase');
+  enz('lead', on => blob(lx, newTop - 2, 18, 13, '#34d399', on), lx, newTop - 26, 'DNA pol III');
+  const grow = f.frags.find(fr => fr.st === 'ext'); if (grow) enz('lag', on => blob(grow.x3, newBot + 2, 18, 13, '#2dd4bf', on), grow.x3, newBot + 26, 'DNA pol III');
+  const p1 = f.frags.find(fr => fr.p1 > 0 && fr.p1 < 1); if (p1) enz('pol1', on => blob(p1.x5 - PL + PL * p1.p1, newBot + 2, 13, 10, '#60a5fa', on), p1.x5 - 6, newBot + 24, 'DNA pol I');
+  else if (hl === 'pol1') label(ctx, 'DNA pol I acts when a fragment reaches the previous primer…', w / 2, h - 22, '#93a1bd', 11, 'center');
+  const lg = f.frags.find(fr => fr.p1 >= 1 && fr.lig > 0 && fr.lig < 1); if (lg) enz('lig', on => blob(lg.x5, newBot - 2, 11, 9, '#c084fc', on), lg.x5, newBot - 24, 'Ligase');
+  else if (hl === 'lig') label(ctx, 'Ligase seals each nick once its primer has been replaced…', w / 2, h - 22, '#93a1bd', 11, 'center');
+  // legend + caption
+  const s = FORK_STEPS[dna.step];
+  ctx.fillStyle = 'rgba(5,9,19,.8)'; rrect(ctx, 12, 12, Math.min(w - 24, 520), 52, 10); ctx.fill(); ctx.strokeStyle = '#2a3a5c'; ctx.stroke();
+  label(ctx, `${dna.step + 1}. ${s[1]}`, 24, 30, '#fff', 13, 'left', 700);
+  ctx.font = fontS(11.5); const words = s[2]; ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'left'; const maxw = Math.min(w - 48, 496); let line = '', yy = 50; let lines = 0;
+  for (const wd of words.split(' ')) { if (ctx.measureText(line + wd).width > maxw && lines < 1) { ctx.fillText(line, 24, yy); line = ''; yy += 0; lines++; break; } line += wd + ' '; }
+  if (lines === 0) ctx.fillText(line, 24, yy); else ctx.fillText(line.trim() + '…', 24, yy);
+  const lg2 = [['Parental', '#22d3ee'], ['New DNA', '#34d399'], ['RNA primer', '#f472b6']]; let lx2 = 14; lg2.forEach(([n, c]) => { ctx.fillStyle = c; ctx.fillRect(lx2, h - 18, 14, 4); label(ctx, n, lx2 + 18, h - 16, '#93a1bd', 10.5); lx2 += 30 + ctx.measureText(n).width + 10; });
+  setHud([]);
+}
+ST.dna = {
+  enter() { dnaText(); },
+  draw(ctx, w, h, dt, t) { if (dna.mode === 'fork') drawFork(ctx, w, h, dt, t); else drawHelix(ctx, w, h, dt); },
+  move(p) {
+    if (dna.mode !== 'helix') return;
+    if (dna.drag) { const d = Math.round((dna.drag.x - p.x) / dna.tw); if (d) { const r = $('#dnaOff'); r.value = SL.clamp(dna.drag.off + d, 0, +r.max); r.dispatchEvent(new Event('input')); } return; }
+    const hit = helixHit(p); dna.hover = hit;
+    if (hit) { const gi = dna.off + hit.i, b1 = S.gene.genomic[gi], b = hit.s ? COMP[b1] : b1; const [reg] = regionOf(gi); showTip(`<b>${hit.s ? 'Template' : 'Coding'} strand</b> · ${posLabel(gi)} · ${reg}<br>${b} pairs with ${COMP[b]} by ${b === 'G' || b === 'C' ? 3 : 2} hydrogen bonds.<br><span class="dim">Click to change this base.</span>`, p.x, p.y); cv.style.cursor = 'pointer'; }
+    else { hideTip(); cv.style.cursor = p.y < st.h * .55 ? 'grab' : 'default'; }
+  },
+  down(p) { if (dna.mode !== 'helix') return; const hit = helixHit(p); if (hit) { const gi = dna.off + hit.i, cur = S.gene.genomic[gi]; const order = 'ACGT'; if (hit.s === 0) editGenomic(gi, order[(order.indexOf(cur) + 1) % 4]); else { const tb = COMP[cur]; const nb = order[(order.indexOf(tb) + 1) % 4]; editGenomic(gi, COMP[nb]); } return; } if (p.y < st.h * .55) dna.drag = { x: p.x, off: dna.off }; },
+  up() { dna.drag = null; },
+};
+
+/* ---------- Station 2: Transcription ---------- */
+const tx = { p: -1, phase: 'idle', play: false, acc: 0, it: 0, speed: 8, cam: 0, ntp: 0 };
+function txReset() { Object.assign(tx, { p: -1, phase: 'idle', play: false, acc: 0, it: 0, ntp: 0 }); if (S.gene) tx.cam = S.gene.tss - 14; txUI(); }
+SL.bind('#txSpeed', v => tx.speed = v, v => v + ' nt/s');
+$('#txPlay').onclick = () => { if (tx.phase === 'done') txReset(); if (tx.phase === 'idle') { tx.phase = 'init'; tx.it = 0; } tx.play = !tx.play; txUI(); };
+$('#txStep').onclick = () => { if (tx.phase === 'done') return; if (tx.phase === 'idle' || tx.phase === 'init') { tx.phase = 'elong'; } tx.play = false; txAdvance(); txUI(); };
+$('#txReset').onclick = txReset;
+$('#txSkip').onclick = () => { const g = S.gene; tx.phase = 'done'; tx.p = g.pre.length - 1; tx.play = false; markDone('tx'); txUI(); };
+function txAdvance() {
+  const g = S.gene; if (tx.p < g.pre.length - 1) { tx.p++; tx.ntp = 1; }
+  if (tx.p >= g.pre.length - 1) { tx.phase = 'done'; tx.play = false; markDone('tx'); SL.toast(`Transcription complete: ${g.pre.length} nt primary transcript. Next: Station 3, splicing.`, 'ok'); }
+}
+function txUI() {
+  const g = S.gene; if (!g) return;
+  $('#txPlay').innerHTML = tx.play ? '<i data-lucide="pause"></i> Pause' : (tx.phase === 'done' ? '<i data-lucide="rotate-ccw"></i> Again' : '<i data-lucide="play"></i> Transcribe'); SL.refreshIcons($('#txPlay'));
+  const n = tx.p + 1; const rna = g.pre.slice(0, n);
+  $('#txText').innerHTML = n ? `5′-<b>${rna.length > 160 ? '…' + rna.slice(-160) : rna}</b>-3′` : 'Not started.';
+  const cur = tx.p >= 0 ? g.pre[tx.p] : null;
+  stats('#txStats', [['Position', n ? '+' + n : '—'], ['RNA length', n, 'nt'], ['Last pair', cur ? `${COMP[toDNA(cur)]}→${cur}` : '—'], ['Real time', SL.fmt(n / 40, 1), 's @40 nt/s'], ['Primary transcript', g.pre.length, 'nt'], ['Introns', g.introns.length]]);
+  const passed = k => tx.p >= k;
+  $('#txChecks').innerHTML = [
+    [tx.phase !== 'idle', 'TFIID binds the TATA box, Pol II recruited'],
+    [passed(0), 'Transcription starts at +1'],
+    [g.pas >= 0 && passed(g.pas + 5), 'Poly(A) signal AAUAAA transcribed'],
+    [tx.phase === 'done', 'Pol II released past the cleavage site'],
+  ].map(([ok, t]) => `<div class="${ok ? 'ok' : ''}"><span class="led ${ok ? 'on' : ''}"></span>${t}</div>`).join('');
+}
+ST.tx = {
+  draw(ctx, w, h, dt, t) {
+    const g = S.gene; const tw = w < 560 ? 13 : 19;
+    if (tx.play) {
+      if (tx.phase === 'init') { tx.it += dt; if (tx.it > 2.2) tx.phase = 'elong'; }
+      else if (tx.phase === 'elong') { tx.acc += dt * tx.speed; let k = 0; while (tx.acc >= 1 && k++ < 30) { tx.acc -= 1; txAdvance(); } if (k) txUI(); }
+    }
+    tx.ntp = Math.max(0, tx.ntp - dt * Math.max(4, tx.speed * .8));
+    const polG = g.tss + Math.max(0, tx.p) + (tx.phase === 'idle' || tx.phase === 'init' ? -1 : 0);
+    const target = (tx.phase === 'idle' || tx.phase === 'init') ? g.tss - (w / tw) * .55 : polG - (w / tw) * .55;
+    tx.cam += (target - tx.cam) * Math.min(1, dt * 4);
+    const X = gi => (gi - tx.cam) * tw;
+    const cy = h * 0.6, yC = cy - tw - 6, yT = cy + 6; const UP = 1.6, DN = 1.35;
+    const active = tx.phase !== 'idle' && tx.phase !== 'done';
+    const bubC = polG - 3; const bub = gi => active ? Math.exp(-Math.pow((gi - bubC) / 5.2, 2)) : 0;
+    const g0 = Math.max(0, Math.floor(tx.cam) - 1), g1 = Math.min(g.genomic.length, Math.ceil(tx.cam + w / tw) + 1);
+    // annotation band
+    for (let gi = g0; gi < g1; gi++) { const [, c] = regionOf(gi); ctx.fillStyle = c; ctx.globalAlpha = .85; ctx.fillRect(X(gi) + 1, yT + 3 * tw + 18, tw - 2, 5); ctx.globalAlpha = 1; }
+    let last = ''; for (let gi = g0; gi < g1; gi++) { const [r, c] = regionOf(gi); const sh = r.split(' · ')[0]; if (sh !== last) { last = sh; label(ctx, sh, Math.max(4, X(gi)) + 2, yT + 3 * tw + 34, c, 10.5, 'left', 600); } }
+    // strands
+    for (let gi = g0; gi < g1; gi++) {
+      const b = g.genomic[gi], d = bub(gi) * tw; const x = X(gi);
+      tile(ctx, x, yC - d * UP, tw, b, { dim: gi < g.tss || gi >= g.tss + g.pre.length });
+      tile(ctx, x, yT + d * DN, tw, COMP[b], { dim: gi < g.tss || gi >= g.tss + g.pre.length });
+      if (d < 2) { ctx.strokeStyle = 'rgba(230,236,247,.22)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + tw / 2, yC + tw); ctx.lineTo(x + tw / 2, yT); ctx.stroke(); }
+    }
+    ctx.fillStyle = '#22d3ee'; ctx.fillRect(14, h - 58, 12, 4); label(ctx, 'coding strand 5′→3′ (top)', 32, h - 56, '#93a1bd', 10.5);
+    ctx.fillStyle = '#a78bfa'; ctx.fillRect(14, h - 42, 12, 4); label(ctx, 'template strand 3′→5′ (read by Pol II)', 32, h - 40, '#93a1bd', 10.5);
+    // promoter features
+    const tataX = X(TATA.s); if (tataX > -200 && tataX < w + 50) {
+      ctx.strokeStyle = '#f5a524'; ctx.lineWidth = 2; rrect(ctx, tataX - 2, yC - 3, TATA.n * tw + 4, yT + tw - yC + 6, 6); ctx.stroke(); label(ctx, 'TATA box (−29)', tataX + TATA.n * tw / 2, yT + tw + 16, '#f5a524', 10.5, 'center', 700);
+      if (tx.phase !== 'idle') { const a = tx.phase === 'init' ? ease(tx.it / 1) : 1; const bx = tataX + TATA.n * tw / 2; const by = yC - 28 - 30 * (1 - a); ctx.globalAlpha = a; ctx.beginPath(); ctx.ellipse(bx, by, TATA.n * tw * .55, 18, 0, Math.PI, PI2); ctx.fillStyle = '#f5a52466'; ctx.fill(); ctx.strokeStyle = '#f5a524'; ctx.stroke(); label(ctx, 'TFIID (TBP)', bx, by - 8, '#fde68a', 10.5, 'center', 700); ctx.globalAlpha = 1; }
+    }
+    const caX = X(CAAT.s); if (caX > -100 && caX < w) { ctx.strokeStyle = '#fb923c88'; ctx.lineWidth = 1.5; rrect(ctx, caX - 2, yC - 3, CAAT.n * tw + 4, tw + 6, 5); ctx.stroke(); label(ctx, 'CAAT', caX + CAAT.n * tw / 2, yC - 12, '#fb923c', 10, 'center'); }
+    const tssX = X(g.tss); if (tssX > -20 && tssX < w + 20) { ctx.strokeStyle = '#f5a524'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(tssX + 1, yC - 4); ctx.lineTo(tssX + 1, yC - 22); ctx.lineTo(tssX + 18, yC - 22); ctx.stroke(); SL.arrow(ctx, tssX + 10, yC - 22, tssX + 20, yC - 22, '#f5a524', 2, 6); label(ctx, '+1', tssX + 24, yC - 22, '#f5a524', 11, 'left', 700); }
+    if (g.pas >= 0) { const px = X(g.tss + g.pas); if (px > -150 && px < w) { ctx.strokeStyle = '#f472b6'; ctx.lineWidth = 2; rrect(ctx, px - 2, yC - 3 - bub(g.tss + g.pas) * tw * UP, 6 * tw + 4, tw + 6, 5); ctx.stroke(); label(ctx, 'AATAAA poly(A) signal', px + 3 * tw, yC + tw + 13, '#f472b6', 10.5, 'center', 700); } const cx2 = X(g.tss + g.cleave); if (cx2 > -10 && cx2 < w + 10) { ctx.setLineDash([4, 3]); ctx.strokeStyle = '#f472b6'; ctx.beginPath(); ctx.moveTo(cx2, yC - 30); ctx.lineTo(cx2, yT + tw + 6); ctx.stroke(); ctx.setLineDash([]); label(ctx, 'cleavage site', cx2 + 4, yC - 36, '#f472b6', 10, 'left'); } }
+    // RNA transcript
+    if (tx.p >= 0) {
+      const n = tx.p + 1, H = 8; const yExit = yC - 4.4 * tw;
+      for (let k = Math.max(0, n - Math.ceil(w / tw / .95) - 20); k < n; k++) {
+        const dd = tx.p - k; let x, y;
+        const hx = X(g.tss + k); const hy = yT + bub(g.tss + k) * tw * DN - tw - 2;
+        if (dd < H) { x = hx; y = hy; }
+        else { const e = dd - H; const ax = X(g.tss + tx.p - H); const u = Math.min(1, e / 4); x = ax - e * tw * .95 + (1 - ease(u)) * 0; y = SL.lerp(hy, yExit + Math.sin(k * .45) * 3, ease(u)); }
+        if (x < -tw || x > w) continue;
+        tile(ctx, x, y, tw, g.pre[k], { stroke: dd === 0 && tx.ntp > 0 ? '#fff' : null, lw: dd === 0 ? 2 : 1 });
+        if (k === 0) label(ctx, '5′', x - 4, y + tw / 2, '#f472b6', 11, 'right', 700);
+      }
+      // incoming NTP
+      if (tx.ntp > 0 && tx.phase !== 'done') { const k = tx.p; const x = X(g.tss + k) + tw / 2, y = yT + bub(g.tss + k) * tw * DN - tw / 2 - 2; const a = tx.ntp; ctx.globalAlpha = a; ctx.beginPath(); ctx.arc(x + a * 26, y + a * 30, tw * .45, 0, PI2); ctx.fillStyle = BCOL[g.pre[k]]; ctx.fill(); ctx.globalAlpha = 1; }
+      const lastx = X(g.tss + tx.p) + tw; label(ctx, '3′', lastx + 4, yT + bub(g.tss + tx.p) * tw * DN - tw / 2 - 2, '#f472b6', 11, 'left', 700);
+    }
+    // RNA polymerase
+    if (active) {
+      const a = tx.phase === 'init' ? ease((tx.it - .8) / 1.2) : 1;
+      const px = X(polG - 2) + tw / 2, py = (yC + yT + tw) / 2; ctx.save(); ctx.globalAlpha = a;
+      const gr = ctx.createRadialGradient(px, py - 10, 10, px, py, 9 * tw); gr.addColorStop(0, 'rgba(124,92,255,.42)'); gr.addColorStop(1, 'rgba(124,92,255,.08)');
+      ctx.beginPath(); ctx.ellipse(px, py, 8.5 * tw, 2.6 * tw + 14, 0, 0, PI2); ctx.fillStyle = gr; ctx.fill(); ctx.strokeStyle = '#a78bfa'; ctx.lineWidth = 2; ctx.shadowColor = '#7c5cff'; ctx.shadowBlur = 18; ctx.stroke(); ctx.restore();
+      label(ctx, 'RNA polymerase II', px + 2 * tw, py - 2.6 * tw - 26, '#c4b5fd', 12, 'center', 700);
+      if (tx.phase === 'elong') { SL.arrow(ctx, px + 6 * tw, py - 2.6 * tw - 26, px + 8.5 * tw, py - 2.6 * tw - 26, '#c4b5fd', 2, 7); }
+    }
+    if (tx.phase === 'idle') label(ctx, 'Press Transcribe to recruit RNA polymerase II to the promoter.', w / 2, h - 26, '#93a1bd', 12, 'center');
+    if (tx.phase === 'done') label(ctx, `Done: ${g.pre.length}-nt pre-mRNA (exons + introns). Continue on Station 3 to splice it.`, w / 2, h - 26, '#34d399', 12, 'center', 700);
+    setHud([['Phase', { idle: 'Ready', init: 'Initiation', elong: 'Elongation', done: 'Terminated' }[tx.phase]], ['RNA', (tx.p + 1) + ' nt'], ['Rate', tx.speed + ' nt/s']]);
+  },
+  enter() { txUI(); },
+};
+
+/* ---------- Station 3: Splicing ---------- */
+const sp = { cuts: [], full: false, mode: 'cut', variant: 'normal', anim: null, res: null, cap: false, tail: false, hover: -1, drag: -1, dragMoved: false, alt: [], isos: [], lay: null, animOn: true, capA: 0, tailA: 0 };
+function spPre() { const g = S.gene; const v = curVar(); if (!v || !v.intron && v.intron !== 0) return g.pre; const I = g.introns[v.intron]; const i = I.a + v.pos; return g.pre.slice(0, i) + v.to + g.pre.slice(i + 1); }
+function curVar() { const vs = VARIANTS[S.gene.id]; return vs ? vs.find(v => v.id === sp.variant) : null; }
+function spResetAll() {
+  Object.assign(sp, { cuts: [], anim: null, res: null, cap: false, tail: false, hover: -1, drag: -1, isos: [], capA: 0, tailA: 0 });
+  const g = S.gene; if (!g) return; sp.alt = g.exons.map(() => true);
+  const vs = VARIANTS[g.id]; $('#spVarWrap').style.display = vs ? '' : 'none';
+  if (vs) { $('#spVar').innerHTML = vs.map(v => `<option value="${v.id}">${v.name}</option>`).join(''); if (!vs.find(v => v.id === sp.variant)) sp.variant = 'normal'; $('#spVar').value = sp.variant; } else sp.variant = 'normal';
+  spUI(); isoUI();
+}
+$('#spVar').onchange = e => { sp.variant = e.target.value; const v = curVar(); Object.assign(sp, { cuts: [], res: null, anim: null }); spUI(); if (v && v.note) SL.toast(v.note, 'warn', 6000); };
+$$('#spMode button').forEach(b => b.onclick = () => { $$('#spMode button').forEach(x => x.classList.toggle('on', x === b)); sp.mode = b.dataset.v; $('#spCutCtl').style.display = sp.mode === 'cut' ? '' : 'none'; $('#spAltCtl').style.display = sp.mode === 'alt' ? '' : 'none'; hideTip(); });
+$('#spFull').onchange = e => sp.full = e.target.checked;
+$('#spAnim').onchange = e => sp.animOn = e.target.checked;
+$('#spUndo').onclick = () => { if (sp.res) { sp.res = null; } else sp.cuts.pop(); spUI(); };
+$('#spClear').onclick = () => { sp.cuts = []; sp.res = null; sp.anim = null; spUI(); };
+$('#spReset').onclick = () => { Object.assign(sp, { cuts: [], res: null, anim: null, cap: false, tail: false, capA: 0, tailA: 0 }); spUI(); };
+$('#spAuto').onclick = () => { sp.res = null; sp.cuts = autoCuts(); spUI(); spGo(true); };
+$('#spGo').onclick = () => spGo(false);
+$('#spCap').onclick = () => { if (sp.cap) return; sp.cap = true; sp.capA = 0; spUI(); SL.toast('5′ cap added: 7-methylguanosine joined 5′–5′ by a triphosphate bridge.', 'ok'); };
+$('#spTail').onclick = () => { if (sp.tail) return; sp.tail = true; sp.tailA = 0; spUI(); SL.toast('Cleaved downstream of AAUAAA and ~200 adenines added by poly(A) polymerase.', 'ok'); };
+function autoCuts() {
+  const g = S.gene, v = curVar(); const c = [];
+  g.introns.forEach((I, k) => { if (v && v.intron === k && v.retain) return; if (v && v.intron === k && v.auto3) { c.push(I.a, I.a + v.auto3); } else c.push(I.a, I.b); });
+  return c;
+}
+function spGo(auto) {
+  const g = S.gene; const cuts = [...sp.cuts].sort((a, b) => a - b);
+  if (cuts.length % 2) { SL.toast('Cuts must come in pairs: each intron needs a 5′ and a 3′ cut.', 'warn'); return; }
+  if (!cuts.length && g.introns.length && !(curVar() && curVar().retain)) { SL.toast('Place cuts around each intron first (or press “Show me”).', 'warn'); return; }
+  const pre = spPre(); const removed = [], kept = []; let prev = 0;
+  for (let i = 0; i < cuts.length; i += 2) { kept.push([prev, cuts[i]]); removed.push([cuts[i], cuts[i + 1]]); prev = cuts[i + 1]; }
+  kept.push([prev, pre.length]);
+  const checks = removed.map(([a, b]) => {
+    const s = pre.slice(a, b); const I = g.introns.find(I => I.bpAbs >= a && I.bpAbs < b - 2);
+    const exact = g.introns.find(I => I.a === a && I.b === b);
+    const v = curVar(); const cryptic = v && v.auto3 && g.introns[v.intron].a === a && g.introns[v.intron].a + v.auto3 === b;
+    return { a, b, gu: s.startsWith('GU'), ag: s.endsWith('AG'), bp: !!I, exact: !!exact, cryptic, len: b - a };
+  });
+  sp.res = { cuts, kept, removed, checks, auto };
+  computeMature();
+  if (sp.animOn && removed.length) { sp.anim = { i: 0, u: 0 }; } else { sp.anim = null; spDone(); }
+  spUI();
+}
+function computeMature() {
+  const g = S.gene, pre = spPre(), r = sp.res; if (!r) return;
+  let mature = r.kept.map(([a, b]) => pre.slice(a, b)).join('');
+  const nDown = g.downTx.length; // downTx stays until poly(A) processing
+  r.mature = mature; // includes downTx tail at end
+  const core = mature.slice(0, mature.length - nDown);
+  r.core = core; r.start = core.indexOf('AUG'); const t = translate(core, r.start); r.protein = t.aa; r.complete = t.complete;
+  r.allIntronsGone = g.introns.every(I => r.removed.some(([a, b]) => a <= I.a && b >= I.b)) && r.checks.every(c => c.exact);
+  r.junctions = []; let acc = 0; r.kept.forEach(([a, b], i) => { acc += b - a; if (i < r.kept.length - 1) r.junctions.push(acc); });
+}
+function protCompare(ref, p) {
+  if (p === ref) return { ok: true, msg: 'Protein matches the reference exactly.' };
+  let i = 0; while (i < ref.length && i < p.length && ref[i] === p[i]) i++;
+  if (!p.length) return { ok: false, msg: 'No protein: no start codon in this mRNA.' };
+  if (i >= p.length && p.length < ref.length) return { ok: false, msg: `Truncated after residue ${p.length} (${p.length} aa instead of ${ref.length}).` };
+  return { ok: false, msg: `Differs from residue ${i + 1}: ${p.length} aa instead of ${ref.length}.` };
+}
+function refProtein() { return S.gene.protein; }
+function spDone() {
+  const r = sp.res; if (!r) return; const cmp = protCompare(refProtein(), r.protein);
+  const bad = r.checks.filter(c => !c.gu || !c.ag);
+  if (r.allIntronsGone && cmp.ok) { SL.toast('Perfect splicing: every intron removed exactly and the reading frame is intact.', 'ok'); if (!r.auto) markDone('sp'); chal('splice'); }
+  else if (r.checks.some(c => c.cryptic)) SL.toast('Cryptic 3′ splice site used: 19 intron nucleotides kept. ' + cmp.msg, 'warn', 6000);
+  else if (bad.length) SL.toast(`${bad.length} removed segment(s) break the GU–AG rule. ${cmp.msg}`, 'bad', 5000);
+  else SL.toast(cmp.msg, cmp.ok ? 'ok' : 'warn', 5000);
+  if (!cmp.ok && !r.auto) chal('break');
+  spUI();
+}
+function spUI() {
+  const g = S.gene; if (!g) return; const r = sp.res;
+  const introns = r ? r.allIntronsGone : g.introns.length === 0;
+  const orf = r ? protCompare(refProtein(), r.protein).ok : g.introns.length === 0;
+  const items = [[sp.cap, '5′ cap (m⁷G) added'], [r ? r.allIntronsGone : g.introns.length === 0, g.introns.length ? 'All introns removed exactly' : 'No introns to remove'], [sp.tail, 'Cleaved and poly(A) tail added'], [orf, 'Open reading frame intact']];
+  const ready = items.every(x => x[0]);
+  $('#spChecks').innerHTML = items.map(([ok, t]) => `<div class="${ok ? 'ok' : ''}"><span class="led ${ok ? 'on' : ''}"></span>${t}</div>`).join('') + `<div class="${ready ? 'ok' : ''}" style="margin-top:4px;font-weight:600"><span class="led ${ready ? 'on' : 'warn'}"></span>${ready ? 'Mature mRNA: ready for export to the cytoplasm' : 'Not yet export-ready'}</div>`;
+  if (ready) { markDone('sp'); chal('mature'); }
+  $('#spCap').classList.toggle('on', sp.cap); $('#spTail').classList.toggle('on', sp.tail);
+}
+function spItems(pre) {
+  const g = S.gene, n = pre.length; const show = new Uint8Array(n).fill(1);
+  if (!sp.full) {
+    const hideRange = (a, b, keep) => { for (let i = a; i < b; i++) show[i] = 0; keep.forEach(([x, y]) => { for (let i = Math.max(a, x); i < Math.min(b, y); i++) show[i] = 1; }); };
+    g.segs.forEach(s => { const L = s.b - s.a; if (s.t === 'I' && L > 64) hideRange(s.a, s.b, [[s.a, s.a + 10], [s.bpAbs - 5, s.bpAbs + 4], [s.b - 26, s.b]]); if (s.t === 'E' && L > 120) { const keep = [[s.a, s.a + 14], [s.b - 14, s.b]]; const st = g.m2p[g.start]; if (st >= s.a && st < s.b) keep.push([st - 6, st + 9]); hideRange(s.a, s.b, keep); } });
+  }
+  const items = []; let i = 0;
+  while (i < n) { if (show[i]) { items.push({ i }); i++; } else { let j = i; while (j < n && !show[j]) j++; items.push({ gap: j - i, from: i, to: j }); i = j; } }
+  return items;
+}
+function segAt(i) { const g = S.gene; if (i >= g.cleave) return { t: 'D' }; return g.segs.find(s => i >= s.a && i < s.b); }
+function layoutSeq(items, x0, y0, w, hAvail, gapFn) {
+  for (const ts of [20, 18, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7]) {
+    const rowH = Math.round(ts * 1.75); let x = x0, y = y0, ok = true; const pos = [];
+    for (const it of items) { const iw = it.gap != null ? Math.max(ts * 4.2, 44) : ts; if (x + iw > x0 + w) { x = x0; y += rowH; } pos.push({ x, y, w: iw }); x += iw + (it.gap != null ? 2 : 0); }
+    if (y + rowH - y0 <= hAvail || ts === 7) return { ts, rowH, pos, bottom: y + rowH };
+  }
+}
+function drawSpSeq(ctx, w, h, t) {
+  const g = S.gene, pre = spPre(), v = curVar();
+  const items = spItems(pre); const top = 44, x0 = 14, aw = w - 28; const resH = Math.max(170, h * 0.36);
+  const L = layoutSeq(items, x0, top, aw, h - top - resH - 10); sp.lay = { items, L };
+  const ts = L.ts;
+  // removed-segment shading (pending cuts)
+  const cuts = [...sp.cuts].sort((a, b) => a - b); const inRemoved = i => { for (let k = 0; k + 1 < cuts.length; k += 2) if (i >= cuts[k] && i < cuts[k + 1]) return true; return false; };
+  items.forEach((it, k) => {
+    const p = L.pos[k];
+    if (it.gap != null) { const sg = segAt(it.from); ctx.strokeStyle = sg.t === 'I' ? '#7c5cff' : sg.t === 'E' ? exonCol(sg.idx) : '#64748b'; ctx.setLineDash([3, 3]); ctx.lineWidth = 1.2; rrect(ctx, p.x + 1, p.y + 1, p.w - 2, ts - 2, 5); ctx.stroke(); ctx.setLineDash([]); label(ctx, `··${it.gap} nt··`, p.x + p.w / 2, p.y + ts / 2, '#93a1bd', Math.max(8.5, ts * .5), 'center', 600); return; }
+    const i = it.i, b = pre[i], sg = segAt(i); let bg, stroke;
+    if (sg.t === 'E') { bg = exonCol(sg.idx) + '30'; stroke = exonCol(sg.idx) + 'aa'; } else if (sg.t === 'I') { bg = '#7c5cff1c'; stroke = '#7c5cff55'; } else { bg = '#64748b22'; stroke = '#64748b66'; }
+    let lw = 1;
+    if (sg.t === 'I') { if (i < sg.a + 2 || i >= sg.b - 2) { stroke = '#f5a524'; lw = 2; } if (i === sg.bpAbs) { bg = '#e879f9aa'; stroke = '#f0abfc'; lw = 2; } }
+    if (v && v.intron != null && g.introns[v.intron].a + v.pos === i) { stroke = '#ff4d6d'; lw = 2.5; }
+    if (v && v.auto3 && i >= g.introns[v.intron].a + v.auto3 - 2 && i < g.introns[v.intron].a + v.auto3) { stroke = '#fb7185'; lw = 2; }
+    const st0 = g.m2p[g.start]; if (st0 != null && i >= st0 && i < st0 + 3) { stroke = '#22c55e'; lw = 2; }
+    tile(ctx, p.x, p.y, ts, b, { bg, stroke, lw, alpha: inRemoved(i) ? .38 : 1 });
+    if (inRemoved(i)) { ctx.strokeStyle = 'rgba(239,68,68,.55)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(p.x + 2, p.y + ts - 2); ctx.lineTo(p.x + ts - 2, p.y + 2); ctx.stroke(); }
+    if (sg.t === 'I' && i === sg.bpAbs && ts >= 10) label(ctx, 'branch A', p.x + ts / 2, p.y + ts + 6, '#f0abfc', 9, 'center', 700);
+  });
+  // segment labels at first tile
+  g.segs.forEach(s => { const k = items.findIndex(it => it.i === s.a || (it.gap != null && it.from <= s.a && it.to > s.a)); if (k < 0) return; const p = L.pos[k]; label(ctx, s.t === 'E' ? s.name : s.name, p.x, p.y - 7, s.t === 'E' ? exonCol(s.idx) : '#a78bfa', 10, 'left', 700); });
+  // cut markers
+  const bondXY = k => { const idx = items.findIndex(it => it.i === k); if (idx < 0) return null; const p = L.pos[idx]; return { x: p.x, y: p.y }; };
+  cuts.forEach((c, n) => { const q = bondXY(c); if (!q) return; const col = n % 2 ? '#fb7185' : '#f43f5e'; ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(q.x, q.y - 5); ctx.lineTo(q.x, q.y + ts + 5); ctx.stroke(); ctx.beginPath(); ctx.moveTo(q.x - 5, q.y - 9); ctx.lineTo(q.x + 5, q.y - 9); ctx.lineTo(q.x, q.y - 3); ctx.closePath(); ctx.fillStyle = col; ctx.fill(); label(ctx, String(n + 1), q.x, q.y + ts + 11, col, 9.5, 'center', 700); });
+  if (sp.hover >= 0 && !sp.cuts.includes(sp.hover)) { const q = bondXY(sp.hover); if (q) { ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.setLineDash([3, 2]); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(q.x, q.y - 5); ctx.lineTo(q.x, q.y + ts + 5); ctx.stroke(); ctx.setLineDash([]); } }
+  // legend
+  const lg = [['Exon', '#22d3ee'], ['Intron', '#7c5cff'], ['GU / AG', '#f5a524'], ['Branch A', '#e879f9'], ['Start AUG', '#22c55e'], ['Cut', '#f43f5e']];
+  let lx = 14; ctx.font = fontS(10.5, 600); lg.forEach(([n, c]) => { if (lx > w - 60) return; ctx.fillStyle = c; ctx.fillRect(lx, 15, 10, 10); label(ctx, n, lx + 14, 20.5, '#93a1bd', 10.5); lx += 26 + ctx.measureText(n).width; });
+  drawSpResults(ctx, w, h, h - resH, resH, t);
+}
+function drawMatureBar(ctx, x, y, w, parts, opts) {
+  // parts: [{len, col, name}] ; draws cap and tail per sp flags
+  const capW = 34, tailW = sp.tail ? 64 : 0, down = opts.down || 0; const tot = parts.reduce((s, p) => s + p.len, 0) + (sp.tail ? 0 : down);
+  const bw = w - capW - tailW - 8; let cx = x + capW;
+  // cap
+  if (sp.cap) { sp.capA = Math.min(1, sp.capA + .03); ctx.globalAlpha = sp.capA; ctx.beginPath(); ctx.arc(x + 14, y + 9, 10, 0, PI2); ctx.fillStyle = '#facc15'; ctx.fill(); label(ctx, 'm⁷G', x + 14, y + 9.5, '#06101f', 8.5, 'center', 800); ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 24, y + 9); ctx.lineTo(cx, y + 9); ctx.stroke(); ctx.globalAlpha = 1; label(ctx, '5′ cap', x + 14, y + 27, '#facc15', 9.5, 'center'); }
+  else label(ctx, '5′', x + 20, y + 9, '#93a1bd', 11, 'center', 700);
+  parts.forEach(p => { const pw = Math.max(2, bw * p.len / tot); rrect(ctx, cx, y, pw - 1, 18, 4); ctx.fillStyle = p.col; ctx.fill(); if (pw > 46 && p.name) label(ctx, p.name, cx + pw / 2, y + 9.5, '#06101f', 9.5, 'center', 700); cx += pw; });
+  if (!sp.tail && down) { const pw = bw * down / tot; ctx.fillStyle = '#64748b'; rrect(ctx, cx, y + 4, pw, 10, 3); ctx.fill(); cx += pw; }
+  if (sp.tail) { sp.tailA = Math.min(1, sp.tailA + .02); const tw2 = tailW * sp.tailA; ctx.strokeStyle = '#34d399'; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.beginPath(); for (let k = 0; k <= 20; k++) { const xx = cx + 4 + tw2 * k / 20; const yy = y + 9 + Math.sin(k * .9) * 3; k ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy); } ctx.stroke(); label(ctx, 'AAAA…(~200)', cx + 4 + tw2 / 2, y + 27, '#34d399', 9.5, 'center', 600); }
+  else label(ctx, '3′', cx + 10, y + 9, '#93a1bd', 11, 'center', 700);
+}
+function drawSpResults(ctx, w, h, y0, H, t) {
+  const g = S.gene, r = sp.res;
+  ctx.fillStyle = 'rgba(15,23,41,.7)'; rrect(ctx, 10, y0, w - 20, H - 10, 12); ctx.fill(); ctx.strokeStyle = '#1e2a44'; ctx.stroke();
+  const x = 24, ww = w - 48; let y = y0 + 18;
+  if (!r) {
+    label(ctx, `Pre-mRNA: ${spPre().length} nt · ${g.introns.length} intron${g.introns.length === 1 ? '' : 's'} · ${sp.cuts.length} cut${sp.cuts.length === 1 ? '' : 's'} placed`, x, y, '#e6ecf7', 12.5, 'left', 700);
+    y += 26; const parts = g.segs.map(s => ({ len: s.b - s.a, col: s.t === 'E' ? exonCol(s.idx) : '#7c5cff55', name: s.t === 'E' ? s.name : '' }));
+    drawMatureBar(ctx, x, y, ww, parts, { down: g.downTx.length }); y += 40;
+    label(ctx, 'Reference protein after correct splicing:', x, y, '#93a1bd', 11); y += 14;
+    beadRows(ctx, g.protein, x, y, ww, fitR(g.protein.length, ww, y0 + H - 16 - y), null, 4);
+    return;
+  }
+  const cmp = protCompare(refProtein(), r.protein);
+  label(ctx, `Your mRNA: ${r.core.length} nt${sp.tail ? ' + poly(A)' : ''} · ${r.removed.length} segment${r.removed.length === 1 ? '' : 's'} removed`, x, y, '#e6ecf7', 12.5, 'left', 700);
+  const okTxt = cmp.ok ? '✓ reading frame intact' : '✗ ' + (r.protein.length ? 'protein altered' : 'no protein');
+  if (w < 600) { y += 18; label(ctx, okTxt, x, y, cmp.ok ? '#22c55e' : '#f87171', 12, 'left', 700); } else label(ctx, okTxt, w - 24, y, cmp.ok ? '#22c55e' : '#f87171', 12, 'right', 700);
+  y += 22;
+  // checks per removed segment
+  ctx.font = fontS(10.5);
+  let cx = x; r.checks.forEach((c, i) => { const s = `#${i + 1}: ${c.len} nt ${c.gu ? 'GU✓' : 'GU✗'} ${c.ag ? 'AG✓' : 'AG✗'} ${c.bp ? 'A✓' : 'A✗'}${c.exact ? ' exact' : c.cryptic ? ' cryptic' : ''}`; const tw = ctx.measureText(s).width + 14; if (cx + tw > x + ww) { cx = x; y += 18; } const okc = c.exact || c.cryptic; rrect(ctx, cx, y - 8, tw, 16, 6); ctx.fillStyle = okc ? (c.cryptic ? '#f59e0b22' : '#22c55e22') : '#ef444422'; ctx.fill(); label(ctx, s, cx + 7, y, okc ? (c.cryptic ? '#fbbf24' : '#86efac') : '#fca5a5', 10.5); cx += tw + 6; });
+  y += 20;
+  const parts = r.kept.map(([a, b], i) => { const sg = segAt(a); let len = b - a; if (i === r.kept.length - 1) len -= g.downTx.length; return { len: Math.max(0, len), col: sg.t === 'E' ? exonCol(sg.idx) : '#7c5cffaa', name: sg.t === 'E' ? sg.name : 'intron' }; });
+  drawMatureBar(ctx, x, y, ww, parts, { down: g.downTx.length }); y += 44;
+  label(ctx, `Protein: ${r.protein.length} aa · ${cmp.msg}`, x, y, cmp.ok ? '#86efac' : '#fca5a5', 11.5, 'left', 600); y += 14;
+  beadRows(ctx, r.protein, x, y, ww, fitR(r.protein.length, ww, y0 + H - 16 - y), refProtein(), 4);
+}
+// spliceosome animation
+function drawSpAnim(ctx, w, h, dt) {
+  const g = S.gene, r = sp.res, A = sp.anim; const rm = r.removed[A.i], ck = r.checks[A.i];
+  A.u += dt / 6.5; if (A.u >= 1) { A.i++; A.u = 0; if (A.i >= r.removed.length) { sp.anim = null; spDone(); return drawSpSeq(ctx, w, h, 0); } }
+  const u = A.u; const cy = h * 0.56; setHud([]); const ex1L = Math.max(70, w * .2), ex2L = ex1L; const midX = w / 2; const span = Math.min(w * .42, 330);
+  const join = seg01(u, .66, .82);
+  const e1x1 = midX - span / 2 - ex1L + join * (span / 2), e1x2 = e1x1 + ex1L; const e2x1 = midX + span / 2 - join * (span / 2), e2x2 = e2x1 + ex2L;
+  // title/caption
+  const steps = [[0, 'U1 snRNP pairs with the 5′ splice site (GU); U2AF binds the polypyrimidine tract and AG.'], [.18, 'U2 snRNP pairs with the branch site, bulging out the branch-point A.'], [.33, 'The U4/U6·U5 tri-snRNP joins; U1 and U4 leave and the spliceosome becomes active.'], [.5, 'Step 1: the 2′-OH of the branch A attacks the 5′ splice site. The intron forms a lariat (2′–5′ bond).'], [.66, 'Step 2: the free 3′-OH of the upstream exon attacks the 3′ splice site. Exons are joined.'], [.82, 'The lariat is released, debranched and degraded. The exon junction is marked by an EJC.']];
+  let cap = steps[0][1]; steps.forEach(([a, s]) => { if (u >= a) cap = s; });
+  label(ctx, `Spliceosome · removing segment ${A.i + 1} of ${r.removed.length} (${ck.len} nt)`, 16, 24, '#e6ecf7', 13, 'left', 700);
+  if (!(ck.gu && ck.ag)) label(ctx, `Warning: this segment ${ck.gu ? '' : 'does not start with GU '}${!ck.gu && !ck.ag ? 'and ' : ''}${ck.ag ? '' : 'does not end with AG'}. A real spliceosome would not use it; shown so you can see the consequence.`, 16, 44, '#fca5a5', 11, 'left');
+  // caption box
+  ctx.fillStyle = 'rgba(5,9,19,.85)'; rrect(ctx, 14, h - 74, w - 28, 56, 10); ctx.fill(); ctx.strokeStyle = '#2a3a5c'; ctx.stroke();
+  ctx.font = fontS(12, 500); ctx.fillStyle = '#e6ecf7'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  const words = cap.split(' '); let line = '', yy = h - 56; for (const wd of words) { if (ctx.measureText(line + wd).width > w - 60) { ctx.fillText(line, 28, yy); line = ''; yy += 18; } line += wd + ' '; } ctx.fillText(line, 28, yy);
+  // progress bar
+  ctx.fillStyle = '#1e2a44'; ctx.fillRect(14, h - 12, w - 28, 3); ctx.fillStyle = '#34d399'; ctx.fillRect(14, h - 12, (w - 28) * ((A.i + u) / r.removed.length), 3);
+  // exons
+  const sgL = segAt(rm[0] - 1 >= 0 ? rm[0] - 1 : 0), sgR = segAt(Math.min(rm[1], S.gene.pre.length - 1));
+  const exBox = (x1, x2, sg, nm) => { const c = sg.t === 'E' ? exonCol(sg.idx) : '#7c5cff'; const gr = ctx.createLinearGradient(0, cy - 14, 0, cy + 14); gr.addColorStop(0, c); gr.addColorStop(1, c + '99'); rrect(ctx, x1, cy - 14, x2 - x1, 28, 8); ctx.fillStyle = gr; ctx.fill(); label(ctx, nm, (x1 + x2) / 2, cy, '#06101f', 11.5, 'center', 800); };
+  // intron rope geometry
+  const p5 = { x: e1x2, y: cy }, p3 = { x: e2x1, y: cy };
+  const loopUp = seg01(u, .33, .5), lariat = seg01(u, .5, .62), step2 = seg01(u, .66, .8), release = seg01(u, .82, 1);
+  const sb = .66, ry = -release * 150;
+  const bp0 = { x: SL.lerp(p5.x, p3.x, .7), y: cy }, bpU = { x: SL.lerp(p5.x, p3.x, .58), y: cy - 92 };
+  const bpPt = { x: SL.lerp(bp0.x, bpU.x, loopUp), y: SL.lerp(bp0.y, bpU.y, loopUp) };
+  const LR = 46, lc = { x: bpPt.x - LR * .8, y: bpPt.y - LR * .6 }; const ang0 = Math.atan2(bpPt.y - lc.y, bpPt.x - lc.x);
+  const pts = [];
+  for (let k = 0; k <= 80; k++) {
+    const s2 = k / 80; let x, y;
+    if (s2 <= sb) { const tt = s2 / sb; const ax = SL.lerp(p5.x, bpPt.x, tt), ay = SL.lerp(p5.y, bpPt.y, tt) - Math.sin(Math.PI * tt) * 70 * loopUp; const an = ang0 + PI2 * tt; const bx = lc.x + LR * Math.cos(an), by = lc.y + LR * Math.sin(an); x = SL.lerp(ax, bx, lariat); y = SL.lerp(ay, by, lariat) + ry; }
+    else { const tt = (s2 - sb) / (1 - sb); const cx2 = SL.lerp(bpPt.x, p3.x, tt), cy2 = SL.lerp(bpPt.y, p3.y, tt) - Math.sin(Math.PI * tt) * 18 * loopUp; const dx = bpPt.x + 22 * tt + 18 * Math.sin(tt * 3), dy = bpPt.y + 46 * tt; x = SL.lerp(cx2, dx, step2); y = SL.lerp(cy2, dy, step2) + ry * step2; }
+    pts.push([x, y]);
+  }
+  ctx.save(); ctx.globalAlpha = 1 - release; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#a78bfa'; ctx.shadowColor = '#7c5cff'; ctx.shadowBlur = 10;
+  ctx.beginPath(); pts.forEach(([x, y], k) => k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); ctx.restore();
+  if (lariat > .6) label(ctx, 'lariat (2′–5′ bond)', lc.x, lc.y - LR - 14 + ry, '#c4b5fd', 11, 'center', 700);
+  ctx.save(); ctx.globalAlpha = 1 - release;
+  ctx.beginPath(); ctx.arc(bpPt.x, bpPt.y + ry, 7, 0, PI2); ctx.fillStyle = '#e879f9'; ctx.fill(); label(ctx, 'A', bpPt.x, bpPt.y + .5 + ry, '#06101f', 9.5, 'center', 800);
+  // snRNPs
+  const snrp = (x, y, r0, c, nm, a) => { if (a <= 0) return; ctx.globalAlpha = Math.min(1, a) * (1 - release); ctx.beginPath(); ctx.arc(x, y, r0, 0, PI2); ctx.fillStyle = c + '55'; ctx.fill(); ctx.strokeStyle = c; ctx.lineWidth = 1.5; ctx.stroke(); label(ctx, nm, x, y, '#fff', 10, 'center', 700); ctx.globalAlpha = 1; };
+  const a1 = seg01(u, 0, .12) * (1 - seg01(u, .4, .5)); snrp(p5.x + 18, cy - 30 + (1 - seg01(u, 0, .12)) * -60, 17, '#38bdf8', 'U1', a1);
+  snrp(bpPt.x + 4, bpPt.y + 26 + (1 - seg01(u, .18, .3)) * 60, 16, '#f472b6', 'U2', seg01(u, .18, .3));
+  snrp(p3.x - 22, cy + 28, 13, '#fbbf24', 'U2AF', seg01(u, .02, .14) * (1 - seg01(u, .45, .55)));
+  snrp(bpPt.x + 62, bpPt.y - 6 + (1 - seg01(u, .33, .45)) * -50, 24, '#34d399', 'U5·U6', seg01(u, .33, .45) * (1 - release));
+  ctx.restore();
+  // exons on top
+  exBox(e1x1, e1x2, sgL, sgL.t === 'E' ? sgL.name : '5′ side'); exBox(e2x1, e2x2, sgR, sgR.t === 'E' ? sgR.name : '3′ side');
+  if (lariat > .3 && join < 1) { label(ctx, '3′-OH', e1x2 + 4, cy + 26, '#fde68a', 10.5, 'left', 700); }
+  if (u < .5) { label(ctx, 'GU', p5.x + 10, cy + 22, '#f5a524', 11, 'center', 800); label(ctx, 'AG', p3.x - 10, cy + 22, '#f5a524', 11, 'center', 800); }
+  if (join >= 1) { ctx.beginPath(); ctx.arc(e1x2, cy - 22, 7, 0, PI2); ctx.fillStyle = '#facc15'; ctx.fill(); label(ctx, 'EJC', e1x2, cy - 36, '#facc15', 10, 'center', 700); }
+  label(ctx, '5′', e1x1 - 12, cy, '#93a1bd', 11, 'center', 700); label(ctx, '3′', e2x2 + 12, cy, '#93a1bd', 11, 'center', 700);
+}
+// alternative splicing view
+function drawAlt(ctx, w, h) {
+  const g = S.gene, pre = g.pre; const n = g.segs.length; const exs = g.exons;
+  label(ctx, 'Alternative splicing · click an exon to include or skip it', 16, 22, '#e6ecf7', w < 560 ? 11.5 : 13, 'left', 700);
+  if (sp.isos.length) label(ctx, 'Saved isoforms appear below and in the side panel.', 16, 40, '#5f6d8a', 10.5, 'left');
+  const iw = Math.min(46, w * .06); const total = exs.reduce((s, e) => s + Math.sqrt(e.b - e.a), 0); const avail = w - 40 - (exs.length - 1) * iw; const y = 110;
+  let x = 20; const boxes = [];
+  exs.forEach((e, k) => { const bw = Math.max(36, avail * Math.sqrt(e.b - e.a) / total); boxes.push({ x, w: bw, e, k }); x += bw + iw; });
+  const scale = (w - 40) / (x - iw - 20); boxes.forEach(b => { b.x = 20 + (b.x - 20) * scale; b.w *= scale; });
+  // introns line
+  ctx.strokeStyle = '#7c5cff88'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(boxes[0].x, y + 15); ctx.lineTo(boxes[boxes.length - 1].x + boxes[boxes.length - 1].w, y + 15); ctx.stroke();
+  // arcs between consecutive included exons
+  const inc = boxes.filter(b => sp.alt[b.k]);
+  for (let i = 0; i + 1 < inc.length; i++) { const a = inc[i], b = inc[i + 1]; const x1 = a.x + a.w, x2 = b.x; const hgt = 20 + (x2 - x1) * .25; ctx.strokeStyle = '#34d399'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x1, y); ctx.bezierCurveTo(x1, y - hgt, x2, y - hgt, x2, y); ctx.stroke(); }
+  boxes.forEach(b => { const on = sp.alt[b.k]; const c = exonCol(b.k); const yy = on ? y : y + 34; rrect(ctx, b.x, yy, b.w, 30, 8); ctx.fillStyle = on ? c : c + '22'; ctx.fill(); ctx.strokeStyle = c; ctx.setLineDash(on ? [] : [4, 3]); ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]); label(ctx, b.e.name.replace('Exons ', 'E').replace('Exon ', 'E'), b.x + b.w / 2, yy + 11, on ? '#06101f' : c, 11, 'center', 800); label(ctx, (b.e.b - b.e.a) + ' nt', b.x + b.w / 2, yy + 23, on ? '#06101fcc' : '#93a1bd', 9, 'center', 600); if (!on) label(ctx, 'skipped', b.x + b.w / 2, yy + 42, '#93a1bd', 9.5, 'center'); });
+  sp.altBoxes = boxes.map(b => ({ x: b.x, y: sp.alt[b.k] ? y : y + 34, w: b.w, h: 30, k: b.k }));
+  // result
+  const m = exs.filter((e, k) => sp.alt[k]).map(e => pre.slice(e.a, e.b)).join(''); const st0 = m.indexOf('AUG'); const tr = translate(m, st0);
+  const lens = exs.filter((e, k) => sp.alt[k] && k > 0 && k < exs.length - 1).length; const skipped = exs.map((e, k) => sp.alt[k] ? null : e).filter(Boolean);
+  let yy = 196; const cmp = protCompare(g.protein, tr.aa);
+  label(ctx, `Isoform: ${exs.filter((e, k) => sp.alt[k]).map(e => e.name.replace('Exons ', 'E').replace('Exon ', 'E')).join(' – ') || 'none'} · mRNA ${m.length} nt`, 20, yy, '#e6ecf7', 12.5, 'left', 700); yy += 20;
+  if (skipped.length) { const msg = skipped.map(e => `${e.name} = ${e.b - e.a} nt = 3×${Math.floor((e.b - e.a) / 3)}${(e.b - e.a) % 3 ? ' + ' + ((e.b - e.a) % 3) : ''} → ${(e.b - e.a) % 3 ? 'frameshift' : 'in frame'}`).join(' · '); label(ctx, msg, 20, yy, '#93a1bd', 11, 'left'); yy += 18; }
+  label(ctx, tr.aa.length ? `Protein: ${tr.aa.length} aa ${tr.complete ? '' : '(no stop codon)'} · ${cmp.msg}` : 'No start codon: no protein.', 20, yy, cmp.ok ? '#86efac' : '#fbbf24', 11.5, 'left', 600); yy += 12;
+  yy += beadRows(ctx, tr.aa, 20, yy, w - 40, fitR(tr.aa.length, w - 40, 70, 11), g.protein, 3) + 14;
+  // saved isoforms
+  sp.isos.slice(-3).forEach((iso, i) => { label(ctx, iso.name, 20, yy + 6, '#93a1bd', 10.5, 'left', 600); yy += 14; yy += beadRows(ctx, iso.p, 20, yy, w - 40, fitR(iso.p.length, w - 40, 30, 8), null, 2) + 8; });
+  sp.altCur = { m, p: tr.aa, name: exs.filter((e, k) => sp.alt[k]).map(e => e.name.replace('Exons ', 'E').replace('Exon ', 'E')).join('-') };
+  setHud([]);
+}
+function isoUI() { $('#isoList').innerHTML = sp.isos.map((s, i) => `<div><b>${s.name}</b> · ${s.p.length} aa<br>${s.p || '(none)'}</div>`).join('') || '<div>No isoforms saved yet.</div>'; }
+$('#altSave').onclick = () => { if (!sp.altCur) return; if (sp.isos.some(i => i.name === sp.altCur.name)) { SL.toast('Already saved.', 'warn'); return; } sp.isos.push({ ...sp.altCur }); isoUI(); if (sp.isos.length >= 3) chal('isoforms'); SL.toast(`Saved isoform ${sp.altCur.name}: ${sp.altCur.p.length} aa.`, 'ok'); };
+$('#altAll').onclick = () => { sp.alt = S.gene.exons.map(() => true); };
+$('#altClear').onclick = () => { sp.isos = []; isoUI(); };
+function spBondAt(p) {
+  const Ls = sp.lay; if (!Ls) return -1; const { items, L } = Ls; let best = -1, bd = 1e9;
+  items.forEach((it, k) => { if (it.gap != null || it.i === 0) return; const prev = items[k - 1]; if (!prev || prev.i !== it.i - 1) return; const q = L.pos[k]; if (p.y < q.y - 10 || p.y > q.y + L.ts + 10) return; const d = Math.abs(p.x - q.x); if (d < bd && d < L.ts * .7) { bd = d; best = it.i; } });
+  return best;
+}
+ST.sp = {
+  draw(ctx, w, h, dt, t) {
+    if (sp.mode === 'alt') return drawAlt(ctx, w, h);
+    if (sp.anim) return drawSpAnim(ctx, w, h, dt);
+    drawSpSeq(ctx, w, h, t);
+    const r = sp.res; setHud([]);
+  },
+  move(p) {
+    if (sp.mode === 'alt') { const b = (sp.altBoxes || []).find(b => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h); cv.style.cursor = b ? 'pointer' : 'default'; if (b) { const e = S.gene.exons[b.k]; showTip(`<b>${e.name}</b>: ${e.b - e.a} nt (${(e.b - e.a) % 3 ? 'not a multiple of 3' : 'multiple of 3'}). Click to ${sp.alt[b.k] ? 'skip' : 'include'}.`, p.x, p.y); } else hideTip(); return; }
+    if (sp.anim || sp.res) { hideTip(); cv.style.cursor = 'default'; return; }
+    const k = spBondAt(p);
+    if (sp.drag >= 0) { if (k >= 0 && k !== sp.cuts[sp.drag] && !sp.cuts.includes(k)) { sp.cuts[sp.drag] = k; sp.dragMoved = true; } return; }
+    sp.hover = k; cv.style.cursor = k >= 0 ? 'crosshair' : 'default';
+    if (k >= 0) { const pre = spPre(); const sg = segAt(k), sgp = segAt(k - 1); showTip(`Cut between <b>${pre[k - 1]}</b>${k} | <b>${pre[k]}</b>${k + 1}<br>${sgp.t === 'E' ? sgp.name : sgp.t === 'I' ? sgp.name : 'tail'} → ${sg.t === 'E' ? sg.name : sg.t === 'I' ? sg.name : 'tail'}${sp.cuts.includes(k) ? '<br><span class="dim">Click to remove, drag to move.</span>' : ''}`, p.x, p.y); } else hideTip();
+  },
+  down(p) {
+    if (sp.mode === 'alt') { const b = (sp.altBoxes || []).find(b => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h); if (b) { sp.alt[b.k] = !sp.alt[b.k]; } return; }
+    if (sp.anim) { sp.anim.u = Math.min(.999, sp.anim.u + .17); return; }
+    if (sp.res) return;
+    const k = spBondAt(p); if (k < 0) return; const ix = sp.cuts.indexOf(k);
+    if (ix >= 0) { sp.drag = ix; sp.dragMoved = false; } else { sp.cuts.push(k); sp.drag = sp.cuts.length - 1; sp.dragMoved = true; }
+  },
+  up() { if (sp.drag >= 0 && !sp.dragMoved) sp.cuts.splice(sp.drag, 1); sp.drag = -1; spUI(); },
+  leave() { sp.hover = -1; },
+};
+
+/* ---------- Station 4: Translation ---------- */
+const tl = { src: 'mine', rna: '', start: -1, phase: 'idle', c: 0, u: 0, chain: [], play: false, speed: 1, cam: 0, scanX: 0, hlCodon: null, capped: true, msg: '' };
+$$('#tlSrc button').forEach(b => b.onclick = () => { $$('#tlSrc button').forEach(x => x.classList.toggle('on', x === b)); tl.src = b.dataset.v; tlReset(); });
+SL.bind('#tlSpeed', v => tl.speed = v, v => v + '×');
+$('#tlPlay').onclick = () => { if (tl.phase === 'done') tlReset(); if (tl.start < 0) { SL.toast('This mRNA has no AUG start codon, so it cannot be translated.', 'bad'); return; } if (tl.phase === 'idle') { tl.phase = 'scan'; tl.u = 0; } tl.play = !tl.play; tlUIbtn(); };
+$('#tlStep').onclick = () => { if (tl.start < 0 || tl.phase === 'done') return; tl.play = false; if (tl.phase === 'idle' || tl.phase === 'scan' || tl.phase === 'init') { tl.phase = 'elong'; tl.c = 0; tl.chain = ['M']; tl.u = 0; } else if (tl.phase === 'elong') { tlCycle(); } else if (tl.phase === 'term') { tlFinish(); } tlUIbtn(); tlUI(); };
+$('#tlReset').onclick = tlReset;
+$('#tlSkip').onclick = () => { if (tl.start < 0) return; const t = translate(tl.rna, tl.start); tl.chain = t.aa.split(''); tl.c = tl.chain.length - 1; tlFinish(); };
+function tlSource() {
+  const g = S.gene;
+  if (tl.src === 'mine' && sp.res) return { rna: sp.res.core, capped: sp.cap, tailed: sp.tail, mine: true };
+  return { rna: g.mature.slice(0, g.cleave >= 0 ? g.mature.length : g.mature.length), capped: true, tailed: true, mine: false };
+}
+function tlReset() {
+  if (!S.gene) return; const s = tlSource(); tl.rna = s.rna; tl.start = tl.rna.indexOf('AUG'); tl.capped = s.capped;
+  Object.assign(tl, { phase: 'idle', c: 0, u: 0, chain: [], play: false, released: 0 });
+  tl.cam = -6; tl.scanX = 0;
+  const note = tl.src === 'mine' && !sp.res ? 'You have not spliced the pre-mRNA yet (Station 3), so the reference mRNA is used.' : s.mine ? `Using your processed mRNA (${s.rna.length} nt${s.capped ? ', capped' : ', no cap'}${s.tailed ? ', poly(A)' : ''}).` + (!s.capped ? ' Without a 5′ cap, real ribosomes load very poorly; shown anyway.' : '') : 'Using the correctly spliced reference mRNA.';
+  $('#tlNote').textContent = note; tlUIbtn(); tlUI();
+}
+function tlUIbtn() { $('#tlPlay').innerHTML = tl.play ? '<i data-lucide="pause"></i> Pause' : (tl.phase === 'done' ? '<i data-lucide="rotate-ccw"></i> Again' : '<i data-lucide="play"></i> Translate'); SL.refreshIcons($('#tlPlay')); }
+function codonAt(k) { return tl.rna.substr(tl.start + 3 * k, 3); }
+function tlCycle() {
+  const nx = codonAt(tl.c + 1); const a = CODE[nx];
+  if (!nx || nx.length < 3) { tl.phase = 'term'; tl.u = 0; tl.msg = 'Ran off the end of the mRNA without a stop codon (non-stop decay).'; return; }
+  if (a === '*') { tl.phase = 'term'; tl.u = 0; return; }
+  tl.c++; tl.chain.push(a); tl.u = 0; tlUI();
+}
+function tlFinish() { tl.phase = 'done'; tl.play = false; tlUIbtn(); tlUI(); markDone('tl'); const p = tl.chain.join(''); const ok = p === S.gene.protein; SL.toast(`Polypeptide released: ${p.length} aa (${SL.fmt(mass(p) / 1000, 2)} kDa).${ok ? ' Matches the reference protein.' : ''}`, ok ? 'ok' : 'warn'); if (ok) chal('translate'); }
+function tlUI() {
+  const p = tl.chain.join(''); const cod = tl.chain.length ? codonAt(tl.c) : '—';
+  stats('#tlStats', [['Codon #', tl.chain.length ? tl.c + 1 : '—'], ['P-site codon', cod], ['Amino acid', tl.chain.length ? AA[CODE[cod]] ? AA[CODE[cod]][0] : '—' : '—'], ['Chain', p.length, 'aa'], ['Mass', SL.fmt(mass(p) / 1000, 2), 'kDa'], ['Start at nt', tl.start >= 0 ? tl.start + 1 : 'none']]);
+  $('#tlText').innerHTML = p ? `<b>${p}</b><br><span class="dim">${three(p.length > 40 ? p.slice(0, 40) : p)}${p.length > 40 ? '…' : ''}</span>` : '—';
+  wheelHL(tl.chain.length && tl.phase !== 'done' ? cod : null);
+}
+function drawTRNA(ctx, x, yb, codon, a, alpha, cw, hasAA, rf) {
+  const ts = cw / 3; ctx.save(); ctx.globalAlpha = alpha;
+  const bw = cw * .62, bh = Math.max(40, cw * 1.2); const bx = x + (cw - bw) / 2, by = yb - ts - 4 - bh;
+  const col = rf ? '#f87171' : '#a78bfa';
+  rrect(ctx, bx, by, bw, bh, 8); ctx.fillStyle = col + '30'; ctx.fill(); ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.stroke();
+  // cloverleaf hints
+  ctx.beginPath(); ctx.arc(bx - 4, by + bh * .45, 6, 0, PI2); ctx.arc(bx + bw + 4, by + bh * .45, 6, 0, PI2); ctx.fillStyle = col + '40'; ctx.fill();
+  label(ctx, rf ? 'RF' : 'tRNA', x + cw / 2, by + bh * .45, rf ? '#fecaca' : '#ddd6fe', 9.5, 'center', 700);
+  if (!rf) for (let i = 0; i < 3; i++) tile(ctx, x + i * ts, yb - ts - 2, ts, RCOMP[codon[i]] || 'N', { bg: '#1e1b4b' });
+  else { rrect(ctx, x, yb - ts - 2, cw, ts, 4); ctx.fillStyle = '#7f1d1d'; ctx.fill(); label(ctx, 'release factor', x + cw / 2, yb - ts / 2 - 2, '#fecaca', 8.5, 'center', 600); }
+  if (hasAA && a) bead(ctx, x + cw / 2, by - 9, 9, a);
+  ctx.restore();
+  return { x: x + cw / 2, y: by - 9 };
+}
+ST.tl = {
+  enter() { tlReset(); },
+  draw(ctx, w, h, dt, t) {
+    const rna = tl.rna; const ts = w < 560 ? 13 : 25, cw = ts * 3; const ym = h * 0.68;
+    const sp2 = tl.speed;
+    // phase logic
+    if (tl.play) {
+      if (tl.phase === 'scan') { tl.u += dt * sp2 * .5; if (tl.u >= 1) { tl.phase = 'init'; tl.u = 0; } }
+      else if (tl.phase === 'init') { tl.u += dt * sp2 * .8; if (tl.u >= 1) { tl.phase = 'elong'; tl.c = 0; tl.chain = ['M']; tl.u = 0; tlUI(); } }
+      else if (tl.phase === 'elong') { tl.u += dt * sp2 * .7; if (tl.u >= 1) tlCycle(); }
+      else if (tl.phase === 'term') { tl.u += dt * sp2 * .6; if (tl.u >= 1) tlFinish(); }
+    }
+    const X0 = i => (i - tl.cam) * ts;
+    // ribosome position (P-site codon start nt)
+    let pNt;
+    if (tl.phase === 'idle') pNt = -3; else if (tl.phase === 'scan') pNt = SL.lerp(-3, tl.start, ease(tl.u)); else pNt = tl.start + 3 * tl.c;
+    let shift = 0; if (tl.phase === 'elong') shift = seg01(tl.u, .5, .8) * 3;
+    const ribNt = pNt + shift;
+    const targetCam = ribNt - (w / ts) * .52; tl.cam += (targetCam - tl.cam) * Math.min(1, dt * 5);
+    const X = X0;
+    const rx = X(ribNt - 3) - 10, rw = cw * 3 + 20;
+    const smallA = tl.phase === 'idle' ? 0 : 1;
+    // small subunit
+    if (smallA > 0 && tl.phase !== 'done') { ctx.save(); ctx.globalAlpha = .6; const g2 = ctx.createLinearGradient(0, ym + ts, 0, ym + ts + 40); g2.addColorStop(0, '#f5a524cc'); g2.addColorStop(1, '#b45309aa'); ctx.beginPath(); ctx.ellipse(rx + rw / 2, ym + ts + 14, rw / 2 + 6, 22, 0, 0, PI2); ctx.fillStyle = g2; ctx.fill(); ctx.restore(); label(ctx, tl.phase === 'scan' ? '40S scanning →' : 'small subunit (40S)', rx + rw / 2, ym + ts + 44, '#fbbf24', 10.5, 'center', 600); }
+    // mRNA
+    const i0 = Math.max(0, Math.floor(tl.cam) - 2), i1 = Math.min(rna.length, Math.ceil(tl.cam + w / ts) + 2);
+    ctx.strokeStyle = '#f472b655'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(Math.max(0, X(0)), ym + ts / 2); ctx.lineTo(Math.min(w, X(rna.length)), ym + ts / 2); ctx.stroke();
+    for (let i = i0; i < i1; i++) {
+      const inCDS = tl.start >= 0 && i >= tl.start; const ci = inCDS ? Math.floor((i - tl.start) / 3) : -1; const cod = inCDS ? rna.substr(tl.start + 3 * ci, 3) : '';
+      const hl = tl.hlCodon && cod === tl.hlCodon && (i - tl.start) % 3 >= 0;
+      tile(ctx, X(i) + (inCDS ? ((i - tl.start) % 3 === 0 ? 1 : 0) : 0), ym, ts, rna[i], { dim: !inCDS, stroke: hl ? '#fff' : null, lw: hl ? 2 : 1 });
+      if (inCDS && (i - tl.start) % 3 === 0 && ts >= 12) { const a = CODE[cod]; if (a && cod.length === 3) label(ctx, AA[a][0], X(i) + cw / 2, ym + ts + 10, aaCol(a), 9.5, 'center', 700); }
+    }
+    if (X(0) > -20) { if (tl.capped) { ctx.beginPath(); ctx.arc(X(0) - 14, ym + ts / 2, 9, 0, PI2); ctx.fillStyle = '#facc15'; ctx.fill(); label(ctx, 'm⁷G', X(0) - 14, ym + ts / 2 + .5, '#06101f', 7.5, 'center', 800); } else label(ctx, '5′', X(0) - 10, ym + ts / 2, '#93a1bd', 11, 'center', 700); }
+    if (X(rna.length) < w) label(ctx, '3′ …AAAA', X(rna.length) + 6, ym + ts / 2, '#34d399', 11, 'left', 700);
+    if (tl.start >= 0 && tl.phase === 'idle') { const sx = X(tl.start); ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 2; rrect(ctx, sx - 2, ym - 3, cw + 4, ts + 6, 5); ctx.stroke(); label(ctx, 'start AUG', sx + cw / 2, ym - 12, '#22c55e', 10.5, 'center', 700); }
+    if (tl.start < 0) label(ctx, 'No AUG start codon in this mRNA: translation cannot begin.', w / 2, h * .3, '#f87171', 13, 'center', 700);
+    // ribosome geometry
+    const largeA = tl.phase === 'idle' || tl.phase === 'scan' ? 0 : tl.phase === 'init' ? ease(tl.u) : tl.phase === 'term' ? 1 - seg01(tl.u, .7, 1) : tl.phase === 'done' ? 0 : 1;
+    const lgDY = tl.phase === 'init' ? (1 - ease(tl.u)) * -80 : tl.phase === 'term' ? seg01(tl.u, .7, 1) * -80 : 0;
+    // large subunit (behind tRNAs)
+    const lgTop = ym - cw * 2.6 - 22 + lgDY;
+    if (largeA > 0) { ctx.save(); ctx.globalAlpha = largeA * .8; const g3 = ctx.createLinearGradient(0, lgTop, 0, ym); g3.addColorStop(0, '#0e7490cc'); g3.addColorStop(1, '#22d3ee55'); rrect(ctx, rx - 8, lgTop, rw + 16, ym - lgTop - 2, 34); ctx.fillStyle = g3; ctx.fill(); ctx.strokeStyle = '#67e8f9'; ctx.lineWidth = 1.5; ctx.stroke();
+      ['E', 'P', 'A'].forEach((s, k) => { const sx = rx + 10 + k * cw; ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.setLineDash([3, 3]); ctx.strokeRect(sx + 2, lgTop + 26, cw - 4, ym - lgTop - 30); ctx.setLineDash([]); label(ctx, s, sx + cw / 2, lgTop + 14, '#e0f2fe', 13, 'center', 800); });
+      ctx.restore(); if (w > 560) label(ctx, 'large subunit (60S)', rx + rw + 14, lgTop + 22, '#67e8f9', 10.5, 'left', 600); }
+    // tRNAs
+    const slotX = k => X(pNt + (k - 1) * 3); // k: 0 E, 1 P, 2 A (in mRNA coords, before translocation shift)
+    let anchor = null;
+    if (tl.phase === 'init' || (tl.phase === 'elong' && tl.chain.length)) {
+      const u = tl.phase === 'elong' ? tl.u : 1;
+      const pk = tl.c, pcod = codonAt(pk);
+      // P-site tRNA (holds chain until peptide transfer)
+      const transfer = tl.phase === 'elong' ? seg01(u, .3, .5) : 0;
+      // E-site tRNA leaving (the one that was in P before translocation) — after translocation, P tRNA moves to E
+      const pIn = tl.phase === 'init' ? ease(tl.u) : 1;
+      const pA = tl.phase === 'elong' ? 1 - seg01(u, .82, 1) * (1) : pIn;
+      const pDY = tl.phase === 'elong' ? -seg01(u, .82, 1) * 60 : (1 - pIn) * -60;
+      const pAnch = drawTRNA(ctx, slotX(1), ym + pDY, pcod, tl.chain[tl.c], tl.phase === 'elong' ? (u > .82 ? 1 - seg01(u, .82, 1) : 1) : pA, cw, transfer < .5, false);
+      if (transfer < .5) anchor = pAnch;
+      // incoming A-site tRNA
+      const nx = codonAt(pk + 1); const na = CODE[nx];
+      if (tl.phase === 'elong' && nx && nx.length === 3 && na && na !== '*') {
+        const inA = seg01(u, 0, .28); const ax = slotX(2) + (1 - inA) * 90, ay = ym - (1 - inA) * 70;
+        const aAn = drawTRNA(ctx, ax, ay, nx, na, inA, cw, true, false);
+        if (transfer >= .5) anchor = aAn;
+        if (u < .3 && inA > .1) label(ctx, 'aminoacyl-tRNA enters the A site', rx + rw / 2, ym + ts + 66, '#c4b5fd', 11.5, 'center', 700);
+        if (u > .3 && u < .5) { label(ctx, 'peptidyl transferase: peptide bond forms', rx + rw / 2, ym + ts + 66, '#fde68a', 11.5, 'center', 700); }
+        if (u > .5 && u < .8) label(ctx, 'translocation: ribosome moves one codon →', rx + rw / 2, ym + ts + 66, '#67e8f9', 11.5, 'center', 700);
+      }
+    }
+    if (tl.phase === 'term' || tl.phase === 'done') {
+      const u = tl.phase === 'term' ? tl.u : 1;
+      const pcod = codonAt(tl.c); const stopC = codonAt(tl.c + 1);
+      const relA = seg01(u, .35, .6);
+      if (tl.phase === 'term') { drawTRNA(ctx, slotX(1), ym - seg01(u, .6, .8) * 60, pcod, tl.chain[tl.c], 1 - seg01(u, .6, .8), cw, relA < .5, false); if (stopC && stopC.length === 3 && CODE[stopC] === '*') drawTRNA(ctx, slotX(2), ym - (1 - seg01(u, 0, .3)) * 60, stopC, null, seg01(u, 0, .3) * (1 - seg01(u, .75, .95)), cw, false, true); }
+      anchor = { x: slotX(1) + cw / 2 - relA * 30, y: ym - cw * 1.2 - 60 - relA * 70 };
+      if (tl.phase === 'term' && u < .5 && CODE[stopC] === '*') label(ctx, `stop codon ${stopC}: release factor binds the A site`, rx + rw / 2, ym + ts + 66, '#fca5a5', 11.5, 'center', 700);
+      if (tl.msg && tl.phase === 'term') label(ctx, tl.msg, w / 2, 40, '#fbbf24', 12, 'center', 700);
+    }
+    // polypeptide chain from anchor
+    if (anchor && tl.chain.length) {
+      const n = tl.chain.length; const r = w < 560 ? 7.5 : 11, step = r * 2 + 1; const exitY = (tl.phase === 'done' ? anchor.y : lgTop + 6);
+      for (let j = 0; j < n; j++) {
+        const a = tl.chain[n - 1 - j]; let s = j * step; let x, y;
+        const L1 = Math.max(0, anchor.y - exitY);
+        if (s <= L1) { x = anchor.x; y = anchor.y - s; } else { const q = s - L1; x = anchor.x - q * .78; y = exitY - 16 - 22 * Math.sin(q / 34) - q * .06; if (x < 12) { const over = 12 - x; x = 12 + (over % 40); y -= 30 + Math.floor(over / 40) * 0; } }
+        if (y < 6) continue;
+        if (j > 0) { ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 2; }
+        bead(ctx, x, y, r, a, j === n - 1 ? '#22c55e' : null);
+      }
+      if (n > 0) label(ctx, 'N-terminus (Met)', 14, 18, '#93a1bd', 10, 'left');
+    }
+    if (tl.phase === 'idle' && tl.start >= 0) label(ctx, 'Press Translate: the 40S subunit loads at the cap and scans to the first AUG.', w / 2, h * .2, '#93a1bd', 12, 'center');
+    if (tl.phase === 'done') label(ctx, `Released: ${tl.chain.length} aa · ${SL.fmt(mass(tl.chain.join('')) / 1000, 2)} kDa`, w / 2, h - 26, '#34d399', 13, 'center', 700);
+    // legend
+    let lx = 14; const ly = h - 12; if (tl.phase !== 'done') Object.values(CLS).slice(0, 4).forEach(([c, n]) => { ctx.beginPath(); ctx.arc(lx + 5, ly - 2, 5, 0, PI2); ctx.fillStyle = c; ctx.fill(); label(ctx, n, lx + 13, ly - 2, '#93a1bd', 10); ctx.font = fontS(10, 600); lx += 24 + ctx.measureText(n).width; });
+    setHud([['Phase', { idle: 'Ready', scan: 'Scanning', init: 'Initiation', elong: 'Elongation', term: 'Termination', done: 'Released' }[tl.phase]], ['Chain', tl.chain.length + ' aa']]);
+    tl.lay = { ts, ym, X, cw };
+  },
+  move(p) {
+    const L = tl.lay; if (!L) return; if (p.y >= L.ym - 2 && p.y <= L.ym + L.ts + 2 && tl.start >= 0) {
+      const i = Math.floor(p.x / L.ts + tl.cam); if (i >= tl.start && i < tl.rna.length) { const ci = Math.floor((i - tl.start) / 3); const cod = codonAt(ci); if (cod.length === 3) { const a = CODE[cod]; tl.hlCodon = cod; showTip(`Codon ${ci + 1}: <b>${cod}</b> → ${AA[a][1]} (${AA[a][0]}, ${a})<br>anticodon 3′-${cod.split('').map(b => RCOMP[b]).join('')}-5′ · ${CLS[AA[a][2]][1]}`, p.x, p.y); wheelHL(cod, true); return; } }
+    }
+    tl.hlCodon = null; hideTip();
+  },
+  leave() { tl.hlCodon = null; },
+};
+// codon wheel
+const wheel = $('#wheel'); const WC = 160;
+function arcPath(r1, r2, a1, a2) { const p = (r, a) => [WC + r * Math.cos(a), WC + r * Math.sin(a)]; const [x1, y1] = p(r2, a1), [x2, y2] = p(r2, a2), [x3, y3] = p(r1, a2), [x4, y4] = p(r1, a1); const lg = a2 - a1 > Math.PI ? 1 : 0; return `M${x1},${y1}A${r2},${r2} 0 ${lg} 1 ${x2},${y2}L${x3},${y3}${r1 > 0 ? `A${r1},${r1} 0 ${lg} 0 ${x4},${y4}` : ''}Z`; }
+(function buildWheel() {
+  let html = ''; const A0 = -Math.PI / 2, d = PI2 / 64; const R = [0, 34, 66, 98, 158];
+  const txt = (r, a, s, fs, col, rot) => { const x = WC + r * Math.cos(a), y = WC + r * Math.sin(a); let deg = a * 180 / Math.PI; if (rot) { if (deg > 90 && deg < 270) deg -= 180; else if (deg > -270 && deg < -90) deg += 180; } return `<text x="${x}" y="${y}" font-size="${fs}" text-anchor="middle" dominant-baseline="central" ${rot ? `transform="rotate(${deg} ${x} ${y})"` : ''} style="fill:${col || '#06101f'}">${s}</text>`; };
+  const bc = { U: '#f472b6', C: '#60a5fa', A: '#34d399', G: '#facc15' };
+  for (let i = 0; i < 4; i++) { const a1 = A0 + i * 16 * d, a2 = a1 + 16 * d; html += `<path d="${arcPath(R[0], R[1], a1, a2)}" fill="${bc[B4[i]]}" data-c="${B4[i]}"/>` + txt(18, (a1 + a2) / 2, B4[i], 15); }
+  for (let i = 0; i < 16; i++) { const a1 = A0 + i * 4 * d, a2 = a1 + 4 * d; const b = B4[i % 4]; html += `<path d="${arcPath(R[1], R[2], a1, a2)}" fill="${bc[b]}cc" data-c="${B4[i >> 2]}${b}"/>` + txt(50, (a1 + a2) / 2, b, 11.5); }
+  for (let i = 0; i < 64; i++) { const a1 = A0 + i * d, a2 = a1 + d; const cod = B4[i >> 4] + B4[(i >> 2) & 3] + B4[i & 3]; html += `<path d="${arcPath(R[2], R[3], a1, a2)}" fill="${bc[B4[i & 3]]}99" data-c="${cod}" class="cod"/>` + txt(82, (a1 + a2) / 2, B4[i & 3], 8); }
+  // aa ring: runs of the same aa
+  let i = 0; while (i < 64) { const cod = B4[i >> 4] + B4[(i >> 2) & 3] + B4[i & 3]; const a = CODE[cod]; let j = i; while (j + 1 < 64 && CODE[B4[(j + 1) >> 4] + B4[((j + 1) >> 2) & 3] + B4[(j + 1) & 3]] === a && ((j + 1) >> 2) === (i >> 2)) j++; const a1 = A0 + i * d, a2 = A0 + (j + 1) * d; const cods = []; for (let k = i; k <= j; k++) cods.push(B4[k >> 4] + B4[(k >> 2) & 3] + B4[k & 3]); html += `<path d="${arcPath(R[3], R[4], a1, a2)}" fill="${aaCol(a)}" data-c="${cods.join(',')}" class="aa"/>` + txt(128, (a1 + a2) / 2, a === '*' ? 'Stop' : AA[a][0], j > i ? 10 : 8.5, '#06101f', true); i = j + 1; }
+  wheel.innerHTML = html;
+  wheel.addEventListener('pointermove', e => { const p = e.target.closest('path'); if (!p) return; const cs = p.dataset.c.split(','); const c = cs[0]; if (c.length < 3) { $('#codeInfo').innerHTML = `Codons starting <b>${c}</b>…`; return; } const a = CODE[c]; $('#codeInfo').innerHTML = `<b>${cs.join(', ')}</b> → <b>${AA[a][1]}</b> (${AA[a][0]}${a !== '*' ? ', ' + a : ''}) · ${CLS[AA[a][2]][1]}${c === 'AUG' ? ' · start codon' : ''}`; tl.hlCodon = c; wheelHL(c, true); });
+  wheel.addEventListener('pointerleave', () => { tl.hlCodon = null; wheelHL(null, true); });
+  const lg = Object.values(CLS).map(([c, n]) => `<span><i style="background:${c}"></i>${n}</span>`).join(''); $('#aaLegend').innerHTML = lg; $('#aaLegend2').innerHTML = lg;
+})();
+let wheelHov = null;
+function wheelHL(c, hover) { if (hover) wheelHov = c; const target = wheelHov || c; wheel.querySelectorAll('path.cod').forEach(p => p.classList.toggle('hl', p.dataset.c === target)); }
+
+/* ---------- Station 5: Mutation lab ---------- */
+const mu = { ref: '', seq: '', hist: [], tool: 'sub', base: 'T', win: 0, marks: [], hover: -1 };
+$('#muBase').innerHTML = 'ACGT'.split('').map(b => `<button data-b="${b}" style="color:${BCOL[b]}" class="${b === 'T' ? 'on' : ''}">${b}</button>`).join('');
+$$('#muBase button').forEach(b => b.onclick = () => { $$('#muBase button').forEach(x => x.classList.toggle('on', x === b)); mu.base = b.dataset.b; });
+$$('#muTool button').forEach(b => b.onclick = () => { $$('#muTool button').forEach(x => x.classList.toggle('on', x === b)); mu.tool = b.dataset.v; });
+$('#muUndo').onclick = () => { const h = mu.hist.pop(); if (h) { mu.seq = h.prev; mu.marks = h.marks; muUI(); } };
+$('#muReset').onclick = () => { muReset(); };
+function muReset() { if (!S.gene) return; mu.ref = S.gene.cds; mu.seq = mu.ref; mu.hist = []; mu.marks = []; mu.win = 0; muPresetsUI(); muUI(); }
+function muApply(kind, i, b, quiet) {
+  const prev = mu.seq, marks = mu.marks.slice(); let s = mu.seq; let desc;
+  if (kind === 'sub') { if (s[i] === b) { if (!quiet) SL.toast(`That base is already ${b}. Pick a different base.`, 'warn'); return false; } desc = `c.${i + 1}${s[i]}>${b}`; s = s.slice(0, i) + b + s.slice(i + 1); mu.marks = mu.marks.map(m => m).concat([i]); }
+  else if (kind === 'ins') { desc = `c.${i}_${i + 1}ins${b}`; s = s.slice(0, i) + b + s.slice(i); mu.marks = mu.marks.map(m => m >= i ? m + 1 : m).concat([i]); }
+  else { desc = `c.${i + 1}del${s[i]}`; s = s.slice(0, i) + s.slice(i + 1); mu.marks = mu.marks.filter(m => m !== i).map(m => m > i ? m - 1 : m).concat([Math.min(i, s.length - 1)]); }
+  mu.hist.push({ prev, marks, desc }); mu.seq = s; mu.win = Math.max(0, Math.floor(i / 3) - 4); muUI(); return true;
+}
+function classify(ref, mut) {
+  const rp = translate(toRNA(ref), 0).aa, rnaM = toRNA(mut); const startOk = mut.slice(0, 3) === 'ATG';
+  let mp; if (startOk) mp = translate(rnaM, 0); else { const nx = rnaM.indexOf('AUG'); mp = translate(rnaM, nx); mp.alt = nx; }
+  const d = mut.length - ref.length; const out = { rp, mp: mp.aa, complete: mp.complete, d };
+  if (mut === ref) { out.type = 'none'; out.msg = 'No mutation yet: the coding sequence matches the reference.'; return out; }
+  if (!startOk) { out.type = 'start-loss'; out.msg = mp.alt >= 0 ? `Start codon lost. Ribosomes would scan on to the next AUG (nt ${mp.alt + 1}), giving a ${mp.aa.length}-aa product${mp.alt % 3 ? ' in a different frame' : ''}.` : 'Start codon lost and no other AUG: no protein.'; return out; }
+  let i = 0; while (i < rp.length && i < mp.aa.length && rp[i] === mp.aa[i]) i++;
+  if (d % 3 !== 0) { out.type = 'frameshift'; out.msg = `Frameshift (${d > 0 ? '+' : ''}${d} nt): the reading frame shifts from codon ${i + 1}. ${mp.complete ? `A premature stop appears at codon ${mp.aa.length + 1}` : 'No stop codon is reached before the end'}; protein ${mp.aa.length} aa instead of ${rp.length}.`; return out; }
+  if (d !== 0) { out.type = 'inframe'; out.msg = `In-frame ${d > 0 ? 'insertion' : 'deletion'} of ${Math.abs(d)} nt (${Math.abs(d / 3)} codon${Math.abs(d) > 3 ? 's' : ''}): protein ${mp.aa.length} aa instead of ${rp.length}.`; return out; }
+  if (mp.aa === rp) { out.type = 'silent'; out.msg = 'Silent (synonymous): the codon changed but still codes for the same amino acid. The genetic code is degenerate.'; return out; }
+  if (mp.aa.length < rp.length && rp.startsWith(mp.aa)) { out.type = 'nonsense'; out.msg = `Nonsense: codon ${mp.aa.length + 1} became a stop codon. Truncated protein of ${mp.aa.length} aa (reference ${rp.length}); in cells this mRNA is often destroyed by nonsense-mediated decay.`; return out; }
+  if (mp.aa.length > rp.length && mp.aa.startsWith(rp)) { out.type = 'nonstop'; out.msg = `Stop codon lost: translation reads on into the 3′ region, adding ${mp.aa.length - rp.length} extra residues${mp.complete ? '' : ' (no stop found)'}.`; return out; }
+  const diffs = []; for (let k = 0; k < rp.length; k++) if (rp[k] !== mp.aa[k]) diffs.push(k);
+  out.type = 'missense'; out.diffs = diffs;
+  out.msg = 'Missense: ' + diffs.slice(0, 4).map(k => { const a = rp[k], b = mp.aa[k]; const ca = AA[a][2], cb = AA[b][2]; return `p.${AA[a][0]}${k + 1}${AA[b][0]} (${CLS[ca][1].toLowerCase()} → ${CLS[cb][1].toLowerCase()}${ca === cb ? ', conservative' : ', non-conservative'})`; }).join('; ') + (diffs.length > 4 ? '…' : '') + '.';
+  return out;
+}
+const MU_PRESETS = {
+  hbb: [
+    ['HbS sickle cell (c.20A>T)', [['sub', 19, 'T']], 'p.Glu7Val, traditionally Glu6Val: the acidic glutamate becomes hydrophobic valine. Deoxy-HbS polymerises and red cells sickle.'],
+    ['HbC (c.19G>A)', [['sub', 18, 'A']], 'p.Glu7Lys (Glu6Lys): a charge reversal; HbC crystallises in red cells (mild haemolytic disease).'],
+    ['β0-thal codon 39 (c.118C>T)', [['sub', 117, 'T']], 'CAG (Gln) → TAG (stop): a nonsense mutation common around the Mediterranean.'],
+    ['β-thal codons 41/42 −CTTT', [['del', 125], ['del', 125], ['del', 125], ['del', 125]], 'A 4-nt deletion common in South-East Asia: frameshift and early stop.'],
+    ['Silent: CTG→CTA (Leu)', [['sub', 11, 'A']], 'Codon 4 CTG → CTA still codes for leucine.'],
+  ],
+  any: [
+    ['Silent (3rd base)', 'silent'], ['Missense', 'missense'], ['Nonsense', 'nonsense'], ['+1 insertion (codon 3)', [['ins', 6, 'A']]], ['−1 deletion (codon 3)', [['del', 6]]], ['In-frame −3', [['del', 6], ['del', 6], ['del', 6]]], ['Start loss (ATG→ACG)', [['sub', 1, 'C']]],
+  ],
+};
+function muPresetsUI() {
+  const g = S.gene; const list = (MU_PRESETS[g.id] || []).concat(MU_PRESETS.any);
+  $('#muPresets').innerHTML = list.map((p, i) => `<button class="btn sm" data-i="${i}">${p[0]}</button>`).join('');
+  $$('#muPresets button').forEach(b => b.onclick = () => {
+    const p = list[+b.dataset.i]; muReset();
+    if (typeof p[1] === 'string') { // find a random example of the requested type
+      const ref = mu.ref; const cands = [];
+      for (let c = 1; c < ref.length / 3 - 1; c++) for (let k = 0; k < 3; k++) for (const nb of 'ACGT') { const i = 3 * c + k; if (ref[i] === nb) continue; const s = ref.slice(0, i) + nb + ref.slice(i + 1); const ty = classify(ref, s).type; if (ty === p[1]) cands.push([i, nb]); }
+      if (!cands.length) { SL.toast('No example of that type exists in this sequence.', 'warn'); return; }
+      const [i, nb] = cands[Math.floor(Math.random() * cands.length)]; muApply('sub', i, nb, true);
+    } else p[1].forEach(([k, i, nb]) => muApply(k, i, nb, true));
+    if (p[2]) SL.toast(p[2], 'ok', 5500);
+    if (p[0].startsWith('HbS')) chal('sickle');
+  });
+}
+function muUI() {
+  const r = classify(mu.ref, mu.seq); mu.cls = r;
+  const col = { none: 'var(--muted)', silent: 'var(--ok)', missense: 'var(--warn)', nonsense: 'var(--bad)', frameshift: 'var(--bad)', inframe: 'var(--warn)', 'start-loss': 'var(--bad)', nonstop: 'var(--warn)' }[r.type];
+  const names = { none: 'No change', silent: 'Silent', missense: 'Missense', nonsense: 'Nonsense', frameshift: 'Frameshift', inframe: 'In-frame indel', 'start-loss': 'Start loss', nonstop: 'Stop loss' };
+  $('#muResult').innerHTML = `<div style="font:700 1rem var(--display);color:${col};margin-bottom:6px">${names[r.type]}</div><p style="margin:0 0 8px;color:var(--muted)">${r.msg}</p>${mu.hist.length ? `<div class="seqbox">${mu.hist.map(h => h.desc).join('<br>')}</div>` : ''}`;
+  let same = 0; for (let k = 0; k < Math.min(r.rp.length, r.mp.length); k++) if (r.rp[k] === r.mp[k]) same++;
+  stats('#muStats', [['Reference', r.rp.length, 'aa'], ['Mutant', r.mp.length, 'aa'], ['Identity', SL.fmt(same / Math.max(r.rp.length, 1) * 100, 1), '%'], ['Δ length', (r.d > 0 ? '+' : '') + r.d, 'nt'], ['Mass', SL.fmt(mass(r.mp) / 1000, 2), 'kDa']]);
+  if (['silent', 'missense', 'nonsense', 'frameshift'].includes(r.type)) { mu.seen = mu.seen || {}; mu.seen[r.type] = 1; if (Object.keys(mu.seen).length >= 4) chal('mutants'); markDone('mu'); }
+}
+function muLayout(w, h) {
+  const ts = w < 560 ? 13 : 20, cw = ts * 3 + 7; const per = Math.max(4, Math.floor((w - 28) / cw)); const rowH = ts + 32; const top = 50; const need = Math.ceil(Math.ceil(mu.seq.length / 3) / per); const rows = Math.max(2, Math.min(need, Math.floor((h * .52 - top) / rowH)));
+  return { ts, cw, per, rowH, top, rows };
+}
+ST.mu = {
+  draw(ctx, w, h) {
+    const L = muLayout(w, h); mu.L = L; const s = mu.seq, nC = Math.ceil(s.length / 3);
+    const maxWin = Math.max(0, Math.ceil(nC / L.per) - L.rows); mu.rowOff = Math.min(Math.floor(mu.win / L.per), maxWin);
+    const rp = mu.cls.rp, mp = mu.cls.mp; const marks = new Set(mu.marks);
+    label(ctx, `Coding sequence: ${s.length} nt, ${nC} codons`, 14, 22, '#e6ecf7', 12.5, 'left', 700);
+    if (Math.ceil(nC / L.per) > L.rows) label(ctx, `rows ${mu.rowOff + 1}–${Math.min(mu.rowOff + L.rows, Math.ceil(nC / L.per))} of ${Math.ceil(nC / L.per)} · drag ↕ to scroll`, w < 560 ? 14 : w - 14, w < 560 ? 38 : 22, '#5f6d8a', 10.5, w < 560 ? 'left' : 'right');
+    for (let rr = 0; rr < L.rows; rr++) for (let cc = 0; cc < L.per; cc++) {
+      const c = (mu.rowOff + rr) * L.per + cc; if (c >= nC) break;
+      const x = 14 + cc * L.cw, y = L.top + rr * L.rowH; const cod = s.substr(3 * c, 3); const a = cod.length === 3 ? CODE[toRNA(cod)] : null;
+      const changed = a && (rp[c] !== (mp[c] || (a === '*' ? undefined : null)));
+      for (let k = 0; k < cod.length; k++) { const i = 3 * c + k; tile(ctx, x + k * L.ts, y, L.ts, cod[k], { stroke: marks.has(i) ? '#fff' : mu.hover === i ? '#fde68a' : null, lw: marks.has(i) || mu.hover === i ? 2.2 : 1 }); }
+      const inProt = c <= mp.length; const aa = c < mp.length ? mp[c] : (c === mp.length && mu.cls.complete ? '*' : null);
+      if (aa) { const diff = aa !== (c < rp.length ? rp[c] : '*'); bead(ctx, x + 1.5 * L.ts, y + L.ts + 12, L.ts < 15 ? 6.5 : 9, aa, diff ? '#ff4d6d' : null); }
+      else { label(ctx, '·', x + 1.5 * L.ts, y + L.ts + 11, '#3b4660', 10, 'center'); }
+      if (cc === 0) label(ctx, String(c + 1), x - 2, y - 5, '#5f6d8a', 9, 'left');
+    }
+    // protein comparison
+    let y = L.top + L.rows * L.rowH + 10; const hA = (h - y - 60) / 2 - 10; const r0 = fitR(Math.max(rp.length, mp.length), w - 44, hA, 10);
+    ctx.fillStyle = 'rgba(15,23,41,.7)'; rrect(ctx, 10, y - 6, w - 20, h - y - 4, 12); ctx.fill();
+    label(ctx, `Reference protein (${rp.length} aa)`, 22, y + 8, '#93a1bd', 11, 'left', 600); y += 18;
+    y += beadRows(ctx, rp, 22, y, w - 44, r0, null, 6) + 8;
+    label(ctx, `Mutant protein (${mp.length} aa)`, 22, y + 8, mu.cls.type === 'none' ? '#93a1bd' : '#fca5a5', 11, 'left', 600); y += 18;
+    y += beadRows(ctx, mp, 22, y, w - 44, r0, rp, 6) + 6;
+    // red cell icon for HBB Glu7Val
+    if (S.gene.id === 'hbb' && y < h - 30) {
+      const sick = mp[6] === 'V'; const cx = w - 70, cyy = h - 42;
+      ctx.save(); ctx.translate(cx, cyy); ctx.fillStyle = '#dc2626'; ctx.strokeStyle = '#fca5a5'; ctx.lineWidth = 1.5;
+      if (!sick) { ctx.beginPath(); ctx.ellipse(0, 0, 26, 26, 0, 0, PI2); ctx.fill(); ctx.beginPath(); ctx.ellipse(0, 0, 11, 11, 0, 0, PI2); ctx.fillStyle = '#991b1b'; ctx.fill(); }
+      else { ctx.beginPath(); ctx.arc(0, 6, 28, Math.PI * 1.1, Math.PI * 1.9); ctx.arc(0, 20, 22, Math.PI * 1.82, Math.PI * 1.18, true); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+      ctx.restore(); label(ctx, sick ? 'sickled red cell (low O₂)' : 'normal red cell', cx, h - 10, sick ? '#fca5a5' : '#93a1bd', 10, 'center', 600);
+    }
+    setHud([]);
+  },
+  hit(p) { const L = mu.L; if (!L) return -1; const cc = Math.floor((p.x - 14) / L.cw), rr = Math.floor((p.y - L.top) / L.rowH); if (cc < 0 || cc >= L.per || rr < 0 || rr >= L.rows) return -1; const dx = p.x - 14 - cc * L.cw, dy = p.y - L.top - rr * L.rowH; if (dy > L.ts || dx >= 3 * L.ts) return -1; const i = 3 * ((mu.rowOff + rr) * L.per + cc) + Math.floor(dx / L.ts); return i < mu.seq.length ? i : -1; },
+  move(p) {
+    if (mu.drag) { const d = Math.round((mu.drag.y - p.y) / mu.L.rowH); if (d) { mu.win = Math.max(0, mu.win + d * mu.L.per); mu.drag.y = p.y; } return; }
+    const i = this.hit(p); mu.hover = i; cv.style.cursor = i >= 0 ? 'pointer' : 'default';
+    if (i >= 0) { const c = Math.floor(i / 3), cod = mu.seq.substr(3 * c, 3), a = CODE[toRNA(cod)]; showTip(`c.${i + 1} <b>${mu.seq[i]}</b> · codon ${c + 1} <b>${cod}</b> → ${a ? AA[a][0] : '—'}<br><span class="dim">${{ sub: 'Click to substitute with ' + mu.base, ins: 'Click to insert ' + mu.base + ' before this base', del: 'Click to delete this base' }[mu.tool]}</span>`, p.x, p.y); } else hideTip();
+  },
+  down(p) { const i = this.hit(p); if (i >= 0) { muApply(mu.tool, i, mu.base); } else mu.drag = { y: p.y }; },
+  up() { mu.drag = null; },
+  wheel(e) { const L = mu.L; if (!L) return; mu.win = Math.max(0, mu.win + Math.sign(e.deltaY) * L.per); e.preventDefault(); },
+  leave() { mu.hover = -1; },
+};
+
+/* ---------- Station 6: CRISPR ---------- */
+const cr = { off: 0, sel: null, phase: 'pick', u: 0, repair: 'nhej', donor: 'fix', allele: 'ref', edit: null, gen: '', n: 30, ts: 16 };
+$$('#crRepair button').forEach(b => b.onclick = () => { $$('#crRepair button').forEach(x => x.classList.toggle('on', x === b)); cr.repair = b.dataset.v; $('#crDonorWrap').style.display = cr.repair === 'hdr' ? '' : 'none'; crDonorUI(); });
+$('#crAllele').onchange = e => { cr.allele = e.target.value; crBase(); cr.sel = null; cr.phase = 'pick'; cr.edit = null; crUI(); };
+$('#crDonor').onchange = e => cr.donor = e.target.value;
+SL.bind('#crWin', v => { cr.off = v | 0; }, v => S.gene ? posLabel(v | 0) : v);
+$('#crGo').onclick = () => { if (!cr.sel) { SL.toast('Choose a guide first: click a PAM flag.', 'warn'); return; } if (!cr.sel.pam) { SL.toast('Cas9 cannot bind: there is no NGG PAM after this protospacer.', 'bad'); return; } cr.phase = 'bind'; cr.u = 0; cr.edit = null; crUI(); };
+$('#crAgain').onclick = () => { if (!cr.sel || !cr.sel.pam) return; cr.phase = 'repair'; cr.u = 0; cr.edit = crRepairOutcome(); crUI(); };
+$('#crReset').onclick = () => { cr.sel = null; cr.phase = 'pick'; cr.edit = null; crUI(); };
+function crBase() { const g = S.gene; cr.gen = g.genomic; if (g.id === 'hbb' && cr.allele === 'hbs') { const gi = g.cdsG[19]; cr.gen = cr.gen.slice(0, gi) + 'T' + cr.gen.slice(gi + 1); } }
+function crReset() {
+  if (!S.gene) return; const g = S.gene; $('#crAlleleWrap').style.display = g.id === 'hbb' ? '' : 'none';
+  $('#crAllele').innerHTML = '<option value="ref">Reference HBB (HbA)</option><option value="hbs">Sickle allele (HbS, c.20A>T)</option>';
+  if (g.id !== 'hbb') cr.allele = 'ref'; $('#crAllele').value = cr.allele;
+  crBase(); const r = $('#crWin'); r.max = Math.max(0, g.genomic.length - 24); cr.off = Math.max(0, (g.cdsG[0] || g.tss) - 6); r.value = cr.off; r.dispatchEvent(new Event('input'));
+  cr.sel = null; cr.phase = 'pick'; cr.edit = null; crDonorUI(); crUI();
+}
+function crDonorUI() { const opts = []; if (S.gene && S.gene.id === 'hbb') opts.push(['fix', 'Correct HbS → HbA (A at c.20)']); opts.push(['flag', 'Knock in FLAG tag (24 nt, in frame)']); opts.push(['stop', 'Knock in stop codons TAATAGTGA']); $('#crDonor').innerHTML = opts.map(o => `<option value="${o[0]}">${o[1]}</option>`).join(''); if (!opts.find(o => o[0] === cr.donor)) cr.donor = opts[0][0]; $('#crDonor').value = cr.donor; }
+function pams(s) { const out = []; for (let j = 20; j + 2 < s.length; j++) if (s[j + 1] === 'G' && s[j + 2] === 'G') out.push({ strand: '+', pam: j }); for (let j = 0; j + 22 < s.length; j++) if (s[j] === 'C' && s[j + 1] === 'C') out.push({ strand: '-', pam: j }); return out; }
+function guideFor(strand, pamJ) { const s = cr.gen; if (strand === '+') { const ps = s.slice(pamJ - 20, pamJ); return { strand, pamJ, start: pamJ - 20, end: pamJ, spacer: ps, pamSeq: s.substr(pamJ, 3), cut: pamJ - 3, pam: /^.GG$/.test(s.substr(pamJ, 3)) }; } const ps = revcomp(s.slice(pamJ + 3, pamJ + 23)); return { strand, pamJ, start: pamJ + 3, end: pamJ + 23, spacer: ps, pamSeq: revcomp(s.substr(pamJ, 3)), cut: pamJ + 6, pam: /^CC.$/.test(s.substr(pamJ, 3)) }; }
+function selectGuide(gd) { cr.sel = gd; cr.phase = 'pick'; cr.edit = null; crUI(); if (gd.pam) SL.toast(`Guide 5′-${gd.spacer}-3′ selected · PAM ${gd.pamSeq}.`, 'ok', 2500); else SL.toast('No NGG PAM immediately after this 20-nt sequence: Cas9 would not bind.', 'bad'); }
+function cdsIndexOfG(gi) { return S.gene.cdsG.indexOf(gi); }
+function crRepairOutcome() {
+  const s = cr.gen, cut = cr.sel.cut; let ns, desc, kind;
+  if (cr.repair === 'nhej') {
+    const r = Math.random();
+    if (r < .12) { ns = s; desc = 'Perfect re-ligation (no change). The site can be cut again.'; kind = 'none'; }
+    else if (r < .45) { const b = s[cut - 1]; ns = s.slice(0, cut) + b + s.slice(cut); desc = `+1 insertion of ${b} at the cut (the most common SpCas9 outcome).`; kind = 'ins'; }
+    else { const L = [1, 1, 2, 3, 4, 5, 7, 9][Math.floor(Math.random() * 8)]; const left = Math.floor(Math.random() * (L + 1)); ns = s.slice(0, cut - left) + s.slice(cut - left + L); desc = `−${L} deletion around the cut.`; kind = 'del'; }
+  } else {
+    if (cr.donor === 'fix') { const gi = S.gene.cdsG[19]; ns = s.slice(0, gi) + 'A' + s.slice(gi + 1); desc = Math.abs(gi - cut) <= 20 ? 'HDR copied the donor: c.20 is now A (GAG, Glu). Codon 7 restored.' : 'HDR copied the donor, but the edit is far from the cut, so efficiency would be very low.'; kind = 'hdr'; }
+    else { const ins = cr.donor === 'flag' ? 'GACTACAAGGACGACGATGACAAG' : 'TAATAGTGA'; let at = cut; const ci = cdsIndexOfG(cut); if (ci >= 0) at = S.gene.cdsG[Math.round(ci / 3) * 3] ?? cut; ns = s.slice(0, at) + ins + s.slice(at); desc = `HDR inserted ${ins.length} nt (${cr.donor === 'flag' ? 'FLAG tag DYKDDDDK' : 'three stop codons'}) at the nearest codon boundary.`; kind = 'hdr'; }
+  }
+  return { ns, desc, kind };
+}
+function crEffect(ns) {
+  const g = S.gene; // build a temporary gene from edited genomic (same segment boundaries shifted by indel at cut)
+  const d = ns.length - cr.gen.length, cut = cr.sel.cut; const t = cut - g.tss; const sgm = g.segs.find(s => t >= s.a && t <= s.b);
+  if (t < 0 || t > g.cleave) return { where: 'outside the transcribed exons/introns', p: g.protein };
+  if (!sgm || sgm.t === 'I') return { where: (sgm ? sgm.name : 'non-coding region'), p: g.protein, intron: true };
+  const gg = JSON.parse(JSON.stringify(g.def || g)); gg.segs = g.segs.map(s => ({ t: s.t, s: s.s, bp: s.bp, name: s.name })); gg.prom = g.prom; gg.downTx = g.downTx; gg.down = g.down;
+  const k = g.segs.indexOf(sgm); const a = g.tss + sgm.a; const L = sgm.s.length + d; gg.segs[k].s = ns.slice(a, a + L);
+  // also carry allele change in other segments (HbS lies in exon 1)
+  let pos = g.tss; gg.segs.forEach((s, i) => { if (i !== k) s.s = ns.slice(pos, pos + s.s.length); pos += gg.segs[i].s.length; });
+  const ng = buildGene(gg); const from = ng.mature.indexOf(g.mature.slice(0, g.start + 3)) === 0 ? g.start : Math.max(0, ng.start); return { where: sgm.name, p: ng.protein, cds: toDNA(ng.mature.slice(from, from + g.cds.length + d)) };
+}
+function crUI() {
+  const s = cr.sel; const gc = s ? (s.spacer.match(/[GC]/g) || []).length / 20 * 100 : 0;
+  // off-targets: count other PAM-adjacent sites in the genomic seq with <=3 mismatches
+  let off = 0; if (s && s.pam) { const all = pams(cr.gen).map(p => guideFor(p.strand, p.pam)).filter(x => x.pam && !(x.strand === s.strand && x.pamJ === s.pamJ)); all.forEach(x => { let mm = 0; for (let i = 0; i < 20; i++) if (x.spacer[i] !== s.spacer[i]) mm++; if (mm <= 3) off++; }); }
+  stats('#crStats', [['Strand', s ? s.strand : '—'], ['PAM', s ? s.pamSeq : '—'], ['Guide GC', s ? SL.fmt(gc, 0) : '—', s ? '%' : ''], ['Cut at', s ? posLabel(s.cut - 1) + '|' + posLabel(s.cut) : '—'], ['Off-targets ≤3 mm', s && s.pam ? off : '—'], ['Phase', { pick: 'Design', bind: 'Binding', cut: 'Cutting', repair: 'Repairing', done: 'Edited' }[cr.phase]]]);
+  let html = '';
+  if (s) html += `<div class="seqbox">sgRNA spacer 5′-<b>${toRNA(s.spacer)}</b>-3′ + scaffold<br>Target protospacer (${s.strand} strand) followed by PAM <b>${s.pamSeq}</b>${s.pam ? '' : ' <span style="color:var(--bad)">✗ not NGG</span>'}</div>`;
+  if (cr.edit && cr.phase === 'done') {
+    const ef = crEffect(cr.edit.ns); const cls = ef.cds ? classify(S.gene.cds, ef.cds) : null;
+    html += `<p style="margin:10px 0 4px;color:var(--text)"><b>Repair:</b> ${cr.edit.desc}</p><p style="margin:0;color:var(--muted)">Cut lies in <b>${ef.where}</b>. ${ef.intron ? 'Intronic indels are usually harmless unless they hit a splice signal.' : cls ? cls.msg : ''}</p>`;
+    if (cls && cls.type === 'frameshift') chal('knockout');
+    if (S.gene.id === 'hbb' && cr.allele === 'hbs' && cls && cls.type === 'none') { chal('cure'); }
+  }
+  $('#crResult').innerHTML = html;
+}
+ST.cr = {
+  draw(ctx, w, h, dt, t) {
+    const g = S.gene, s = cr.gen; const ts = w < 560 ? 12.5 : 20; cr.ts = ts; const n = Math.min(s.length - cr.off, Math.floor((w - 28) / ts)); cr.n = n; const x0 = (w - n * ts) / 2;
+    const yT = h * 0.42, yB = yT + ts + 26; const X = gi => x0 + (gi - cr.off) * ts;
+    if (cr.phase !== 'pick' && cr.phase !== 'done') { cr.u += dt * (cr.phase === 'bind' ? .55 : cr.phase === 'cut' ? .8 : .45); if (cr.u >= 1) { cr.u = 0; if (cr.phase === 'bind') cr.phase = 'cut'; else if (cr.phase === 'cut') { cr.phase = 'repair'; cr.edit = crRepairOutcome(); } else if (cr.phase === 'repair') { cr.phase = 'done'; markDone('cr'); crUI(); } crUI(); } }
+    const sel = cr.sel; const showEdit = cr.phase === 'done' && cr.edit;
+    const seq = showEdit ? cr.edit.ns : s;
+    // region band
+    for (let i = 0; i < n; i++) { const gi = cr.off + i; const [, c] = regionOf(Math.min(gi, g.genomic.length - 1)); ctx.fillStyle = c; ctx.globalAlpha = .8; ctx.fillRect(X(gi) + 1, yT - 46, ts - 2, 4); ctx.globalAlpha = 1; }
+    let last = ''; for (let i = 0; i < n; i++) { const gi = cr.off + i; const [r, c] = regionOf(Math.min(gi, g.genomic.length - 1)); const sh = r.split(' · ')[0]; if (sh !== last) { last = sh; label(ctx, sh, X(gi) + 1, yT - 54, c, 10, 'left', 600); } }
+    // gap opening when cut
+    const cutOpen = cr.phase === 'cut' ? seg01(cr.u, .4, 1) * 10 : cr.phase === 'repair' ? (1 - seg01(cr.u, .5, 1)) * 10 : 0;
+    const unwind = (cr.phase === 'bind' ? seg01(cr.u, .4, 1) : cr.phase === 'cut' || (cr.phase === 'repair' && cr.u < .5) ? 1 : 0) * 12;
+    const inProto = gi => sel && gi >= sel.start && gi < sel.end;
+    for (let i = 0; i < n; i++) {
+      const gi = cr.off + i; const b = seq[gi]; if (!b) continue; let x = X(gi);
+      if (sel && cutOpen) x += gi >= sel.cut ? cutOpen / 2 : -cutOpen / 2;
+      const target = sel && inProto(gi); const dyT = target && sel.strand === '-' ? -unwind : 0, dyB = target && sel.strand === '+' ? unwind : 0;
+      const isPam = sel && ((sel.strand === '+' && gi >= sel.pamJ && gi < sel.pamJ + 3) || (sel.strand === '-' && gi >= sel.pamJ && gi < sel.pamJ + 3));
+      const changed = showEdit && cr.edit.kind !== 'none' && Math.abs(gi - sel.cut) <= Math.max(2, Math.abs(cr.edit.ns.length - s.length) + 1) && (cr.edit.ns[gi] !== s[gi] || cr.edit.kind === 'hdr');
+      tile(ctx, x, yT + dyT, ts, b, { stroke: isPam ? '#22c55e' : changed ? '#fff' : null, lw: isPam || changed ? 2 : 1 });
+      tile(ctx, x, yB + dyB, ts, COMP[b], { stroke: isPam ? '#22c55e' : null, lw: isPam ? 2 : 1 });
+      if (!target || !unwind) { ctx.strokeStyle = 'rgba(230,236,247,.22)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + ts / 2, yT + ts + 2); ctx.lineTo(x + ts / 2, yB - 2); ctx.stroke(); }
+      const rel = gi - g.tss; if ((rel + 1) % 10 === 0 && rel >= 0) label(ctx, posLabel(gi), x + ts / 2, yB + ts + 30, '#5f6d8a', 9, 'center');
+    }
+    label(ctx, '5′', x0 - 9, yT + ts / 2, '#22d3ee', 11, 'center', 700); label(ctx, '3′', x0 + n * ts + 9, yT + ts / 2, '#22d3ee', 11, 'center', 700);
+    label(ctx, '3′', x0 - 9, yB + ts / 2, '#a78bfa', 11, 'center', 700); label(ctx, '5′', x0 + n * ts + 9, yB + ts / 2, '#a78bfa', 11, 'center', 700);
+    // HbS marker
+    if (g.id === 'hbb') { const gi = g.cdsG[19]; if (gi >= cr.off && gi < cr.off + n) { const x = X(gi); label(ctx, cr.allele === 'hbs' && !(showEdit && cr.edit.ns[gi] === 'A') ? 'HbS T' : 'c.20', x + ts / 2, yT - 30, '#fda4af', 10, 'center', 700); ctx.strokeStyle = '#fda4af'; ctx.beginPath(); ctx.moveTo(x + ts / 2, yT - 24); ctx.lineTo(x + ts / 2, yT - 3); ctx.stroke(); } }
+    // PAM flags
+    cr.flags = [];
+    if (cr.phase === 'pick') pams(s).forEach(p => { const gd = guideFor(p.strand, p.pam); const gi = p.pam + 1; if (gi < cr.off || gi >= cr.off + n) return; const x = X(gi) + ts / 2; const top = p.strand === '+'; const y = top ? yT - 16 : yB + ts + 16; const on = sel && sel.strand === p.strand && sel.pamJ === p.pam; ctx.strokeStyle = top ? '#22c55e' : '#a78bfa'; ctx.lineWidth = on ? 2.5 : 1.5; ctx.beginPath(); ctx.moveTo(x, top ? yT - 2 : yB + ts + 2); ctx.lineTo(x, y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 9, y + (top ? 4 : -4)); ctx.lineTo(x, y + (top ? 8 : -8)); ctx.closePath(); ctx.fillStyle = top ? '#22c55e' : '#a78bfa'; ctx.globalAlpha = on ? 1 : .7; ctx.fill(); ctx.globalAlpha = 1; cr.flags.push({ x, y, gd }); });
+    // guide + Cas9
+    if (sel) {
+      const a = X(sel.start), b = X(sel.end); const top = sel.strand === '+';
+      ctx.strokeStyle = sel.pam ? '#f472b6' : '#ef4444'; ctx.setLineDash(sel.pam ? [] : [5, 4]); ctx.lineWidth = 2; rrect(ctx, a - 2, (top ? yT : yB) - 3, b - a + 4, ts + 6, 6); ctx.stroke(); ctx.setLineDash([]);
+      label(ctx, sel.pam ? `protospacer (20 nt)` : 'no PAM here', (a + b) / 2, top ? yT - 26 : yB + ts + 26, sel.pam ? '#f9a8d4' : '#fca5a5', 10.5, 'center', 700);
+      if (sel.pam) { const px = X(sel.pamJ); label(ctx, 'PAM', px + 1.5 * ts, top ? yT - 26 : yB + ts + 26, '#22c55e', 10.5, 'center', 800); }
+      const bindA = cr.phase === 'bind' ? seg01(cr.u, 0, .5) : cr.phase === 'pick' ? 0 : cr.phase === 'repair' ? 1 - seg01(cr.u, 0, .4) : cr.phase === 'done' ? 0 : 1;
+      if (bindA > 0) {
+        // Cas9 body
+        const cx = (a + X(sel.pamJ + 3)) / 2, cy2 = (yT + yB + ts) / 2; const rw = (X(sel.pamJ + 3) - a) / 2 + 26 + ts; ctx.save(); ctx.globalAlpha = bindA * .9;
+        const gr = ctx.createRadialGradient(cx, cy2, 10, cx, cy2, rw); gr.addColorStop(0, 'rgba(56,189,248,.35)'); gr.addColorStop(1, 'rgba(56,189,248,.08)');
+        ctx.beginPath(); ctx.ellipse(cx + (1 - bindA) * 120, cy2, rw, ts * 3.2 + 10, 0, 0, PI2); ctx.fillStyle = gr; ctx.fill(); ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2; ctx.shadowColor = '#38bdf8'; ctx.shadowBlur = 16; ctx.stroke(); ctx.restore();
+        label(ctx, 'Cas9', cx + (1 - bindA) * 120, cy2 + ts * 3.2 + 22, '#7dd3fc', 12, 'center', 800);
+        // gRNA paired with target strand (opposite of protospacer)
+        if (unwind > 2) {
+          const gy = top ? yB + unwind + ts + 4 : yT - unwind - ts - 4; const sp2 = top ? sel.spacer : sel.spacer.split('').reverse().join('');
+          for (let k = 0; k < 20; k++) { const gi = sel.start + k; const bb = toRNA(top ? sp2[k] : sp2[k]); tile(ctx, X(gi), gy, ts, bb, { bg: '#831843' }); }
+          // scaffold loop
+          const sx = top ? X(sel.start) - 4 : X(sel.end) + 4; ctx.strokeStyle = '#f472b6'; ctx.lineWidth = 3; ctx.beginPath(); const sy = gy + ts / 2; ctx.moveTo(sx, sy); ctx.bezierCurveTo(sx + (top ? -40 : 40), sy + (top ? 10 : -10), sx + (top ? -50 : 50), sy + (top ? 50 : -50), sx + (top ? -10 : 10), sy + (top ? 46 : -46)); ctx.stroke(); label(ctx, 'sgRNA scaffold', sx + (top ? -30 : 30), sy + (top ? 62 : -62), '#f9a8d4', 10, 'center', 600);
+        }
+      }
+      // cut marker
+      if (sel.pam && (cr.phase === 'cut' || cr.phase === 'repair' || cr.phase === 'pick')) { const x = X(sel.cut); const al = cr.phase === 'pick' ? .55 : 1; ctx.globalAlpha = al; ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(x, yT - 8); ctx.lineTo(x, yB + ts + 8); ctx.stroke(); ctx.setLineDash([]); label(ctx, cr.phase === 'cut' ? 'HNH + RuvC cut: blunt break' : 'cut site (3 bp from PAM)', x, yB + ts + 44, '#fca5a5', 10.5, 'center', 700); ctx.globalAlpha = 1; }
+      if (cr.phase === 'cut' && cr.u > .2 && cr.u < .5) { const x = X(sel.cut); ctx.save(); ctx.globalAlpha = 1 - Math.abs(cr.u - .35) / .15; ctx.beginPath(); ctx.arc(x, (yT + yB + ts) / 2, 26, 0, PI2); ctx.fillStyle = 'rgba(239,68,68,.35)'; ctx.fill(); ctx.restore(); }
+      if (cr.phase === 'repair') {
+        const x = X(sel.cut); const c = (yT + yB + ts) / 2;
+        if (cr.repair === 'nhej') { ['Ku70/80', 'Lig IV'].forEach((nm, k) => { const a2 = seg01(cr.u, k * .25, k * .25 + .3) * (1 - seg01(cr.u, .8, 1)); ctx.globalAlpha = a2; ctx.beginPath(); ctx.ellipse(x + (k ? 16 : -16), c, 18, 26, 0, 0, PI2); ctx.fillStyle = k ? '#c084fc55' : '#fbbf2455'; ctx.fill(); ctx.strokeStyle = k ? '#c084fc' : '#fbbf24'; ctx.stroke(); label(ctx, nm, x + (k ? 16 : -16), c - 36, k ? '#e9d5ff' : '#fde68a', 10, 'center', 700); ctx.globalAlpha = 1; }); }
+        else { const a2 = seg01(cr.u, 0, .4) * (1 - seg01(cr.u, .8, 1)); ctx.globalAlpha = a2; ctx.strokeStyle = '#facc15'; ctx.lineWidth = 4; const dy = yT - 64; ctx.beginPath(); ctx.moveTo(x - 160, dy); ctx.lineTo(x + 160, dy); ctx.stroke(); ctx.fillStyle = '#fde047'; ctx.fillRect(x - 14, dy - 4, 28, 8); label(ctx, 'donor template: homology arms + edit', x, dy - 14, '#fde68a', 10.5, 'center', 700); ctx.globalAlpha = 1; }
+      }
+    }
+    if (!sel && cr.phase === 'pick') label(ctx, 'Click a PAM flag (or any top-strand base) to design a guide.', w / 2, h - 30, '#93a1bd', 12, 'center');
+    if (showEdit) label(ctx, cr.edit.desc, w / 2, h - 30, '#86efac', 12, 'center', 700);
+    // legend
+    let lx = 14; [['NGG PAM (top)', '#22c55e'], ['PAM (bottom)', '#a78bfa'], ['guide RNA', '#f472b6'], ['cut', '#ef4444']].forEach(([nm, c]) => { ctx.font = fontS(10.5, 600); if (lx + ctx.measureText(nm).width + 16 > w) return; ctx.fillStyle = c; ctx.fillRect(lx, 16, 10, 10); label(ctx, nm, lx + 14, 21.5, '#93a1bd', 10.5); ctx.font = fontS(10.5, 600); lx += 24 + ctx.measureText(nm).width; });
+    cr.geo = { x0, yT, yB, ts, n };
+    setHud([]);
+  },
+  move(p) {
+    const G = cr.geo; if (!G || cr.phase !== 'pick' && cr.phase !== 'done') { hideTip(); return; }
+    const f = (cr.flags || []).find(f => Math.hypot(p.x - f.x - 4, p.y - f.y) < 12);
+    if (f) { cv.style.cursor = 'pointer'; showTip(`PAM <b>${f.gd.pamSeq}</b> on ${f.gd.strand} strand<br>guide 5′-${f.gd.spacer}-3′`, p.x, p.y); return; }
+    const i = Math.floor((p.x - G.x0) / G.ts); if (i >= 0 && i < G.n && p.y >= G.yT && p.y <= G.yT + G.ts) { cv.style.cursor = 'pointer'; const gi = cr.off + i; const gd = guideFor('+', gi + 20); showTip(`Start a 20-nt guide here.<br>Next 3 nt: <b>${cr.gen.substr(gi + 20, 3)}</b> ${gd.pam ? '✓ NGG PAM' : '✗ not a PAM'}`, p.x, p.y); return; }
+    cv.style.cursor = 'default'; hideTip();
+  },
+  down(p) {
+    const G = cr.geo; if (!G || (cr.phase !== 'pick' && cr.phase !== 'done')) return;
+    if (cr.phase === 'done') { cr.phase = 'pick'; cr.edit = null; }
+    const f = (cr.flags || []).find(f => Math.hypot(p.x - f.x - 4, p.y - f.y) < 12); if (f) { selectGuide(f.gd); return; }
+    const i = Math.floor((p.x - G.x0) / G.ts); if (i >= 0 && i < G.n && p.y >= G.yT && p.y <= G.yT + G.ts) { const gi = cr.off + i; if (gi + 23 > cr.gen.length) { SL.toast('Too close to the end of the sequence for a 20-nt guide.', 'warn'); return; } selectGuide(guideFor('+', gi + 20)); }
+  },
+};
+
+/* ================= Main loop & pointer ================= */
+const loop = SL.loop((dt, t) => {
+  const { ctx, w, h } = st; ctx.clearRect(0, 0, w, h);
+  const bg = ctx.createRadialGradient(w * .5, h * .4, 10, w * .5, h * .4, Math.max(w, h) * .8); bg.addColorStop(0, '#0b1426'); bg.addColorStop(1, '#050913'); ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+  if (!S.gene) return;
+  try { ST[S.station].draw(ctx, w, h, dt, t); } catch (e) { console.error(e); loop.stop(); }
+});
+cv.addEventListener('pointermove', e => { const p = SL.ptr(e, cv); mouse = p; ST[S.station].move && ST[S.station].move(p); });
+cv.addEventListener('pointerdown', e => { const p = SL.ptr(e, cv); ST[S.station].down && ST[S.station].down(p); });
+window.addEventListener('pointerup', e => { ST[S.station].up && ST[S.station].up(); });
+cv.addEventListener('pointerleave', () => { hideTip(); ST[S.station].leave && ST[S.station].leave(); });
+cv.addEventListener('wheel', e => { ST[S.station].wheel && ST[S.station].wheel(e); }, { passive: false });
+document.addEventListener('visibilitychange', () => { if (document.hidden) loop.stop(); else loop.start(); });
+
+/* ================= Challenges ================= */
+const CH = [
+  ['splice', 'Precision splicer', 'Remove every intron of a gene by hand (no “Show me”) with the reading frame intact.'],
+  ['break', 'Frameshift forensics', 'Splice incorrectly on purpose and produce an altered protein.'],
+  ['mature', 'Export-ready', 'Produce a mature mRNA: cap, exact splicing, poly(A) tail, intact ORF.'],
+  ['isoforms', 'Isoform collector', 'Save three different isoforms in Alternative splicing.'],
+  ['translate', 'Ribosome run', 'Translate a mRNA to the end and get the reference protein.'],
+  ['mutants', 'Mutation zoo', 'Make a silent, a missense, a nonsense and a frameshift mutation.'],
+  ['sickle', 'Sickle-cell detective', 'Introduce the HbS mutation in HBB.'],
+  ['knockout', 'Knockout', 'Use Cas9 + NHEJ to cause a frameshift in a coding exon.'],
+  ['cure', 'Gene surgeon', 'On the HBB sickle allele, use Cas9 + HDR to restore the normal protein.'],
+];
+const chDone = {};
+$('#challenges').innerHTML = CH.map(([id, t, d]) => `<div class="panel" id="ch-${id}" style="margin:0"><h3><span class="led"></span> ${t}</h3><p class="small muted" style="margin:0">${d}</p></div>`).join('');
+function chal(id) { if (chDone[id]) return; chDone[id] = 1; const el = $('#ch-' + id); if (el) { el.querySelector('.led').classList.add('on'); el.style.borderColor = 'var(--ok)'; } const c = CH.find(c => c[0] === id); SL.toast(`Challenge complete: <b>${c[1]}</b>`, 'ok'); }
+
+/* ================= Genetic code table & diagrams ================= */
+(function () {
+  let html = '<tr><th>1st ↓ / 2nd →</th>' + B4.split('').map(b => `<th>${b}</th>`).join('') + '<th>3rd</th></tr>';
+  for (const a of B4) { html += `<tr><th>${a}</th>`; for (const b of B4) { html += '<td>' + B4.split('').map(c => { const cod = a + b + c, x = CODE[cod]; return `<span title="${cod} → ${AA[x][1]}" style="color:${aaCol(x)}">${cod} <em>${x === '*' ? 'Stop' : AA[x][0]}</em>${cod === 'AUG' ? ' ▶' : ''}</span>`; }).join('') + '</td>'; } html += `<th>${B4.split('').join('<br>')}</th></tr>`; }
+  $('#codeTable').innerHTML = html;
+  const g = $('#bpd'); let s = ''; const pairs = ['A', 'G', 'C', 'T', 'G', 'A', 'C', 'C', 'T', 'G', 'A', 'T'];
+  pairs.forEach((b, i) => { const x = 70 + i * 44, c = COMP[b], nh = b === 'G' || b === 'C' ? 3 : 2; s += `<rect x="${x - 13}" y="44" width="26" height="22" rx="5" fill="${BCOL[b]}33" stroke="${BCOL[b]}"/><text x="${x}" y="59" text-anchor="middle" fill="${BCOL[b]}" font-weight="700">${b}</text><rect x="${x - 13}" y="88" width="26" height="22" rx="5" fill="${BCOL[c]}33" stroke="${BCOL[c]}"/><text x="${x}" y="103" text-anchor="middle" fill="${BCOL[c]}" font-weight="700">${c}</text>`; for (let k = 0; k < nh; k++) { const xx = x + (k - (nh - 1) / 2) * 6; s += `<line x1="${xx}" y1="68" x2="${xx}" y2="86" stroke="#e6ecf7" stroke-dasharray="2 2" opacity=".7"/>`; } });
+  g.innerHTML = s;
+})();
+
+/* ================= Quiz ================= */
+SL.quiz('#quiz', [
+  { q: 'A template strand reads 3′-TAC GGT-5′. What is the mRNA?', options: ['5′-AUG CCA-3′', '5′-UAC GGU-3′', '3′-AUG CCA-5′', '5′-ATG CCA-3′'], answer: 0, why: 'Pair each template base (T→A, A→U, C→G, G→C) and write it antiparallel: 5′-AUG CCA-3′, the same as the coding strand with U for T.' },
+  { q: 'Which pair of dinucleotides marks almost all intron boundaries in pre-mRNA?', options: ['AG at the 5′ end, GU at the 3′ end', 'GU at the 5′ end, AG at the 3′ end', 'AUG … UAA', 'AAUAAA … CA'], answer: 1, why: 'The GU–AG rule: introns start with GU (5′ splice site) and end with AG (3′ splice site).' },
+  { q: 'In the first step of splicing, which group attacks the 5′ splice site?', options: ['The 3′-OH of the upstream exon', 'The 2′-OH of the branch-point adenosine', 'A water molecule', 'The 5′ cap'], answer: 1, why: 'The branch-point A’s 2′-OH attacks the 5′ splice site, forming the lariat with a 2′–5′ bond. The exon 3′-OH acts in step 2.' },
+  { q: 'Skipping an exon of 52 nt will most likely…', options: ['remove 17 amino acids and keep the frame', 'shift the reading frame downstream', 'have no effect on the protein', 'only change the 5′ UTR'], answer: 1, why: '52 = 3×17 + 1, not a multiple of 3, so every downstream codon is read in a new frame (unless the exon is entirely non-coding).' },
+  { q: 'Which site on the ribosome does a new aminoacyl-tRNA enter?', options: ['E site', 'P site', 'A site', 'Exit tunnel'], answer: 2, why: 'Aminoacyl-tRNAs enter the A site; the peptidyl-tRNA sits in the P site; deacylated tRNAs leave from the E site.' },
+  { q: 'The sickle-cell mutation changes GAG to GTG. This is a…', options: ['silent mutation', 'nonsense mutation', 'missense mutation (Glu → Val)', 'frameshift'], answer: 2, why: 'GAG codes for glutamate and GTG for valine: one amino acid replaced, a non-conservative missense change.' },
+  { q: 'Why is the lagging strand made in Okazaki fragments?', options: ['Helicase only works intermittently', 'DNA polymerase can only add nucleotides to a 3′ end, and this strand must grow away from the fork', 'Ligase can only join short pieces', 'The lagging template is RNA'], answer: 1, why: 'Synthesis is strictly 5′→3′. On the lagging template that direction points away from the fork, so synthesis restarts repeatedly from new primers.' },
+  { q: 'For SpCas9, where is the cut relative to the PAM (5′-NGG-3′)?', options: ['Inside the PAM', '3 bp upstream (5′) of the PAM on both strands', '20 bp downstream of the PAM', 'Anywhere along the guide'], answer: 1, why: 'Cas9’s HNH and RuvC domains cut both strands 3 bp 5′ of the PAM, giving a blunt double-strand break.' },
+  { q: 'A deletion of 3 nt inside a coding exon usually causes…', options: ['a frameshift', 'loss of one amino acid (in-frame)', 'a premature stop in every case', 'no change'], answer: 1, why: 'Removing one whole codon keeps the frame; the protein lacks one residue (or two are merged into a different one if the deletion spans a codon boundary).' },
+  { q: 'Which repair pathway is used to write a precise change from a donor template?', options: ['Non-homologous end joining', 'Homology-directed repair', 'Mismatch repair', 'Base excision repair'], answer: 1, why: 'HDR copies sequence from a homologous template, so a supplied donor with the desired change can be written in. NHEJ joins ends without a template and often leaves indels.' },
+]);
+
+/* ================= Init ================= */
+setGene(buildGene(GENE_DEFS[0]));
+setStation('dna');
+loop.start();
+window.DNALAB = { GENE_DEFS, buildGene, translate, CODE, classify, S, sp, tl, mu, cr, setStation, setGene, spGo, autoCuts, guideFor, crEffect, crRepairOutcome };
+})();
+</script>
+</body>
+</html>

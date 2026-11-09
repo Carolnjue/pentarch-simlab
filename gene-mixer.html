@@ -1,0 +1,931 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gene Mixer · Pentarch SimLab</title>
+<meta name="description" content="Cross peas, fruit flies, Labradors, humans and a fictional Glimmerpuff: build parent genotypes, watch gametes form and fuse, read Punnett squares up to 8×8, test ratios with chi-square, breed F1–F3 with a live pedigree, and simulate Hardy–Weinberg, drift and selection.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .orgs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-top:22px}
+  .orgs button{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--panel);border:1px solid var(--line);transition:.18s;min-width:0}
+  .orgs button:hover{border-color:var(--line2);transform:translateY(-1px)}
+  .orgs button.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--panel));box-shadow:0 8px 28px -14px var(--accent)}
+  .orgs canvas{width:38px;height:38px;flex:none}
+  .orgs b{display:block;font:600 .88rem var(--display);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .orgs span{display:block;font-size:.72rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .orgs button>div{min-width:0}
+  @media (max-width:1100px){.orgs{grid-template-columns:repeat(3,minmax(0,1fr))}}
+  @media (max-width:520px){.orgs{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .viewbar{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:10px}
+  #stage{height:660px;touch-action:pan-y}
+  @media (max-width:600px){#stage{height:600px}}
+  .tip{position:absolute;z-index:5;pointer-events:none;background:rgba(10,15,29,.95);border:1px solid var(--line2);border-radius:9px;padding:7px 10px;font-size:.78rem;line-height:1.45;max-width:270px;display:none;box-shadow:var(--shadow)}
+  .tip b{color:var(--accent)}
+  .vpanel{display:none}.vpanel.on{display:block}
+  .gtrow{display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center;padding:4px 0;font-size:.84rem;color:var(--muted)}
+  .al{all:unset;cursor:pointer;min-width:44px;height:30px;padding:0 6px;box-sizing:border-box;border-radius:8px;display:grid;place-items:center;font:700 .86rem var(--mono);border:1px solid var(--line2);background:var(--bg2);color:var(--text);transition:.15s}
+  .al:hover{border-color:var(--accent)}
+  .al.rec{color:#fca5a5}
+  .al.fixed{opacity:.55;cursor:default}
+  .parent-h{display:flex;justify-content:space-between;align-items:center;margin:10px 0 2px}
+  .parent-h b{font-size:.9rem}
+  .parent-h span{font:500 .76rem var(--mono);color:var(--accent)}
+  .genechips{display:flex;flex-wrap:wrap;gap:6px}
+  .genechips label{display:inline-flex;align-items:center;gap:6px;font-size:.8rem;padding:5px 9px;border-radius:99px;border:1px solid var(--line2);background:var(--bg2);cursor:pointer;color:var(--muted)}
+  .genechips label.on{border-color:var(--accent);color:var(--text);background:color-mix(in srgb,var(--accent) 12%,var(--bg2))}
+  .genechips input{display:none}
+  .ptab{width:100%;border-collapse:collapse;font-size:.8rem}
+  .ptab th,.ptab td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left}
+  .ptab th{font:600 .66rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+  .ptab td.n{font-family:var(--mono);text-align:right}
+  .ptab i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+  .chi{margin-top:10px;font:500 .82rem var(--mono);background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:9px 10px;line-height:1.6}
+  .chi b{color:var(--text)}
+  #ratioCv{width:100%;height:150px;display:block;margin-top:8px}
+  .presets{display:flex;flex-wrap:wrap;gap:6px}
+  .small-note{font-size:.78rem;color:var(--dim);margin-top:8px;line-height:1.45}
+  .numrow{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .numrow label{font-size:.72rem;color:var(--dim);font-family:var(--mono)}
+  .diag{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:10px;margin:12px 0}
+  .diag svg{width:100%;height:auto;display:block}
+</style>
+</head>
+<body data-page="gene-mixer">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <nav class="orgs" id="orgs" aria-label="Choose an organism"></nav>
+
+  <section class="lab wide-controls" style="padding-top:14px">
+    <div>
+      <div class="viewbar">
+        <div class="seg" id="views"><button data-v="cross" class="on">Cross &amp; offspring</button><button data-v="punnett">Punnett square</button><button data-v="pedigree">Pedigree</button><button data-v="pop">Population</button></div>
+        <span class="chip" id="genChip">Generation P</span>
+      </div>
+      <div class="stage" id="stage">
+        <canvas id="cv"></canvas>
+        <div class="hud" id="hud"></div>
+        <div class="tip" id="tip"></div>
+      </div>
+    </div>
+    <aside>
+      <!-- CROSS / PUNNETT / PEDIGREE controls -->
+      <div class="vpanel on" data-p="cross">
+        <div class="panel">
+          <h3><i data-lucide="dna"></i> <span id="orgTitle">Parents</span></h3>
+          <p class="small-note" id="orgBlurb" style="margin-top:0"></p>
+          <div class="panel-title">Genes to track (max 3)</div>
+          <div class="genechips" id="geneChips"></div>
+          <div class="panel-title">Presets</div>
+          <div class="presets" id="presets"></div>
+          <div id="parentsBox"></div>
+          <div id="rfBox" style="display:none">
+            <div class="ctl"><label for="rf">Recombination frequency (b–vg)</label><output>17%</output><input type="range" id="rf" min="0" max="50" step="1" value="17"></div>
+            <p class="small-note" style="margin-top:0">Genes on the same chromosome are inherited together unless crossing over separates them. 1% recombination = 1 centimorgan. Male fruit flies do not cross over.</p>
+          </div>
+        </div>
+        <div class="panel">
+          <h3><i data-lucide="shuffle"></i> Mix</h3>
+          <div class="ctl"><label for="nOff">Offspring in the batch</label><output>64</output><input type="range" id="nOff" min="8" max="1000" step="8" value="64"></div>
+          <div class="btn-row"><button class="btn primary" id="mixBtn"><i data-lucide="sparkles"></i> Mix genes</button><button class="btn" id="breedBtn" disabled><i data-lucide="git-branch-plus"></i> Breed selected</button></div>
+          <div class="btn-row" style="margin-top:8px"><button class="btn sm" id="testerBtn" disabled><i data-lucide="flask-round"></i> Cross selected with recessive tester</button><button class="btn sm" id="newFam"><i data-lucide="rotate-ccw"></i> Start over</button></div>
+          <p class="small-note" id="selNote">Mix, then click offspring on the stage to choose the next parents.</p>
+        </div>
+        <div class="panel">
+          <h3><i data-lucide="bar-chart-3"></i> Expected vs observed</h3>
+          <div id="ratioTable"></div>
+          <canvas id="ratioCv"></canvas>
+          <div class="chi" id="chiBox">Mix to generate offspring and run a chi-square test.</div>
+        </div>
+      </div>
+      <!-- POPULATION controls -->
+      <div class="vpanel" data-p="pop">
+        <div class="panel">
+          <h3><i data-lucide="users"></i> Hardy–Weinberg</h3>
+          <div class="ctl"><label for="hwP">Allele frequency p (A)</label><output>0.70</output><input type="range" id="hwP" min="0" max="1" step="0.01" value="0.7"></div>
+          <div class="panel-title">Or test observed genotype counts</div>
+          <div class="numrow"><div><label for="nAA">AA</label><input type="number" id="nAA" value="298" min="0"></div><div><label for="nAa">Aa</label><input type="number" id="nAa" value="489" min="0"></div><div><label for="naa">aa</label><input type="number" id="naa" value="213" min="0"></div></div>
+          <div class="btn-row" style="margin-top:8px"><button class="btn sm" id="hwTest"><i data-lucide="sigma"></i> Test HWE</button><button class="btn sm" id="hwSickle">Sickle-cell sample</button></div>
+          <div class="chi" id="hwBox"></div>
+        </div>
+        <div class="panel">
+          <h3><i data-lucide="activity"></i> Drift &amp; selection</h3>
+          <div class="presets" id="popPresets"></div>
+          <div class="ctl"><label for="popN">Population size N</label><output>50</output><input type="range" id="popN" min="5" max="1000" step="5" value="50"></div>
+          <div class="ctl"><label for="popP0">Starting p</label><output>0.5</output><input type="range" id="popP0" min="0.01" max="0.99" step="0.01" value="0.5"></div>
+          <div class="ctl"><label for="popG">Generations</label><output>100</output><input type="range" id="popG" min="10" max="500" step="10" value="100"></div>
+          <div class="ctl"><label for="popR">Replicate populations</label><output>8</output><input type="range" id="popR" min="1" max="20" step="1" value="8"></div>
+          <div class="ctl"><label for="wAA">Fitness w(AA)</label><output>1.00</output><input type="range" id="wAA" min="0" max="1" step="0.01" value="1"></div>
+          <div class="ctl"><label for="wAa">Fitness w(Aa)</label><output>1.00</output><input type="range" id="wAa" min="0" max="1" step="0.01" value="1"></div>
+          <div class="ctl"><label for="waa">Fitness w(aa)</label><output>1.00</output><input type="range" id="waa" min="0" max="1" step="0.01" value="1"></div>
+          <div class="btn-row" style="margin-top:8px"><button class="btn primary" id="popRun"><i data-lucide="play"></i> Run</button></div>
+          <div class="stats" id="popStats" style="margin-top:10px"></div>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button><i data-lucide="list"></i> Ratio cheat sheet</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. Genes, alleles and genotypes</h3>
+      <p>A <b>gene</b> sits at a fixed position (<b>locus</b>) on a chromosome. Diploid organisms carry two copies of each autosome, so they have two <b>alleles</b> of each autosomal gene, one from each parent. Two identical alleles make a <b>homozygote</b> (RR or rr); two different alleles a <b>heterozygote</b> (Rr). The <b>genotype</b> is the allele combination; the <b>phenotype</b> is the observable trait.</p>
+      <h3>2. Mendel’s laws</h3>
+      <ul>
+        <li><b>Segregation:</b> the two alleles of a gene separate during meiosis, so each gamete carries one allele, with probability ½ each.</li>
+        <li><b>Independent assortment:</b> alleles of genes on different chromosomes (or far apart on one) are distributed to gametes independently. An individual heterozygous at $n$ such genes makes $2^n$ gamete types in equal proportions.</li>
+      </ul>
+      <div class="eq">$$\text{gamete types}=2^n,\qquad \text{Punnett cells}=4^n,\qquad \text{monohybrid } 3{:}1,\ \text{dihybrid } 9{:}3{:}3{:}1,\ \text{trihybrid } 27{:}9{:}9{:}9{:}3{:}3{:}3{:}1$$</div>
+      <p>Probabilities multiply for independent events: from RrYy × RrYy, $P(\text{wrinkled, green}) = P(rr)\,P(yy) = \tfrac14\times\tfrac14 = \tfrac1{16}$.</p>
+      <h3>3. Beyond simple dominance</h3>
+      <table class="data">
+        <tr><th>Mode</th><th>Example in the lab</th><th>Typical ratio</th></tr>
+        <tr><td>Complete dominance</td><td>Pea seed shape R &gt; r</td><td>3:1</td></tr>
+        <tr><td>Incomplete dominance</td><td>Snapdragon flower colour Cᴿ, Cᵂ (pink heterozygote)</td><td>1:2:1</td></tr>
+        <tr><td>Codominance</td><td>ABO blood groups: Iᴬ and Iᴮ both expressed (AB)</td><td>1:1:1:1 for Iᴬi × Iᴮi</td></tr>
+        <tr><td>Multiple alleles</td><td>ABO: Iᴬ = Iᴮ &gt; i</td><td>4 phenotypes, 6 genotypes</td></tr>
+        <tr><td>Recessive epistasis</td><td>Labrador: ee masks B/b (yellow)</td><td>9:3:4</td></tr>
+        <tr><td>Lethal allele</td><td>Glimmerpuff curly tail K (KK dies)</td><td>2:1 among survivors</td></tr>
+        <tr><td>X-linked recessive</td><td>Fly white eyes; human colour blindness</td><td>depends on sex</td></tr>
+        <tr><td>Linked genes</td><td>Fly black body b and vestigial wings vg (chromosome 2)</td><td>parentals &gt; recombinants</td></tr>
+      </table>
+      <h3>4. Sex linkage</h3>
+      <p>Females are XX and males XY (in humans and <i>Drosophila</i>). A male has one X, inherited from his mother, so he is <b>hemizygous</b> for X-linked genes and expresses a recessive X allele. A carrier mother ($X^AX^a$) passes $X^a$ to half her sons, who are affected, and to half her daughters, who are carriers. An affected father passes his X to all daughters and to no sons (no male-to-male transmission).</p>
+      <h3>5. Linkage and recombination</h3>
+      <p>Genes close together on one chromosome tend to stay together. Crossing over in meiosis I produces <b>recombinant</b> gametes at a frequency that grows with distance:</p>
+      <div class="eq">$$RF = \frac{\text{recombinant offspring}}{\text{total offspring}}\times 100\%,\qquad 1\% \text{ RF} \approx 1\ \text{cM},\qquad 0 \le RF \le 50\%$$</div>
+      <p>With RF = $r$, a dihybrid in coupling (AB/ab) makes gametes AB and ab with frequency $(1-r)/2$ each and Ab, aB with $r/2$ each. In a test cross these frequencies appear directly in the offspring.</p>
+      <h3>6. Testing a ratio: chi-square</h3>
+      <div class="eq">$$\chi^2=\sum_i \frac{(O_i-E_i)^2}{E_i},\qquad \text{df}=k-1$$</div>
+      <p>$O_i$ and $E_i$ are observed and expected counts in each of $k$ classes. The p-value is the probability of a deviation at least this large if the hypothesis is true. If $p > 0.05$, the data are consistent with the expected ratio (we do not reject it). Expected counts should be at least 5 for the test to be reliable.</p>
+      <h3>7. Population genetics</h3>
+      <p>In a large, randomly mating population with no selection, mutation or migration, allele and genotype frequencies stay constant (<b>Hardy–Weinberg equilibrium</b>):</p>
+      <div class="eq">$$p+q=1,\qquad p^2+2pq+q^2=1$$</div>
+      <p>With fitnesses $w_{AA}, w_{Aa}, w_{aa}$, selection changes p each generation:</p>
+      <div class="eq">$$p' = \frac{p^2 w_{AA} + pq\,w_{Aa}}{\bar w},\qquad \bar w = p^2 w_{AA}+2pq\,w_{Aa}+q^2 w_{aa}$$</div>
+      <p>When heterozygotes are fittest ($w_{AA}=1-s$, $w_{Aa}=1$, $w_{aa}=1-t$), both alleles are kept at $\hat q = s/(s+t)$: the explanation for high HbS frequencies where malaria is common. In small populations, <b>genetic drift</b> adds random change with variance $pq/2N$ per generation, and eventually fixes or loses alleles.</p>
+      <div class="callout warn"><i data-lucide="triangle-alert"></i><div>Model notes: the Glimmerpuff is fictional but obeys real rules. Pea letters follow school convention (the genes are now known as <i>R</i> = SBEI, <i>I</i> = SGR for seed colour, <i>A</i> for flower colour, <i>Le</i> for stem length). Human traits are simplified: sickle-cell trait carriers are usually healthy, and colour vision involves several genes.</div></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Example 1: Mendel’s dihybrid data</h3>
+      <div class="worked">
+        <p>Mendel crossed RrYy × RrYy and counted 556 seeds: 315 round yellow, 108 round green, 101 wrinkled yellow, 32 wrinkled green.</p>
+        <ol>
+          <li>Expected 9:3:3:1 of 556: $312.75,\ 104.25,\ 104.25,\ 34.75$.</li>
+          <li>$\chi^2 = \frac{2.25^2}{312.75}+\frac{3.75^2}{104.25}+\frac{3.25^2}{104.25}+\frac{2.75^2}{34.75} = 0.016+0.135+0.101+0.218 = 0.470$.</li>
+          <li>df $=4-1=3$; $p = 0.925$. The data fit 9:3:3:1 very well. Load the dihybrid pea preset with 556 offspring and compare.</li>
+        </ol>
+      </div>
+      <h3>Example 2: a colour-blind son</h3>
+      <div class="worked">
+        <p>Mother $X^BX^b$ (carrier, normal vision) × father $X^BY$.</p>
+        <ol>
+          <li>Mother’s eggs: $X^B$ or $X^b$ (½ each). Father’s sperm: $X^B$ or $Y$ (½ each).</li>
+          <li>Daughters: $X^BX^B$ or $X^BX^b$: all normal vision, half carriers.</li>
+          <li>Sons: $X^BY$ or $X^bY$: half colour-blind. Overall: ¼ of all children are colour-blind sons.</li>
+        </ol>
+      </div>
+      <h3>Example 3: ABO from two heterozygotes</h3>
+      <div class="worked">
+        <p>$I^Ai \times I^Bi$ gives $I^AI^B$, $I^Ai$, $I^Bi$, $ii$ in equal proportions: blood groups AB, A, B and O, ratio 1:1:1:1. Parents with groups A and B can have a child of any group.</p>
+      </div>
+      <h3>Example 4: Labrador coat colour (9:3:4)</h3>
+      <div class="worked">
+        <ol>
+          <li>BbEe × BbEe gives 9 B_E_ : 3 bbE_ : 3 B_ee : 1 bbee.</li>
+          <li>E_ dogs deposit pigment in the coat: B_E_ black, bbE_ chocolate.</li>
+          <li>ee dogs are yellow whatever their B alleles: 3 + 1 = 4. Ratio 9 black : 3 chocolate : 4 yellow. B still shows in the nose: B_ee yellow dogs have black noses, bbee have liver noses.</li>
+        </ol>
+      </div>
+      <h3>Example 5: mapping two fly genes</h3>
+      <div class="worked">
+        <p>Female $b^+vg^+/b\,vg$ × male $b\,vg/b\,vg$ (test cross), with RF = 17%:</p>
+        <ol>
+          <li>Female gametes: $b^+vg^+$ 41.5%, $b\,vg$ 41.5% (parental); $b^+vg$ 8.5%, $b\,vg^+$ 8.5% (recombinant). The male gives only $b\,vg$.</li>
+          <li>In 1000 offspring expect ≈ 415 grey long, 415 black vestigial, 85 grey vestigial, 85 black long.</li>
+          <li>RF = (85 + 85)/1000 = 17%: the genes are about 17 cM apart. (On the standard map they are 18.5 cM apart; double crossovers make RF underestimate long distances.)</li>
+        </ol>
+      </div>
+      <h3>Example 6: sickle-cell carriers in a population</h3>
+      <div class="worked">
+        <p>If 1% of babies have sickle-cell disease (SS), $q^2 = 0.01$, so $q = 0.1$ and $p = 0.9$.</p>
+        <ol>
+          <li>Carriers: $2pq = 2(0.9)(0.1) = 0.18$, i.e. 18% of people.</li>
+          <li>Chance two random parents are both carriers: $0.18^2 = 0.0324$; chance their child has SS: $0.0324 \times \tfrac14 = 0.0081$ ≈ 1% (consistent).</li>
+          <li>With heterozygote advantage $s=0.15$ (AA, malaria) and $t=0.8$ (SS), $\hat q = 0.15/0.95 = 0.158$. Try the preset in the Population view.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Guided experiments</h3>
+      <ol class="steps">
+        <li><b>Mendel’s monohybrid.</b> Pea: RR × rr. Breed two F1 plants together. What fraction of F2 seeds are wrinkled? Repeat with 1000 offspring and watch χ² behave.</li>
+        <li><b>Hidden alleles.</b> Breed F2 round seeds with the recessive tester. Which round plants were Rr?</li>
+        <li><b>Morgan’s flies.</b> Cross a red-eyed female with a white-eyed male, then breed the F1. Which sex are the white-eyed F2 flies? Now try the reciprocal cross.</li>
+        <li><b>Linkage.</b> Fly test cross with b and vg. Set RF to 0, 17 and 50%. When do the four classes become equal, and why?</li>
+        <li><b>Lethal ratios.</b> Cross two curly-tailed Glimmerpuffs. Why 2:1 and not 3:1? Look for the hatched cells in the Punnett square.</li>
+        <li><b>Drift vs size.</b> Population view: run neutral drift with N = 10 and N = 500. How many replicate populations lose or fix A?</li>
+      </ol>
+      <h3>Auto-checked challenges</h3>
+      <div class="grid2" id="challenges"></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Ratios to recognise</h3>
+      <table class="data">
+        <tr><th>Cross</th><th>Offspring phenotype ratio</th><th>Why</th></tr>
+        <tr><td>Aa × Aa</td><td>3 : 1</td><td>complete dominance</td></tr>
+        <tr><td>Aa × aa</td><td>1 : 1</td><td>test cross</td></tr>
+        <tr><td>CᴿCᵂ × CᴿCᵂ</td><td>1 : 2 : 1</td><td>incomplete or codominance</td></tr>
+        <tr><td>AaBb × AaBb</td><td>9 : 3 : 3 : 1</td><td>two independent genes</td></tr>
+        <tr><td>AaBb × aabb</td><td>1 : 1 : 1 : 1</td><td>dihybrid test cross</td></tr>
+        <tr><td>AaBbCc × AaBbCc</td><td>27 : 9 : 9 : 9 : 3 : 3 : 3 : 1</td><td>three independent genes</td></tr>
+        <tr><td>BbEe × BbEe (Labrador)</td><td>9 : 3 : 4</td><td>recessive epistasis</td></tr>
+        <tr><td>Kk × Kk, KK lethal</td><td>2 : 1</td><td>lethal homozygote removed</td></tr>
+        <tr><td>Iᴬi × Iᴮi</td><td>1 : 1 : 1 : 1 (A : B : AB : O)</td><td>codominance + recessive i</td></tr>
+        <tr><td>XᴬXᵃ × XᴬY</td><td>daughters all dominant; sons 1 : 1</td><td>X-linked recessive</td></tr>
+        <tr><td>AB/ab × ab/ab, RF = r</td><td>(1−r)/2 : (1−r)/2 : r/2 : r/2</td><td>linkage</td></tr>
+      </table>
+      <h3>Pedigree symbols</h3>
+      <div class="diag"><svg viewBox="0 0 640 120" aria-label="Pedigree symbols">
+        <g font-family="Inter" font-size="11" fill="#93a1bd" text-anchor="middle">
+          <rect x="30" y="20" width="30" height="30" fill="none" stroke="#e6ecf7" stroke-width="2"/><text x="45" y="72">male</text>
+          <circle cx="125" cy="35" r="15" fill="none" stroke="#e6ecf7" stroke-width="2"/><text x="125" y="72">female</text>
+          <rect x="190" y="20" width="30" height="30" fill="#34d399" stroke="#e6ecf7" stroke-width="2"/><text x="205" y="72">affected</text>
+          <circle cx="285" cy="35" r="15" fill="none" stroke="#e6ecf7" stroke-width="2"/><circle cx="285" cy="35" r="4" fill="#e6ecf7"/><text x="285" y="72">carrier</text>
+          <rect x="350" y="20" width="30" height="30" fill="none" stroke="#e6ecf7" stroke-width="2" transform="rotate(45 365 35)"/><text x="365" y="72">sex not specified</text>
+          <line x1="440" y1="35" x2="500" y2="35" stroke="#e6ecf7" stroke-width="2"/><text x="470" y="72">mating</text>
+          <line x1="540" y1="31" x2="600" y2="31" stroke="#e6ecf7" stroke-width="2"/><line x1="540" y1="38" x2="600" y2="38" stroke="#e6ecf7" stroke-width="2"/><text x="570" y="72">consanguineous</text>
+          <text x="320" y="104" font-size="11">Generations are numbered I, II, III…; individuals left to right.</text>
+        </g></svg></div>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const PI2 = Math.PI * 2;
+const ease = t => t < 0 ? 0 : t > 1 ? 1 : t * t * (3 - 2 * t);
+
+/* ================= Statistics ================= */
+function gammaln(x) { const c = [76.18009172947146, -86.50532032941677, 24.01409824083091, -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5]; let y = x, tmp = x + 5.5; tmp -= (x + 0.5) * Math.log(tmp); let ser = 1.000000000190015; for (let j = 0; j < 6; j++) ser += c[j] / ++y; return -tmp + Math.log(2.5066282746310005 * ser / x); }
+function gammq(a, x) { if (x <= 0) return 1; if (x < a + 1) { let ap = a, sum = 1 / a, del = sum; for (let n = 0; n < 500; n++) { ap++; del *= x / ap; sum += del; if (Math.abs(del) < Math.abs(sum) * 1e-14) break; } return 1 - sum * Math.exp(-x + a * Math.log(x) - gammaln(a)); } let b = x + 1 - a, c = 1e300, d = 1 / b, h = d; for (let i = 1; i < 500; i++) { const an = -i * (i - a); b += 2; d = an * d + b; if (Math.abs(d) < 1e-300) d = 1e-300; c = b + an / c; if (Math.abs(c) < 1e-300) c = 1e-300; d = 1 / d; const del = d * c; h *= del; if (Math.abs(del - 1) < 1e-14) break; } return Math.exp(-x + a * Math.log(x) - gammaln(a)) * h; }
+const chiP = (x, df) => df > 0 ? gammq(df / 2, x / 2) : NaN;
+const fmtP = p => !isFinite(p) ? '—' : p < 0.001 ? '< 0.001' : p.toFixed(3);
+
+/* ================= Organisms & genes ================= */
+const A = (s, d, x) => ({ s, d: d || s, x: x || ('X' + (d || s)) });
+const ORGS = {
+  pea: { name: 'Garden pea', latin: 'Pisum sativum', sexual: false, blurb: 'Mendel’s seven traits, all with complete dominance. Peas self-pollinate, so any plant can be crossed with itself.',
+    genes: [
+      { id: 'R', name: 'Seed shape', chr: '7', type: 'dom', al: [A('R'), A('r')], vals: ['Round', 'Wrinkled'] },
+      { id: 'Y', name: 'Seed colour', chr: '1', type: 'dom', al: [A('Ys', 'Y'), A('ys', 'y')], vals: ['Yellow', 'Green'] },
+      { id: 'P', name: 'Flower colour', chr: '2', type: 'dom', al: [A('P'), A('p')], vals: ['Purple', 'White'] },
+      { id: 'V', name: 'Pod shape', chr: '4', type: 'dom', al: [A('V'), A('v')], vals: ['Inflated', 'Constricted'] },
+      { id: 'G', name: 'Pod colour', chr: '5', type: 'dom', al: [A('G'), A('g')], vals: ['Green pod', 'Yellow pod'] },
+      { id: 'F', name: 'Flower position', chr: '3', type: 'dom', al: [A('F'), A('f')], vals: ['Axial', 'Terminal'] },
+      { id: 'T', name: 'Stem length', chr: '6', type: 'dom', al: [A('T'), A('t')], vals: ['Tall', 'Dwarf'] },
+    ] },
+  snap: { name: 'Snapdragon', latin: 'Antirrhinum majus', sexual: false, blurb: 'Flower colour shows incomplete dominance: one Cᴿ allele makes only enough red pigment for pink.',
+    genes: [{ id: 'C', name: 'Flower colour', chr: '1', type: 'inc', al: [A('CR', 'Cᴿ'), A('CW', 'Cᵂ')], vals: ['Red', 'Pink', 'White'] }] },
+  fly: { name: 'Fruit fly', latin: 'Drosophila melanogaster', sexual: true, noMaleRec: true, blurb: 'Eye colour is X-linked (Morgan, 1910). Black body and vestigial wings are linked on chromosome 2.',
+    genes: [
+      { id: 'w', name: 'Eye colour', chr: 'X', type: 'dom', al: [A('w+', 'w⁺', 'Xʷ⁺'), A('w', 'w', 'Xʷ')], vals: ['Red eyes', 'White eyes'] },
+      { id: 'b', name: 'Body colour', chr: '2', type: 'dom', al: [A('b+', 'b⁺'), A('b')], vals: ['Grey body', 'Black body'] },
+      { id: 'vg', name: 'Wing shape', chr: '2', type: 'dom', al: [A('vg+', 'vg⁺'), A('vg')], vals: ['Long wings', 'Vestigial wings'] },
+    ] },
+  lab: { name: 'Labrador', latin: 'Canis familiaris', sexual: true, blurb: 'Two genes, one trait: E/e decides whether pigment reaches the coat at all (recessive epistasis).',
+    genes: [
+      { id: 'B', name: 'Pigment (B)', chr: '11', type: 'dom', al: [A('B'), A('b')], vals: ['Black pigment', 'Brown pigment'] },
+      { id: 'E', name: 'Extension (E)', chr: '5', type: 'dom', al: [A('E'), A('e')], vals: ['Pigmented coat', 'No coat pigment'] },
+    ],
+    traits: [{ name: 'Coat colour', genes: ['B', 'E'], f: g => (g.E.includes('e') && !g.E.includes('E')) ? 'Yellow' : g.B.includes('B') ? 'Black' : 'Chocolate' }] },
+  puff: { name: 'Glimmerpuff', latin: 'fictional', sexual: true, blurb: 'A fictional creature that obeys real genetics: incomplete dominance, codominance and a lethal allele.',
+    genes: [
+      { id: 'C', name: 'Fur colour', chr: '1', type: 'inc', al: [A('CR', 'Cᴿ'), A('CB', 'Cᴮ')], vals: ['Red', 'Violet', 'Blue'] },
+      { id: 'S', name: 'Markings', chr: '2', type: 'co', al: [A('SD', 'Sᴰ'), A('ST', 'Sᵀ')], vals: ['Dots', 'Dots + stripes', 'Stripes'] },
+      { id: 'H', name: 'Horn', chr: '3', type: 'dom', al: [A('H'), A('h')], vals: ['Horned', 'Hornless'] },
+      { id: 'K', name: 'Tail', chr: '4', type: 'lethal', al: [A('K'), A('k')], vals: ['Curly tail', 'Straight tail'] },
+    ] },
+  human: { name: 'Human', latin: 'Homo sapiens', sexual: true, blurb: 'ABO blood groups (multiple alleles, codominance), sickle cell (HBB) and red–green colour blindness (X-linked).',
+    genes: [
+      { id: 'ABO', name: 'Blood group', chr: '9', type: 'abo', al: [A('IA', 'Iᴬ'), A('IB', 'Iᴮ'), A('i')], vals: [] },
+      { id: 'HB', name: 'Haemoglobin (HBB)', chr: '11', type: 'inc', al: [A('A', 'Hbᴬ'), A('S', 'Hbˢ')], vals: ['Unaffected (HbAA)', 'Sickle-cell trait (carrier)', 'Sickle-cell disease'] },
+      { id: 'CB', name: 'Colour vision', chr: 'X', type: 'dom', al: [A('B', 'B', 'Xᴮ'), A('b', 'b', 'Xᵇ')], vals: ['Normal vision', 'Colour-blind'] },
+    ] },
+};
+for (const k in ORGS) { const o = ORGS[k]; o.id = k; o.geneById = {}; o.genes.forEach(g => { o.geneById[g.id] = g; g.def = g.type === 'lethal' ? [g.al[1].s, g.al[1].s] : [g.al[0].s, g.al[0].s]; }); if (k === 'human') { o.geneById.ABO.def = ['i', 'i']; } if (!o.traits) o.traits = o.genes.map(g => ({ name: g.name, genes: [g.id], f: gt => genePhen(g, gt[g.id]) })); }
+function genePhen(G, a) {
+  const i = a.map(x => x === 'Y' ? -1 : G.al.findIndex(z => z.s === x)).filter(x => x >= 0);
+  if (G.type === 'abo') { const s = new Set(a); return s.has('IA') && s.has('IB') ? 'AB' : s.has('IA') ? 'A' : s.has('IB') ? 'B' : 'O'; }
+  if (G.type === 'inc' || G.type === 'co') { if (i.length === 1) return G.vals[i[0] ? 2 : 0]; return G.vals[i[0] + i[1]]; }
+  return i.includes(0) ? G.vals[0] : G.vals[1];
+}
+const isLethal = (org, gt) => org.genes.some(G => G.type === 'lethal' && gt[G.id] && gt[G.id][0] === G.al[0].s && gt[G.id][1] === G.al[0].s);
+
+/* ================= State ================= */
+const S = { org: ORGS.pea, track: ['R'], rf: 17, n: 64, view: 'cross', p1: null, p2: null, batch: [], sel: [], fam: null, dist: null, anim: null, nextId: 1, gen: 0, shade: null };
+const cv = $('#cv'), st = SL.canvas(cv), tip = $('#tip'), hud = $('#hud');
+function showTip(html, x, y) { tip.innerHTML = html; tip.style.display = 'block'; const r = cv.getBoundingClientRect(); const tw = tip.offsetWidth, th = tip.offsetHeight; let tx = x + 14, ty = y + 14; if (tx + tw > r.width - 6) tx = x - tw - 12; if (ty + th > r.height - 6) ty = y - th - 12; tip.style.left = Math.max(4, tx) + 'px'; tip.style.top = Math.max(4, ty) + 'px'; }
+function hideTip() { tip.style.display = 'none'; }
+function setHud(arr) { const h = arr.map(([k, v]) => `<span class="readout">${k} <b>${v}</b></span>`).join(''); if (hud._h !== h) { hud.innerHTML = h; hud._h = h; } }
+function rrect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
+function label(ctx, txt, x, y, col, size, align, wt, font) { ctx.font = `${wt || 600} ${size || 11}px ${font === 'mono' ? '"JetBrains Mono", ui-monospace, monospace' : 'Inter, system-ui, sans-serif'}`; ctx.fillStyle = col || '#93a1bd'; ctx.textAlign = align || 'left'; ctx.textBaseline = 'middle'; ctx.fillText(txt, x, y); }
+function wrapText(ctx, txt, x, y, maxW, lh, col, size) { ctx.font = `500 ${size}px Inter, system-ui, sans-serif`; ctx.fillStyle = col; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; let line = ''; for (const wd of txt.split(' ')) { if (line && ctx.measureText(line + wd).width > maxW) { ctx.fillText(line.trim(), x, y); y += lh; line = ''; } line += wd + ' '; } ctx.fillText(line.trim(), x, y); return y + lh; }
+
+/* ================= Genetics engine ================= */
+function gt(ind, org) { const o = {}; org.genes.forEach(G => { o[G.id] = ind.g[G.id] || (G.chr === 'X' && ind.sex === 'M' ? [G.def[0], 'Y'] : G.def.slice()); }); return o; }
+function makeInd(org, sex, g, extra) { return Object.assign({ id: S.nextId++, sex: org.sexual ? sex : null, g: JSON.parse(JSON.stringify(g)) }, extra || {}); }
+function trackedGenes() { return S.track.map(id => S.org.geneById[id]); }
+function linkedPair() { const t = S.track; return S.org.id === 'fly' && t.includes('b') && t.includes('vg'); }
+function gametes(ind) {
+  const org = S.org, tg = trackedGenes(); let facs = [];
+  const groups = {}; tg.forEach(G => { (groups[G.chr] = groups[G.chr] || []).push(G); });
+  for (const c in groups) {
+    if (c === 'X') continue; const L = groups[c];
+    if (L.length === 1) { const G = L[0], a = ind.g[G.id]; facs.push([{ h: { [G.id]: a[0] }, p: .5 }, { h: { [G.id]: a[1] }, p: .5 }]); }
+    else { const [G1, G2] = L, a1 = ind.g[G1.id], a2 = ind.g[G2.id]; const r = (org.noMaleRec && ind.sex === 'M') ? 0 : S.rf / 100;
+      facs.push([{ h: { [G1.id]: a1[0], [G2.id]: a2[0] }, p: (1 - r) / 2 }, { h: { [G1.id]: a1[1], [G2.id]: a2[1] }, p: (1 - r) / 2 }, { h: { [G1.id]: a1[0], [G2.id]: a2[1] }, p: r / 2, rec: 1 }, { h: { [G1.id]: a1[1], [G2.id]: a2[0] }, p: r / 2, rec: 1 }]); }
+  }
+  if (org.sexual) { const X = groups.X || []; if (ind.sex === 'F') { if (X.length) { const G = X[0], a = ind.g[G.id]; facs.push([{ h: { [G.id]: a[0] }, sx: 'X', p: .5 }, { h: { [G.id]: a[1] }, sx: 'X', p: .5 }]); } else facs.push([{ h: {}, sx: 'X', p: 1 }]); }
+    else { if (X.length) { const G = X[0], a = ind.g[G.id]; facs.push([{ h: { [G.id]: a[0] }, sx: 'X', p: .5 }, { h: {}, sx: 'Y', p: .5 }]); } else facs.push([{ h: {}, sx: 'X', p: .5 }, { h: {}, sx: 'Y', p: .5 }]); } }
+  let out = [{ h: {}, p: 1, sx: null, rec: 0 }];
+  for (const f of facs) { const nx = []; out.forEach(o => f.forEach(x => { if (x.p > 0) nx.push({ h: Object.assign({}, o.h, x.h), p: o.p * x.p, sx: x.sx || o.sx, rec: o.rec || x.rec || 0 }); })); out = nx; }
+  const m = new Map(); out.forEach(o => { const k = gamKey(o); if (m.has(k)) m.get(k).p += o.p; else m.set(k, Object.assign({ k }, o)); });
+  return [...m.values()];
+}
+function alDisp(G, s, x) { if (s === 'Y') return 'Y'; const a = G.al.find(z => z.s === s); return a ? (x ? a.x : a.d) : s; }
+function gamKey(gm) { const org = S.org; return trackedGenes().map(G => { if (G.chr === 'X') return gm.sx === 'Y' ? 'Y' : alDisp(G, gm.h[G.id], true); return alDisp(G, gm.h[G.id]); }).join(' ') + (org.sexual && !trackedGenes().some(G => G.chr === 'X') ? ' ' + (gm.sx || '') : ''); }
+function zygote(gm, gf) {
+  const org = S.org; const sex = org.sexual ? (gf.sx === 'Y' ? 'M' : 'F') : null; const g = {};
+  trackedGenes().forEach(G => { if (G.chr === 'X') g[G.id] = sex === 'M' ? [gm.h[G.id], 'Y'] : [gm.h[G.id], gf.h[G.id]]; else g[G.id] = [gm.h[G.id], gf.h[G.id]]; });
+  return { sex, g, rec: (gm.rec ? 1 : 0) + (gf.rec ? 1 : 0) };
+}
+function sortPair(G, a) { if (a[1] === 'Y') return a; const i = x => G.al.findIndex(z => z.s === x); return i(a[0]) <= i(a[1]) ? a : [a[1], a[0]]; }
+function genoStr(ind, sep) {
+  const tg = trackedGenes(); if (linkedPair()) {
+    const parts = []; tg.forEach(G => { if (G.id === 'b' || G.id === 'vg') return; const a = sortPair(G, ind.g[G.id]); parts.push(G.chr === 'X' ? alDisp(G, a[0], true) + alDisp(G, a[1], true) : alDisp(G, a[0]) + alDisp(G, a[1])); });
+    const b = ind.g.b, v = ind.g.vg; let h1 = alDisp(ORGS.fly.geneById.b, b[0]) + ' ' + alDisp(ORGS.fly.geneById.vg, v[0]), h2 = alDisp(ORGS.fly.geneById.b, b[1]) + ' ' + alDisp(ORGS.fly.geneById.vg, v[1]);
+    if (h2 < h1 && !(h1.includes('⁺') && !h2.includes('⁺'))) [h1, h2] = [h2, h1]; if (h2.split('⁺').length > h1.split('⁺').length) [h1, h2] = [h2, h1];
+    parts.push(h1 + '/' + h2); return parts.join(sep || ' ');
+  }
+  return tg.map(G => { const a = sortPair(G, ind.g[G.id]); return G.chr === 'X' ? alDisp(G, a[0], true) + alDisp(G, a[1], true) : alDisp(G, a[0]) + alDisp(G, a[1]); }).join(sep || ' ');
+}
+function phen(ind) {
+  const org = S.org, g = gt(ind, org); const tset = new Set(S.track); const out = [];
+  org.traits.forEach(T => { const v = T.f(g); out.push({ name: T.name, v, tracked: T.genes.some(x => tset.has(x)) }); });
+  const tr = out.filter(x => x.tracked); const xl = trackedGenes().some(G => G.chr === 'X');
+  const key = tr.map(x => x.v).join(', ') + (xl && ind.sex ? (ind.sex === 'F' ? ' ♀' : ' ♂') : '');
+  return { all: out, tr, key, g };
+}
+function distribution() {
+  const gm = gametes(S.p1), gf = gametes(S.p2); const cells = []; const classes = new Map(); let lethal = 0;
+  gm.forEach((m, i) => gf.forEach((f, j) => { const z = zygote(m, f); const p = m.p * f.p; const dead = isLethal(S.org, gt(z, S.org)); const ph = phen(z); cells.push({ i, j, z, p, dead, ph }); if (dead) { lethal += p; return; } const c = classes.get(ph.key) || { key: ph.key, p: 0, ex: z }; c.p += p; classes.set(ph.key, c); }));
+  const surv = 1 - lethal; const cl = [...classes.values()].map(c => (c.p /= surv, c)).sort((a, b) => b.p - a.p || a.key.localeCompare(b.key));
+  cl.forEach((c, k) => c.col = PAL[k % PAL.length]);
+  return { gm, gf, cells, classes: cl, lethal };
+}
+const PAL = ['#34d399', '#60a5fa', '#f5a524', '#f472b6', '#a78bfa', '#22d3ee', '#facc15', '#fb7185', '#a3e635', '#2dd4bf', '#c084fc', '#fdba74', '#93c5fd', '#f9a8d4', '#86efac', '#fde68a'];
+function sampleBatch(n) {
+  const D = S.dist; const cm = cum(D.gm), cf = cum(D.gf); const out = []; let dead = 0, guard = 0;
+  while (out.length < n && guard++ < n * 50) { const m = D.gm[pick(cm)], f = D.gf[pick(cf)]; const z = zygote(m, f); if (isLethal(S.org, gt(z, S.org))) { dead++; continue; } out.push(makeInd(S.org, z.sex, z.g, { rec: z.rec, mother: S.p1.id, father: S.p2.id, gen: Math.max(S.p1.gen, S.p2.gen) + 1 })); }
+  return { inds: out, dead };
+}
+const cum = arr => { let s = 0; return arr.map(x => s += x.p); };
+const pick = c => { const r = Math.random() * c[c.length - 1]; let i = 0; while (c[i] < r) i++; return i; };
+function chiTest() {
+  const D = S.dist, N = S.batch.length; if (!N) return null; const obs = new Map(); S.batch.forEach(b => { const k = phen(b).key; obs.set(k, (obs.get(k) || 0) + 1); });
+  let x2 = 0, small = 0; const rows = D.classes.map(c => { const E = c.p * N, O = obs.get(c.key) || 0; if (E > 0) x2 += (O - E) ** 2 / E; if (E < 5) small++; return { c, E, O }; });
+  const df = D.classes.length - 1; return { rows, x2, df, p: chiP(x2, df), small, N };
+}
+
+/* ================= Organism drawing ================= */
+const SKIN = '#8d5524';
+function drawOrg(ctx, ind, x, y, s, opt) {
+  opt = opt || {}; const g = gt(ind, S.org); const P = {}; S.org.traits.forEach(T => P[T.name] = T.f(g));
+  ctx.save();
+  ({ pea: drawPea, snap: drawSnap, fly: drawFly, lab: drawDog, puff: drawPuff, human: drawHuman })[S.org.id](ctx, x, y, s, P, ind, g, opt);
+  ctx.restore();
+  if (ind.sex && !opt.noSex) label(ctx, ind.sex === 'F' ? '♀' : '♂', x + s * .42, y - s * .38, ind.sex === 'F' ? '#f472b6' : '#60a5fa', Math.max(10, s * .2), 'center', 700);
+}
+function drawPea(ctx, x, y, s, P) {
+  const tall = P['Stem length'] !== 'Dwarf'; const H = s * (tall ? .78 : .46); const base = y + s * .44; const top = base - H;
+  const fc = P['Flower colour'] === 'White' ? '#f1f5f9' : '#a855f7', fc2 = P['Flower colour'] === 'White' ? '#cbd5e1' : '#7e22ce';
+  const podC = P['Pod colour'] === 'Yellow pod' ? '#facc15' : '#4ade80', infl = P['Pod shape'] !== 'Constricted';
+  // pot
+  ctx.fillStyle = '#7c2d12'; ctx.beginPath(); ctx.moveTo(x - s * .16, base); ctx.lineTo(x + s * .16, base); ctx.lineTo(x + s * .12, base + s * .1); ctx.lineTo(x - s * .12, base + s * .1); ctx.closePath(); ctx.fill();
+  // stem
+  ctx.strokeStyle = '#22c55e'; ctx.lineWidth = Math.max(1.5, s * .03); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x, base);
+  const nodes = tall ? 4 : 3; for (let k = 1; k <= nodes; k++) ctx.lineTo(x + (k % 2 ? 1 : -1) * s * .03, base - H * k / nodes); ctx.stroke();
+  for (let k = 1; k <= nodes; k++) { const ny = base - H * k / nodes + H / nodes * .5, side = k % 2 ? 1 : -1; ctx.fillStyle = '#16a34a'; ctx.beginPath(); ctx.ellipse(x + side * s * .1, ny, s * .09, s * .045, side * .5, 0, PI2); ctx.fill(); ctx.beginPath(); ctx.ellipse(x - side * s * .07, ny + s * .03, s * .06, s * .035, -side * .5, 0, PI2); ctx.fillStyle = '#15803d'; ctx.fill(); }
+  const flower = (fx, fy, r) => { ctx.fillStyle = fc; ctx.beginPath(); ctx.ellipse(fx, fy - r * .3, r, r * .85, 0, 0, PI2); ctx.fill(); ctx.fillStyle = fc2; ctx.beginPath(); ctx.ellipse(fx, fy + r * .35, r * .55, r * .4, 0, 0, PI2); ctx.fill(); };
+  const pod = (px, py, L) => { ctx.save(); ctx.translate(px, py); ctx.rotate(.5); ctx.fillStyle = podC; if (infl) { ctx.beginPath(); ctx.ellipse(0, L / 2, L * .2, L / 2, 0, 0, PI2); ctx.fill(); } else { for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.arc(0, L * (.15 + k * .23), L * .14, 0, PI2); ctx.fill(); } } ctx.restore(); };
+  const fr = Math.max(2.5, s * .055);
+  if (P['Flower position'] === 'Terminal') { flower(x - fr, top - fr * .5, fr); flower(x + fr, top - fr * .2, fr); flower(x, top - fr * 1.4, fr); pod(x + s * .05, top + s * .06, s * .2); }
+  else { for (let k = 1; k <= nodes; k++) { const ny = base - H * k / nodes; const side = k % 2 ? -1 : 1; if (k % 2) flower(x + side * s * .08, ny, fr); else pod(x + side * s * .04, ny, s * .2); } }
+  // seed close-up
+  const sx = x + s * .3, sy = base - s * .05, sr = s * .1; const scol = P['Seed colour'] === 'Green' ? '#84cc16' : '#fde047';
+  ctx.fillStyle = scol; ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 1;
+  if (P['Seed shape'] === 'Wrinkled') { ctx.beginPath(); for (let k = 0; k <= 14; k++) { const a = k / 14 * PI2, rr = sr * (1 + .14 * Math.sin(a * 5) + .06 * Math.cos(a * 3)); k ? ctx.lineTo(sx + rr * Math.cos(a), sy + rr * Math.sin(a)) : ctx.moveTo(sx + rr * Math.cos(a), sy + rr * Math.sin(a)); } ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(sx - sr * .5, sy - sr * .2); ctx.quadraticCurveTo(sx, sy + sr * .3, sx + sr * .5, sy - sr * .3); ctx.stroke(); }
+  else { const gr = ctx.createRadialGradient(sx - sr * .35, sy - sr * .35, 1, sx, sy, sr); gr.addColorStop(0, '#fff'); gr.addColorStop(.3, scol); gr.addColorStop(1, scol); ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(sx, sy, sr, 0, PI2); ctx.fill(); ctx.stroke(); }
+}
+function drawSnap(ctx, x, y, s, P) {
+  const c = { Red: '#ef4444', Pink: '#f9a8d4', White: '#f8fafc' }[P['Flower colour']]; const base = y + s * .45, top = y - s * .42;
+  ctx.strokeStyle = '#22c55e'; ctx.lineWidth = Math.max(1.5, s * .03); ctx.beginPath(); ctx.moveTo(x, base); ctx.lineTo(x, top); ctx.stroke();
+  for (let k = 0; k < 3; k++) { ctx.fillStyle = '#16a34a'; ctx.beginPath(); ctx.ellipse(x + (k % 2 ? 1 : -1) * s * .1, base - s * (.1 + k * .12), s * .1, s * .03, (k % 2 ? -1 : 1) * .5, 0, PI2); ctx.fill(); }
+  for (let k = 0; k < 5; k++) { const fy = top + s * .08 + k * s * .1, side = k % 2 ? 1 : -1, r = s * (.08 - k * .006); ctx.fillStyle = c; ctx.beginPath(); ctx.ellipse(x + side * s * .06, fy, r * 1.1, r, 0, 0, PI2); ctx.fill(); ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(x + side * s * .06, fy + r * .35, r * .6, r * .3, 0, 0, PI2); ctx.fill(); ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.arc(x + side * s * .06, fy + r * .2, r * .18, 0, PI2); ctx.fill(); }
+}
+function drawFly(ctx, x, y, s, P, ind) {
+  const body = P['Body colour'] === 'Black body' ? '#27272a' : '#b08d57', body2 = P['Body colour'] === 'Black body' ? '#09090b' : '#7c5a30';
+  const eye = P['Eye colour'] === 'White eyes' ? '#f1f5f9' : '#dc2626'; const vest = P['Wing shape'] === 'Vestigial wings'; const fem = ind.sex !== 'M'; const k = s / 100;
+  ctx.translate(x, y); ctx.scale(k, k);
+  ctx.strokeStyle = '#3f3f46'; ctx.lineWidth = 2; for (let i = -1; i <= 1; i++) for (const sd of [-1, 1]) { ctx.beginPath(); ctx.moveTo(sd * 8, -6 + i * 8); ctx.lineTo(sd * 22, -2 + i * 12); ctx.lineTo(sd * 28, 6 + i * 14); ctx.stroke(); }
+  // abdomen
+  const aL = fem ? 30 : 22; ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(0, 12 + aL * .5, fem ? 13 : 11, aL, 0, 0, PI2); ctx.fill();
+  ctx.fillStyle = body2; for (let i = 0; i < (fem ? 4 : 2); i++) { ctx.fillRect(-11, 16 + i * 9, 22, 3.5); }
+  if (!fem) { ctx.beginPath(); ctx.ellipse(0, 12 + aL * .5 + aL * .55, 9, aL * .42, 0, 0, Math.PI); ctx.fillStyle = body2; ctx.fill(); }
+  // wings
+  if (vest) { ctx.fillStyle = 'rgba(203,213,225,.55)'; for (const sd of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sd * 12, 4, 5, 8, sd * .6, 0, PI2); ctx.fill(); } }
+  else { for (const sd of [-1, 1]) { ctx.save(); ctx.rotate(sd * .28); ctx.fillStyle = 'rgba(203,225,255,.32)'; ctx.strokeStyle = 'rgba(203,225,255,.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(sd * 13, 26, 12, 34, sd * .1, 0, PI2); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(sd * 6, 0); ctx.lineTo(sd * 15, 50); ctx.moveTo(sd * 8, 4); ctx.lineTo(sd * 20, 44); ctx.stroke(); ctx.restore(); } }
+  // thorax & head
+  ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(0, -2, 13, 15, 0, 0, PI2); ctx.fill(); ctx.strokeStyle = body2; ctx.lineWidth = 1; for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(i * 5, -12); ctx.lineTo(i * 6, 6); ctx.stroke(); }
+  ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(0, -22, 11, 9, 0, 0, PI2); ctx.fill();
+  for (const sd of [-1, 1]) { const gr = ctx.createRadialGradient(sd * 9 - 2, -25, 1, sd * 9, -23, 8); gr.addColorStop(0, '#fff'); gr.addColorStop(.25, eye); gr.addColorStop(1, eye); ctx.fillStyle = gr; ctx.beginPath(); ctx.ellipse(sd * 9, -23, 7, 8.5, sd * .3, 0, PI2); ctx.fill(); }
+  ctx.strokeStyle = '#52525b'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-3, -30); ctx.lineTo(-6, -38); ctx.moveTo(3, -30); ctx.lineTo(6, -38); ctx.stroke();
+}
+function drawDog(ctx, x, y, s, P, ind, g) {
+  const coat = { Black: '#1c1917', Chocolate: '#6b3e26', Yellow: '#e8c27a' }[P['Coat colour']]; const nose = g.B.includes('B') ? '#0c0a09' : '#7c4a32'; const k = s / 100;
+  ctx.translate(x, y + 4 * k); ctx.scale(k, k); const outline = coat === '#1c1917' ? '#a8a29e' : 'rgba(0,0,0,.4)';
+  ctx.fillStyle = coat; ctx.strokeStyle = outline; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(30, -2); ctx.quadraticCurveTo(52, -14, 48, -24); ctx.lineWidth = 6; ctx.strokeStyle = coat; ctx.stroke(); ctx.lineWidth = 1.5; ctx.strokeStyle = outline;
+  for (const lx of [-26, -14, 18, 30]) { rrect(ctx, lx - 4, 4, 9, 30, 4); ctx.fill(); ctx.stroke(); }
+  ctx.beginPath(); ctx.ellipse(2, 0, 36, 17, 0, 0, PI2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(-36, -14, 9, 14, -.5, 0, PI2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-42, -24, 15, 13, 0, 0, PI2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(-56, -19, 11, 7, 0, 0, PI2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(-35, -19, 5.5, 11, .35, 0, PI2); ctx.fillStyle = coat === '#e8c27a' ? '#c9a15c' : coat === '#1c1917' ? '#292524' : '#5a3320'; ctx.fill();
+  ctx.fillStyle = nose; ctx.beginPath(); ctx.ellipse(-66, -21, 4, 3.4, 0, 0, PI2); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(-47, -28, 2.6, 0, PI2); ctx.fill(); ctx.fillStyle = '#1e1b18'; ctx.beginPath(); ctx.arc(-47.5, -28, 1.6, 0, PI2); ctx.fill();
+}
+function drawPuff(ctx, x, y, s, P) {
+  const col = { Red: '#f43f5e', Violet: '#a855f7', Blue: '#3b82f6' }[P['Fur colour']]; const r = s * .3; const cy = y + s * .02;
+  // tail
+  ctx.strokeStyle = col; ctx.lineWidth = Math.max(2, s * .05); ctx.lineCap = 'round'; ctx.beginPath();
+  if (P['Tail'] === 'Curly tail') { for (let k = 0; k <= 40; k++) { const a = k / 40 * PI2 * 1.6, rr = s * .02 + k / 40 * s * .1; const px = x + r * .9 + s * .12 + rr * Math.cos(a), py = cy + r * .2 - rr * Math.sin(a); k ? ctx.lineTo(px, py) : ctx.moveTo(x + r * .9, cy + r * .2); } }
+  else { ctx.moveTo(x + r * .9, cy + r * .2); ctx.quadraticCurveTo(x + r * 1.4, cy + r * .1, x + r * 1.7, cy - r * .3); }
+  ctx.stroke();
+  // feet
+  ctx.fillStyle = col; for (const sd of [-1, 1]) { ctx.beginPath(); ctx.ellipse(x + sd * r * .45, cy + r * .95, r * .28, r * .14, 0, 0, PI2); ctx.fill(); }
+  // fuzzy body
+  ctx.beginPath(); for (let k = 0; k <= 36; k++) { const a = k / 36 * PI2, rr = r * (1 + .07 * Math.sin(a * 12)); const px = x + rr * Math.cos(a), py = cy + rr * Math.sin(a); k ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.closePath();
+  const gr = ctx.createRadialGradient(x - r * .3, cy - r * .4, r * .1, x, cy, r * 1.1); gr.addColorStop(0, '#ffffff99'); gr.addColorStop(.25, col); gr.addColorStop(1, col); ctx.fillStyle = gr; ctx.fill();
+  ctx.save(); ctx.clip();
+  if (P['Markings'] !== 'Dots') { ctx.strokeStyle = 'rgba(15,23,42,.45)'; ctx.lineWidth = r * .14; for (let k = -2; k <= 2; k++) { ctx.beginPath(); ctx.moveTo(x + k * r * .45 - r * .2, cy - r); ctx.quadraticCurveTo(x + k * r * .45 + r * .2, cy, x + k * r * .45 - r * .1, cy + r); ctx.stroke(); } }
+  if (P['Markings'] !== 'Stripes') { ctx.fillStyle = 'rgba(255,255,255,.75)'; [[-.5, .35], [.45, .4], [-.1, .65], [.6, -.1], [-.65, -.05], [.15, .2]].forEach(([dx, dy]) => { ctx.beginPath(); ctx.arc(x + dx * r, cy + dy * r, r * .1, 0, PI2); ctx.fill(); }); }
+  ctx.restore();
+  // horn
+  if (P['Horn'] === 'Horned') { ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.moveTo(x - r * .16, cy - r * .9); ctx.lineTo(x + r * .05, cy - r * 1.55); ctx.lineTo(x + r * .18, cy - r * .88); ctx.closePath(); ctx.fill(); }
+  // face
+  for (const sd of [-1, 1]) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(x + sd * r * .32, cy - r * .2, r * .2, r * .24, 0, 0, PI2); ctx.fill(); ctx.fillStyle = '#0f172a'; ctx.beginPath(); ctx.arc(x + sd * r * .3, cy - r * .16, r * .11, 0, PI2); ctx.fill(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x + sd * r * .27, cy - r * .21, r * .04, 0, PI2); ctx.fill(); }
+  ctx.strokeStyle = '#0f172a'; ctx.lineWidth = Math.max(1, r * .06); ctx.beginPath(); ctx.arc(x, cy + r * .12, r * .16, .2, Math.PI - .2); ctx.stroke();
+}
+function drawHuman(ctx, x, y, s, P, ind) {
+  const k = s / 100; const fem = ind.sex === 'F'; ctx.translate(x, y); ctx.scale(k, k);
+  const shirt = fem ? '#0ea5e9' : '#10b981';
+  ctx.fillStyle = shirt; ctx.beginPath(); ctx.moveTo(-30, 46); ctx.quadraticCurveTo(-30, 8, 0, 6); ctx.quadraticCurveTo(30, 8, 30, 46); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = SKIN; ctx.fillRect(-6, -2, 12, 10); ctx.beginPath(); ctx.ellipse(0, -16, 15, 18, 0, 0, PI2); ctx.fill();
+  ctx.fillStyle = '#1c1917'; if (fem) { ctx.beginPath(); ctx.ellipse(0, -24, 17, 13, 0, Math.PI, PI2); ctx.fill(); ctx.beginPath(); ctx.arc(-14, -14, 6, 0, PI2); ctx.arc(14, -14, 6, 0, PI2); ctx.fill(); } else { ctx.beginPath(); ctx.ellipse(0, -28, 14, 7, 0, Math.PI, PI2); ctx.fill(); }
+  ctx.fillStyle = '#fff'; for (const sd of [-1, 1]) { ctx.beginPath(); ctx.arc(sd * 6, -16, 2.6, 0, PI2); ctx.fill(); }
+  ctx.fillStyle = '#1c1917'; for (const sd of [-1, 1]) { ctx.beginPath(); ctx.arc(sd * 6, -16, 1.4, 0, PI2); ctx.fill(); }
+  ctx.strokeStyle = '#3f1d0b'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, -8, 5, .3, Math.PI - .3); ctx.stroke();
+  // badges
+  const bt = P['Blood group']; const tset = new Set(S.track);
+  if (tset.has('ABO')) { ctx.fillStyle = '#dc2626'; ctx.beginPath(); ctx.moveTo(-40, 6); ctx.bezierCurveTo(-30, 18, -28, 26, -40, 30); ctx.bezierCurveTo(-52, 26, -50, 18, -40, 6); ctx.fill(); label(ctx, bt, -40, 22, '#fff', bt.length > 1 ? 9 : 11, 'center', 800); }
+  if (tset.has('HB')) { const v = P['Haemoglobin (HBB)']; ctx.save(); ctx.translate(40, 22); ctx.fillStyle = '#b91c1c'; if (v.startsWith('Unaff')) { ctx.beginPath(); ctx.arc(0, 0, 9, 0, PI2); ctx.fill(); ctx.fillStyle = '#7f1d1d'; ctx.beginPath(); ctx.arc(0, 0, 3.5, 0, PI2); ctx.fill(); } else if (v.includes('trait')) { ctx.beginPath(); ctx.arc(-4, -2, 7, 0, PI2); ctx.fill(); ctx.beginPath(); ctx.arc(6, 4, 7, Math.PI * 1.1, Math.PI * 1.9); ctx.arc(6, 10, 5, Math.PI * 1.85, Math.PI * 1.15, true); ctx.fill(); } else { ctx.beginPath(); ctx.arc(0, 4, 11, Math.PI * 1.1, Math.PI * 1.9); ctx.arc(0, 12, 8, Math.PI * 1.85, Math.PI * 1.15, true); ctx.closePath(); ctx.fill(); } ctx.restore(); }
+  if (tset.has('CB')) { const cb = P['Colour vision'] === 'Colour-blind'; const cols = cb ? ['#a3a35c', '#8f8f4a', '#b5b26a'] : ['#ef4444', '#22c55e', '#f97316']; for (let i = 0; i < 9; i++) { const a = i * 2.4, rr = 3 + (i % 3) * 3; ctx.fillStyle = cols[i % 3]; ctx.beginPath(); ctx.arc(40 + rr * Math.cos(a), -22 + rr * Math.sin(a), 2.6, 0, PI2); ctx.fill(); } }
+}
+
+/* ================= UI: organisms, genes, parents ================= */
+const PRESETS = {
+  pea: [
+    ['P: RR × rr', ['R'], { R: ['R', 'R'] }, { R: ['r', 'r'] }],
+    ['F1 × F1: Rr × Rr', ['R'], { R: ['R', 'r'] }, { R: ['R', 'r'] }],
+    ['Test cross Rr × rr', ['R'], { R: ['R', 'r'] }, { R: ['r', 'r'] }],
+    ['Dihybrid RrYy × RrYy', ['R', 'Y'], { R: ['R', 'r'], Y: ['Ys', 'ys'] }, { R: ['R', 'r'], Y: ['Ys', 'ys'] }],
+    ['Trihybrid RrYyPp ×2', ['R', 'Y', 'P'], { R: ['R', 'r'], Y: ['Ys', 'ys'], P: ['P', 'p'] }, { R: ['R', 'r'], Y: ['Ys', 'ys'], P: ['P', 'p'] }],
+    ['Tall purple × dwarf white', ['T', 'P'], { T: ['T', 'T'], P: ['P', 'P'] }, { T: ['t', 't'], P: ['p', 'p'] }],
+  ],
+  snap: [['Red × White', ['C'], { C: ['CR', 'CR'] }, { C: ['CW', 'CW'] }], ['Pink × Pink', ['C'], { C: ['CR', 'CW'] }, { C: ['CR', 'CW'] }], ['Pink × White', ['C'], { C: ['CR', 'CW'] }, { C: ['CW', 'CW'] }]],
+  fly: [
+    ['Morgan P: red ♀ × white ♂', ['w'], { w: ['w+', 'w+'] }, { w: ['w', 'Y'] }],
+    ['Morgan F1: Xʷ⁺Xʷ × Xʷ⁺Y', ['w'], { w: ['w+', 'w'] }, { w: ['w+', 'Y'] }],
+    ['Reciprocal: white ♀ × red ♂', ['w'], { w: ['w', 'w'] }, { w: ['w+', 'Y'] }],
+    ['Linked test cross (b, vg)', ['b', 'vg'], { b: ['b+', 'b'], vg: ['vg+', 'vg'] }, { b: ['b', 'b'], vg: ['vg', 'vg'] }],
+    ['Repulsion test cross', ['b', 'vg'], { b: ['b+', 'b'], vg: ['vg', 'vg+'] }, { b: ['b', 'b'], vg: ['vg', 'vg'] }],
+    ['Eyes, body, wings ×', ['w', 'b', 'vg'], { w: ['w+', 'w'], b: ['b+', 'b'], vg: ['vg+', 'vg'] }, { w: ['w', 'Y'], b: ['b+', 'b'], vg: ['vg+', 'vg'] }],
+  ],
+  lab: [['BbEe × BbEe (9:3:4)', ['B', 'E'], { B: ['B', 'b'], E: ['E', 'e'] }, { B: ['B', 'b'], E: ['E', 'e'] }], ['Black BbEe × yellow bbee', ['B', 'E'], { B: ['B', 'b'], E: ['E', 'e'] }, { B: ['b', 'b'], E: ['e', 'e'] }], ['Chocolate × chocolate', ['B', 'E'], { B: ['b', 'b'], E: ['E', 'e'] }, { B: ['b', 'b'], E: ['E', 'e'] }]],
+  puff: [['Violet × Violet', ['C'], { C: ['CR', 'CB'] }, { C: ['CR', 'CB'] }], ['Curly × Curly (lethal)', ['K'], { K: ['K', 'k'] }, { K: ['K', 'k'] }], ['Dots+stripes ×2', ['S'], { S: ['SD', 'ST'] }, { S: ['SD', 'ST'] }], ['Colour, horn, tail', ['C', 'H', 'K'], { C: ['CR', 'CB'], H: ['H', 'h'], K: ['K', 'k'] }, { C: ['CR', 'CB'], H: ['H', 'h'], K: ['K', 'k'] }]],
+  human: [['ABO: Iᴬi × Iᴮi', ['ABO'], { ABO: ['IA', 'i'] }, { ABO: ['IB', 'i'] }], ['ABO: AB × O', ['ABO'], { ABO: ['IA', 'IB'] }, { ABO: ['i', 'i'] }], ['Sickle: carrier × carrier', ['HB'], { HB: ['A', 'S'] }, { HB: ['A', 'S'] }], ['Colour blindness: carrier ♀ × normal ♂', ['CB'], { CB: ['B', 'b'] }, { CB: ['B', 'Y'] }], ['Colour-blind ♂ × normal ♀', ['CB'], { CB: ['B', 'B'] }, { CB: ['b', 'Y'] }], ['ABO + sickle', ['ABO', 'HB'], { ABO: ['IA', 'i'], HB: ['A', 'S'] }, { ABO: ['IB', 'i'], HB: ['A', 'S'] }]],
+};
+// organism cards with mini drawings
+$('#orgs').innerHTML = Object.values(ORGS).map(o => `<button data-o="${o.id}"><canvas width="76" height="76"></canvas><div><b>${o.name}</b><span><i>${o.latin}</i></span></div></button>`).join('');
+$$('#orgs button').forEach(b => { b.onclick = () => setOrg(b.dataset.o); });
+function drawOrgCards() {
+  $$('#orgs button').forEach(b => { const c = b.querySelector('canvas'), ctx = c.getContext('2d'); ctx.setTransform(2, 0, 0, 2, 0, 0); ctx.clearRect(0, 0, 38, 38); const prev = S.org, prevT = S.track; S.org = ORGS[b.dataset.o]; S.track = []; const ind = { sex: 'F', g: {} }; S.org.genes.forEach(G => ind.g[G.id] = G.def.slice()); if (S.org.id === 'human') ind.g.ABO = ['IA', 'i']; drawOrg(ctx, ind, 19, 19, S.org.id === 'fly' ? 30 : 34, { noSex: true }); S.org = prev; S.track = prevT; });
+}
+function setOrg(id, presetIdx) {
+  S.org = ORGS[id]; $$('#orgs button').forEach(b => b.classList.toggle('on', b.dataset.o === id));
+  $('#orgTitle').textContent = S.org.name + ' parents'; $('#orgBlurb').innerHTML = S.org.blurb;
+  $('#presets').innerHTML = PRESETS[id].map((p, i) => `<button class="btn sm" data-i="${i}">${p[0]}</button>`).join('');
+  $$('#presets button').forEach(b => b.onclick = () => applyPreset(+b.dataset.i));
+  applyPreset(presetIdx || 0);
+}
+function applyPreset(i) {
+  const [name, track, g1, g2] = PRESETS[S.org.id][i]; S.track = track.slice();
+  const full = (g, sex) => { const o = {}; S.org.genes.forEach(G => { o[G.id] = g[G.id] ? g[G.id].slice() : (G.chr === 'X' && sex === 'M' ? [G.def[0], 'Y'] : G.def.slice()); if (S.org.id === 'human' && G.id === 'ABO' && !g.ABO) o.ABO = ['IA', 'i']; }); return o; };
+  newFamily(full(g1, 'F'), full(g2, 'M'));
+  $$('#presets button').forEach((b, k) => b.classList.toggle('on', k === i));
+}
+function newFamily(g1, g2) {
+  S.nextId = 1; S.p1 = makeInd(S.org, 'F', g1, { gen: 0 }); S.p2 = makeInd(S.org, 'M', g2, { gen: 0 });
+  S.fam = { inds: new Map([[S.p1.id, S.p1], [S.p2.id, S.p2]]), mates: [] };
+  S.batch = []; S.sel = []; S.dead = 0; S.anim = null; S.shade = null; refresh();
+}
+function refresh() {
+  geneChipsUI(); parentsUI(); S.dist = distribution(); ratioUI(); selUI();
+  $('#rfBox').style.display = linkedPair() ? '' : 'none';
+  const g = Math.max(S.p1.gen, S.p2.gen) + 1; $('#genChip').textContent = 'Parents: ' + genName(S.p1.gen) + (S.p1.gen !== S.p2.gen ? ' × ' + genName(S.p2.gen) : '') + ' → offspring ' + genName(g);
+}
+const genName = g => g === 0 ? 'P' : 'F' + g;
+function geneChipsUI() {
+  $('#geneChips').innerHTML = S.org.genes.map(G => `<label class="${S.track.includes(G.id) ? 'on' : ''}"><input type="checkbox" data-g="${G.id}" ${S.track.includes(G.id) ? 'checked' : ''}>${G.name}${G.chr === 'X' ? ' (X)' : ''}</label>`).join('');
+  $$('#geneChips input').forEach(c => c.onchange = () => { const id = c.dataset.g; if (c.checked) { if (S.track.length >= 3) { c.checked = false; SL.toast('Track at most 3 genes at a time (8×8 Punnett square).', 'warn'); return; } S.track.push(id); } else { if (S.track.length <= 1) { c.checked = true; return; } S.track = S.track.filter(x => x !== id); } S.track.sort((a, b) => S.org.genes.findIndex(G => G.id === a) - S.org.genes.findIndex(G => G.id === b)); S.batch = []; S.sel = []; refresh(); });
+}
+function parentsUI() {
+  const box = $('#parentsBox'); const P = [S.p1, S.p2]; const nm = S.org.sexual ? ['Mother ♀', 'Father ♂'] : ['Parent 1 (ovule)', 'Parent 2 (pollen)'];
+  box.innerHTML = P.map((ind, k) => `<div class="parent-h"><b>${nm[k]} <span class="dim small">${genName(ind.gen)}</span></b><span>${genoStr(ind)}</span></div>` + trackedGenes().map(G => { const a = ind.g[G.id]; return `<div class="gtrow"><span>${G.name}</span>${a.map((x, j) => `<button class="al ${x !== 'Y' && G.al.findIndex(z => z.s === x) > 0 && G.type === 'dom' ? 'rec' : ''} ${x === 'Y' ? 'fixed' : ''}" data-k="${k}" data-g="${G.id}" data-j="${j}" title="${x === 'Y' ? 'Y chromosome (no copy of this X-linked gene)' : 'Click to change allele'}">${G.chr === 'X' ? alDisp(G, x, true) : alDisp(G, x)}</button>`).join('')}</div>`; }).join('') + `<div class="small-note" style="margin-top:2px">${phen(ind).tr.map(t => t.v).join(' · ')}</div>`).join('') + (S.org.sexual ? '' : `<div class="btn-row" style="margin-top:8px"><button class="btn sm" id="selfBtn"><i data-lucide="repeat"></i> Self-pollinate parent 1</button></div>`);
+  $$('#parentsBox .al').forEach(b => b.onclick = () => { if (b.classList.contains('fixed')) return; const ind = P[+b.dataset.k], G = S.org.geneById[b.dataset.g], j = +b.dataset.j; const cur = ind.g[G.id][j]; const idx = G.al.findIndex(z => z.s === cur); const ng = JSON.parse(JSON.stringify(ind.g)); ng[G.id][j] = G.al[(idx + 1) % G.al.length].s; const o1 = +b.dataset.k === 0 ? ng : S.p1.g, o2 = +b.dataset.k === 1 ? ng : S.p2.g; newFamily(o1, o2); $$('#presets button').forEach(x => x.classList.remove('on')); });
+  const sb = $('#selfBtn'); if (sb) sb.onclick = () => { newFamily(S.p1.g, S.p1.g); SL.toast('Self-pollination: parent 1 crossed with itself.', 'ok'); };
+  SL.refreshIcons(box);
+}
+SL.bind('#rf', v => { S.rf = v; if (S.p1) { S.dist = distribution(); S.batch = []; S.sel = []; ratioUI(); } }, v => v + '%');
+SL.bind('#nOff', v => S.n = v);
+$('#newFam').onclick = () => { const id = $$('#presets button.on')[0]; applyPreset(id ? +id.dataset.i : 0); };
+
+/* ================= Mixing ================= */
+$('#mixBtn').onclick = () => mix();
+function mix() {
+  S.dist = distribution(); const { inds, dead } = sampleBatch(S.n); S.batch = inds; S.dead = dead; S.sel = [];
+  S.anim = { t: 0, pairs: inds.slice(0, 8) };
+  // pedigree: record mating with first offspring
+  let m = S.fam.mates.find(x => x.a === S.p1.id && x.b === S.p2.id); if (!m) { m = { a: S.p1.id, b: S.p2.id, kids: [], gen: Math.max(S.p1.gen, S.p2.gen) }; S.fam.mates.push(m); }
+  m.kids.forEach(id => { if (!S.fam.mates.some(x => x.a === id || x.b === id)) S.fam.inds.delete(id); }); m.kids = m.kids.filter(id => S.fam.inds.has(id));
+  const show = [], want = Math.min(5, inds.length); const seen = new Set(); for (const ind of inds) { const k = phen(ind).key; if (!seen.has(k)) { seen.add(k); show.push(ind); } if (show.length >= want) break; } for (const ind of inds) { if (show.length >= want) break; if (!show.includes(ind)) show.push(ind); }
+  show.forEach(ind => { S.fam.inds.set(ind.id, ind); m.kids.push(ind.id); });
+  ratioUI(); selUI(); checkChallenges();
+}
+function selUI() {
+  const n = S.sel.length; const can = S.org.sexual ? (n === 2 && S.sel[0].sex !== S.sel[1].sex) : (n === 2 || n === 1);
+  $('#breedBtn').disabled = !can; $('#testerBtn').disabled = n !== 1;
+  $('#selNote').innerHTML = !S.batch.length ? 'Mix, then click offspring on the stage to choose the next parents.' : n === 0 ? (S.org.sexual ? 'Click one female and one male offspring to breed them.' : 'Click two plants to cross them, or one to self-pollinate.') : `Selected: ${S.sel.map(s => `#${s.id} ${s.sex ? (s.sex === 'F' ? '♀' : '♂') : ''} ${genoStr(s)}`).join(' and ')}`;
+  $('#breedBtn').innerHTML = !S.org.sexual && n === 1 ? '<i data-lucide="repeat"></i> Self-pollinate' : '<i data-lucide="git-branch-plus"></i> Breed selected'; SL.refreshIcons($('#breedBtn'));
+}
+function addToPed(ind) { if (S.fam.inds.has(ind.id)) return; S.fam.inds.set(ind.id, ind); const m = S.fam.mates.find(x => x.a === ind.mother && x.b === ind.father); if (m && !m.kids.includes(ind.id)) { m.kids.push(ind.id); } }
+$('#breedBtn').onclick = () => {
+  let a = S.sel[0], b = S.sel[1] || S.sel[0]; if (S.org.sexual && a.sex === 'M') [a, b] = [b, a];
+  addToPed(a); addToPed(b); S.p1 = a; S.p2 = b; S.batch = []; S.sel = []; S.anim = null; refresh();
+  const g = Math.max(a.gen, b.gen) + 1; SL.toast(`New parents chosen. Mix to produce the ${genName(g)} generation.`, 'ok');
+};
+$('#testerBtn').onclick = () => {
+  const a = S.sel[0]; addToPed(a); const sex = S.org.sexual ? (a.sex === 'F' ? 'M' : 'F') : null; const g = {};
+  S.org.genes.forEach(G => { const last = G.al[G.al.length - 1].s; g[G.id] = G.chr === 'X' && sex === 'M' ? [last, 'Y'] : (G.type === 'lethal' ? [last, last] : [last, last]); });
+  const t = makeInd(S.org, sex, g, { gen: a.gen, tester: true }); S.fam.inds.set(t.id, t);
+  if (sex === 'M' || !S.org.sexual) { S.p1 = a; S.p2 = t; } else { S.p1 = t; S.p2 = a; }
+  S.batch = []; S.sel = []; refresh(); SL.toast('Test cross: the tester is homozygous recessive, so offspring phenotypes reveal the selected parent’s gametes.', 'ok', 4500);
+};
+
+/* ================= Ratio table + chart ================= */
+const rcv = $('#ratioCv'), rst = SL.canvas(rcv, () => drawRatio());
+function ratioUI() {
+  const D = S.dist, T = chiTest(); const N = S.batch.length;
+  const gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
+  // simple integer ratio if possible
+  let ratio = null; for (const d of [1, 2, 3, 4, 6, 8, 12, 16, 32, 64]) { const r = D.classes.map(c => c.p * d); if (r.every(x => Math.abs(x - Math.round(x)) < 1e-6)) { const ints = r.map(Math.round); const g = ints.reduce((a, b) => gcd(a, b), 0) || 1; ratio = ints.map(x => x / g); break; } } const ok = !!ratio;
+  $('#ratioTable').innerHTML = `<table class="ptab"><tr><th>Phenotype</th><th style="text-align:right">Exp.</th>${N ? '<th style="text-align:right">E</th><th style="text-align:right">O</th>' : ''}</tr>` + D.classes.map((c, k) => `<tr><td><i style="background:${c.col}"></i>${c.key}</td><td class="n">${ok ? Math.round(ratio[k]) : SL.fmt(c.p * 100, 1) + '%'}</td>${N ? `<td class="n">${SL.fmt(T.rows[k].E, 1)}</td><td class="n">${T.rows[k].O}</td>` : ''}</tr>`).join('') + `</table>` + (D.lethal > 0 ? `<p class="small-note">${SL.fmt(D.lethal * 100, 1)}% of zygotes are lethal (KK) and die as embryos${N ? `; ${S.dead} died in this batch` : ''}. Ratios are among survivors.</p>` : '') + (ok ? `<p class="small-note">Expected ratio ${ratio.map(r => Math.round(r)).join(' : ')}</p>` : '');
+  if (T) { const sig = T.p > 0.05; $('#chiBox').innerHTML = `χ² = <b>${SL.fmt(T.x2, 3)}</b> · df = <b>${T.df}</b> · p = <b>${fmtP(T.p)}</b><br>${T.df < 1 ? 'Only one phenotype class: no test needed.' : sig ? '<span style="color:var(--ok)">p &gt; 0.05: consistent with the expected ratio.</span>' : '<span style="color:var(--bad)">p ≤ 0.05: significant deviation (or chance, 1 time in 20).</span>'}${T.small ? `<br><span class="dim">${T.small} class(es) have E &lt; 5; use a bigger batch.</span>` : ''}${linkedPair() ? `<br>Recombinant offspring: <b>${SL.fmt(S.batch.filter(b => b.rec).length / N * 100, 1)}%</b> (gametes from a recombination event)` : ''}`; }
+  else $('#chiBox').innerHTML = 'Mix to generate offspring and run a chi-square test.';
+  drawRatio();
+}
+function drawRatio() {
+  if (!S.dist) return; const { ctx, w, h } = rst; ctx.clearRect(0, 0, w, h); const D = S.dist, T = chiTest(); const n = D.classes.length; const bw = (w - 20) / n; const maxp = Math.max(...D.classes.map(c => c.p), ...(T ? T.rows.map(r => r.O / T.N) : [0])) * 1.1;
+  D.classes.forEach((c, k) => { const x = 10 + k * bw; const he = (h - 26) * c.p / maxp; ctx.fillStyle = c.col + '55'; ctx.strokeStyle = c.col; rrect(ctx, x + bw * .12, h - 16 - he, bw * .36, he, 3); ctx.fill(); ctx.stroke(); if (T) { const ho = (h - 26) * T.rows[k].O / T.N / maxp; ctx.fillStyle = c.col; rrect(ctx, x + bw * .52, h - 16 - ho, bw * .36, ho, 3); ctx.fill(); } label(ctx, String(k + 1), x + bw / 2, h - 7, '#5f6d8a', 9.5, 'center'); });
+  label(ctx, T ? 'left: expected · right: observed (fraction)' : 'expected fractions', 10, 8, '#5f6d8a', 9.5);
+}
+
+/* ================= Stage views ================= */
+$$('#views button').forEach(b => b.onclick = () => { $$('#views button').forEach(x => x.classList.toggle('on', x === b)); S.view = b.dataset.v; $$('.vpanel').forEach(p => p.classList.toggle('on', p.dataset.p === (S.view === 'pop' ? 'pop' : 'cross'))); hideTip(); if (S.view === 'pop') popUI(); });
+let hitList = [];
+function drawCross(ctx, w, h, dt) {
+  hitList = []; const narrow = w < 560; const ps = Math.min(h * .25, w * (narrow ? .3 : .2), 150);
+  const lx = w * (narrow ? .25 : .22), rx = w * (narrow ? .75 : .78), py = 26 + ps * .55;
+  const D = S.dist;
+  [[S.p1, lx], [S.p2, rx]].forEach(([ind, x], k) => {
+    const gr = ctx.createRadialGradient(x, py, 4, x, py, ps * .75); gr.addColorStop(0, 'rgba(52,211,153,.12)'); gr.addColorStop(1, 'transparent'); ctx.fillStyle = gr; ctx.fillRect(x - ps, py - ps, ps * 2, ps * 2);
+    drawOrg(ctx, ind, x, py, ps); hitList.push({ x: x - ps / 2, y: py - ps / 2, w: ps, h: ps, ind, parent: true });
+    label(ctx, genoStr(ind), x, py + ps * .62, '#e6ecf7', narrow ? 11 : 13, 'center', 700, 'mono');
+    const pt = phen(ind).tr.map(t => t.v).join(' · '); label(ctx, pt, x, py + ps * .62 + 18, '#93a1bd', narrow ? 9.5 : 11, 'center', 600);
+  });
+  label(ctx, '×', w / 2, py, '#e6ecf7', narrow ? 26 : 34, 'center', 300);
+  // gametes
+  const gy = py + ps * .62 + 62; const A = S.anim; const at = A ? A.t : 1;
+  [[D.gm, lx], [D.gf, rx]].forEach(([gs, cx], k) => {
+    const n = gs.length; const r = Math.min(narrow ? 13 : 19, (w * .42) / Math.min(n, narrow ? 4 : 8) / 2.3); const perRow = Math.min(n, narrow ? 4 : 8); const sp = r * 2.3;
+    gs.forEach((g, i) => { const row = Math.floor(i / perRow), col = i % perRow; const rowN = Math.min(perRow, n - row * perRow); const x = cx + (col - (rowN - 1) / 2) * sp; const y = gy + row * (sp + 10); const pop = A ? ease(at / .3 - i * .05) : 1; if (pop <= 0) return;
+      ctx.save(); ctx.globalAlpha = pop; ctx.beginPath(); ctx.arc(x, y, r * pop, 0, PI2); ctx.fillStyle = k ? 'rgba(96,165,250,.18)' : 'rgba(244,114,182,.18)'; ctx.fill(); ctx.strokeStyle = k ? '#60a5fa' : '#f472b6'; ctx.lineWidth = 1.5; ctx.stroke();
+      fitText(ctx, g.k.trim(), x, y - (r > 14 ? 3 : 0), r * 1.75, 11, '#e6ecf7');
+      if (r > 14) label(ctx, fracStr(g.p), x, y + 8, '#93a1bd', 8.5, 'center', 600, 'mono'); ctx.restore(); hitList.push({ x: x - r, y: y - r, w: 2 * r, h: 2 * r, gam: g, k }); });
+  });
+  const gRows = Math.max(Math.ceil(D.gm.length / (narrow ? 4 : 8)), Math.ceil(D.gf.length / (narrow ? 4 : 8)));
+  label(ctx, S.org.sexual ? 'eggs' : 'ovules', lx, gy - 26, '#f472b6', 10.5, 'center', 600); label(ctx, S.org.sexual ? 'sperm' : 'pollen', rx, gy - 26, '#60a5fa', 10.5, 'center', 600);
+  if (!narrow) label(ctx, 'meiosis →  gametes', w / 2, gy - 4, '#5f6d8a', 10, 'center');
+  // offspring grid
+  const oy = gy + gRows * ((narrow ? 13 : 19) * 2.3 + 10) + 16;
+  ctx.strokeStyle = '#1e2a44'; ctx.beginPath(); ctx.moveTo(14, oy - 8); ctx.lineTo(w - 14, oy - 8); ctx.stroke();
+  if (!S.batch.length) { label(ctx, 'Press “Mix genes” to fertilise random gametes and grow a batch of offspring.', w / 2, (oy + h) / 2, '#93a1bd', narrow ? 11 : 13, 'center'); return; }
+  const cell = narrow ? 44 : 60; const cols = Math.floor((w - 20) / cell); const rows = Math.max(1, Math.floor((h - oy - 22) / cell)); const shown = Math.min(S.batch.length, cols * rows);
+  const x0 = (w - cols * cell) / 2;
+  label(ctx, `${genName(S.batch[0].gen)} offspring · showing ${shown} of ${S.batch.length}${S.dead ? ` · ${S.dead} lethal embryos` : ''}`, 16, oy + 4, '#93a1bd', 10.5, 'left', 600);
+  for (let i = 0; i < shown; i++) {
+    const ind = S.batch[i]; const cx = x0 + (i % cols) * cell + cell / 2, cy = oy + 20 + Math.floor(i / cols) * cell + cell / 2; const ap = A ? ease((at - .55) / .4 - i / shown * .5) : 1; if (ap <= 0) continue;
+    ctx.save(); ctx.globalAlpha = ap; const sel = S.sel.includes(ind); const hov = S.hover === ind;
+    rrect(ctx, cx - cell / 2 + 2, cy - cell / 2 + 2, cell - 4, cell - 4, 9); ctx.fillStyle = sel ? 'rgba(52,211,153,.18)' : hov ? 'rgba(255,255,255,.06)' : 'rgba(255,255,255,.02)'; ctx.fill(); if (sel) { ctx.strokeStyle = '#34d399'; ctx.lineWidth = 2; ctx.stroke(); }
+    const ccol = S.dist.classes.find(c => c.key === phen(ind).key); if (ccol) { ctx.fillStyle = ccol.col; ctx.fillRect(cx - cell / 2 + 6, cy + cell / 2 - 7, cell - 12, 2.5); }
+    drawOrg(ctx, ind, cx, cy - 2, cell * .78); ctx.restore();
+    hitList.push({ x: cx - cell / 2, y: cy - cell / 2, w: cell, h: cell, ind, off: true });
+  }
+  // fertilisation animation
+  if (A && at < .75) { A.pairs.forEach((ind, i) => { const u = ease((at - .3) / .4 - i * .03); if (u <= 0 || u >= 1) return; const tx = w / 2 + (i - A.pairs.length / 2) * 22, ty = oy - 30; const a1 = { x: SL.lerp(lx, tx - 6, u), y: SL.lerp(gy, ty, u) }, a2 = { x: SL.lerp(rx, tx + 6, u), y: SL.lerp(gy, ty, u) }; ctx.fillStyle = '#f472b6'; ctx.beginPath(); ctx.arc(a1.x, a1.y, 6, 0, PI2); ctx.fill(); ctx.fillStyle = '#60a5fa'; ctx.beginPath(); ctx.arc(a2.x, a2.y, 4, 0, PI2); ctx.fill(); }); if (at > .45) label(ctx, 'fertilisation', w / 2, oy - 46, '#e6ecf7', 11, 'center', 700); }
+}
+function fitText(ctx, txt, x, y, maxW, maxF, col, wt) {
+  let f = maxF; ctx.font = `${wt || 700} ${f}px "JetBrains Mono", monospace`; let tw = ctx.measureText(txt).width; if (tw > maxW) f = Math.max(5, f * maxW / tw);
+  if (f >= 7.5 || !txt.includes(' ')) { label(ctx, txt, x, y, col, f, 'center', wt || 700, 'mono'); return; }
+  const parts = txt.split(' '); const half = Math.ceil(parts.length / 2); const l1 = parts.slice(0, half).join(' '), l2 = parts.slice(half).join(' ');
+  ctx.font = `${wt || 700} ${maxF}px "JetBrains Mono", monospace`; const f2 = Math.min(maxF, maxF * maxW / Math.max(ctx.measureText(l1).width, ctx.measureText(l2).width));
+  label(ctx, l1, x, y - f2 * .6, col, f2, 'center', wt || 700, 'mono'); label(ctx, l2, x, y + f2 * .6, col, f2, 'center', wt || 700, 'mono');
+}
+function fracStr(p) { for (const d of [1, 2, 4, 8, 16, 32, 64]) { const n = p * d; if (Math.abs(n - Math.round(n)) < 1e-9) return Math.round(n) + '/' + d; } return SL.fmt(p * 100, 1) + '%'; }
+function drawPunnett(ctx, w, h) {
+  hitList = []; const D = S.dist; const R = D.gm.length, C = D.gf.length; const narrow = w < 560;
+  const hw = narrow ? 50 : 76, hh = narrow ? 34 : 42; const legendH = Math.min(150, 22 + Math.ceil(D.classes.length / (narrow ? 1 : 2)) * 17);
+  const cs = Math.min((h - hh - legendH - 40) / R, 110); const cwid = Math.min((w - hw - 24) / C, Math.max(cs, 130)); const gx = (w - hw - cwid * C) / 2 + hw, gy = 34 + hh;
+  label(ctx, `${R} × ${C} Punnett square · ${R * C} cells${S.dist.gm.some(g => g.rec) || S.dist.gf.some(g => g.rec) ? ' · unequal gamete frequencies (linkage)' : ''}`, 14, 18, '#e6ecf7', narrow ? 11 : 12.5, 'left', 700);
+  label(ctx, S.org.sexual ? '♂ sperm →' : 'pollen →', gx, gy - hh - 4, '#60a5fa', 10, 'left', 600); label(ctx, S.org.sexual ? '♀ eggs ↓' : 'ovules ↓', gx - hw, gy - 8, '#f472b6', 10, 'left', 600);
+  D.gf.forEach((g, j) => { const x = gx + j * cwid; rrect(ctx, x + 2, gy - hh + 4, cwid - 4, hh - 8, 6); ctx.fillStyle = 'rgba(96,165,250,.14)'; ctx.fill(); fitText(ctx, g.k.trim(), x + cwid / 2, gy - hh / 2 - (cwid > 60 ? 5 : 0), cwid - 8, 12, '#bfdbfe'); if (cwid > 60) label(ctx, fracStr(g.p), x + cwid / 2, gy - hh / 2 + 10, '#93a1bd', 9, 'center', 500, 'mono'); });
+  D.gm.forEach((g, i) => { const y = gy + i * cs; rrect(ctx, gx - hw + 4, y + 2, hw - 8, cs - 4, 6); ctx.fillStyle = 'rgba(244,114,182,.14)'; ctx.fill(); fitText(ctx, g.k.trim(), gx - hw / 2, y + cs / 2 - (cs > 40 ? 6 : 0), hw - 12, 12, '#fbcfe8'); if (cs > 40) label(ctx, fracStr(g.p), gx - hw / 2, y + cs / 2 + 9, '#93a1bd', 9, 'center', 500, 'mono'); });
+  D.cells.forEach(c => {
+    const x = gx + c.j * cwid, y = gy + c.i * cs; const cl = D.classes.find(k => k.key === c.ph.key); const hov = S.hoverCell === c;
+    rrect(ctx, x + 1.5, y + 1.5, cwid - 3, cs - 3, Math.min(8, cs * .15)); ctx.fillStyle = c.dead ? '#3f1d24' : (cl ? cl.col : '#334155') + (hov ? '66' : '33'); ctx.fill(); ctx.strokeStyle = c.dead ? '#ef4444' : cl ? cl.col : '#475569'; ctx.lineWidth = hov ? 2 : 1; ctx.stroke();
+    if (c.dead) { ctx.save(); ctx.clip(); ctx.strokeStyle = 'rgba(239,68,68,.45)'; for (let k = -cs; k < cwid; k += 7) { ctx.beginPath(); ctx.moveTo(x + k, y); ctx.lineTo(x + k + cs, y + cs); ctx.stroke(); } ctx.restore(); }
+    if (cs > 56) drawOrg(ctx, c.z, x + cwid / 2, y + cs * .42, cs * .55, { noSex: false });
+    fitText(ctx, genoStr(c.z), x + cwid / 2, cs > 56 ? y + cs - 12 : y + cs / 2, cwid - 6, cs > 56 ? 10 : 11.5, c.dead ? '#fca5a5' : '#e6ecf7');
+    hitList.push({ x, y, w: cwid, h: cs, cell: c });
+  });
+  // legend
+  let ly = gy + R * cs + 18; const colW = narrow ? w - 28 : (w - 28) / 2;
+  D.classes.forEach((c, k) => { const lx = 14 + (narrow ? 0 : (k % 2) * colW), yy = ly + (narrow ? k : Math.floor(k / 2)) * 17; if (yy > h - 8) return; ctx.fillStyle = c.col; rrect(ctx, lx, yy - 5, 10, 10, 3); ctx.fill(); label(ctx, `${c.key}: ${fracStr(c.p)}`, lx + 16, yy, '#c7d2e5', 10.5, 'left', 600); });
+  if (D.lethal > 0) label(ctx, `hatched: lethal genotype (${fracStr(D.lethal)} of zygotes)`, w - 14, ly + (narrow ? D.classes.length : Math.ceil(D.classes.length / 2)) * 17, '#fca5a5', 10.5, 'right', 600);
+}
+
+/* ---------- Pedigree ---------- */
+const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+function shadeOptions() { const vals = new Set(); [...S.fam.inds.values()].forEach(i => phen(i).tr.forEach(t => vals.add(t.name + ': ' + t.v))); return [...vals]; }
+function defaultShade() {
+  const T = S.org.traits.find(T => T.genes.some(g => S.track.includes(g))); const G = S.org.geneById[T.genes[0]]; const last = G.al[G.al.length - 1].s;
+  const ind = { sex: 'M', g: {} }; S.org.genes.forEach(g => ind.g[g.id] = g.def.slice()); T.genes.forEach(id => { const g2 = S.org.geneById[id]; const l = g2.al[g2.al.length - 1].s; ind.g[id] = g2.chr === 'X' ? [l, 'Y'] : [l, l]; });
+  return T.name + ': ' + T.f(gt(ind, S.org));
+}
+function drawPedigree(ctx, w, h) {
+  hitList = []; const F = S.fam; const inds = [...F.inds.values()]; if (!S.shade || !shadeOptions().includes(S.shade)) S.shade = defaultShade();
+  const [sTrait, sVal] = S.shade.split(': '); const T = S.org.traits.find(t => t.name === sTrait);
+  // generations by layout depth
+  const depth = new Map(); const setD = (id, d) => { if (!depth.has(id) || depth.get(id) < d) depth.set(id, d); };
+  inds.forEach(i => setD(i.id, i.gen || 0));
+  F.mates.forEach(m => { const d = Math.max(depth.get(m.a) || 0, depth.get(m.b) || 0); setD(m.a, d); setD(m.b, d); m.kids.forEach(k => setD(k, d + 1)); });
+  const maxD = Math.max(...depth.values());
+  // order rows
+  const rows = []; for (let d = 0; d <= maxD; d++) rows.push([]);
+  const placed = new Set();
+  const place = (id, d) => { if (placed.has(id) || !F.inds.has(id)) return; placed.add(id); rows[d].push(id); };
+  F.mates.filter(m => depth.get(m.a) === 0).forEach(m => { place(m.a, 0); place(m.b, 0); });
+  inds.filter(i => depth.get(i.id) === 0).forEach(i => place(i.id, 0));
+  for (let d = 0; d < maxD; d++) {
+    const ms = F.mates.filter(m => depth.get(m.a) === d || depth.get(m.b) === d);
+    ms.sort((p, q) => (rows[d].indexOf(p.a) + rows[d].indexOf(p.b)) - (rows[d].indexOf(q.a) + rows[d].indexOf(q.b)));
+    ms.forEach(m => {
+      const kids = m.kids.filter(k => F.inds.has(k)); const mated = kids.filter(k => F.mates.some(x => x.a === k || x.b === k)); const plain = kids.filter(k => !mated.includes(k));
+      plain.forEach(k => place(k, d + 1));
+      mated.forEach(k => { place(k, d + 1); const mm = F.mates.find(x => x.a === k || x.b === k); const sp = mm.a === k ? mm.b : mm.a; if (!kids.includes(sp)) place(sp, d + 1); else place(sp, d + 1); });
+    });
+    inds.filter(i => depth.get(i.id) === d + 1).forEach(i => place(i.id, d + 1));
+  }
+  const maxN = Math.max(...rows.map(r => r.length)); const sp = Math.min(84, (w - 70) / Math.max(1, maxN)); const rH = Math.min(130, (h - 90) / Math.max(1, rows.length)); const r = Math.min(15, sp * .28, rH * .16);
+  const pos = new Map(); rows.forEach((row, d) => { const tw = (row.length - 1) * sp; row.forEach((id, k) => pos.set(id, { x: w / 2 - tw / 2 + k * sp + 20, y: 64 + d * rH })); });
+  label(ctx, `Pedigree · shading: ${S.shade}`, 14, 18, '#e6ecf7', w < 560 ? 11 : 12.5, 'left', 700); label(ctx, 'click the title area to change the shaded trait', 14, 36, '#5f6d8a', 10, 'left');
+  hitList.push({ x: 0, y: 0, w: w, h: 44, shadeBtn: true });
+  // lines
+  ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1.6;
+  F.mates.forEach(m => {
+    const a = pos.get(m.a), b = pos.get(m.b); if (!a || !b) return; const consang = (() => { const A = F.inds.get(m.a), B = F.inds.get(m.b); return A.mother && A.mother === B.mother && A.father === B.father; })();
+    const y = a.y; const x1 = Math.min(a.x, b.x) + r, x2 = Math.max(a.x, b.x) - r;
+    if (a === b) { /* self */ ctx.beginPath(); ctx.arc(a.x + r * 1.6, a.y, r * .8, -Math.PI / 2, Math.PI / 2); ctx.stroke(); }
+    else { ctx.beginPath(); ctx.moveTo(x1, y - (consang ? 2.5 : 0)); ctx.lineTo(x2, y - (consang ? 2.5 : 0)); if (consang) { ctx.moveTo(x1, y + 2.5); ctx.lineTo(x2, y + 2.5); } ctx.stroke(); }
+    const kids = m.kids.map(k => pos.get(k)).filter(Boolean); if (!kids.length) return;
+    const mx = a === b ? a.x + r * 2.4 : (a.x + b.x) / 2, sy = kids[0].y - r - 14;
+    ctx.beginPath(); ctx.moveTo(mx, y + (a === b ? r * .8 : 0)); ctx.lineTo(mx, sy); const kx1 = Math.min(mx, ...kids.map(k => k.x)), kx2 = Math.max(mx, ...kids.map(k => k.x)); ctx.moveTo(kx1, sy); ctx.lineTo(kx2, sy); kids.forEach(k => { ctx.moveTo(k.x, sy); ctx.lineTo(k.x, k.y - r); }); ctx.stroke();
+  });
+  // symbols
+  rows.forEach((row, d) => { label(ctx, ROMAN[d] || String(d + 1), 14, 64 + d * rH, '#5f6d8a', 13, 'left', 700); row.forEach((id, k) => {
+    const ind = F.inds.get(id), p = pos.get(id); const ph = phen(ind); const t = ph.all.find(t => t.name === sTrait); const aff = t && t.v === sVal;
+    // carrier: heterozygous for shading gene with one copy of the allele producing the shaded value
+    let carrier = false; if (!aff && T && T.genes.length === 1) { const G = S.org.geneById[T.genes[0]]; const a = gt(ind, S.org)[G.id]; if (a[1] !== 'Y' && a[0] !== a[1]) { for (const al of a) { const test = G.chr === 'X' ? [al, 'Y'] : [al, al]; if (genePhen(G, test) === sVal) carrier = true; } } }
+    ctx.fillStyle = aff ? '#34d399' : '#0b1222'; ctx.strokeStyle = (S.p1 && S.p1.id === id) || (S.p2 && S.p2.id === id) ? '#fde047' : '#e6ecf7'; ctx.lineWidth = 2;
+    ctx.beginPath(); if (!ind.sex) { ctx.moveTo(p.x, p.y - r * 1.2); ctx.lineTo(p.x + r * 1.2, p.y); ctx.lineTo(p.x, p.y + r * 1.2); ctx.lineTo(p.x - r * 1.2, p.y); ctx.closePath(); } else if (ind.sex === 'M') ctx.rect(p.x - r, p.y - r, 2 * r, 2 * r); else ctx.arc(p.x, p.y, r, 0, PI2); ctx.fill(); ctx.stroke();
+    if (carrier) { ctx.fillStyle = '#e6ecf7'; ctx.beginPath(); ctx.arc(p.x, p.y, r * .3, 0, PI2); ctx.fill(); }
+    if (ind.tester) label(ctx, 'tester', p.x, p.y - r - 8, '#93a1bd', 9, 'center');
+    label(ctx, `${ROMAN[d] || d + 1}-${k + 1}`, p.x, p.y + r + 10, '#93a1bd', 9.5, 'center', 600);
+    if (sp > 54) label(ctx, genoStr(ind, ''), p.x, p.y + r + 23, '#64748b', Math.min(10, sp / 8), 'center', 600, 'mono');
+    hitList.push({ x: p.x - r - 4, y: p.y - r - 4, w: 2 * r + 8, h: 2 * r + 8, ind, ped: `${ROMAN[d] || d + 1}-${k + 1}` });
+  }); });
+  // legend
+  const ly = h - 18; ctx.lineWidth = 1.5; let lx = 14; const item = (draw, t) => { draw(lx + 7, ly); label(ctx, t, lx + 18, ly, '#93a1bd', 10); ctx.font = '600 10px Inter'; lx += 30 + ctx.measureText(t).width; };
+  item((x, y) => { ctx.fillStyle = '#34d399'; ctx.fillRect(x - 6, y - 6, 12, 12); }, 'shows ' + sVal);
+  item((x, y) => { ctx.strokeStyle = '#e6ecf7'; ctx.beginPath(); ctx.arc(x, y, 6, 0, PI2); ctx.stroke(); ctx.fillStyle = '#e6ecf7'; ctx.beginPath(); ctx.arc(x, y, 2, 0, PI2); ctx.fill(); }, 'carrier');
+  if (w > 520) item((x, y) => { ctx.strokeStyle = '#fde047'; ctx.strokeRect(x - 6, y - 6, 12, 12); }, 'current parents');
+}
+
+/* ---------- Population ---------- */
+const POP = { lines: [], det: [], run: null, done: false };
+const POP_PRESETS = [
+  ['Neutral drift (N = 20)', { popN: 20, popP0: .5, popG: 100, popR: 10, wAA: 1, wAa: 1, waa: 1 }],
+  ['Large population (N = 1000)', { popN: 1000, popP0: .5, popG: 100, popR: 10, wAA: 1, wAa: 1, waa: 1 }],
+  ['Directional selection', { popN: 200, popP0: .05, popG: 150, popR: 8, wAA: 1, wAa: 0.95, waa: 0.9 }],
+  ['Sickle cell & malaria', { popN: 500, popP0: .98, popG: 200, popR: 8, wAA: 0.85, wAa: 1, waa: 0.2 }],
+  ['Recessive lethal', { popN: 300, popP0: .7, popG: 200, popR: 8, wAA: 1, wAa: 1, waa: 0 }],
+];
+$('#popPresets').innerHTML = POP_PRESETS.map((p, i) => `<button class="btn sm" data-i="${i}">${p[0]}</button>`).join('');
+$$('#popPresets button').forEach(b => b.onclick = () => { const p = POP_PRESETS[+b.dataset.i][1]; for (const k in p) { const el = $('#' + k); el.value = p[k]; el.dispatchEvent(new Event('input')); } $$('#popPresets button').forEach(x => x.classList.toggle('on', x === b)); popRun(); });
+const PV = { popN: 50, popP0: .5, popG: 100, popR: 8, wAA: 1, wAa: 1, waa: 1, hwP: .7 }; ['popN', 'popP0', 'popG', 'popR', 'wAA', 'wAa', 'waa'].forEach(id => SL.bind('#' + id, v => { PV[id] = v; popUI(); }, v => id.startsWith('w') ? v.toFixed(2) : id === 'popP0' ? v.toFixed(2) : v));
+SL.bind('#hwP', v => { PV.hwP = v; PV.hwObs = null; popUI(); }, v => v.toFixed(2));
+$('#hwTest').onclick = () => { const a = +$('#nAA').value, b = +$('#nAa').value, c = +$('#naa').value; if (a + b + c <= 0) return; PV.hwObs = [a, b, c]; popUI(); };
+$('#hwSickle').onclick = () => { $('#nAA').value = 720; $('#nAa').value = 260; $('#naa').value = 20; PV.hwObs = [720, 260, 20]; popUI(); SL.toast('Sample of 1000 adults (illustrative): AA = HbAA, Aa = HbAS, aa = HbSS. Survival differences often push real samples away from HWE.', 'ok', 5000); };
+function hwStats() {
+  if (PV.hwObs) { const [a, b, c] = PV.hwObs, n = a + b + c; const p = (2 * a + b) / (2 * n), q = 1 - p; const E = [n * p * p, 2 * n * p * q, n * q * q]; let x2 = 0; [a, b, c].forEach((o, i) => { if (E[i] > 0) x2 += (o - E[i]) ** 2 / E[i]; }); return { p, q, n, obs: [a, b, c], E, x2, pv: chiP(x2, 1) }; }
+  const p = PV.hwP, q = 1 - p; return { p, q, n: 1000, obs: null, E: [1000 * p * p, 2000 * p * q, 1000 * q * q] };
+}
+function popUI() {
+  const H = hwStats();
+  $('#hwBox').innerHTML = `p = <b>${H.p.toFixed(3)}</b>, q = <b>${H.q.toFixed(3)}</b><br>p² = ${(H.p * H.p).toFixed(3)} · 2pq = ${(2 * H.p * H.q).toFixed(3)} · q² = ${(H.q * H.q).toFixed(3)}` + (H.obs ? `<br>Expected (n=${H.n}): ${H.E.map(e => e.toFixed(1)).join(' / ')}<br>χ² = <b>${H.x2.toFixed(3)}</b>, df = 1, p = <b>${fmtP(H.pv)}</b> → ${H.pv > 0.05 ? '<span style="color:var(--ok)">consistent with HWE</span>' : '<span style="color:var(--bad)">not in HWE</span>'}` : `<br>Carriers (Aa): <b>${(200 * H.p * H.q).toFixed(1)}%</b>`);
+  const s = 1 - PV.wAA, t = 1 - PV.waa; const het = PV.wAa >= PV.wAA && PV.wAa >= PV.waa && s > 0 && t > 0;
+  const fin = POP.lines.map(l => l[l.length - 1]); const fixed = fin.filter(p => p >= 1).length, lost = fin.filter(p => p <= 0).length;
+  stats('#popStats', [['Mean final p', POP.lines.length ? SL.fmt(fin.reduce((a, b) => a + b, 0) / fin.length, 3) : '—'], ['A fixed / lost', POP.lines.length ? fixed + ' / ' + lost : '—'], ['Drift var/gen', SL.fmt(PV.popP0 * (1 - PV.popP0) / (2 * PV.popN), 4)], ['Equilibrium q̂', het ? SL.fmt(s / (s + t), 3) : '—']]);
+}
+function stats(el, arr) { $(el).innerHTML = arr.map(([k, v, u]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u ? `<small>${u}</small>` : ''}</div></div>`).join(''); }
+function binom(n, p) { if (p <= 0) return 0; if (p >= 1) return n; if (n > 400) { const m = n * p, sd = Math.sqrt(n * p * (1 - p)); let u = 0, v = 0; while (!u) u = Math.random(); v = Math.random(); const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(PI2 * v); return SL.clamp(Math.round(m + sd * z), 0, n); } let k = 0; for (let i = 0; i < n; i++) if (Math.random() < p) k++; return k; }
+function selStep(p) { const q = 1 - p; const wb = p * p * PV.wAA + 2 * p * q * PV.wAa + q * q * PV.waa; return wb > 0 ? (p * p * PV.wAA + p * q * PV.wAa) / wb : p; }
+function popRun() {
+  POP.lines = []; for (let r = 0; r < PV.popR; r++) { const L = [PV.popP0]; let p = PV.popP0; for (let g = 0; g < PV.popG; g++) { p = binom(2 * PV.popN, selStep(p)) / (2 * PV.popN); L.push(p); } POP.lines.push(L); }
+  POP.det = [PV.popP0]; let p = PV.popP0; for (let g = 0; g < PV.popG; g++) { p = selStep(p); POP.det.push(p); }
+  POP.anim = 0; popUI();
+  const fin = POP.lines.map(l => l[l.length - 1]); if (PV.popN <= 30 && fin.some(p => p <= 0 || p >= 1) && PV.wAA === 1 && PV.wAa === 1 && PV.waa === 1) chal('drift');
+  if (PV.waa < .5 && PV.wAA < 1 && PV.wAa === 1) chal('balance');
+}
+$('#popRun').onclick = popRun;
+function drawPop(ctx, w, h, dt) {
+  const H = hwStats(); const narrow = w < 560; const topH = narrow ? 190 : 200;
+  // HW bars
+  label(ctx, 'Hardy–Weinberg genotype frequencies', 16, 20, '#e6ecf7', 12.5, 'left', 700);
+  const cats = [['AA', 'p²', H.p * H.p, '#34d399'], ['Aa', '2pq', 2 * H.p * H.q, '#60a5fa'], ['aa', 'q²', H.q * H.q, '#f472b6']]; const bx = 30, bw = (w - 60) / 3, bh = topH - 70;
+  ctx.strokeStyle = '#1e2a44'; ctx.beginPath(); ctx.moveTo(bx - 6, 40 + bh); ctx.lineTo(w - 24, 40 + bh); ctx.stroke();
+  cats.forEach(([g, f, v, c], i) => { const x = bx + i * bw; const he = bh * v; rrect(ctx, x + bw * .15, 40 + bh - he, bw * (H.obs ? .32 : .7), he, 5); ctx.fillStyle = c + '88'; ctx.fill(); ctx.strokeStyle = c; ctx.stroke();
+    if (H.obs) { const vo = H.obs[i] / H.n; const ho = bh * vo; rrect(ctx, x + bw * .53, 40 + bh - ho, bw * .32, ho, 5); ctx.fillStyle = c; ctx.fill(); }
+    label(ctx, `${g}  ${f} = ${v.toFixed(3)}`, x + bw / 2, 40 + bh + 14, '#c7d2e5', narrow ? 10 : 11, 'center', 600, 'mono'); });
+  if (H.obs) label(ctx, 'light: expected · solid: observed', narrow ? 16 : w - 20, narrow ? 36 : 20, '#5f6d8a', 10, narrow ? 'left' : 'right');
+  // simulation chart
+  const y0 = topH + 20, ch = h - y0 - 34, cx0 = 46, cw = w - cx0 - 18;
+  label(ctx, PV.wAA === 1 && PV.wAa === 1 && PV.waa === 1 ? `Genetic drift: ${PV.popR} populations of N = ${PV.popN}` : `Selection + drift: w = ${PV.wAA.toFixed(2)} / ${PV.wAa.toFixed(2)} / ${PV.waa.toFixed(2)}, N = ${PV.popN}`, 16, y0 - 2, '#e6ecf7', narrow ? 11 : 12.5, 'left', 700);
+  const X = g => cx0 + g / PV.popG * cw, Y = p => y0 + 14 + (1 - p) * ch;
+  ctx.font = '10px JetBrains Mono'; ctx.fillStyle = '#5f6d8a'; ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) { const p = i / 4, y = Y(p); ctx.beginPath(); ctx.moveTo(cx0, y); ctx.lineTo(cx0 + cw, y); ctx.stroke(); ctx.textAlign = 'right'; ctx.fillText(p.toFixed(2), cx0 - 6, y + 3); }
+  for (let i = 0; i <= 5; i++) { const g = Math.round(PV.popG * i / 5); ctx.textAlign = 'center'; ctx.fillText(g, X(g), y0 + 14 + ch + 14); }
+  label(ctx, 'generation →', cx0 + cw, y0 + 14 + ch - 10, '#5f6d8a', 10, 'right'); label(ctx, 'p(A)', 8, y0 + 8, '#5f6d8a', 10, 'left');
+  if (!POP.lines.length) { label(ctx, 'Choose a preset or press Run.', cx0 + cw / 2, y0 + ch / 2, '#93a1bd', 12, 'center'); return; }
+  POP.anim = Math.min(PV.popG, (POP.anim || 0) + dt * PV.popG / 2.2); const gmax = Math.floor(POP.anim);
+  POP.lines.forEach((L, k) => { ctx.strokeStyle = PAL[k % PAL.length]; ctx.globalAlpha = .85; ctx.lineWidth = 1.6; ctx.beginPath(); for (let g = 0; g <= Math.min(gmax, L.length - 1); g++) { const x = X(g), y = Y(L[g]); g ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke(); });
+  ctx.globalAlpha = 1; ctx.setLineDash([5, 4]); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); POP.det.forEach((p, g) => { if (g > gmax) return; g ? ctx.lineTo(X(g), Y(p)) : ctx.moveTo(X(g), Y(p)); }); ctx.stroke(); ctx.setLineDash([]);
+  label(ctx, '- - infinite population (no drift)', cx0 + 8, y0 + 24, '#e6ecf7', 10, 'left');
+  const s = 1 - PV.wAA, t = 1 - PV.waa; if (PV.wAa >= PV.wAA && PV.wAa >= PV.waa && s > 0 && t > 0) { const pe = 1 - s / (s + t); ctx.strokeStyle = '#facc15'; ctx.setLineDash([2, 4]); ctx.beginPath(); ctx.moveTo(cx0, Y(pe)); ctx.lineTo(cx0 + cw, Y(pe)); ctx.stroke(); ctx.setLineDash([]); label(ctx, `equilibrium p̂ = ${pe.toFixed(3)}`, cx0 + cw - 4, Y(pe) - 8, '#facc15', 10, 'right', 700); }
+}
+
+/* ---------- main loop ---------- */
+const loop = SL.loop((dt) => {
+  const { ctx, w, h } = st; ctx.clearRect(0, 0, w, h);
+  const bg = ctx.createRadialGradient(w * .5, h * .35, 10, w * .5, h * .35, Math.max(w, h) * .8); bg.addColorStop(0, '#0b1426'); bg.addColorStop(1, '#050913'); ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+  if (!S.p1) return;
+  if (S.anim) { S.anim.t += dt / 2.4; if (S.anim.t >= 1) S.anim = null; }
+  try {
+    if (S.view === 'cross') drawCross(ctx, w, h, dt); else if (S.view === 'punnett') drawPunnett(ctx, w, h); else if (S.view === 'pedigree') drawPedigree(ctx, w, h); else drawPop(ctx, w, h, dt);
+  } catch (e) { console.error(e); loop.stop(); }
+  if (S.view === 'cross' && S.batch.length) { const T = chiTest(); setHud([]); } else setHud([]);
+});
+function hitAt(p) { for (let i = hitList.length - 1; i >= 0; i--) { const h = hitList[i]; if (p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h) return h; } return null; }
+cv.addEventListener('pointermove', e => {
+  const p = SL.ptr(e, cv); const h = hitAt(p); S.hover = h && h.ind; S.hoverCell = h && h.cell; cv.style.cursor = h && (h.off || h.shadeBtn) ? 'pointer' : 'default';
+  if (!h || h.shadeBtn) { hideTip(); return; }
+  if (h.ind) { const ph = phen(h.ind); showTip(`${h.ped ? `<b>${h.ped}</b> · ` : ''}${h.parent ? '<b>Parent</b> · ' : ''}${h.ind.sex ? (h.ind.sex === 'F' ? 'female' : 'male') + ' · ' : ''}<span style="font-family:var(--mono)">${genoStr(h.ind)}</span><br>${ph.all.filter(t => t.tracked).map(t => `${t.name}: <b>${t.v}</b>`).join('<br>')}${h.ind.rec ? '<br><span class="dim">from a recombinant gamete</span>' : ''}${h.off ? '<br><span class="dim">Click to select as a parent</span>' : ''}`, p.x, p.y); }
+  else if (h.cell) { const c = h.cell; showTip(`<span style="font-family:var(--mono)">${genoStr(c.z)}</span>${c.z.sex ? (c.z.sex === 'F' ? ' ♀' : ' ♂') : ''}<br>${c.dead ? '<b style="color:var(--bad)">Lethal: dies as an embryo</b>' : c.ph.tr.map(t => `${t.name}: <b>${t.v}</b>`).join('<br>')}<br>P(cell) = ${fracStr(c.p)}`, p.x, p.y); }
+  else if (h.gam) { showTip(`${h.k ? (S.org.sexual ? 'Sperm' : 'Pollen') : (S.org.sexual ? 'Egg' : 'Ovule')} gamete <b>${h.gam.k}</b><br>frequency ${fracStr(h.gam.p)}${h.gam.rec ? ' · recombinant' : ''}`, p.x, p.y); }
+});
+cv.addEventListener('pointerleave', () => { hideTip(); S.hover = null; S.hoverCell = null; });
+cv.addEventListener('pointerdown', e => {
+  const p = SL.ptr(e, cv); const h = hitAt(p); if (!h) return;
+  if (h.shadeBtn) { const o = shadeOptions(); const i = o.indexOf(S.shade); S.shade = o[(i + 1) % o.length]; return; }
+  if (h.off) { const i = S.sel.indexOf(h.ind); if (i >= 0) S.sel.splice(i, 1); else { S.sel.push(h.ind); if (S.sel.length > 2) S.sel.shift(); } selUI(); }
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden) loop.stop(); else loop.start(); });
+
+/* ================= Challenges ================= */
+const CH = [
+  ['ninetwo', 'Mendel’s ratio', 'Get a 9:3:3:1 dihybrid batch of at least 200 with χ² p > 0.05.'],
+  ['whitefemale', 'White-eyed female', 'Breed a white-eyed female fruit fly.'],
+  ['f3', 'Three generations', 'Breed through to the F3 generation.'],
+  ['hidden', 'Hidden recessive', 'Two parents with the dominant phenotype produce an offspring with the recessive one.'],
+  ['epistasis', '9:3:4', 'Produce black, chocolate and yellow Labrador puppies from one cross.'],
+  ['abo', 'Every blood group', 'Produce children with groups A, B, AB and O from a single cross.'],
+  ['lethal', 'Missing quarter', 'Run a curly × curly Glimmerpuff cross where lethal embryos are lost.'],
+  ['linkage', 'Map maker', 'Run a linked fly test cross (≥ 400 offspring) with observed recombinants within 3% of the RF slider.'],
+  ['drift', 'Lost to chance', 'In a neutral population of N ≤ 30, see an allele fixed or lost by drift.'],
+  ['balance', 'Balanced polymorphism', 'Simulate heterozygote advantage (e.g. sickle cell and malaria).'],
+];
+const chDone = {};
+$('#challenges').innerHTML = CH.map(([id, t, d]) => `<div class="panel" id="ch-${id}" style="margin:0"><h3><span class="led"></span> ${t}</h3><p class="small muted" style="margin:0">${d}</p></div>`).join('');
+function chal(id) { if (chDone[id] || S.quiet) return; chDone[id] = 1; const el = $('#ch-' + id); if (el) { el.querySelector('.led').classList.add('on'); el.style.borderColor = 'var(--ok)'; } const c = CH.find(c => c[0] === id); SL.toast(`Challenge complete: <b>${c[1]}</b>`, 'ok'); }
+function checkChallenges() {
+  const T = chiTest(); const B = S.batch; const keys = new Set(B.map(b => phen(b).key));
+  if (S.dist.classes.length === 4 && T && T.N >= 200 && T.p > 0.05) { const r = S.dist.classes.map(c => Math.round(c.p * 16)); if (r.join() === '9,3,3,1') chal('ninetwo'); }
+  if (S.org.id === 'fly' && B.some(b => b.sex === 'F' && phen(b).all.find(t => t.name === 'Eye colour').v === 'White eyes')) chal('whitefemale');
+  if (B.length && B[0].gen >= 3) chal('f3');
+  const recVal = ind => phen(ind).tr.map(t => t.v); const pv1 = recVal(S.p1), pv2 = recVal(S.p2);
+  trackedGenes().forEach((G, gi) => { if (G.type !== 'dom') return; const T2 = S.org.traits.find(t => t.genes.includes(G.id)); if (T2.genes.length > 1) return; const v = i => phen(i).all.find(t => t.name === T2.name).v; if (v(S.p1) === G.vals[0] && v(S.p2) === G.vals[0] && B.some(b => v(b) === G.vals[1])) chal('hidden'); });
+  if (S.org.id === 'lab' && ['Black', 'Chocolate', 'Yellow'].every(c => B.some(b => phen(b).all[0].v === c))) chal('epistasis');
+  if (S.org.id === 'human' && S.track.includes('ABO') && ['A', 'B', 'AB', 'O'].every(c => B.some(b => phen(b).all[0].v === c))) chal('abo');
+  if (S.org.id === 'puff' && S.dead > 0) chal('lethal');
+  if (linkedPair() && B.length >= 400) { const rec = B.filter(b => b.rec).length / B.length * 100; const tc = ['b', 'vg'].every(id => { const a = S.p2.g[id]; return a[0] === a[1] && a[0] === S.org.geneById[id].al[1].s; }); if (tc && Math.abs(rec - S.rf) <= 3) chal('linkage'); }
+}
+
+/* ================= Quiz ================= */
+SL.quiz('#quiz', [
+  { q: 'Two pea plants heterozygous for seed shape (Rr × Rr) are crossed. What fraction of the round offspring are heterozygous?', options: ['1/4', '1/2', '2/3', '3/4'], answer: 2, why: 'Offspring are 1 RR : 2 Rr : 1 rr. Among the 3 round (RR or Rr), 2 are Rr: 2/3.' },
+  { q: 'How many different gametes can an AaBbCc individual make (genes unlinked)?', options: ['3', '6', '8', '27'], answer: 2, why: '2 choices per gene: 2³ = 8 gamete types, which is why the trihybrid Punnett square is 8 × 8.' },
+  { q: 'A red snapdragon (CᴿCᴿ) is crossed with a white one (CᵂCᵂ). The F1 are all pink. This shows…', options: ['codominance', 'incomplete dominance', 'epistasis', 'sex linkage'], answer: 1, why: 'The heterozygote has an intermediate phenotype: incomplete dominance. The F2 will be 1 red : 2 pink : 1 white.' },
+  { q: 'Parents with blood groups A and B have a group O child. What are the parents’ genotypes?', options: ['IᴬIᴬ × IᴮIᴮ', 'Iᴬi × Iᴮi', 'IᴬIᴮ × ii', 'Impossible'], answer: 1, why: 'An O child is ii, so each parent must carry i: Iᴬi × Iᴮi, which can give A, B, AB and O.' },
+  { q: 'A woman who carries red–green colour blindness has children with a man with normal vision. What is the chance that a son is colour-blind?', options: ['0', '1/4', '1/2', '1'], answer: 2, why: 'Sons get their X from their mother. She passes Xᵇ half the time, so 1/2 of sons are colour-blind (1/4 of all children).' },
+  { q: 'BbEe × BbEe Labradors give 9 black : 3 chocolate : 4 yellow. Which gene is epistatic?', options: ['B over E', 'E over B (ee masks B)', 'Neither: it is codominance', 'Both are X-linked'], answer: 1, why: 'Homozygous ee blocks pigment in the coat whatever the B alleles, so E/e is epistatic to B/b (recessive epistasis).' },
+  { q: 'In a test cross of AB/ab × ab/ab, 840 parental and 160 recombinant offspring appear. The map distance is about…', options: ['8 cM', '16 cM', '32 cM', '84 cM'], answer: 1, why: 'RF = 160/1000 = 16%, about 16 centimorgans.' },
+  { q: 'Two curly-tailed Glimmerpuffs (Kk) produce curly and straight offspring in a 2:1 ratio. Why not 3:1?', options: ['K is incompletely dominant', 'KK embryos die', 'The genes are linked', 'Sampling error'], answer: 1, why: 'KK is lethal, so the expected 1 KK : 2 Kk : 1 kk becomes 2 curly (Kk) : 1 straight (kk) among survivors.' },
+  { q: 'In a population in Hardy–Weinberg equilibrium, 9% of people are aa. What fraction are carriers (Aa)?', options: ['9%', '21%', '42%', '49%'], answer: 2, why: 'q² = 0.09 so q = 0.3 and p = 0.7. Carriers: 2pq = 2 × 0.7 × 0.3 = 0.42.' },
+  { q: 'Why does the sickle-cell allele stay common in regions with malaria?', options: ['It is dominant', 'Heterozygotes survive malaria better than either homozygote', 'Genetic drift in large populations', 'New mutations every generation'], answer: 1, why: 'Heterozygote advantage (balancing selection) keeps both alleles at an equilibrium q̂ = s/(s + t).' },
+]);
+
+/* ================= Init ================= */
+['popN', 'popP0', 'popG', 'popR', 'wAA', 'wAa', 'waa'].forEach(id => PV[id] = +$('#' + id).value); PV.hwP = +$('#hwP').value;
+setOrg('pea', 3); drawOrgCards(); S.quiet = true; mix(); S.quiet = false; S.anim = null; popRun(); POP.anim = 1e9; popUI(); loop.start();
+window.GM = { S, ORGS, setOrg, applyPreset, mix, distribution, gametes, chiTest, chiP, popRun, PV, POP, genoStr, phen, selUI, PRESETS };
+})();
+</script>
+</body>
+</html>
