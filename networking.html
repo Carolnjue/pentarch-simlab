@@ -95,8 +95,9 @@
             <div class="field"><label for="client">From</label><select id="client"></select></div>
             <div class="field"><label for="server">Open website</label><select id="server"></select></div>
             <label class="toggle">Use HTTPS (TLS 1.3) <input type="checkbox" id="tls" checked></label>
-            <label class="toggle">ARP cache already has the gateway <input type="checkbox" id="arpC"></label>
-            <label class="toggle">DNS answer already cached <input type="checkbox" id="dnsC"></label>
+            <label class="toggle" title="ARP finds the hardware (MAC) address of the gateway, the router that leads off the local network. If it is cached, that step is skipped.">ARP cache already has the gateway <input type="checkbox" id="arpC"></label>
+            <label class="toggle" title="DNS turns the website name into an IP address. If the answer is cached, no DNS query is sent.">DNS answer already cached <input type="checkbox" id="dnsC"></label>
+            <p class="small muted" style="margin:4px 0 6px">ARP = ask the LAN for the router's hardware address; DNS = look up the site's IP address. Leave both unticked first time to see every step.</p>
             <div class="ctl"><label for="pspd">Packet speed</label><output>1×</output><input type="range" id="pspd" min="0.25" max="4" step="0.25" value="1"></div>
             <div class="btn-row" style="margin-top:6px">
               <button class="btn primary" id="go"><i data-lucide="play"></i> Open website</button>
@@ -155,9 +156,10 @@
             <h3><i data-lucide="repeat"></i> Sliding window</h3>
             <div class="field"><span class="lbl">Protocol</span>
               <div class="seg" id="proto"><button data-v="gbn">Go-Back-N</button><button data-v="sr">Selective Repeat</button><button data-v="tcp" class="on">TCP-style</button></div></div>
+            <p class="small muted" style="margin:0 0 8px">The sender may have up to W segments (numbered chunks of data) in flight before it must wait for an ACK (acknowledgement). Lost segments are resent; the protocols differ in <i>what</i> they resend.</p>
             <div class="ctl"><label for="win">Window size W (segments)</label><output>6</output><input type="range" id="win" min="1" max="16" step="1" value="6"></div>
             <div class="ctl"><label for="loss">Packet loss probability</label><output>10%</output><input type="range" id="loss" min="0" max="50" step="1" value="10"></div>
-            <div class="ctl"><label for="rto">Retransmission timeout</label><output>1.5 × RTT</output><input type="range" id="rto" min="1.1" max="4" step="0.1" value="1.5"></div>
+            <div class="ctl" title="How long the sender waits for an ACK before resending, in multiples of the round-trip time (RTT, the time for a segment to go and its ACK to come back)."><label for="rto">Retransmission timeout</label><output>1.5 × RTT</output><input type="range" id="rto" min="1.1" max="4" step="0.1" value="1.5"></div>
             <div class="ctl"><label for="tspd">Animation speed</label><output>1×</output><input type="range" id="tspd" min="0.25" max="4" step="0.25" value="1"></div>
             <div class="btn-row" style="margin-top:6px"><button class="btn primary" id="tPlay"><i data-lucide="pause"></i> Pause</button><button class="btn" id="tReset"><i data-lucide="rotate-ccw"></i> Restart</button></div>
           </div>
@@ -168,8 +170,8 @@
               <div class="stat"><div class="k">Segments sent</div><div class="v" id="tsS">0</div></div>
               <div class="stat"><div class="k">Retransmits</div><div class="v" id="tsR">0</div></div>
               <div class="stat"><div class="k">Lost</div><div class="v" id="tsL">0</div></div>
-              <div class="stat"><div class="k">Goodput (2·RTT avg)</div><div class="v" id="tsG">0<small>seg/s</small></div></div>
-              <div class="stat"><div class="k">Ideal (no loss)</div><div class="v" id="tsI">0<small>seg/s</small></div></div>
+              <div class="stat" title="Useful, new segments delivered per second (resent copies do not count), averaged over two round-trip times"><div class="k">Goodput (2·RTT avg)</div><div class="v" id="tsG">0<small>seg/s</small></div></div>
+              <div class="stat" title="The best goodput this window size could reach with no losses. Compare it with the goodput."><div class="k">Ideal (no loss)</div><div class="v" id="tsI">0<small>seg/s</small></div></div>
             </div>
             <canvas id="thrCv" role="img" aria-label="Goodput over time compared with the ideal no-loss rate" style="width:100%;height:150px;display:block;margin-top:10px"></canvas>
           </div>
@@ -229,7 +231,7 @@
         <tr><td>2</td><td>Data link</td><td rowspan="2">Link</td><td>Frame</td><td>Ethernet, Wi-Fi (802.11), ARP</td><td>Switch, access point</td></tr>
         <tr><td>1</td><td>Physical</td><td>Bits / symbols</td><td>Copper, fibre, radio</td><td>Cable, hub, radio</td></tr>
       </table></div>
-      <p>A switch reads only the Ethernet header (MAC addresses) and forwards the frame unchanged. A router removes the frame, decrements the IP <b>TTL</b>, chooses the next hop from its routing table and builds a <i>new</i> frame for the next link. That is why the MAC addresses change hop by hop while the IP addresses stay end to end (except where NAT rewrites them).</p>
+      <p>A switch reads only the Ethernet header (MAC addresses: the fixed hardware address of each network card) and forwards the frame unchanged. A router removes the frame, decrements the IP <b>TTL</b> (time to live, a hop counter that is reduced by 1 at each router so a looping packet eventually dies), chooses the next hop from its routing table and builds a <i>new</i> frame for the next link. That is why the MAC addresses change hop by hop while the IP addresses stay end to end (except where NAT rewrites them).</p>
 
       <h3>Opening a website, step by step</h3>
       <ol>
@@ -252,9 +254,9 @@
       </table>
 
       <h3>Reliability and throughput</h3>
-      <p>With window $W$ segments of size MSS and round-trip time RTT, at most $W$ segments can be unacknowledged, so</p>
+      <p>Intuition: the sender can only have $W$ segments "in the pipe" at once, and it must wait one round trip before the pipe can be refilled. So a bigger window or a shorter round trip means more data per second. With window $W$ segments of size MSS (maximum segment size, the data bytes in one segment) and round-trip time RTT, at most $W$ segments can be unacknowledged, so</p>
       <div class="eq">$$\text{throughput} \le \frac{W \cdot \text{MSS}}{\text{RTT}}$$</div>
-      <p>The window must cover the <b>bandwidth–delay product</b> to keep the link busy. When a segment is lost, the sender notices either by a <b>timeout</b> (no ACK within the retransmission timeout, RTO) or by <b>three duplicate ACKs</b> (fast retransmit). <b>Go-Back-N</b> resends everything after the loss; <b>Selective Repeat</b> resends only the missing segment but needs per-segment ACKs and receiver buffering. Real TCP uses cumulative ACKs, buffers out-of-order data, fast retransmit and (with SACK) selective acknowledgement. Under random loss $p$, standard TCP's throughput falls roughly as $\text{MSS}/(\text{RTT}\sqrt{p})$ (the Mathis formula), because the congestion window halves on every loss; the lab keeps the window fixed to isolate retransmission behaviour.</p>
+      <p>The window must cover the <b>bandwidth–delay product</b> (link rate × RTT: the amount of data that fits "in flight" on the link) to keep the link busy. When a segment is lost, the sender notices either by a <b>timeout</b> (no ACK within the retransmission timeout, RTO) or by <b>three duplicate ACKs</b> (fast retransmit). <b>Go-Back-N</b> resends everything after the loss; <b>Selective Repeat</b> resends only the missing segment but needs per-segment ACKs and receiver buffering. Real TCP uses cumulative ACKs, buffers out-of-order data, fast retransmit and (with SACK) selective acknowledgement. Under random loss $p$, standard TCP's throughput falls roughly as $\text{MSS}/(\text{RTT}\sqrt{p})$ (the Mathis formula), because the congestion window halves on every loss; the lab keeps the window fixed to isolate retransmission behaviour.</p>
 
       <h3>IPv4 addressing and subnets</h3>
       <p>An IPv4 address is 32 bits, written as four decimal octets. A prefix length $/p$ says the first $p$ bits identify the network and the remaining $32-p$ bits identify the host:</p>
@@ -354,8 +356,8 @@
      ===================================================================== */
   const onScreen = el => { const r = el.getBoundingClientRect(); return r.bottom > -150 && r.top < innerHeight + 150; };
   const CH = [
-    ['journey', 'Load a web page', 'Complete a full request from a client to the web server.'],
-    ['cached', 'Warm caches', 'Load the page with both ARP and DNS answered from cache (fewer packets).'],
+    ['journey', 'Load a web page', 'Press <b>Open website</b> and let the request run until the page arrives at the client.'],
+    ['cached', 'Warm caches', 'Load the page with both ARP and DNS answered from cache (both boxes ticked; they tick themselves after your first load). Count how many fewer packets it takes.'],
     ['inspect', 'Look inside', 'Inspect a packet on a hop beyond the router and see the NAT-rewritten source address.'],
     ['newhost', 'Grow the LAN', 'Add a new device, cable it in, and load the page from it.'],
     ['reroute', 'Self-healing network', 'Take a link on the current shortest path down and watch the network re-route around it.'],
@@ -718,7 +720,7 @@
   const RP = r => RV.rot ? { x: RV.ox + r.y * RV.s, y: RV.oy + r.x * RV.s } : { x: RV.ox + r.x * RV.s, y: RV.oy + r.y * RV.s };
   function renderLinkPanel() {
     const el = $('#linkPanel'), l = RT.selL;
-    if (!l) { el.innerHTML = '<p class="small muted" style="margin:0">Tap a link to change its cost or take it down.</p>'; return; }
+    if (!l) { el.innerHTML = '<p class="small muted" style="margin:0">Tap a link to change its cost or take it down. A link\'s cost is how expensive it is to use (slow or busy links cost more); routers choose the path with the lowest <i>total</i> cost, not the fewest hops.</p>'; return; }
     el.innerHTML = `<p class="small" style="margin:0 0 4px">Link <b class="mono">${R[l.a].n}–${R[l.b].n}</b> is <b style="color:${l.up ? 'var(--ok)' : 'var(--bad)'}">${l.up ? 'up' : 'down'}</b></p>
       <div class="ctl"><label for="lc">Link cost (OSPF metric)</label><output>${l.c}</output><input type="range" id="lc" min="1" max="20" step="1" value="${l.c}"></div>
       <button class="btn sm ${l.up ? 'danger' : ''}" id="lUp"><i data-lucide="${l.up ? 'unplug' : 'plug'}"></i> ${l.up ? 'Take link down' : 'Bring link up'}</button>`;

@@ -79,6 +79,7 @@
         <div class="ctl"><label for="bSpeed">Animation period</label><output></output><input type="range" id="bSpeed" min="1" max="10" step="0.5" value="4"></div>
         <label class="toggle"><span>Show ideal target wave</span><input type="checkbox" id="bIdeal" checked></label>
         <label class="toggle" id="bPartsRow"><span>Show each harmonic separately</span><input type="checkbox" id="bParts" checked></label>
+        <p class="small muted" style="margin:6px 0">Harmonic n is a sine wave n times faster than the fundamental (n = 1). Aₙ sets its size; φₙ shifts its starting point.</p>
         <div class="hhead"><span>n</span><span>Amplitude Aₙ</span><span>Phase φₙ</span></div>
         <div class="hrows" id="hrows"></div>
       </div>
@@ -153,6 +154,7 @@
 
     <div class="tabpanel prose">
       <h3>1. Fourier series: every periodic signal is a sum of sines</h3>
+      <p>The big idea: any repeating wave, however jagged, can be built by adding plain sine waves whose frequencies are whole-number multiples of the basic repeat rate. Build mode lets you do exactly that with sliders.</p>
       <p>A periodic signal $x(t)$ with period $T$ (fundamental frequency $f_0=1/T$, angular frequency $\omega_0=2\pi f_0$) can be written as</p>
       <div class="eq">$$x(t)=\frac{a_0}{2}+\sum_{n=1}^{\infty}\big[a_n\cos(n\omega_0 t)+b_n\sin(n\omega_0 t)\big]$$</div>
       <div class="eq">$$a_n=\frac{2}{T}\int_0^T x(t)\cos(n\omega_0 t)\,dt,\qquad b_n=\frac{2}{T}\int_0^T x(t)\sin(n\omega_0 t)\,dt$$</div>
@@ -170,6 +172,7 @@
       <p>Near a jump, the partial sums overshoot. Adding more harmonics squeezes the overshoot closer to the jump but never reduces its height: it tends to about <b>8.95 % of the jump</b> (the square wave peaks near $1.179$ instead of $1$).</p>
 
       <h3>2. The discrete Fourier transform (DFT)</h3>
+      <p>Intuition: the DFT tests the samples against a set of pure "probe" waves and reports how strongly each one matches. A big $|X_k|$ means frequency $f_k$ is strongly present.</p>
       <p>A computer only has $N$ samples $x_0,\dots,x_{N-1}$ taken every $1/f_s$ seconds. The DFT measures how much of each frequency $f_k=k\,f_s/N$ they contain:</p>
       <div class="eq">$$X_k=\sum_{n=0}^{N-1}x_n\,e^{-2\pi i kn/N},\qquad x_n=\frac1N\sum_{k=0}^{N-1}X_k\,e^{2\pi i kn/N}$$</div>
       <p>The bin spacing (frequency resolution) is $\Delta f=f_s/N$. Computing the sum directly costs $O(N^2)$ operations. The <b>Fast Fourier Transform</b> (Cooley–Tukey) splits it into even and odd halves recursively and costs $O(N\log_2 N)$: for $N=4096$ that is about 49 000 instead of 16.8 million multiplications. This lab uses its own radix-2 FFT.</p>
@@ -186,7 +189,7 @@
       <h3>4. Filters</h3>
       <p>A linear time-invariant filter multiplies each frequency component by a gain $|H(f)|$ (and shifts its phase). The lab uses Butterworth magnitude responses, which are maximally flat in the pass band:</p>
       <div class="eq">$$|H_{\text{LP}}(f)|=\frac{1}{\sqrt{1+(f/f_c)^{2n}}},\qquad |H_{\text{HP}}(f)|=\frac{1}{\sqrt{1+(f_c/f)^{2n}}}$$</div>
-      <p>At the cutoff the gain is $1/\sqrt2$ ($-3$ dB). Beyond it the response falls by $6n$ dB per octave for order $n$. A band-pass is a high-pass and a low-pass in series.</p>
+      <p>At the cutoff the gain is $1/\sqrt2$ ($-3$ dB, i.e. half the power). Beyond it the response falls by $6n$ dB per octave (each doubling of frequency) for order $n$; every $-6$ dB roughly halves the amplitude. A band-pass is a high-pass and a low-pass in series.</p>
       <div class="callout warn"><i data-lucide="info"></i><div>Simplification: the lab filters the whole recording at once in the frequency domain (FFT, multiply by $|H|$, inverse FFT). This is a zero-phase, offline filter. A real-time analogue or IIR filter has the same magnitude response but also delays and phase-shifts the signal.</div></div>
 
       <h3>5. Fourier drawing</h3>
@@ -416,8 +419,9 @@
   function waveStats() {
     let mx = -Infinity, mn = Infinity, err = 0, pw = 0; const K = 2048;
     const id = ideal[S.preset];
-    for (let i = 0; i < K; i++) { const th = TAU * i / K; const v = wave(th); mx = Math.max(mx, v); mn = Math.min(mn, v); pw += v * v; if (id) err += (v - id(th)) ** 2; }
-    return { mx, mn, rms: Math.sqrt(pw / K), err: id ? Math.sqrt(err / K) : NaN, nz: Array.from(S.A).filter((a, i) => i && a > 0.005).length };
+    let eS = 0, eT = 0;
+    for (let i = 0; i < K; i++) { const th = TAU * i / K; const v = wave(th); mx = Math.max(mx, v); mn = Math.min(mn, v); pw += v * v; if (id) err += (v - id(th)) ** 2; else { eS += (v - ideal.square(th)) ** 2; eT += (v - ideal.tri(th)) ** 2; } }
+    return { mx, mn, rms: Math.sqrt(pw / K), err: id ? Math.sqrt(err / K) : NaN, errSq: Math.sqrt(eS / K), errTri: Math.sqrt(eT / K), nz: Array.from(S.A).filter((a, i) => i && a > 0.005).length };
   }
   function waveChanged() { S.ws = waveStats(); S.dirty = true; updateOsc(); }
 
@@ -497,8 +501,8 @@
     ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.beginPath(); ctx.moveTo(bm.x, bm.y + bm.h + .5); ctx.lineTo(bm.x + bm.w, bm.y + bm.h + .5); ctx.stroke();
     ctx.restore();
     const ov = (ws.mx - 1) / 2 * 100;
-    HUD = [`harmonics <b>${ws.nz}</b>`, `peak <b>${fmt(ws.mx, 3)}</b>`, `RMS <b>${fmt(ws.rms, 3)}</b>`, S.preset === 'square' ? `Gibbs <b>${ov.toFixed(1)} %</b>` : `f₀ <b>${S.f0} Hz</b>`];
-    STATS = [['Non-zero terms', ws.nz], ['Peak value', fmt(ws.mx, 4)], ['RMS', fmt(ws.rms, 4)], ['RMS error vs ideal', isFinite(ws.err) ? fmt(ws.err, 4) : '—'], ['Highest freq.', fmt(S.f0 * maxHarm(), 0) + '<small>Hz</small>'], ['Power check Σ Aₙ²/2', fmt(S.A.reduce((s, a) => s + a * a / 2, 0), 4)]];
+    HUD = [`harmonics <b>${ws.nz}</b>`, `peak <b>${fmt(ws.mx, 3)}</b>`, `RMS <b>${fmt(ws.rms, 3)}</b>`, S.preset === 'square' ? `<span title="Gibbs overshoot: how far the peak next to each jump rises above the ideal level">Gibbs <b>${ov.toFixed(1)} %</b></span>` : `f₀ <b>${S.f0} Hz</b>`];
+    STATS = [['Non-zero terms', ws.nz], ['Peak value', fmt(ws.mx, 4)], ['RMS', fmt(ws.rms, 4)], ...(isFinite(ws.err) || !isFinite(ws.errTri) || !ws.errTri && !ws.errSq ? [['RMS error vs ideal', isFinite(ws.err) ? fmt(ws.err, 4) : '—']] : [['Error vs square', fmt(ws.errSq, 4)], ['Error vs triangle', fmt(ws.errTri, 4)]]), ['Highest freq.', fmt(S.f0 * maxHarm(), 0) + '<small>Hz</small>'], ['Power check Σ Aₙ²/2', fmt(S.A.reduce((s, a) => s + a * a / 2, 0), 4)]];
     LEG = [['x(t) = sum', '#facc15'], ['ideal', 'rgba(255,255,255,.6)']].concat($('#bParts').checked ? [['harmonics', hcol(3)]] : []);
   }
   const maxHarm = () => { let m = 0; for (let n = 1; n <= NH; n++) if (S.A[n] > 0.005) m = n; return m; };
@@ -925,8 +929,8 @@
 
   /* ===================== CHALLENGES ===================== */
   const CH = [
-    { id: 'sq', t: 'Square in few terms', d: 'In Build mode, set the amplitude sliders yourself to make a wave whose RMS error against the ideal square wave is below 0.25 using at most 5 non-zero harmonics.', test: () => S.mode === 'build' && S.preset === 'custom' && S.ws && S.ws.nz <= 5 && S.ws.nz > 0 && (() => { let e = 0; const K = 1024; for (let i = 0; i < K; i++) { const th = TAU * i / K; e += (wave(th) - ideal.square(th)) ** 2; } return Math.sqrt(e / K) < 0.25; })() },
-    { id: 'tri', t: 'Triangle by hand', d: 'Clear the harmonics, then build a triangle wave with an RMS error below 0.02 using the sliders (hint: odd harmonics only, alternating phase, amplitudes ∝ 1/n²).', test: () => S.mode === 'build' && S.builtByHand && S.ws && (() => { let e = 0; const K = 1024; for (let i = 0; i < K; i++) { const th = TAU * i / K; e += (wave(th) - ideal.tri(th)) ** 2; } return Math.sqrt(e / K) < 0.02; })() },
+    { id: 'sq', t: 'Square in few terms', d: 'In Build mode, set the amplitude sliders yourself (start from Clear or edit any preset) to make a wave whose RMS error against the ideal square wave is below 0.25 using at most 5 non-zero harmonics. Watch <b>Error vs square</b> in Live results; worked example 1 gives the ideal amplitudes.', test: () => S.mode === 'build' && S.preset === 'custom' && S.ws && S.ws.nz <= 5 && S.ws.nz > 0 && (() => { let e = 0; const K = 1024; for (let i = 0; i < K; i++) { const th = TAU * i / K; e += (wave(th) - ideal.square(th)) ** 2; } return Math.sqrt(e / K) < 0.25; })() },
+    { id: 'tri', t: 'Triangle by hand', d: 'Clear the harmonics, then build a triangle wave with an RMS error below 0.02 using the sliders. Hint: odd harmonics only, amplitudes 0.811/n² (0.811, 0.090, 0.032…), with harmonics 3, 7, 11… flipped by setting their phase to 180°. <b>Error vs triangle</b> in Live results shows how close you are.', test: () => S.mode === 'build' && S.builtByHand && S.ws && (() => { let e = 0; const K = 1024; for (let i = 0; i < K; i++) { const th = TAU * i / K; e += (wave(th) - ideal.tri(th)) ** 2; } return Math.sqrt(e / K) < 0.02; })() },
     { id: 'alias', t: 'Make 30 Hz look like 10 Hz', d: 'In Sampling mode set f = 30 Hz and choose a sample rate that makes it appear as a 10 Hz wave.', test: () => S.mode === 'samp' && S.qf === 30 && S.sState && S.sState.aliased && Math.abs(S.sState.alias - 10) < 1e-6 },
     { id: 'nyq', t: 'Just fast enough', d: 'Set f = 12 Hz and pick the lowest whole-number sample rate that avoids aliasing.', test: () => S.mode === 'samp' && S.qf === 12 && S.qfs === 25 },
     { id: 'hum', t: 'Kill the hum', d: 'In Filters mode with the 50 Hz mains hum signal, design a filter that lifts the SNR above 15 dB.', test: () => S.mode === 'filt' && S.fsig === 'hum' && S.fx && S.fx.snrOut > 15 },

@@ -95,17 +95,17 @@
               <button class="btn" id="sStep" title="Step forward" aria-label="Step forward"><i data-lucide="step-forward"></i></button>
               <button class="btn" id="sNew" title="New array"><i data-lucide="shuffle"></i> New</button>
             </div>
-            <label class="toggle" style="margin-top:8px">Sonify values (pitch ∝ value) <input type="checkbox" id="sound"></label>
+            <label class="toggle" style="margin-top:8px">Sonify values (taller bar = higher pitch) <input type="checkbox" id="sound"></label>
           </div>
           <div class="panel" id="sortCounters">
             <h3><i data-lucide="gauge"></i> Live counters <span class="small muted" id="cntName" style="margin-left:auto;font-weight:500"></span></h3>
             <div class="stats" id="sortStats">
-              <div class="stat"><div class="k">Comparisons</div><div class="v" id="kC">0</div></div>
-              <div class="stat"><div class="k">Swaps</div><div class="v" id="kS">0</div></div>
-              <div class="stat"><div class="k">Writes</div><div class="v" id="kW">0</div></div>
-              <div class="stat"><div class="k">Array accesses</div><div class="v" id="kA">0</div></div>
+              <div class="stat" title="Times two values were compared (is A[i] > A[j]?)"><div class="k">Comparisons</div><div class="v" id="kC">0</div></div>
+              <div class="stat" title="Times two cells exchanged their values"><div class="k">Swaps</div><div class="v" id="kS">0</div></div>
+              <div class="stat" title="Single values written into the array (shifts, merges, placements)"><div class="k">Writes</div><div class="v" id="kW">0</div></div>
+              <div class="stat" title="Every read or write of the main array"><div class="k">Array accesses</div><div class="v" id="kA">0</div></div>
             </div>
-            <p class="small muted" style="margin:10px 0 0">Progress <b id="kP" class="mono">0 / 0</b> primitive operations</p>
+            <p class="small muted" style="margin:10px 0 0">Progress <b id="kP" class="mono">0 / 0</b> primitive operations (one compare, swap, write or read each). Lower totals mean a cheaper algorithm.</p>
             <p class="scap" id="sCap" aria-live="polite"></p>
           </div>
           <div class="panel">
@@ -274,6 +274,7 @@
     </div>
     <div class="tabpanel prose">
       <h3>What an algorithm costs</h3>
+      <p>In one sentence: Big-O tells you how much more work an algorithm does when the input gets bigger. Double $n$ and an $O(n)$ algorithm does twice the work, an $O(n^2)$ one four times the work. That is why it matters more than the speed of your computer.</p>
       <p>We measure an algorithm by how the number of primitive operations grows with the input size $n$, ignoring constant factors and lower-order terms. Formally, $f(n) = O(g(n))$ if there are constants $c>0$ and $n_0$ such that $f(n) \le c\,g(n)$ for all $n \ge n_0$. $\Omega$ gives a lower bound and $\Theta$ a tight bound (both $O$ and $\Omega$).</p>
       <div class="eq">$$O(1) \subset O(\log n) \subset O(n) \subset O(n\log n) \subset O(n^2) \subset O(2^n) \subset O(n!)$$</div>
       <p>The counters in the lab are the raw material of this analysis: <b>comparisons</b> (is $A[i] &gt; A[j]$?), <b>swaps</b>, single <b>writes</b>, and <b>array accesses</b> (every read or write of the main array).</p>
@@ -286,7 +287,7 @@
       <h3>Divide and conquer</h3>
       <p><b>Merge sort</b> splits the array in half, sorts each half recursively and merges them in linear time:</p>
       <div class="eq">$$T(n) = 2\,T\!\left(\tfrac{n}{2}\right) + \Theta(n) \;\Rightarrow\; T(n) = \Theta(n \log n)$$</div>
-      <p>by the master theorem (case 2: $a=2$, $b=2$, $f(n)=\Theta(n^{\log_b a})$). There are $\log_2 n$ levels of recursion, each doing $\Theta(n)$ work. Merging into an auxiliary array costs $O(n)$ extra space; taking from the left half on ties makes it <b>stable</b>.</p>
+      <p>Intuitively: halving $n$ repeatedly reaches 1 after $\log_2 n$ levels of recursion, and each level does $\Theta(n)$ merging work in total, so the work is $n \times \log_2 n$. (Formally this is case 2 of the master theorem, a standard recipe for such recurrences: $a=2$, $b=2$, $f(n)=\Theta(n^{\log_b a})$.) Merging into an auxiliary array costs $O(n)$ extra space; taking from the left half on ties makes it <b>stable</b>.</p>
       <p><b>Quicksort</b> partitions around a pivot so that smaller items go left and larger go right, then recurses. If the pivot splits evenly, $T(n)=2T(n/2)+\Theta(n)=\Theta(n\log n)$; if it is always the minimum or maximum, $T(n)=T(n-1)+\Theta(n)=\Theta(n^2)$. The <b>Lomuto</b> scheme (pivot = last element) hits that worst case on already-sorted or reversed input. <b>Hoare's</b> scheme scans from both ends, uses about three times fewer swaps on average, and here takes the middle element as pivot, which avoids the sorted-input trap. Random pivots give expected $\approx 1.39\,n\log_2 n$ comparisons.</p>
       <p><b>Heapsort</b> builds a binary max-heap in $O(n)$ time (node $i$ has children $2i+1$ and $2i+2$), then repeatedly swaps the root to the end and sifts down: $\Theta(n\log n)$ in every case with $O(1)$ extra space, but not stable and cache-unfriendly.</p>
 
@@ -805,6 +806,10 @@
       check('race', !!(m && q && m.ops < q.ops));
     }
     check('nocmp', (A.key === 'counting' || A.key === 'radix') && n >= 100);
+    // gentle nudges when a challenge setup is nearly right
+    if (!done.has('ins') && A.key === 'insertion' && n >= 40 && S.order !== 'nearly') nudge('ins', 'Insertion sort challenge: switch <b>Initial order</b> to <b>Nearly sorted</b> and run again.');
+    else if (!done.has('qworst') && A.key === 'quickL' && S.order === 'reversed' && n < 50) nudge('qworst', `Break quicksort: right input, but n = ${n}. Raise <b>Array size n</b> to at least 50.`);
+    if (!done.has('race') && S.B) { const pair = [S.A, S.B]; const m = pair.find(p => p.key === 'merge'), q = pair.find(p => p.key === 'quickL'); if (m && q && m.ops >= q.ops) nudge('race', 'Quicksort won this race. Try <b>Reversed</b> or <b>Nearly sorted</b> input, where its last-element pivot splits badly.'); }
   }
 
   $('#sPlay').onclick = () => {
@@ -858,6 +863,7 @@
       Q.playing = false; setQBtn();
       check('bin1', B.found >= 0 && B.cmp === 1);
       check('binabs', B.found < 0 && Q.n >= 60 && B.cmp === Math.floor(Math.log2(Q.n)) + 1);
+      if (!done.has('binabs') && B.found < 0 && B.cmp < Math.floor(Math.log2(Q.n)) + 1) SL.toast(`Absent, but only ${B.cmp} probes (worst case is ${Math.floor(Math.log2(Q.n)) + 1}${Q.n < 60 ? '; also raise n to 60+' : ''}). Try another absent value.`, 'warn');
     }
   }
   function renderLog() {
@@ -1275,10 +1281,10 @@
   const CH = [
     ['ins', 'Insertion sort’s best case', 'Sort a <b>nearly sorted</b> array of at least 40 items with insertion sort using fewer than 3n comparisons.'],
     ['qworst', 'Break quicksort', 'Make Lomuto quicksort hit its worst case: reversed input, n ≥ 50, at least 0.45·n² comparisons.'],
-    ['race', 'Tortoise beats hare', 'Race merge sort against Lomuto quicksort and make merge sort finish first.'],
+    ['race', 'Tortoise beats hare', 'Tick <b>Race against a second algorithm</b>, set merge sort against Lomuto quicksort and make merge sort finish first (fewer operations). Hint: choose an input order that Lomuto hates.'],
     ['nocmp', 'No comparisons needed', 'Sort at least 100 items with counting sort or radix sort and confirm the comparison counter stays at zero.'],
-    ['bin1', 'Lucky probe', 'Choose a target that binary search finds with exactly one comparison.'],
-    ['binabs', 'Worst-case binary search', 'With n ≥ 60, search for an absent value that takes exactly ⌊log₂n⌋+1 probes.'],
+    ['bin1', 'Lucky probe', 'Choose a target that binary search finds with exactly one comparison. Hint: binary search always probes the middle cell first.'],
+    ['binabs', 'Worst-case binary search', 'With n ≥ 60, search for an absent value that takes exactly ⌊log₂n⌋+1 probes (the Binary worst figure). Use <b>Random absent</b> or click between values until one needs the full count.'],
     ['astar', 'A good heuristic pays', 'Find an optimal path with A* (Manhattan or Euclidean, w = 1) while visiting at most half the nodes Dijkstra visits (Dijkstra ≥ 40 nodes).'],
     ['dfs', 'Depth-first detour', 'Get DFS to return a path at least twice as many moves as the BFS shortest path.'],
     ['greedy', 'Greedy gets fooled', 'Build a grid where greedy best-first returns a non-optimal path.'],
@@ -1292,6 +1298,8 @@
     const li = document.querySelector(`#chal li[data-k="${k}"]`); if (li) li.querySelector('.led').classList.add('on');
     const c = CH.find(x => x[0] === k); SL.toast(`<b>Challenge complete:</b> ${c[1]} (${done.size}/${CH.length})`, 'ok');
   }
+  const nudged = new Set();
+  function nudge(k, msg) { if (nudged.has(k)) return; nudged.add(k); SL.toast(msg, 'warn'); }
 
   /* =====================================================================
      QUIZ

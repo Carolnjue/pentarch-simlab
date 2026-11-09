@@ -84,7 +84,7 @@
       <div class="lab">
         <div class="stage s-ed" id="stage">
           <canvas id="cv" role="img" aria-label="Circuit editor canvas showing gates, switches, outputs and wires; lit wires carry logic 1. Current inputs and outputs are listed in the readouts and the truth table."></canvas>
-          <div class="hud"><span class="readout" id="hudT">t = <b>0</b> gate delays</span><span class="readout" id="hudS"><span class="led on" style="width:8px;height:8px"></span> stable</span><span class="readout" id="hudIO" title="Current inputs and outputs"></span><span class="readout" id="hudHover" style="display:none"></span></div>
+          <div class="hud"><span class="readout" id="hudT" title="Simulated time. One gate delay is the time a gate takes to update its output after an input changes.">t = <b>0</b> gate delays</span><span class="readout" id="hudS" title="Stable: no signal is still changing. Settling: signals are still propagating."><span class="led on" style="width:8px;height:8px"></span> stable</span><span class="readout" id="hudIO" title="Current inputs and outputs"></span><span class="readout" id="hudHover" style="display:none"></span></div>
           <div class="banner" id="banner"><span id="bannerTxt"></span><button class="btn sm" id="bannerCheck"><i data-lucide="check"></i> Check</button><button class="btn sm ghost" id="bannerExit" title="Leave challenge" aria-label="Leave challenge"><i data-lucide="x"></i></button></div>
           <div class="stage-toolbar">
             <button class="btn sm" id="tbUndo" title="Undo (Ctrl+Z)" aria-label="Undo"><i data-lucide="undo-2"></i></button>
@@ -115,8 +115,8 @@
             <div class="stats" style="margin-top:12px">
               <div class="stat"><div class="k">Gates</div><div class="v" id="stG">0</div></div>
               <div class="stat"><div class="k">Wires</div><div class="v" id="stW">0</div></div>
-              <div class="stat"><div class="k">Logic depth</div><div class="v" id="stD">0</div></div>
-              <div class="stat"><div class="k">Events / s</div><div class="v" id="stE">0</div></div>
+              <div class="stat" title="Most gates any signal passes through from an input to an output. More depth means a slower circuit."><div class="k">Logic depth</div><div class="v" id="stD">0</div></div>
+              <div class="stat" title="Signal changes processed per second. A steady non-zero value with no clock means the circuit is oscillating."><div class="k">Events / s</div><div class="v" id="stE">0</div></div>
             </div>
           </div>
           <div class="panel">
@@ -195,6 +195,7 @@
     <div class="tabpanel prose">
       <h3>Logic levels and gates</h3>
       <p>Digital circuits represent information with two voltage levels: <b>high</b> (logic 1, e.g. near 3.3 V or 5 V) and <b>low</b> (logic 0, near 0 V). A gate computes a Boolean function of its inputs. In the editor, high wires glow green and low wires are dark.</p>
+      <p>Notation used on this page: $AB$ means A AND B, $A+B$ means A OR B (not ordinary addition), and a bar, $\overline{A}$, means NOT A. A <b>truth table</b> lists the output for every combination of inputs.</p>
       <div class="gal" id="gal"></div>
       <h3>Boolean algebra</h3>
       <p>Write AND as a product $AB$, OR as a sum $A+B$, NOT as $\overline{A}$ and XOR as $A\oplus B$. For any variables:</p>
@@ -269,7 +270,7 @@
     </div>
 
     <div class="tabpanel prose">
-      <p>Press <b>Start</b> to load a challenge into the builder. Inputs and outputs are placed for you and only the allowed parts are enabled. Your circuit is checked against the required truth table automatically as you wire it.</p>
+      <p>Press <b>Start</b> to load a challenge into the builder. Inputs and outputs are placed for you and only the allowed parts are enabled. Your circuit is checked against the required truth table automatically as you wire it; press <b>Check</b> on the banner at any time to see how many rows are still wrong.</p>
       <ul class="chal" id="chal"></ul>
       <h3>Guided experiments</h3>
       <ol class="steps">
@@ -771,7 +772,7 @@
      ===================================================================== */
   function renderSel() {
     const el = $('#selBody');
-    if (!sel) { el.innerHTML = `<p class="small muted" style="margin:0">Tap a part to select it; tap a switch to toggle it. Drag from an output pin (right side) to an input pin (left side) to connect a wire. Drag from a connected input to re-route its wire. Drag empty space to pan; scroll or use the buttons to zoom.</p>`; return; }
+    if (!sel) { el.innerHTML = `<p class="small muted" style="margin:0"><b>Start here:</b> tap the input switches on the left (the page opens with a full adder: A, B, Cin) and watch the LEDs and the highlighted truth-table row below. Then: tap a part to select it; tap a switch to toggle it. Drag from an output pin (right side) to an input pin (left side) to connect a wire. Drag from a connected input to re-route its wire. Drag empty space to pan; scroll or use the buttons to zoom.</p>`; return; }
     if (sel.w) { const a = byId.get(sel.w.from), b = byId.get(sel.w.to); el.innerHTML = `<p class="small" style="margin:0 0 8px">Wire from <b>${nameOf(a)}</b>.${geom(a).outs[sel.w.fp].name} to <b>${nameOf(b)}</b>.${geom(b).ins[sel.w.tp].name}, carrying <b class="mono">${wireVal(sel.w)}</b>.</p><button class="btn sm danger" id="sDel"><i data-lucide="trash-2"></i> Delete wire</button>`; SL.refreshIcons(el); $('#sDel').onclick = deleteSel; return; }
     const c = sel.c, t = c.type; let h = `<p class="small" style="margin:0 0 6px"><b>${DEF[t].name || t}</b>${c.label ? ' · ' + c.label : ''} <span class="muted">(${nIns(c)} in, ${nOuts(c)} out)</span></p>`;
     if (['SWITCH', 'BUTTON', 'LED', 'CLOCK'].includes(t)) h += `<div class="field"><label for="sLabel">Label</label><input type="text" id="sLabel" maxlength="6" value="${c.label}" ${c.locked ? 'disabled' : ''}></div>`;
@@ -859,7 +860,7 @@
       h += `<div class="expr"><div class="k">${o.label}</div><div class="mono small muted" style="margin-bottom:6px">${o.label} = Σm(${mlist})</div>${minTex}${nv <= 4 ? `<button class="btn sm" data-km="${k}" style="margin-top:8px"><i data-lucide="grid-2x2"></i> Open in Karnaugh map</button>` : ''}</div>`;
       if (nv <= 4) $('#kFrom').add(new Option(o.label, k));
     });
-    ex.innerHTML = `<p class="small muted" style="margin:0 0 4px">Canonical sum of minterms and the minimal sum of products (Quine–McCluskey):</p>` + h;
+    ex.innerHTML = `<p class="small muted" style="margin:0 0 4px">Each output as a formula. Σm lists the row numbers (minterms) where the output is 1; the line below is the shortest equivalent AND/OR formula, found by the Quine–McCluskey method. Read AB as A AND B, + as OR, a bar as NOT.</p>` + h;
     ex.querySelectorAll('[data-tex]').forEach(d => TEX(d, decodeURIComponent(d.dataset.tex), true));
     ex.querySelectorAll('[data-km]').forEach(b => b.onclick = () => { kmFromCircuit(+b.dataset.km); document.querySelector('#modes .tablist button:nth-child(2)').click(); $('#modes').scrollIntoView({ behavior: 'smooth' }); });
     SL.refreshIcons(ex); updateRowHighlight();
@@ -1082,8 +1083,8 @@
      ===================================================================== */
   const BASIC = ['AND', 'OR', 'NOT', 'NAND', 'NOR', 'XOR', 'XNOR', 'BUF'];
   const CH = [
-    { id: 'xor_nand', title: 'XOR from NAND only', desc: 'Build Y = A ⊕ B using only NAND gates. Four is the minimum.', ins: ['A', 'B'], outs: ['Y'], allow: ['NAND'], f: v => ({ Y: v.A ^ v.B }) },
-    { id: 'not_nor', title: 'NOT from NOR', desc: 'Make an inverter using a single NOR gate.', ins: ['A'], outs: ['Y'], allow: ['NOR'], f: v => ({ Y: 1 - v.A }) },
+    { id: 'xor_nand', title: 'XOR from NAND only', desc: 'Build Y = A ⊕ B (1 when A and B differ) using only NAND gates. Four is the minimum; worked example 4 shows the idea.', ins: ['A', 'B'], outs: ['Y'], allow: ['NAND'], f: v => ({ Y: v.A ^ v.B }) },
+    { id: 'not_nor', title: 'NOT from NOR', desc: 'Make an inverter (Y = NOT A) using a single NOR gate. Hint: one output can feed several inputs, so wire A to both NOR inputs.', ins: ['A'], outs: ['Y'], allow: ['NOR'], f: v => ({ Y: 1 - v.A }) },
     { id: 'and_nor', title: 'AND from NOR only', desc: 'Build Y = AB with NOR gates only (hint: De Morgan).', ins: ['A', 'B'], outs: ['Y'], allow: ['NOR'], f: v => ({ Y: v.A & v.B }) },
     { id: 'or_nand', title: 'OR from NAND only', desc: 'Build Y = A + B with NAND gates only.', ins: ['A', 'B'], outs: ['Y'], allow: ['NAND'], f: v => ({ Y: v.A | v.B }) },
     { id: 'maj', title: 'Majority vote', desc: 'Three committee members vote. Y = 1 when at least two vote yes.', ins: ['A', 'B', 'C'], outs: ['Y'], allow: BASIC, f: v => ({ Y: (v.A + v.B + v.C) >= 2 ? 1 : 0 }) },
@@ -1100,7 +1101,8 @@
     const ch = CH.find(c => c.id === id); challenge = ch;
     build((A) => { ch.ins.forEach((n, i) => { const c = A('SWITCH', 40, 40 + i * 80, { label: n }); c.locked = true; }); ch.outs.forEach((n, i) => { const c = A('LED', 480, 60 + i * 120, { label: n, color: 'green' }); c.locked = true; }); });
     document.querySelectorAll('.part').forEach(p => p.classList.toggle('disabled', !(ch.allow.includes(p.dataset.t) || ALWAYS.includes(p.dataset.t))));
-    $('#bannerTxt').innerHTML = `<b>Challenge:</b> ${ch.title}`; $('#banner').classList.add('show');
+    $('#bannerTxt').innerHTML = `<b>Challenge:</b> ${ch.title}`; $('#banner').title = ch.desc.replace(/<[^>]+>/g, ''); $('#banner').classList.add('show');
+    SL.toast(`<b>Goal:</b> ${ch.desc} Wire the parts, then press <b>Check</b> to see which truth-table rows are still wrong.`, '', 9000);
     document.querySelector('#modes .tablist button:nth-child(1)').click();
     $('#modes').scrollIntoView({ behavior: 'smooth' });
   }
@@ -1155,7 +1157,7 @@
   }).start();
 
   // gate gallery in theory
-  const GDESC = { AND: ['Y = AB', '1 only if all inputs are 1'], OR: ['Y = A + B', '1 if any input is 1'], NOT: ['Y = Ā', 'inverts'], NAND: ['Y = (AB)‾', 'NOT-AND; universal'], NOR: ['Y = (A+B)‾', 'NOT-OR; universal'], XOR: ['Y = A ⊕ B', '1 if inputs differ (odd parity)'], XNOR: ['Y = (A ⊕ B)‾', '1 if inputs are equal'], BUF: ['Y = A', 'buffer: restores signal strength'] };
+  const GDESC = { AND: ['Y = AB', '1 only if all inputs are 1'], OR: ['Y = A + B', '1 if any input is 1'], NOT: ['Y = Ā', 'inverts'], NAND: ['Y = (AB)‾', 'NOT-AND; universal (can build every other gate)'], NOR: ['Y = (A+B)‾', 'NOT-OR; universal (can build every other gate)'], XOR: ['Y = A ⊕ B', '1 if inputs differ (odd parity)'], XNOR: ['Y = (A ⊕ B)‾', '1 if inputs are equal'], BUF: ['Y = A', 'buffer: restores signal strength'] };
   $('#gal').innerHTML = ['AND', 'OR', 'NOT', 'NAND', 'NOR', 'XOR', 'XNOR', 'BUF'].map(g => { const one = g === 'NOT' || g === 'BUF'; const rows = one ? [0, 1].map(a => `${a} → ${DEF[g].ev([a])[0]}`) : [[0, 0], [0, 1], [1, 0], [1, 1]].map(([a, b]) => `${a}${b} → ${DEF[g].ev([a, b])[0]}`); return `<div class="g">${gateSVG(g)}<b>${g}</b> <span class="small muted">${GDESC[g][0]}</span><div class="tt-mini">${rows.join(' · ')}</div><div class="small muted">${GDESC[g][1]}</div></div>`; }).join('');
 
   // number systems widget
