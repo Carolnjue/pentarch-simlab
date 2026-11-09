@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bridge Builder · Pentarch SimLab</title>
+<meta name="description" content="Design a 2D truss bridge on a grid, drive a truck across and see member forces, buckling and collapse computed with the direct stiffness method.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  #stage{height:580px;touch-action:none}
+  #cv{cursor:crosshair}
+  .seg.full{display:flex;width:100%}
+  .seg.full button{flex:1;text-align:center;padding:6px 4px;display:flex;align-items:center;justify-content:center;gap:5px}
+  .seg button svg{width:14px;height:14px}
+  .ctl2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0}
+  .ctl2 label{font-size:.78rem;color:var(--muted);display:block;margin-bottom:3px}
+  .msg{font-size:.85rem;border-radius:10px;padding:9px 12px;margin-top:10px;border:1px solid var(--line2);background:var(--bg2);color:var(--muted)}
+  .msg.bad{border-color:var(--bad);color:#fecaca;background:rgba(239,68,68,.08)}
+  .msg.ok{border-color:var(--ok);color:#bbf7d0;background:rgba(34,197,94,.07)}
+  .msg.warn{border-color:var(--warn);color:#fde68a;background:rgba(245,158,11,.07)}
+  .stage .tip{position:absolute;pointer-events:none;background:rgba(5,9,19,.94);border:1px solid var(--line2);border-radius:9px;padding:8px 10px;font:500 .74rem var(--mono);color:var(--text);display:none;z-index:3;max-width:250px;line-height:1.5}
+  .stage .banner{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(5,9,19,.9);border:1px solid var(--line2);border-radius:14px;padding:16px 20px;text-align:center;display:none;z-index:4;max-width:min(420px,90%)}
+  .stage .banner h4{margin:0 0 6px;font-size:1.15rem}
+  .stage .banner p{margin:0 0 10px;color:var(--muted);font-size:.88rem}
+  .levels{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:12px 0}
+  .lvl{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .lvl h4{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .lvl .state{margin-left:auto;font:600 .66rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+  .lvl.done{border-color:var(--ok)} .lvl.done .state{color:var(--ok)}
+  .lvl.active{border-color:var(--accent)} .lvl.active .state{color:var(--accent)}
+  .lvl ul{list-style:none;padding:0;margin:0 0 10px;font-size:.84rem;color:var(--muted)}
+  .lvl ul li{margin:2px 0}
+  .fig{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:10px;margin:12px 0}
+  .fig svg{width:100%;height:auto;display:block}
+  .fig figcaption{font-size:.82rem;color:var(--muted);margin-top:6px}
+  .mwrap{overflow-x:auto;padding:4px 0}
+  #kcv{width:100%;max-width:360px;aspect-ratio:1;display:block;background:var(--bg2);border:1px solid var(--line);border-radius:10px}
+  .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:.76rem;color:var(--muted);margin-top:8px}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .legend i{display:inline-block;width:18px;height:4px;border-radius:3px}
+  @media (max-width:980px){#stage{height:520px}}
+  @media (max-width:520px){#stage{height:460px}}
+</style>
+</head>
+<body data-page="truss-bridge">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab wide-controls">
+    <div>
+      <div class="stage" id="stage">
+        <canvas id="cv" aria-label="Truss bridge editor and load test"></canvas>
+        <div class="hud">
+          <span class="readout">Cost <b id="hudCost">0</b></span>
+          <span class="readout">Mass <b id="hudMass">0</b> kg</span>
+          <span class="readout">Max utilisation <b id="hudU">0</b></span>
+          <span class="readout" id="hudLevel" style="display:none"></span>
+        </div>
+        <div class="tip" id="tip"></div>
+        <div class="banner" id="banner"><h4 id="bnT"></h4><p id="bnP"></p><div class="btn-row" style="justify-content:center"><button class="btn sm primary" id="bnBtn"><i data-lucide="rotate-ccw"></i> Reset test</button></div></div>
+      </div>
+      <div class="legend">
+        <span><i style="background:#ef4444"></i> Tension</span><span><i style="background:#3b82f6"></i> Compression</span><span><i style="background:#64748b"></i> Unstressed</span><span>Line thickness ∝ force · brightness ∝ utilisation</span>
+      </div>
+      <div class="panel" style="margin-top:12px">
+        <h3><i data-lucide="gauge"></i> Analysis</h3>
+        <div class="stats">
+          <div class="stat"><div class="k">Joints j</div><div class="v" id="sJ">0</div></div>
+          <div class="stat"><div class="k">Members m</div><div class="v" id="sM">0</div></div>
+          <div class="stat"><div class="k">m + r vs 2j</div><div class="v" id="sDet">0</div></div>
+          <div class="stat"><div class="k">Reactions</div><div class="v" id="sR" style="font-size:.95rem">–</div></div>
+          <div class="stat"><div class="k">Max tension</div><div class="v" id="sT">0</div></div>
+          <div class="stat"><div class="k">Max compression</div><div class="v" id="sC">0</div></div>
+          <div class="stat"><div class="k">Max deflection</div><div class="v" id="sD">0</div></div>
+          <div class="stat"><div class="k">Load ÷ self-weight</div><div class="v" id="sEff">0</div></div>
+        </div>
+        <div class="msg" id="msg">Build mode: click grid points to add joints, drag from joint to joint to add members.</div>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="hammer"></i> Build</h3>
+        <div class="seg full" id="toolSeg">
+          <button data-t="build" class="on"><i data-lucide="pen-line"></i>Build</button><button data-t="move"><i data-lucide="move"></i>Move</button><button data-t="erase"><i data-lucide="eraser"></i>Erase</button><button data-t="load"><i data-lucide="arrow-down-to-line"></i>Load</button>
+        </div>
+        <div class="ctl2">
+          <div><label for="mat">New members: material</label><select id="mat"><option value="steel">Steel S355</option><option value="alu">Aluminium 6061</option><option value="timber">Glulam timber</option></select></div>
+          <div><label for="sec">Section</label><select id="sec"><option value="S">Small</option><option value="M" selected>Medium</option><option value="L">Large</option></select></div>
+        </div>
+        <p class="small dim" id="secInfo" style="margin:0 0 6px"></p>
+        <p class="small dim" style="margin:0 0 8px">In Build mode, clicking an existing member repaints it with this material and section.</p>
+        <div class="panel-title">Presets</div>
+        <div class="btn-row">
+          <button class="btn sm" data-p="warren">Warren</button><button class="btn sm" data-p="pratt">Pratt</button><button class="btn sm" data-p="howe">Howe</button><button class="btn sm" data-p="k">K-truss</button><button class="btn sm" data-p="deck">Deck only</button>
+        </div>
+        <div class="ctl"><label for="span">Span</label><output>12 m</output><input type="range" id="span" min="12" max="30" step="6" value="12"></div>
+        <div class="btn-row"><button class="btn sm" id="undo"><i data-lucide="undo-2"></i> Undo</button><button class="btn sm" id="clear"><i data-lucide="trash-2"></i> Clear</button><label class="toggle" style="margin-left:auto;gap:8px"><span>Right support pinned</span><input type="checkbox" id="pin2"></label></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="truck"></i> Load test</h3>
+        <div class="ctl"><label for="truck">Truck mass</label><output>10 t</output><input type="range" id="truck" min="1" max="50" step="1" value="10"></div>
+        <div class="ctl"><label for="spd">Truck speed</label><output>4 m/s</output><input type="range" id="spd" min="1" max="10" step="1" value="4"></div>
+        <div class="ctl"><label for="pload">Point load (Load tool)</label><output>20 kN</output><input type="range" id="pload" min="5" max="200" step="5" value="20"></div>
+        <div class="ctl"><label for="exag">Deflection exaggeration</label><output>×50</output><input type="range" id="exag" min="1" max="300" step="1" value="50"></div>
+        <label class="toggle"><span>Include member self-weight</span><input type="checkbox" id="selfw" checked></label>
+        <div class="btn-row" style="margin-top:8px"><button class="btn primary" id="run"><i data-lucide="play"></i> Run truck test</button><button class="btn" id="stop"><i data-lucide="square"></i> Stop</button></div>
+        <p class="small dim" style="margin:8px 0 0">The model is one of two identical side trusses, so it carries half of the truck: two axles 4 m apart taking 40% and 60% of that load, passed to the deck joints by the lever rule.</p>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tabs" data-tabs id="tabs">
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked example</button>
+      <button><i data-lucide="grid-3x3"></i> Stiffness matrix</button>
+      <button><i data-lucide="trophy"></i> Challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. What a truss is</h3>
+      <p>A truss is an assembly of straight members joined at their ends to form triangles. In the ideal model, joints are frictionless pins and loads act only at the joints, so every member carries a pure <b>axial force</b>: tension (pulling, shown red) or compression (pushing, shown blue). No bending means the material is used efficiently, which is why trusses span rivers, roofs and cranes.</p>
+      <p>A triangle is the simplest shape that cannot change its form without a member changing length. A rectangle of four pinned bars can collapse into a parallelogram: it is a <b>mechanism</b>. Add a diagonal and it becomes rigid.</p>
+
+      <h3>2. Determinacy: $m + r = 2j$</h3>
+      <p>Each pinned joint gives two equilibrium equations ($\sum F_x = 0$, $\sum F_y = 0$), so $j$ joints give $2j$ equations. The unknowns are the $m$ member forces plus the $r$ support reactions (pin = 2, roller = 1).</p>
+      <div class="eq">$$m + r < 2j \;\Rightarrow\; \text{mechanism},\qquad m + r = 2j \;\Rightarrow\; \text{statically determinate},\qquad m + r > 2j \;\Rightarrow\; \text{indeterminate}$$</div>
+      <p>The count is necessary but not sufficient: members can be arranged badly (for example, all the diagonals in one panel and none in the next), giving $m + r = 2j$ and still a mechanism. The lab detects this from the stiffness matrix and highlights the loose joint.</p>
+
+      <h3>3. Method of joints</h3>
+      <p>Isolate one joint at a time. Assume every unknown member force is tension (arrow pulling away from the joint); a negative answer means compression. Start at a joint with no more than two unknowns, often a support once the reactions are known:</p>
+      <div class="eq">$$\sum F_x = \sum_i N_i \cos\theta_i + P_x = 0,\qquad \sum F_y = \sum_i N_i \sin\theta_i + P_y = 0$$</div>
+      <p><b>Zero-force members.</b> If a joint has only two non-collinear members and no load, both forces are zero. If three members meet at an unloaded joint and two are collinear, the third carries zero force. These members still matter: they brace compression members against buckling and keep the structure stable when the load moves.</p>
+
+      <h3>4. Method of sections</h3>
+      <p>To find a few member forces directly, cut through at most three members whose forces are unknown and take moments about the point where two of them meet. For a parallel-chord truss of depth $h$, the chord forces at a cut are approximately</p>
+      <div class="eq">$$N_{\text{chord}} = \pm\frac{M}{h},\qquad N_{\text{diagonal}}\sin\theta = V$$</div>
+      <p>where $M$ and $V$ are the bending moment and shear force a solid beam would carry at that section. The top chord is in compression and the bottom chord in tension when the bridge sags; diagonals carry the shear. This is why a deeper truss has smaller chord forces.</p>
+
+      <h3>5. The direct stiffness method</h3>
+      <p>The lab does not use the method of joints; it solves every design, determinate or not, with the <b>direct stiffness method</b>, the 2D version of the finite element method. Each bar of length $L$, area $A$ and modulus $E$ is an axial spring of stiffness $k = EA/L$. With direction cosines $c = \cos\theta$, $s = \sin\theta$, the element stiffness matrix in global coordinates relating the end forces to the end displacements $(u_1, v_1, u_2, v_2)$ is</p>
+      <div class="eq">$$\mathbf{k}_e = \frac{EA}{L}\begin{bmatrix} c^2 & cs & -c^2 & -cs\\ cs & s^2 & -cs & -s^2\\ -c^2 & -cs & c^2 & cs\\ -cs & -s^2 & cs & s^2\end{bmatrix}$$</div>
+      <p><b>Assembly.</b> Each joint has two degrees of freedom. Every element matrix is added into the global matrix $\mathbf{K}$ ($2j\times 2j$) at the rows and columns of its two joints. Then:</p>
+      <ol>
+        <li>Build the load vector $\mathbf{F}$ from joint loads (truck axles, point loads, self-weight).</li>
+        <li>Apply supports by removing the restrained degrees of freedom (pin: $u=v=0$, roller: $v=0$).</li>
+        <li>Solve $\mathbf{K}\,\mathbf{d} = \mathbf{F}$ for the joint displacements. If $\mathbf{K}$ is singular the truss is a mechanism.</li>
+        <li>Recover each member force from the stretch of the bar: $N = \dfrac{EA}{L}\begin{bmatrix}-c & -s & c & s\end{bmatrix}\mathbf{d}_e$ (positive = tension).</li>
+        <li>Reactions follow from $\mathbf{R} = \mathbf{K}\mathbf{d} - \mathbf{F}$ at the restrained degrees of freedom.</li>
+      </ol>
+      <p>Open the <b>Stiffness matrix</b> tab to see the live numbers for any member you click.</p>
+
+      <h3>6. Failure: yielding and buckling</h3>
+      <p>A member in tension fails when its stress $\sigma = N/A$ reaches the yield (or design) strength $f_y$. A slender member in compression usually fails first by <b>Euler buckling</b>, a sideways bowing instability at the critical load</p>
+      <div class="eq">$$P_{cr} = \frac{\pi^2 E I}{(KL)^2}$$</div>
+      <p>with $K = 1$ for pin-ended members. Buckling load falls with the square of length, so long compression members need stiff, wide sections (large $I$), while tension members can be thin. The lab's capacity is $f_yA$ in tension and $\min(f_yA,\,P_{cr})$ in compression. Real codes add imperfection factors and partial safety factors, so treat the lab's values as the ideal upper limit.</p>
+      <div class="callout"><i data-lucide="info"></i><div><b>Simplifications.</b> Pinned joints, small displacements, linear elastic members, no gusset plate or connection failure, no dynamic impact, and one of two parallel trusses carrying half the truck. Self-weight of each member is split equally between its two joints.</div></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Pratt truss by the method of joints</h3>
+      <p>A 12 m Pratt truss has four 3 m panels and a height of 3 m. Bottom joints are $L_0$ to $L_4$, top joints $U_1$ to $U_3$. Point loads of 20 kN act at $L_1$, $L_2$ and $L_3$ (self-weight ignored). $L_0$ is pinned and $L_4$ is on a roller.</p>
+      <figure class="fig">
+        <svg viewBox="0 0 640 230" role="img" aria-label="Pratt truss with labelled joints">
+          <g stroke-width="4" stroke-linecap="round">
+            <line x1="80" y1="170" x2="200" y2="170" stroke="#ef4444"/><line x1="200" y1="170" x2="320" y2="170" stroke="#ef4444"/><line x1="320" y1="170" x2="440" y2="170" stroke="#ef4444"/><line x1="440" y1="170" x2="560" y2="170" stroke="#ef4444"/>
+            <line x1="200" y1="50" x2="320" y2="50" stroke="#3b82f6"/><line x1="320" y1="50" x2="440" y2="50" stroke="#3b82f6"/>
+            <line x1="80" y1="170" x2="200" y2="50" stroke="#3b82f6"/><line x1="440" y1="50" x2="560" y2="170" stroke="#3b82f6"/>
+            <line x1="200" y1="170" x2="200" y2="50" stroke="#ef4444"/><line x1="320" y1="170" x2="320" y2="50" stroke="#64748b"/><line x1="440" y1="170" x2="440" y2="50" stroke="#ef4444"/>
+            <line x1="200" y1="50" x2="320" y2="170" stroke="#ef4444"/><line x1="440" y1="50" x2="320" y2="170" stroke="#ef4444"/>
+          </g>
+          <g fill="#e6ecf7"><circle cx="80" cy="170" r="5"/><circle cx="200" cy="170" r="5"/><circle cx="320" cy="170" r="5"/><circle cx="440" cy="170" r="5"/><circle cx="560" cy="170" r="5"/><circle cx="200" cy="50" r="5"/><circle cx="320" cy="50" r="5"/><circle cx="440" cy="50" r="5"/></g>
+          <g font-family="JetBrains Mono" font-size="13" fill="#93a1bd">
+            <text x="62" y="196">L0</text><text x="190" y="196">L1</text><text x="310" y="196">L2</text><text x="430" y="196">L3</text><text x="552" y="196">L4</text>
+            <text x="186" y="38">U1</text><text x="310" y="38">U2</text><text x="430" y="38">U3</text>
+          </g>
+          <g font-family="JetBrains Mono" font-size="11">
+            <text x="118" y="104" fill="#93c5fd">−42.4</text><text x="248" y="44" fill="#93c5fd">−40</text><text x="128" y="164" fill="#fca5a5">+30</text><text x="248" y="164" fill="#fca5a5">+30</text><text x="368" y="164" fill="#fca5a5">+30</text>
+            <text x="206" y="116" fill="#fca5a5">+20</text><text x="326" y="116" fill="#94a3b8">0</text><text x="262" y="100" fill="#fca5a5">+14.1</text>
+          </g>
+          <g fill="#fb7185"><polygon points="200,214 195,202 205,202"/><polygon points="320,214 315,202 325,202"/><polygon points="440,214 435,202 445,202"/></g>
+          <text x="455" y="215" font-family="JetBrains Mono" font-size="11" fill="#fb7185">20 kN each</text>
+        </svg>
+        <figcaption>Member forces in kN (+ tension, − compression). The truss is symmetric, so the right half mirrors the left. Load arrows are drawn below the bottom chord for clarity.</figcaption>
+      </figure>
+      <ol class="steps">
+        <li><b>Reactions.</b> Total load 60 kN, symmetric, so $R_{L0} = R_{L4} = 30$ kN upward. Check determinacy: $j = 8$, $m = 13$, $r = 3$: $m + r = 16 = 2j$.</li>
+        <li><b>Joint $L_0$.</b> Members $L_0U_1$ (45°) and $L_0L_1$. Vertical: $N_{L_0U_1}\sin45° + 30 = 0 \Rightarrow N_{L_0U_1} = -42.43$ kN (compression). Horizontal: $N_{L_0L_1} + N_{L_0U_1}\cos45° = 0 \Rightarrow N_{L_0L_1} = +30$ kN (tension).</li>
+        <li><b>Joint $L_1$.</b> Vertical: $N_{L_1U_1} - 20 = 0 \Rightarrow N_{L_1U_1} = +20$ kN. Horizontal: $N_{L_1L_2} = N_{L_0L_1} = +30$ kN.</li>
+        <li><b>Joint $U_1$.</b> Vertical: $-N_{U_1L_0}\sin45° - N_{U_1L_1} - N_{U_1L_2}\sin45° = 0 \Rightarrow 30 - 20 - 0.7071N_{U_1L_2} = 0 \Rightarrow N_{U_1L_2} = +14.14$ kN. Horizontal: $-N_{U_1L_0}\cos45° + N_{U_1U_2} + N_{U_1L_2}\cos45° = 0 \Rightarrow 30 + N_{U_1U_2} + 10 = 0 \Rightarrow N_{U_1U_2} = -40$ kN.</li>
+        <li><b>Joint $L_2$.</b> By symmetry both diagonals carry +14.14 kN, giving $2(14.14)\sin45° = 20$ kN upward, which exactly balances the 20 kN load. So $N_{L_2U_2} = 0$: a zero-force member for this load case. Horizontal: $N_{L_2L_3} = 30 + 14.14\cos45° = +40$ kN.</li>
+        <li><b>Check by method of sections</b> through panel 2–3: moment about $U_2$ of the left part: $30(6) - 20(3) = 120$ kN·m, so the bottom chord carries $120/3 = 40$ kN tension, and the top chord $-40$ kN, matching the joint results.</li>
+        <li><b>Stresses.</b> With the medium steel tube (A = 1492 mm²), the top chord stress is $40\,000/1492 = 26.8$ MPa, far below 355 MPa. Its buckling load at $L = 3$ m is $P_{cr} = \pi^2(200\,000)(1.688\times10^6)/3000^2 = 370$ kN, so its utilisation is $40/370 = 10.8\%$. The most critical member is actually the end post $L_0U_1$: it is longer (4.24 m), so $P_{cr} = 370(3/4.24)^2 = 185$ kN and its utilisation is $42.4/185 = 22.9\%$. Buckling, not stress, governs compression members.</li>
+      </ol>
+      <button class="btn sm primary" id="loadEx"><i data-lucide="upload"></i> Load this example in the lab</button>
+      <p class="small muted" style="margin-top:8px">After loading, hover over each member to confirm the forces; the stiffness method gives the same numbers as the hand calculation because this truss is statically determinate.</p>
+    </div>
+
+    <div class="tabpanel">
+      <div class="grid2">
+        <div class="prose">
+          <h3 style="margin-top:0">Selected member</h3>
+          <p id="kInfo" class="muted">Click a member in the lab (Build or Move mode) to see its element stiffness matrix.</p>
+          <div class="mwrap" id="kMat"></div>
+          <p class="small muted">Units: kN/mm (= MN/m). Rows and columns are $(u_1, v_1, u_2, v_2)$ of the member's start and end joints. Every row sums to zero: a rigid-body translation produces no force.</p>
+        </div>
+        <div class="prose">
+          <h3 style="margin-top:0">Global stiffness matrix</h3>
+          <canvas id="kcv"></canvas>
+          <p class="small muted" id="kGlobal"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <p>Each level sets the span, truck and budget, and starts you with just the deck. Design a bridge, then press <b>Run truck test</b>. You pass if the truck crosses without any member failing and the cost is within budget. Costs: steel KES 280/kg, aluminium KES 950/kg, glulam KES 450/kg, plus KES 4,000 per joint.</p>
+      <div class="levels" id="levels"></div>
+      <h3>Experiments</h3>
+      <ol class="steps">
+        <li>Load the Warren preset and run the truck. Watch the diagonals switch between tension and compression as the truck passes: why does that happen?</li>
+        <li>Compare Pratt and Howe at the same span and load. In which design are the long diagonals in tension? Why does that make the Pratt better for steel?</li>
+        <li>Delete one diagonal from a Pratt truss. Check the $m + r$ count and the message. Then delete a vertical instead: what happens?</li>
+        <li>Increase the height of a truss by moving the top joints up one grid row. Predict how the chord forces change ($N \approx M/h$) and check.</li>
+        <li>Make the whole bridge from small sections and find which member buckles first. Upgrade only that member and repeat. This is how engineers optimise.</li>
+      </ol>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = s => document.querySelector(s), fmt = SL.fmt;
+  const g = 9.81;
+  /* ---------------- materials & sections ---------------- */
+  const tube = (D, t) => { const d = D - 2 * t; return { A: Math.PI * (D * D - d * d) / 4 * 1e-6, I: Math.PI * (D ** 4 - d ** 4) / 64 * 1e-12, label: `CHS ${D}×${t}` }; };
+  const sq = b => ({ A: b * b * 1e-6, I: b ** 4 / 12 * 1e-12, label: `${b}×${b} mm` });
+  const MATS = {
+    steel: { name: 'Steel S355', E: 200e9, fy: 355e6, rho: 7850, kes: 280, sec: { S: tube(60, 4), M: tube(100, 5), L: tube(150, 6.3) } },
+    alu: { name: 'Aluminium 6061', E: 69e9, fy: 240e6, rho: 2700, kes: 950, sec: { S: tube(60, 4), M: tube(100, 5), L: tube(150, 6.3) } },
+    timber: { name: 'Glulam timber', E: 12e9, fy: 22e6, rho: 470, kes: 450, sec: { S: sq(100), M: sq(150), L: sq(200) } },
+  };
+  const JOINT_KES = 4000;
+
+  /* ---------------- model ---------------- */
+  let nid = 1;
+  const S = { span: 12, joints: [], members: [], loads: {}, truck: 10, speed: 4, P: 20, exag: 50, selfw: true, pin2: false, tool: 'build', mat: 'steel', sec: 'M', sel: null };
+  const jById = id => S.joints.find(j => j.id === id);
+  const addJoint = (x, y, sup) => { const j = { id: nid++, x, y, sup: sup || null }; S.joints.push(j); return j; };
+  const jointAt = (x, y) => S.joints.find(j => Math.abs(j.x - x) < 1e-6 && Math.abs(j.y - y) < 1e-6);
+  const addMember = (a, b, mat, sec) => { if (a === b) return null; if (S.members.some(m => (m.a === a && m.b === b) || (m.a === b && m.b === a))) return null; const m = { id: nid++, a, b, mat: mat || S.mat, sec: sec || S.sec }; S.members.push(m); return m; };
+  const mLen = m => { const A = jById(m.a), B = jById(m.b); return Math.hypot(B.x - A.x, B.y - A.y); };
+  const mProps = m => { const M = MATS[m.mat], s = M.sec[m.sec], L = mLen(m); const Pcr = Math.PI ** 2 * M.E * s.I / (L * L) / 1000; return { M, s, L, EA: M.E * s.A / 1000, Ty: M.fy * s.A / 1000, Pcr, Cap_c: Math.min(M.fy * s.A / 1000, Pcr), mass: M.rho * s.A * L }; };
+
+  /* ---------------- history ---------------- */
+  const hist = [];
+  const snapshot = () => JSON.stringify({ span: S.span, joints: S.joints, members: S.members, loads: S.loads, nid });
+  function push() { hist.push(snapshot()); if (hist.length > 80) hist.shift(); }
+  function restore(js) { const o = JSON.parse(js); S.span = o.span; S.joints = o.joints; S.members = o.members; S.loads = o.loads; nid = o.nid; syncSpan(); dirty(); }
+
+  /* ---------------- presets ---------------- */
+  function base(span) {
+    S.span = span; S.joints = []; S.members = []; S.loads = {}; S.sel = null;
+    const n = span / 3;
+    for (let k = 0; k <= n; k++) addJoint(k * 3, 0, k === 0 ? 'pin' : k === n ? 'roller' : null);
+    for (let k = 0; k < n; k++) addMember(S.joints[k].id, S.joints[k + 1].id);
+    return n;
+  }
+  const L_ = k => jointAt(k * 3, 0).id;
+  function preset(kind, span = S.span) {
+    push();
+    const n = base(span), H = kind === 'k' ? 4 : 3;
+    if (kind === 'warren') {
+      const T = []; for (let k = 0; k < n; k++) T.push(addJoint(k * 3 + 1.5, H).id);
+      for (let k = 0; k < n; k++) { addMember(L_(k), T[k]); addMember(T[k], L_(k + 1)); if (k < n - 1) addMember(T[k], T[k + 1]); }
+    } else if (kind === 'pratt' || kind === 'howe') {
+      const U = {}; for (let k = 1; k < n; k++) U[k] = addJoint(k * 3, H).id;
+      addMember(L_(0), U[1]); addMember(U[n - 1], L_(n));
+      for (let k = 1; k < n; k++) addMember(L_(k), U[k]);
+      for (let k = 1; k < n - 1; k++) addMember(U[k], U[k + 1]);
+      for (let k = 1; k < n / 2; k++) kind === 'pratt' ? addMember(U[k], L_(k + 1)) : addMember(L_(k), U[k + 1]);
+      for (let k = n - 1; k > n / 2; k--) kind === 'pratt' ? addMember(U[k], L_(k - 1)) : addMember(L_(k), U[k - 1]);
+    } else if (kind === 'k') {
+      const U = {}, Mi = {}; for (let k = 1; k < n; k++) { U[k] = addJoint(k * 3, H).id; if (k !== n / 2) Mi[k] = addJoint(k * 3, H / 2).id; }
+      addMember(L_(0), U[1]); addMember(U[n - 1], L_(n));
+      for (let k = 1; k < n - 1; k++) addMember(U[k], U[k + 1]);
+      for (let k = 1; k < n; k++) { if (Mi[k]) { addMember(L_(k), Mi[k]); addMember(Mi[k], U[k]); } else addMember(L_(k), U[k]); }
+      for (let k = 1; k < n / 2; k++) { addMember(Mi[k], U[k + 1]); addMember(Mi[k], L_(k + 1)); }
+      for (let k = n - 1; k > n / 2; k--) { addMember(Mi[k], U[k - 1]); addMember(Mi[k], L_(k - 1)); }
+    }
+    syncSpan(); resetRun(); dirty();
+  }
+
+  /* ---------------- solver: direct stiffness ---------------- */
+  function supports() { return S.joints.filter(j => j.sup).map(j => ({ j, sup: j.sup === 'roller' && S.pin2 ? 'pin' : j.sup })); }
+  function solve(extraLoads, brokenSet) {
+    const mem = S.members.filter(m => !(brokenSet && brokenSet.has(m.id)));
+    const used = new Set(); mem.forEach(m => { used.add(m.a); used.add(m.b); });
+    const J = S.joints.filter(j => used.has(j.id));
+    const idx = new Map(J.map((j, i) => [j.id, i]));
+    const n = 2 * J.length;
+    const res = { mem, J, idx, N: new Map(), d: new Map(), R: [], ok: false, mass: 0 };
+    if (!J.length) { res.error = 'Nothing to analyse yet: add members.'; return res; }
+    const K = new Float64Array(n * n), F = new Float64Array(n);
+    const props = new Map();
+    mem.forEach(m => {
+      const p = mProps(m); props.set(m.id, p); res.mass += p.mass;
+      const A = jById(m.a), B = jById(m.b), c = (B.x - A.x) / p.L, s = (B.y - A.y) / p.L, k = p.EA / p.L;
+      const dofs = [2 * idx.get(m.a), 2 * idx.get(m.a) + 1, 2 * idx.get(m.b), 2 * idx.get(m.b) + 1];
+      const t = [-c, -s, c, s];
+      for (let r = 0; r < 4; r++) for (let q = 0; q < 4; q++) K[dofs[r] * n + dofs[q]] += k * t[r] * t[q];
+      if (S.selfw) { const W = p.mass * g / 1000 / 2; F[dofs[1]] -= W; F[dofs[3]] -= W; }
+    });
+    res.props = props;
+    Object.entries(S.loads).forEach(([id, P]) => { if (idx.has(+id)) F[2 * idx.get(+id) + 1] -= P; });
+    (extraLoads || []).forEach(l => { if (idx.has(l.id)) F[2 * idx.get(l.id) + 1] -= l.P; });
+    const sup = supports().filter(s => idx.has(s.j.id));
+    const fixed = new Set(); sup.forEach(s => { const i = idx.get(s.j.id); fixed.add(2 * i + 1); if (s.sup === 'pin') fixed.add(2 * i); });
+    const r = sup.reduce((a, s) => a + (s.sup === 'pin' ? 2 : 1), 0);
+    res.r = r; res.j = J.length; res.m = mem.length;
+    if (sup.length < 2 && r < 3) { res.error = 'The bridge must connect to both abutment supports.'; return res; }
+    const free = []; for (let i = 0; i < n; i++) if (!fixed.has(i)) free.push(i);
+    const nf = free.length, A = new Float64Array(nf * nf), b = new Float64Array(nf);
+    for (let i = 0; i < nf; i++) { b[i] = F[free[i]]; for (let k2 = 0; k2 < nf; k2++) A[i * nf + k2] = K[free[i] * n + free[k2]]; }
+    let maxd = 0; for (let i = 0; i < nf; i++) maxd = Math.max(maxd, A[i * nf + i]);
+    // Gaussian elimination (symmetric positive definite when stable): tiny pivot => mechanism
+    for (let i = 0; i < nf; i++) {
+      const p = A[i * nf + i];
+      if (!(p > 1e-9 * maxd)) { const dof = free[i]; res.error = 'mechanism'; res.badJoint = J[dof >> 1].id; res.badDir = dof & 1 ? 'vertically' : 'horizontally'; return res; }
+      for (let r2 = i + 1; r2 < nf; r2++) { const f = A[r2 * nf + i] / p; if (!f) continue; for (let c = i; c < nf; c++) A[r2 * nf + c] -= f * A[i * nf + c]; b[r2] -= f * b[i]; }
+    }
+    const x = new Float64Array(nf);
+    for (let i = nf - 1; i >= 0; i--) { let s = b[i]; for (let c = i + 1; c < nf; c++) s -= A[i * nf + c] * x[c]; x[i] = s / A[i * nf + i]; }
+    const d = new Float64Array(n); free.forEach((dof, i) => d[dof] = x[i]);
+    J.forEach((j, i) => res.d.set(j.id, [d[2 * i], d[2 * i + 1]]));
+    let umax = 0, worst = null;
+    mem.forEach(m => {
+      const p = props.get(m.id), A2 = jById(m.a), B = jById(m.b), c = (B.x - A2.x) / p.L, s = (B.y - A2.y) / p.L;
+      const da = res.d.get(m.a), db = res.d.get(m.b);
+      const N = p.EA / p.L * (c * (db[0] - da[0]) + s * (db[1] - da[1]));
+      const cap = N >= 0 ? p.Ty : p.Cap_c, u = Math.abs(N) / cap;
+      const mode = N >= 0 ? 'yield (tension)' : (p.Pcr < p.Ty ? 'buckling' : 'yield (compression)');
+      res.N.set(m.id, { N, u, cap, mode });
+      if (u > umax) { umax = u; worst = m.id; }
+    });
+    res.umax = umax; res.worst = worst;
+    sup.forEach(s => { const i = idx.get(s.j.id); let Rx = 0, Ry = 0; for (let c = 0; c < n; c++) { Rx += K[2 * i * n + c] * d[c]; Ry += K[(2 * i + 1) * n + c] * d[c]; } Rx -= F[2 * i]; Ry -= F[2 * i + 1]; res.R.push({ id: s.j.id, x: s.j.x, Rx: s.sup === 'pin' ? Rx : 0, Ry }); });
+    res.K = K; res.n = n; res.ok = true;
+    return res;
+  }
+
+  /* ---------------- truck loads ---------------- */
+  function deckJoints() {
+    const dj = S.joints.filter(j => Math.abs(j.y) < 1e-9 && j.x >= -1e-9 && j.x <= S.span + 1e-9).sort((a, b) => a.x - b.x);
+    return dj;
+  }
+  function deckOK() {
+    const dj = deckJoints(); if (!dj.length || dj[0].x > 1e-9 || dj[dj.length - 1].x < S.span - 1e-9) return { ok: false, gap: 0 };
+    for (let i = 0; i < dj.length - 1; i++) { const a = dj[i].id, b = dj[i + 1].id; if (!S.members.some(m => (m.a === a && m.b === b) || (m.a === b && m.b === a))) return { ok: false, gap: (dj[i].x + dj[i + 1].x) / 2 }; }
+    return { ok: true };
+  }
+  const AXLE_GAP = 4;
+  function truckLoads(xr) { // xr = rear axle position
+    const W = S.truck * 1000 * g / 1000 / 2; // kN per truss
+    const axles = [{ x: xr, P: 0.6 * W }, { x: xr + AXLE_GAP, P: 0.4 * W }];
+    const dj = deckJoints(), out = [];
+    axles.forEach(a => {
+      if (a.x < 0 || a.x > S.span) return;
+      for (let i = 0; i < dj.length - 1; i++) {
+        if (a.x >= dj[i].x - 1e-9 && a.x <= dj[i + 1].x + 1e-9) { const f = (a.x - dj[i].x) / (dj[i + 1].x - dj[i].x); out.push({ id: dj[i].id, P: a.P * (1 - f) }, { id: dj[i + 1].id, P: a.P * f }); return; }
+      }
+    });
+    return out;
+  }
+
+  /* ---------------- run state ---------------- */
+  const RUN = { active: false, x: -8, broken: new Set(), env: new Map(), collapse: null, fx: [], done: false, failed: null, peak: 0 };
+  function resetRun() { RUN.active = false; RUN.x = -8; RUN.broken = new Set(); RUN.env = new Map(); RUN.collapse = null; RUN.fx = []; RUN.done = false; RUN.failed = null; RUN.peak = 0; $('#banner').style.display = 'none'; setEditing(true); dirty(); }
+  function setEditing(on) { document.querySelectorAll('#toolSeg button, [data-p], #undo, #clear, #span, #pin2').forEach(b => b.disabled = !on); $('#run').classList.toggle('disabled', !on); }
+
+  /* ---------------- canvas & view ---------------- */
+  const cv = $('#cv'); let st = null; st = SL.canvas(cv, () => { if (st) draw(); });
+  const view = () => { const w = st.w, h = st.h, sc = Math.min(w / (S.span + 7), (h - 50) / 14.5); return { w, h, sc, X: x => w / 2 + (x - S.span / 2) * sc, Y: y => h * 0.5 + 18 - (y - 0.5) * sc, ix: px => (px - w / 2) / sc + S.span / 2, iy: py => 0.5 - (py - h * 0.5 - 18) / sc }; };
+  const BOUNDS = () => ({ x0: 0, x1: S.span, y0: -4, y1: 7 });
+
+  let RES = null, shown = new Map(), hover = null, drag = null, ptrW = null, T = 0;
+  let needSolve = true; const dirty = () => { needSolve = true; };
+
+  function forceColor(N, u, alpha = 1) {
+    const k = Math.min(1, 0.35 + 0.65 * Math.min(1, u * 1.4));
+    if (Math.abs(N) < 0.05) return `rgba(100,116,139,${alpha})`;
+    return N > 0 ? `rgba(${Math.round(120 + 135 * k)},${Math.round(70 - 30 * k)},${Math.round(70 - 30 * k)},${alpha})` : `rgba(${Math.round(60 - 20 * k)},${Math.round(110 + 20 * k)},${Math.round(150 + 105 * k)},${alpha})`;
+  }
+
+  function draw() {
+    const { ctx } = st, V = view(), { w, h, sc, X, Y } = V; if (w < 10) return;
+    ctx.clearRect(0, 0, w, h);
+    // sky
+    const sky = ctx.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#0b1430'); sky.addColorStop(0.6, '#070d1d'); sky.addColorStop(1, '#050913'); ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
+    // distant hills
+    ctx.fillStyle = '#0c1630'; ctx.beginPath(); ctx.moveTo(0, Y(1.5)); for (let x = 0; x <= w; x += 20) ctx.lineTo(x, Y(1.5) - 22 - 16 * Math.sin(x / 90) - 10 * Math.sin(x / 37)); ctx.lineTo(w, Y(-3)); ctx.lineTo(0, Y(-3)); ctx.fill();
+    // river
+    const wy = Y(-5.2), bed = Y(-7.2);
+    const rv = ctx.createLinearGradient(0, wy, 0, h); rv.addColorStop(0, '#0e3a5c'); rv.addColorStop(1, '#06172a'); ctx.fillStyle = rv; ctx.fillRect(X(-1), wy, X(S.span + 1) - X(-1), h - wy);
+    ctx.strokeStyle = 'rgba(125,211,252,.35)'; ctx.lineWidth = 1.2;
+    for (let k = 0; k < 3; k++) { ctx.beginPath(); for (let x = X(-0.5); x <= X(S.span + 0.5); x += 6) { const yy = wy + 4 + k * 9 + 2 * Math.sin(x / 18 + T * (1.5 + k * .4) + k); x === X(-0.5) ? ctx.moveTo(x, yy) : ctx.lineTo(x, yy); } ctx.stroke(); }
+    // abutments
+    const ab = (x0, x1, dir) => { const gr = ctx.createLinearGradient(0, Y(0), 0, h); gr.addColorStop(0, '#3a4560'); gr.addColorStop(1, '#1b2338'); ctx.fillStyle = gr; ctx.beginPath(); ctx.moveTo(X(x0), Y(0)); ctx.lineTo(X(x1), Y(0)); ctx.lineTo(X(x1 + dir * 1.2), h); ctx.lineTo(X(x0), h); ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#5f6d8a'; ctx.beginPath(); ctx.moveTo(X(x0), Y(0)); ctx.lineTo(X(x1), Y(0)); ctx.lineTo(X(x1 + dir * 1.2), h); ctx.stroke(); };
+    ab(-6, -0.3, 1); ab(S.span + 6, S.span + 0.3, -1);
+    // road on abutments
+    ctx.fillStyle = '#2b3348'; ctx.fillRect(X(-6), Y(0) - 3, X(-0.3) - X(-6), 3); ctx.fillRect(X(S.span + 0.3), Y(0) - 3, X(S.span + 6) - X(S.span + 0.3), 3);
+    // grid
+    const B = BOUNDS();
+    if (!RUN.active && !RUN.collapse) {
+      ctx.fillStyle = 'rgba(148,163,184,.28)';
+      for (let x = B.x0; x <= B.x1; x++) for (let y = B.y0; y <= B.y1; y++) { ctx.beginPath(); ctx.arc(X(x), Y(y), y === 0 ? 1.8 : 1.3, 0, 7); ctx.fill(); }
+      ctx.font = '10px JetBrains Mono, monospace'; ctx.fillStyle = 'rgba(148,163,184,.5)'; ctx.textAlign = 'center';
+      for (let x = 0; x <= S.span; x += 3) ctx.fillText(x + ' m', X(x), Y(B.y0) + 16);
+    }
+    if (RUN.collapse) { drawCollapse(ctx, V); drawFx(ctx, V); return; }
+
+    const ex = S.exag;
+    const P = j => { const d = shown.get(j.id) || [0, 0]; return [X(j.x + d[0] * ex), Y(j.y + d[1] * ex)]; };
+    // members
+    const used = new Set(); S.members.forEach(m => { used.add(m.a); used.add(m.b); });
+    S.members.forEach(m => {
+      if (RUN.broken.has(m.id)) return;
+      const A = jById(m.a), Bj = jById(m.b), [x1, y1] = P(A), [x2, y2] = P(Bj);
+      const info = RES && RES.ok ? RES.N.get(m.id) : null;
+      const N = info ? info.N : 0, u = info ? info.u : 0;
+      const wpx = info ? 2.5 + Math.min(9, 9 * Math.abs(N) / Math.max(1, RES.Nmax || 1)) : 3.5;
+      const col = info ? forceColor(N, u) : '#7c8aa6';
+      ctx.save(); ctx.lineCap = 'round';
+      if (u > 0.7) { ctx.shadowColor = u > 1 ? '#ff2d2d' : col; ctx.shadowBlur = 8 + 10 * Math.min(1, u); }
+      ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = wpx + 3; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.strokeStyle = col; ctx.lineWidth = wpx; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      // material texture stripe
+      ctx.shadowBlur = 0; ctx.strokeStyle = m.mat === 'timber' ? 'rgba(201,154,91,.75)' : m.mat === 'alu' ? 'rgba(226,232,240,.55)' : 'rgba(255,255,255,.18)'; ctx.lineWidth = m.sec === 'S' ? 1 : m.sec === 'M' ? 1.6 : 2.4; ctx.setLineDash(m.mat === 'timber' ? [3, 3] : []); ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.setLineDash([]);
+      if ((hover && hover.kind === 'm' && hover.id === m.id) || S.sel === m.id) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.setLineDash([]); }
+      ctx.restore();
+    });
+    // drag preview
+    if (drag && drag.kind === 'member' && ptrW) { const A = jById(drag.from); const [x1, y1] = P(A); ctx.strokeStyle = 'rgba(245,165,36,.85)'; ctx.lineWidth = 3; ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(X(ptrW.x), Y(ptrW.y)); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = 'rgba(245,165,36,.85)'; ctx.beginPath(); ctx.arc(X(ptrW.x), Y(ptrW.y), 5, 0, 7); ctx.fill(); }
+    // supports
+    supports().forEach(s => { const [px, py] = P(s.j); drawSupport(ctx, px, py, s.sup, sc); });
+    // joints
+    S.joints.forEach(j => {
+      const [px, py] = P(j); const bad = RES && RES.error === 'mechanism' && RES.badJoint === j.id;
+      ctx.beginPath(); ctx.arc(px, py, j.sup ? 6 : 5, 0, 7);
+      ctx.fillStyle = bad ? '#f59e0b' : used.has(j.id) ? '#e6ecf7' : '#64748b'; ctx.fill(); ctx.strokeStyle = '#0b1222'; ctx.lineWidth = 2; ctx.stroke();
+      if (bad) { ctx.strokeStyle = 'rgba(245,158,11,' + (0.5 + 0.5 * Math.sin(T * 6)) + ')'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(px, py, 13, 0, 7); ctx.stroke(); }
+      if (hover && hover.kind === 'j' && hover.id === j.id) { ctx.strokeStyle = '#f5a524'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(px, py, 10, 0, 7); ctx.stroke(); }
+      if (S.loads[j.id]) { SL.arrow(ctx, px, py - 46, px, py - 9, '#fb7185', 2.6, 9); ctx.fillStyle = '#fb7185'; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(fmt(S.loads[j.id], 0) + ' kN', px, py - 51); }
+    });
+    // reactions
+    if (RES && RES.ok) RES.R.forEach(r => { const j = jById(r.id), [px, py] = P(j); const len = 18 + 20 * Math.min(1, Math.abs(r.Ry) / Math.max(1, ...RES.R.map(q => Math.abs(q.Ry)))); SL.arrow(ctx, px, py + 26 + len, px, py + 26, '#34d399', 2.4, 8); ctx.fillStyle = '#34d399'; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = r.x < S.span / 2 ? 'right' : 'left'; ctx.fillText(fmt(r.Ry, 1) + ' kN', px + (r.x < S.span / 2 ? -8 : 8), py + 40 + len / 2); });
+    // truck
+    if (RUN.active || RUN.done) drawTruck(ctx, V, RUN.x, P);
+    drawFx(ctx, V);
+    // mechanism note on canvas
+    if (RES && !RES.ok && RES.error && S.members.length) { ctx.fillStyle = 'rgba(245,158,11,.9)'; ctx.font = '600 12px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(RES.error === 'mechanism' ? 'Unstable: the truss is a mechanism (see message below)' : RES.error, w / 2, h - 14); }
+  }
+
+  function drawSupport(ctx, px, py, kind, sc) {
+    ctx.save(); ctx.fillStyle = 'rgba(148,163,184,.35)'; ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(px, py + 5); ctx.lineTo(px - 11, py + 21); ctx.lineTo(px + 11, py + 21); ctx.closePath(); ctx.fill(); ctx.stroke();
+    if (kind === 'roller') { ctx.beginPath(); ctx.arc(px - 6, py + 25, 3.5, 0, 7); ctx.moveTo(px + 9.5, py + 25); ctx.arc(px + 6, py + 25, 3.5, 0, 7); ctx.stroke(); }
+    ctx.restore();
+  }
+
+  function drawTruck(ctx, V, xr, P) {
+    const { X, Y, sc } = V;
+    // deck height under each axle (deflected)
+    const yAt = x => { if (x <= 0 || x >= S.span) return 0; const dj = deckJoints(); for (let i = 0; i < dj.length - 1; i++) if (x >= dj[i].x && x <= dj[i + 1].x) { const a = shown.get(dj[i].id) || [0, 0], b = shown.get(dj[i + 1].id) || [0, 0], f = (x - dj[i].x) / (dj[i + 1].x - dj[i].x); return (a[1] * (1 - f) + b[1] * f) * S.exag; } return 0; };
+    const y1 = yAt(xr), y2 = yAt(xr + AXLE_GAP), ang = Math.atan2(-(y2 - y1) * sc, AXLE_GAP * sc);
+    const ox = X(xr), oy = Y(y1);
+    ctx.save(); ctx.translate(ox, oy); ctx.rotate(ang);
+    const u = sc, wr = 0.45 * u;
+    const mass = S.truck, body = 0.4 + Math.min(1, mass / 40);
+    // trailer
+    const grd = ctx.createLinearGradient(0, -2.6 * u, 0, -0.6 * u); grd.addColorStop(0, '#f5a524'); grd.addColorStop(1, '#b45309');
+    ctx.fillStyle = grd; roundRect(ctx, -1.4 * u, -(1.4 + 1.2 * body) * u, 4.2 * u, (0.8 + 1.2 * body) * u, 3); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.font = `600 ${Math.max(8, 0.42 * u)}px JetBrains Mono, monospace`; ctx.textAlign = 'center'; ctx.fillStyle = '#1f1300'; ctx.fillText(mass + ' t', 0.7 * u, -1.0 * u - 0.5 * body * u);
+    // cab
+    ctx.fillStyle = '#e2e8f0'; roundRect(ctx, 3.0 * u, -2.2 * u, 1.9 * u, 1.6 * u, 4); ctx.fill();
+    ctx.fillStyle = '#38bdf8'; roundRect(ctx, 3.9 * u, -2.0 * u, 0.85 * u, 0.6 * u, 2); ctx.fill();
+    ctx.fillStyle = '#fde047'; ctx.fillRect(4.8 * u, -1.1 * u, 0.12 * u, 0.25 * u);
+    ctx.fillStyle = '#334155'; ctx.fillRect(-1.4 * u, -0.75 * u, 6.3 * u, 0.25 * u);
+    // wheels
+    [0, AXLE_GAP].forEach(xa => { ctx.fillStyle = '#0f172a'; ctx.beginPath(); ctx.arc(xa * u, -wr, wr, 0, 7); ctx.fill(); ctx.fillStyle = '#94a3b8'; ctx.beginPath(); ctx.arc(xa * u, -wr, wr * 0.45, 0, 7); ctx.fill(); });
+    ctx.restore();
+  }
+  function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+
+  /* ---------------- effects & collapse ---------------- */
+  function burst(x, y, n, col) { for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, s = 1 + Math.random() * 4; RUN.fx.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s + 2, life: 1, col }); } }
+  function drawFx(ctx, V) { RUN.fx.forEach(p => { ctx.fillStyle = p.col.replace('A', p.life.toFixed(2)); ctx.fillRect(V.X(p.x) - 1.5, V.Y(p.y) - 1.5, 3, 3); }); }
+  function stepFx(dt) { RUN.fx.forEach(p => { p.vy -= 9.81 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt * 0.8; }); RUN.fx = RUN.fx.filter(p => p.life > 0); }
+
+  function startCollapse(reason) {
+    const ex = S.exag; const pts = new Map();
+    S.joints.forEach(j => { const d = shown.get(j.id) || [0, 0]; const x = j.x + d[0] * Math.min(ex, 20), y = j.y + d[1] * Math.min(ex, 20); pts.set(j.id, { x, y, px: x, py: y, fixed: !!j.sup }); });
+    const cons = S.members.filter(m => !RUN.broken.has(m.id)).map(m => ({ a: m.a, b: m.b, L: Math.hypot(pts.get(m.a).x - pts.get(m.b).x, pts.get(m.a).y - pts.get(m.b).y), id: m.id }));
+    RUN.collapse = { pts, cons, t: 0, truck: { x: SL.clamp(RUN.x, 0.5, S.span - 5.5), y: 0, vy: 0, ang: 0, va: (Math.random() - 0.5) * 0.8 }, reason, splashed: false };
+    RUN.active = false;
+  }
+  function stepCollapse(dt) {
+    const C = RUN.collapse; C.t += dt; const g2 = 9.81 * dt * dt;
+    C.pts.forEach(p => { if (p.fixed) return; const vx = (p.x - p.px) * 0.995, vy = (p.y - p.py) * 0.995; p.px = p.x; p.py = p.y; p.x += vx; p.y += vy - g2; });
+    for (let it = 0; it < 12; it++) C.cons.forEach(c => { const a = C.pts.get(c.a), b = C.pts.get(c.b); const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1e-6, diff = (d - c.L) / d; const wa = a.fixed ? 0 : (b.fixed ? 1 : 0.5), wb = b.fixed ? 0 : (a.fixed ? 1 : 0.5); a.x += dx * diff * wa; a.y += dy * diff * wa; b.x -= dx * diff * wb; b.y -= dy * diff * wb; });
+    C.pts.forEach(p => { if (p.y < -7) { p.y = -7; p.py = p.y + (p.y - p.py) * -0.2; } });
+    const tk = C.truck; if (tk.y > -6.2) { tk.vy -= 9.81 * dt; tk.y += tk.vy * dt; tk.ang += tk.va * dt; } else if (!C.splashed) { C.splashed = true; for (let i = 0; i < 40; i++) burst(tk.x + 2 + Math.random() * 3, -5.2, 1, 'rgba(125,211,252,A)'); }
+  }
+  function drawCollapse(ctx, V) {
+    const C = RUN.collapse, { X, Y, sc } = V;
+    C.cons.forEach(c => { const a = C.pts.get(c.a), b = C.pts.get(c.b); ctx.strokeStyle = '#7c8aa6'; ctx.lineWidth = 3.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(X(a.x), Y(a.y)); ctx.lineTo(X(b.x), Y(b.y)); ctx.stroke(); });
+    C.pts.forEach(p => { ctx.fillStyle = '#cbd5e1'; ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), 4, 0, 7); ctx.fill(); });
+    supports().forEach(s => { const p = C.pts.get(s.j.id); drawSupport(ctx, X(p.x), Y(p.y), s.sup, sc); });
+    // truck
+    const tk = C.truck; ctx.save(); ctx.translate(X(tk.x + 2), Y(tk.y)); ctx.rotate(tk.ang); ctx.translate(-X(tk.x + 2), -Y(tk.y));
+    drawTruckAt(ctx, V, tk.x, tk.y); ctx.restore();
+    // water over everything below the surface
+    const wy = Y(-5.2); ctx.fillStyle = 'rgba(14,58,92,.55)'; ctx.fillRect(X(-0.3), wy, X(S.span + 0.3) - X(-0.3), V.h - wy);
+  }
+  function drawTruckAt(ctx, V, x, y) { const sv = shown; shown = new Map(); const fakeX = V.X; ctx.save(); ctx.translate(0, V.Y(y) - V.Y(0)); drawTruck(ctx, V, x, null); ctx.restore(); shown = sv; }
+
+  /* ---------------- UI wiring ---------------- */
+  function syncSpan() { const el = $('#span'); el.value = S.span; el.closest('.ctl').querySelector('output').textContent = S.span + ' m'; el.style.setProperty('--p', ((S.span - 12) / 18 * 100) + '%'); }
+  $('#span').addEventListener('input', e => { const sp = +e.target.value; const kind = lastPreset; S.span = sp; preset(kind, sp); e.target.closest('.ctl').querySelector('output').textContent = sp + ' m'; });
+  let lastPreset = 'pratt';
+  document.querySelectorAll('[data-p]').forEach(b => b.onclick = () => { lastPreset = b.dataset.p; preset(b.dataset.p); });
+  document.querySelectorAll('#toolSeg button').forEach(b => b.onclick = () => { S.tool = b.dataset.t; document.querySelectorAll('#toolSeg button').forEach(x => x.classList.toggle('on', x === b)); setMsg(); });
+  $('#mat').onchange = e => { S.mat = e.target.value; secInfo(); };
+  $('#sec').onchange = e => { S.sec = e.target.value; secInfo(); };
+  function secInfo() { const M = MATS[S.mat], s = M.sec[S.sec]; const P3 = Math.PI ** 2 * M.E * s.I / 9 / 1000; $('#secInfo').innerHTML = `${s.label}: A = ${fmt(s.A * 1e6, 0)} mm², I = ${fmt(s.I * 1e12 / 1e6, 2)}×10⁶ mm⁴, ${fmt(M.rho * s.A, 1)} kg/m, KES ${fmt(M.rho * s.A * M.kes, 0)}/m. Tension capacity ${fmt(M.fy * s.A / 1000, 0)} kN; buckling load of a 3 m member ${fmt(P3, 0)} kN.`; }
+  $('#undo').onclick = () => { if (hist.length) restore(hist.pop()); };
+  document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !RUN.active) { e.preventDefault(); if (hist.length) restore(hist.pop()); } });
+  $('#clear').onclick = () => { push(); base(S.span); resetRun(); dirty(); };
+  $('#pin2').onchange = e => { S.pin2 = e.target.checked; dirty(); };
+  SL.bind('#truck', v => { S.truck = v; dirty(); }, v => v + ' t');
+  SL.bind('#spd', v => { S.speed = v; }, v => v + ' m/s');
+  SL.bind('#pload', v => { S.P = v; }, v => v + ' kN');
+  SL.bind('#exag', v => { S.exag = v; }, v => '×' + v);
+  $('#selfw').onchange = e => { S.selfw = e.target.checked; dirty(); };
+  $('#run').onclick = () => {
+    const dk = deckOK(); if (!dk.ok) { SL.toast('The truck needs a continuous deck: connect bottom-chord joints at y = 0 from abutment to abutment' + (dk.gap ? ` (gap near x = ${fmt(dk.gap, 1)} m).` : '.'), 'warn'); return; }
+    const r = solve([], new Set()); if (!r.ok) { SL.toast('Fix the structure first: it is not stable.', 'warn'); return; }
+    resetRun(); RUN.active = true; setEditing(false); SL.audio();
+  };
+  $('#stop').onclick = () => resetRun();
+  $('#bnBtn').onclick = () => resetRun();
+
+  function setMsg(html, cls) {
+    const el = $('#msg');
+    if (!html) {
+      if (RES && RES.error === 'mechanism') { const j = jById(RES.badJoint); html = `<b>Mechanism.</b> The stiffness matrix is singular: the joint at (${fmt(j.x, 1)}, ${fmt(j.y, 1)}) m can move ${RES.badDir} without stretching any member. Add members to form triangles${RES.m + RES.r < 2 * RES.j ? ` (m + r = ${RES.m + RES.r} < 2j = ${2 * RES.j})` : ', or rearrange them: the count alone is not enough'}.`; cls = 'bad'; }
+      else if (RES && RES.error) { html = RES.error; cls = 'warn'; }
+      else if (RUN.failed) { html = RUN.failed; cls = 'bad'; }
+      else {
+        const tips = { build: 'Build: click a grid point to add a joint; drag from a joint to another point to add a member; click a member to repaint it.', move: 'Move: drag joints to new grid points. Supports stay fixed.', erase: 'Erase: click a joint or member to delete it.', load: `Load: click a joint to add or remove a ${S.P} kN point load.` };
+        html = tips[S.tool] + (RES && RES.ok ? ` <span style="color:var(--ok)">Stable.</span>` : ''); cls = '';
+      }
+    }
+    el.className = 'msg ' + (cls || ''); el.innerHTML = html;
+  }
+
+  function stats() {
+    const usedJ = new Set(); S.members.forEach(m => { usedJ.add(m.a); usedJ.add(m.b); });
+    const j = usedJ.size, m = S.members.length, r = supports().filter(s => usedJ.has(s.j.id)).reduce((a, s) => a + (s.sup === 'pin' ? 2 : 1), 0);
+    let mass = 0, cost = 0; S.members.forEach(mm => { const p = mProps(mm); mass += p.mass; cost += p.mass * p.M.kes; }); cost += j * JOINT_KES;
+    S.cost = cost; S.mass = mass;
+    $('#sJ').textContent = j; $('#sM').textContent = m;
+    $('#sDet').innerHTML = `${m + r} <small>vs ${2 * j}</small><div class="small dim">${m + r < 2 * j ? 'mechanism' : m + r === 2 * j ? 'determinate' : `indeterminate (${m + r - 2 * j})`}</div>`;
+    $('#hudCost').textContent = 'KES ' + fmt(cost, 0); $('#hudMass').textContent = fmt(mass, 0);
+    if (RES && RES.ok) {
+      let T1 = 0, C1 = 0; RES.N.forEach(v => { T1 = Math.max(T1, v.N); C1 = Math.min(C1, v.N); });
+      $('#sT').innerHTML = `${fmt(T1, 1)}<small>kN</small>`; $('#sC').innerHTML = `${fmt(-C1, 1)}<small>kN</small>`;
+      let dm = 0; RES.d.forEach(d => dm = Math.max(dm, Math.hypot(d[0], d[1])));
+      $('#sD').innerHTML = `${fmt(dm * 1000, 2)}<small>mm</small>`;
+      $('#sR').innerHTML = RES.R.map(r2 => fmt(r2.Ry, 1)).join(' / ') + '<small>kN</small>';
+      const U = RUN.active || RUN.done ? Math.max(RUN.peak, RES.umax) : RES.umax;
+      $('#hudU').textContent = fmt(U * 100, 0) + '%'; $('#hudU').style.color = U > 1 ? 'var(--bad)' : U > 0.8 ? 'var(--warn)' : '';
+      $('#sEff').innerHTML = `${fmt(S.truck * 1000 / 2 / Math.max(1, mass), 1)}<small>×</small>`;
+    } else { ['#sT', '#sC', '#sD'].forEach(s => $(s).textContent = '–'); $('#sR').textContent = '–'; $('#hudU').textContent = '–'; $('#sEff').textContent = '–'; }
+  }
+
+  /* ---------------- pointer ---------------- */
+  function pick(px, py) {
+    const V = view(), ex = S.exag; const P = j => { const d = shown.get(j.id) || [0, 0]; return [V.X(j.x + d[0] * ex), V.Y(j.y + d[1] * ex)]; };
+    const rr = Math.max(10, V.sc * 0.4);
+    let best = null, bd = rr;
+    S.joints.forEach(j => { const [x, y] = P(j); const d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; best = { kind: 'j', id: j.id }; } });
+    if (best) return best;
+    let bm = null, bdm = 8;
+    S.members.forEach(m => { if (RUN.broken.has(m.id)) return; const [x1, y1] = P(jById(m.a)), [x2, y2] = P(jById(m.b)); const dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy; let t = ((px - x1) * dx + (py - y1) * dy) / (L2 || 1); t = SL.clamp(t, 0, 1); const d = Math.hypot(px - x1 - t * dx, py - y1 - t * dy); if (d < bdm) { bdm = d; bm = { kind: 'm', id: m.id }; } });
+    return bm;
+  }
+  const snapW = (px, py) => { const V = view(), B = BOUNDS(); return { x: SL.clamp(Math.round(V.ix(px)), B.x0, B.x1), y: SL.clamp(Math.round(V.iy(py)), B.y0, B.y1) }; };
+  cv.addEventListener('pointerdown', e => {
+    if (RUN.active || RUN.collapse) return;
+    const p = SL.ptr(e, cv), hit = pick(p.x, p.y); cv.setPointerCapture(e.pointerId);
+    drag = { kind: null, start: p, moved: false, hit };
+    if (S.tool === 'build') { if (hit && hit.kind === 'j') drag.kind = 'member', drag.from = hit.id; else drag.kind = 'tap'; }
+    else if (S.tool === 'move') { if (hit && hit.kind === 'j' && !jById(hit.id).sup) { drag.kind = 'move'; drag.id = hit.id; push(); } else if (hit && hit.kind === 'm') { S.sel = hit.id; showK(); } }
+    else drag.kind = 'tap';
+    ptrW = snapW(p.x, p.y);
+  });
+  cv.addEventListener('pointermove', e => {
+    const p = SL.ptr(e, cv);
+    if (drag) {
+      if (Math.hypot(p.x - drag.start.x, p.y - drag.start.y) > 6) drag.moved = true;
+      ptrW = snapW(p.x, p.y);
+      if (drag.kind === 'member') { const h2 = pick(p.x, p.y); if (h2 && h2.kind === 'j') { const j = jById(h2.id); ptrW = { x: j.x, y: j.y }; } }
+      if (drag.kind === 'move') { const j = jById(drag.id); const occ = jointAt(ptrW.x, ptrW.y); if (!occ || occ.id === j.id) { if (j.x !== ptrW.x || j.y !== ptrW.y) { j.x = ptrW.x; j.y = ptrW.y; shown.delete(j.id); dirty(); } } }
+      return;
+    }
+    hover = (RUN.collapse) ? null : pick(p.x, p.y); tooltip(hover, p);
+    cv.style.cursor = hover ? (S.tool === 'move' && hover.kind === 'j' ? 'grab' : 'pointer') : 'crosshair';
+  });
+  cv.addEventListener('pointerleave', () => { hover = null; tooltip(null); });
+  const end = e => {
+    if (!drag) return; const d = drag; drag = null; const p = SL.ptr(e, cv);
+    if (d.kind === 'member') {
+      const h2 = pick(p.x, p.y); let target = h2 && h2.kind === 'j' ? h2.id : null;
+      if (!target && d.moved) { const w2 = snapW(p.x, p.y); const ex2 = jointAt(w2.x, w2.y); if (ex2) target = ex2.id; else { push(); target = addJoint(w2.x, w2.y).id; addMember(d.from, target); dirty(); return; } }
+      if (target && target !== d.from) { if (!S.members.some(m => (m.a === d.from && m.b === target) || (m.b === d.from && m.a === target))) { push(); addMember(d.from, target); dirty(); } }
+    } else if (d.kind === 'tap' && !d.moved) {
+      const hit = d.hit;
+      if (S.tool === 'build') {
+        if (hit && hit.kind === 'm') { const m = S.members.find(x => x.id === hit.id); push(); m.mat = S.mat; m.sec = S.sec; S.sel = m.id; showK(); dirty(); }
+        else if (!hit) { const w2 = snapW(p.x, p.y); if (!jointAt(w2.x, w2.y)) { push(); addJoint(w2.x, w2.y); dirty(); } }
+      } else if (S.tool === 'erase' && hit) {
+        push();
+        if (hit.kind === 'm') S.members = S.members.filter(m => m.id !== hit.id);
+        else { const j = jById(hit.id); if (j.sup) { hist.pop(); SL.toast('Supports are part of the abutments and cannot be removed.', 'warn'); return; } S.joints = S.joints.filter(x => x.id !== hit.id); S.members = S.members.filter(m => m.a !== hit.id && m.b !== hit.id); delete S.loads[hit.id]; }
+        dirty();
+      } else if (S.tool === 'load' && hit && hit.kind === 'j') { push(); if (S.loads[hit.id]) delete S.loads[hit.id]; else S.loads[hit.id] = S.P; dirty(); }
+    }
+    ptrW = null;
+  };
+  cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', () => { drag = null; ptrW = null; });
+
+  const tip = $('#tip');
+  function tooltip(hv, p) {
+    if (!hv || !p) { tip.style.display = 'none'; return; }
+    let html = '';
+    if (hv.kind === 'm') {
+      const m = S.members.find(x => x.id === hv.id); if (!m) return; const pr = mProps(m), info = RES && RES.ok ? RES.N.get(m.id) : null;
+      html = `<b>Member ${S.members.indexOf(m) + 1}</b> · ${pr.M.name}, ${pr.s.label}<br>L = ${fmt(pr.L, 2)} m`;
+      if (info) { const N = info.N; html += `<br>N = <b style="color:${N > 0.05 ? '#fca5a5' : N < -0.05 ? '#93c5fd' : '#cbd5e1'}">${fmt(N, 2)} kN</b> ${N > 0.05 ? 'tension' : N < -0.05 ? 'compression' : '(zero-force)'}<br>σ = ${fmt(N / pr.s.A / 1000, 1)} MPa<br>P<sub>cr</sub> = ${fmt(pr.Pcr, 0)} kN · f<sub>y</sub>A = ${fmt(pr.Ty, 0)} kN<br>Utilisation <b>${fmt(info.u * 100, 1)}%</b>${RUN.env.has(m.id) ? ` (peak this run ${fmt(RUN.env.get(m.id) * 100, 0)}%)` : ''}`; }
+    } else {
+      const j = jById(hv.id); const d = RES && RES.ok ? RES.d.get(j.id) : null;
+      html = `<b>Joint</b> (${fmt(j.x, 1)}, ${fmt(j.y, 1)}) m${j.sup ? ' · ' + (j.sup === 'roller' && S.pin2 ? 'pin' : j.sup) + ' support' : ''}` + (d ? `<br>δx = ${fmt(d[0] * 1000, 2)} mm, δy = ${fmt(d[1] * 1000, 2)} mm` : '') + (S.loads[j.id] ? `<br>Load ${S.loads[j.id]} kN` : '');
+    }
+    tip.innerHTML = html; tip.style.display = 'block';
+    const r = cv.getBoundingClientRect(); let x = p.x + 14, y = p.y + 14; const tw = tip.offsetWidth, th = tip.offsetHeight;
+    if (x + tw > r.width - 6) x = p.x - tw - 14; if (y + th > r.height - 6) y = p.y - th - 14; tip.style.left = Math.max(4, x) + 'px'; tip.style.top = Math.max(4, y) + 'px';
+  }
+
+  /* ---------------- stiffness tab ---------------- */
+  function showK() {
+    const m = S.members.find(x => x.id === S.sel);
+    if (!m) { $('#kMat').innerHTML = ''; return; }
+    const p = mProps(m), A = jById(m.a), B = jById(m.b), c = (B.x - A.x) / p.L, s = (B.y - A.y) / p.L, k = p.EA / p.L / 1000; // kN/mm
+    const t = [c, s, -c, -s]; // sign pattern via outer product of [-c,-s,c,s]
+    const q = [-c, -s, c, s];
+    $('#kInfo').innerHTML = `Member ${S.members.indexOf(m) + 1}: ${p.M.name}, ${p.s.label}. From (${fmt(A.x, 1)}, ${fmt(A.y, 1)}) to (${fmt(B.x, 1)}, ${fmt(B.y, 1)}) m, $L = ${fmt(p.L, 3)}$ m, $\\theta = ${fmt(SL.deg(Math.atan2(B.y - A.y, B.x - A.x)), 1)}°$, $c = ${fmt(c, 4)}$, $s = ${fmt(s, 4)}$, $EA/L = ${fmt(k, 2)}$ kN/mm.`;
+    let html = '<div class="matrix" style="grid-template-columns:repeat(4,auto)">';
+    for (let r = 0; r < 4; r++) for (let cc = 0; cc < 4; cc++) html += `<span>${fmt(k * q[r] * q[cc], 2)}</span>`;
+    html += '</div>';
+    const info = RES && RES.ok ? RES.N.get(m.id) : null, da = RES && RES.ok ? RES.d.get(m.a) : null, db = RES && RES.ok ? RES.d.get(m.b) : null;
+    if (info && da && db) html += `<p class="small" style="margin-top:10px">End displacements $(u_1,v_1,u_2,v_2)$ = (${[da[0], da[1], db[0], db[1]].map(v => fmt(v * 1000, 3)).join(', ')}) mm<br>$N = \\frac{EA}{L}[-c\\;-s\\;\\;c\\;\\;s]\\,\\mathbf{d}_e = ${fmt(info.N, 2)}$ kN</p>`;
+    $('#kMat').innerHTML = html; SL.renderMath($('#kMat').parentElement);
+  }
+  const kcv = $('#kcv'); let kst = null; kst = SL.canvas(kcv, () => { if (kst) drawK(); });
+  function drawK() {
+    const { ctx, w, h } = kst; ctx.clearRect(0, 0, w, h); if (!RES || !RES.K) { $('#kGlobal').textContent = 'Build a stable truss to see its global stiffness matrix.'; return; }
+    const n = RES.n, cell = (w - 20) / n; let nz = 0, mx = 0; for (let i = 0; i < n * n; i++) mx = Math.max(mx, Math.abs(RES.K[i]));
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const v = RES.K[i * n + j]; if (Math.abs(v) > 1e-9 * mx) { nz++; const a = 0.25 + 0.75 * Math.min(1, Math.sqrt(Math.abs(v) / mx)); ctx.fillStyle = v > 0 ? `rgba(245,165,36,${a})` : `rgba(96,165,250,${a})`; ctx.fillRect(10 + j * cell, 10 + i * cell, Math.max(1, cell - .5), Math.max(1, cell - .5)); } }
+    ctx.strokeStyle = '#2a3a5c'; ctx.strokeRect(10, 10, n * cell, n * cell);
+    $('#kGlobal').innerHTML = `Size ${n}×${n} (2 DOF × ${n / 2} joints), ${nz} non-zero entries (${fmt(nz / n / n * 100, 1)}% filled). Orange = positive, blue = negative. Each member adds a 4×4 block linking its two joints; the matrix is symmetric and sparse.`;
+  }
+  $('#tabs').addEventListener('tab', e => { if (e.detail === 2) { showK(); drawK(); } });
+
+  /* ---------------- main loop ---------------- */
+  let audioT = 0;
+  SL.loop(dt => {
+    if (document.hidden) return;
+    T += dt;
+    if (RUN.active) {
+      RUN.x += S.speed * dt;
+      const loads = truckLoads(RUN.x);
+      RES = solve(loads, RUN.broken); postSolve();
+      if (RES.ok) {
+        RES.N.forEach((v, id) => { RUN.env.set(id, Math.max(RUN.env.get(id) || 0, v.u)); });
+        RUN.peak = Math.max(RUN.peak, RES.umax);
+        // failures
+        const fails = []; RES.N.forEach((v, id) => { if (v.u > 1) fails.push([id, v]); });
+        if (fails.length) {
+          fails.sort((a, b) => b[1].u - a[1].u); const [id, v] = fails[0];
+          const m = S.members.find(x => x.id === id), A = jById(m.a), B = jById(m.b);
+          RUN.broken.add(id); burst((A.x + B.x) / 2, (A.y + B.y) / 2, 40, 'rgba(255,90,60,A)');
+          const msg = `Member ${S.members.indexOf(m) + 1} failed by ${v.mode} (|N| = ${fmt(Math.abs(v.N), 1)} kN, capacity ${fmt(v.cap, 1)} kN) with the truck's rear axle at x = ${fmt(RUN.x, 1)} m.`;
+          RUN.failed = msg; crack();
+          const r2 = solve(truckLoads(RUN.x), RUN.broken);
+          if (!r2.ok) { startCollapse(msg); banner('Bridge collapsed', msg + ' Without it the truss became a mechanism.'); levelResult(false); }
+          else SL.toast(msg + ' The remaining members are carrying the load.', 'warn', 5000);
+        }
+      } else { startCollapse('unstable'); banner('Bridge collapsed', 'The structure became unstable.'); levelResult(false); }
+      if (RUN.active && RUN.x > S.span + 1) {
+        RUN.active = false; RUN.done = true; setEditing(true);
+        const ok = RUN.broken.size === 0;
+        banner(ok ? 'Truck crossed safely' : 'Truck crossed, with damage', `Peak utilisation ${fmt(RUN.peak * 100, 0)}% · cost KES ${fmt(S.cost, 0)} · truss mass ${fmt(S.mass, 0)} kg.` + (ok ? '' : ` ${RUN.broken.size} member(s) failed.`), ok);
+        levelResult(ok);
+      }
+    } else if (needSolve && !RUN.collapse) { RES = solve([], RUN.broken); postSolve(); }
+    if (RUN.collapse) { stepCollapse(dt); if (RUN.collapse.t > 6) RUN.collapse.t = 6; }
+    stepFx(dt);
+    // animate displacements
+    const k = 1 - Math.exp(-dt * (RUN.active ? 18 : 8));
+    if (RES && RES.ok) RES.d.forEach((d, id) => { const s = shown.get(id) || [0, 0]; shown.set(id, [s[0] + (d[0] - s[0]) * k, s[1] + (d[1] - s[1]) * k]); });
+    else shown.forEach((s, id) => shown.set(id, [s[0] * (1 - k), s[1] * (1 - k)]));
+    draw();
+  }).start();
+  function postSolve() {
+    needSolve = false;
+    if (RES.ok) { let nm = 0; RES.N.forEach(v => nm = Math.max(nm, Math.abs(v.N))); RES.Nmax = nm; }
+    stats(); setMsg();
+    if (!RUN.active) { if ($('#tabs .tabpanel.on') === document.querySelectorAll('#tabs > .tabpanel')[2]) { showK(); drawK(); } }
+  }
+  function banner(t, p, ok) { $('#bnT').textContent = t; $('#bnT').style.color = ok ? 'var(--ok)' : 'var(--bad)'; $('#bnP').textContent = p; $('#banner').style.display = 'block'; setEditing(true); }
+  function crack() { const ac = SL.audio(); if (!ac) return; const len = 0.35, buf = ac.createBuffer(1, ac.sampleRate * len, ac.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ac.sampleRate * 0.06)); const s = ac.createBufferSource(); s.buffer = buf; const gn = ac.createGain(); gn.gain.value = 0.25; s.connect(gn).connect(ac.destination); s.start(); }
+
+  /* ---------------- levels ---------------- */
+  const LV = [
+    { id: 1, name: 'Footbridge over the stream', icon: 'footprints', span: 12, truck: 5, budget: 110000 },
+    { id: 2, name: 'Farm road crossing', icon: 'tractor', span: 18, truck: 12, budget: 205000 },
+    { id: 3, name: 'County bridge', icon: 'landmark', span: 24, truck: 20, budget: 300000 },
+    { id: 4, name: 'Quarry haul road', icon: 'mountain', span: 30, truck: 36, budget: 490000 },
+  ];
+  let lvActive = null; const lvDone = new Set();
+  function renderLevels() {
+    $('#levels').innerHTML = LV.map(l => `<div class="lvl ${lvDone.has(l.id) ? 'done' : ''} ${lvActive === l.id ? 'active' : ''}"><h4><i data-lucide="${l.icon}"></i> Level ${l.id}<span class="state">${lvDone.has(l.id) ? 'Passed' : lvActive === l.id ? 'Active' : ''}</span></h4><p style="margin:0 0 6px;font-weight:600">${l.name}</p><ul><li>Span: ${l.span} m</li><li>Truck: ${l.truck} t</li><li>Budget: KES ${fmt(l.budget, 0)}</li></ul><button class="btn sm primary" data-lv="${l.id}"><i data-lucide="play"></i> ${lvActive === l.id ? 'Restart level' : 'Start level'}</button></div>`).join('');
+    SL.refreshIcons($('#levels'));
+    document.querySelectorAll('[data-lv]').forEach(b => b.onclick = () => startLevel(+b.dataset.lv));
+  }
+  function startLevel(id) {
+    const l = LV.find(x => x.id === id); lvActive = id; push(); base(l.span); syncSpan();
+    S.truck = l.truck; const tr = $('#truck'); tr.value = l.truck; tr.dispatchEvent(new Event('input'));
+    S.loads = {}; resetRun(); renderLevels(); levelHud();
+    document.querySelector('.lab').scrollIntoView({ behavior: 'smooth' });
+    SL.toast(`<b>Level ${id}: ${l.name}</b>. Span ${l.span} m, ${l.truck} t truck, budget KES ${fmt(l.budget, 0)}. Build from the deck up, then run the truck test.`, '', 7000);
+  }
+  function levelHud() { const el = $('#hudLevel'); const l = LV.find(x => x.id === lvActive); if (!l) { el.style.display = 'none'; return; } el.style.display = ''; el.innerHTML = `Level ${l.id} · budget <b>KES ${fmt(l.budget, 0)}</b>`; }
+  function levelResult(ok) {
+    const l = LV.find(x => x.id === lvActive); if (!l) return;
+    if (S.span !== l.span || S.truck < l.truck) { SL.toast(`Level ${l.id} needs span ${l.span} m and a ${l.truck} t truck.`, 'warn'); return; }
+    if (ok && S.cost <= l.budget) { lvDone.add(l.id); renderLevels(); SL.toast(`Level ${l.id} passed: KES ${fmt(S.cost, 0)} of ${fmt(l.budget, 0)}, peak utilisation ${fmt(RUN.peak * 100, 0)}%.`, 'ok', 7000); }
+    else if (ok) SL.toast(`Safe, but over budget by KES ${fmt(S.cost - l.budget, 0)}. Use smaller sections where members are lightly used.`, 'warn', 6000);
+  }
+  renderLevels();
+
+  /* ---------------- worked example ---------------- */
+  $('#loadEx').onclick = () => { lastPreset = 'pratt'; preset('pratt', 12); S.joints.filter(j => j.y === 0 && j.x > 0 && j.x < 12).forEach(j => S.loads[j.id] = 20); S.selfw = false; $('#selfw').checked = false; S.mat = 'steel'; S.members.forEach(m => { m.mat = 'steel'; m.sec = 'M'; }); S.pin2 = false; $('#pin2').checked = false; dirty(); document.querySelector('.lab').scrollIntoView({ behavior: 'smooth' }); SL.toast('Pratt truss loaded with 20 kN at L1, L2 and L3. Hover over members to read the forces.', 'ok'); };
+
+  /* ---------------- quiz ---------------- */
+  SL.quiz('#quiz', [
+    { q: 'A plane truss has 9 joints, a pin and a roller. How many members does it need to be statically determinate?', options: ['12', '14', '15', '18'], answer: 2, why: '$m + r = 2j \\Rightarrow m = 2(9) - 3 = 15$.' },
+    { q: 'In a Pratt truss under gravity loads, the diagonals are mostly in…', options: ['Compression', 'Tension', 'Zero force', 'Bending'], answer: 1, why: 'Pratt diagonals slope down towards mid-span, so they hang in tension; the shorter verticals take the compression. Long members in tension cannot buckle, which suits steel.' },
+    { q: 'A compression member is doubled in length with the same section. Its Euler buckling load becomes…', options: ['Half', 'A quarter', 'The same', 'Twice'], answer: 1, why: '$P_{cr} = \\pi^2EI/L^2$, so doubling $L$ divides $P_{cr}$ by 4.' },
+    { q: 'Three members meet at an unloaded joint; two of them are collinear. The force in the third member is…', options: ['Equal to the collinear forces', 'Zero', 'Half the collinear force', 'Cannot be determined'], answer: 1, why: 'Resolve perpendicular to the two collinear members: only the third has a component, so it must be zero.' },
+    { q: 'What does a singular global stiffness matrix tell you?', options: ['The truss is very stiff', 'The truss is statically indeterminate', 'The truss is a mechanism: some displacement needs no force', 'A member has failed in tension'], answer: 2, why: 'If $\\mathbf{K}$ is singular, there is a non-zero displacement $\\mathbf{d}$ with $\\mathbf{K}\\mathbf{d} = 0$: the structure can move without straining any member.' },
+    { q: 'In the element stiffness matrix of a horizontal bar ($\\theta = 0$), which entries are non-zero?', options: ['All sixteen', 'Only those linking the $u$ (horizontal) displacements', 'Only those linking the $v$ displacements', 'Only the diagonal'], answer: 1, why: 'With $c = 1$, $s = 0$ only the $c^2$ terms survive: $EA/L$ at $(u_1,u_1)$, $(u_2,u_2)$ and $-EA/L$ at $(u_1,u_2)$, $(u_2,u_1)$. A horizontal bar has no axial stiffness against vertical movement.' },
+    { q: 'A parallel-chord truss 3 m deep must resist a bending moment of 150 kN·m at mid-span. The approximate bottom chord force is…', options: ['50 kN tension', '50 kN compression', '450 kN tension', '150 kN tension'], answer: 0, why: '$N \\approx M/h = 150/3 = 50$ kN, tension in the bottom chord for a sagging moment.' },
+    { q: 'Why might a design with $m + r > 2j$ survive the failure of one member?', options: ['It cannot: any failure means collapse', 'The extra (redundant) members provide another load path', 'Redundant members are always in tension', 'It has a lower self-weight'], answer: 1, why: 'An indeterminate truss has more members than needed for stability, so after one fails the load can redistribute through the others. Try it in the lab.' },
+  ]);
+
+  /* ---------------- init ---------------- */
+  preset('pratt', 12); hist.length = 0; secInfo(); setMsg();
+  window.__truss = { S, solve, preset, truckLoads, RUN, startLevel, mProps, deckOK, get RES() { return RES; } };
+})();
+</script>
+</body>
+</html>

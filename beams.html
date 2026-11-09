@@ -1,0 +1,936 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beam Bending & Statics · Pentarch SimLab</title>
+<meta name="description" content="Interactive beam lab: place supports and loads, get reactions, shear force and bending moment diagrams, deflection and bending stress for real sections and materials.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  #stage{height:700px;touch-action:pan-y}
+  #cv{cursor:crosshair}
+  .loadlist{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px}
+  .loadlist button{all:unset;cursor:pointer;font:500 .76rem var(--mono);padding:4px 9px;border-radius:99px;border:1px solid var(--line2);color:var(--muted);background:var(--bg2)}
+  .loadlist button.on{border-color:var(--accent);color:#fff;background:color-mix(in srgb,var(--accent) 20%,var(--bg2))}
+  .editor{border-top:1px dashed var(--line2);margin-top:8px;padding-top:6px}
+  .editor .ttl{display:flex;justify-content:space-between;align-items:center;font-size:.86rem;color:var(--text);font-weight:600}
+  #secCv{width:100%;height:170px;display:block;background:var(--bg2);border:1px solid var(--line);border-radius:10px}
+  .seg.full{display:flex;width:100%}
+  .seg.full button{flex:1;text-align:center;padding:6px 4px}
+  .sfbar{height:8px;border-radius:6px;background:var(--line2);overflow:hidden;margin-top:6px}
+  .sfbar i{display:block;height:100%;width:0;transition:width .3s,background .3s}
+  .chal{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:12px 0}
+  .chal h4{display:flex;align-items:center;gap:8px;margin-bottom:.4em}
+  .chal .state{margin-left:auto;font:600 .7rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+  .chal.done{border-color:var(--ok)} .chal.done .state{color:var(--ok)}
+  .chal.active{border-color:var(--accent)} .chal.active .state{color:var(--accent)}
+  .fig{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:10px;margin:12px 0}
+  .fig svg{width:100%;height:auto;display:block}
+  .fig figcaption{font-size:.82rem;color:var(--muted);margin-top:6px}
+  table.data td,table.data th{vertical-align:top}
+  .wk h4{margin-top:1.2em}
+  #resStats{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+  @media (max-width:980px){#stage{height:640px}}
+  @media (max-width:520px){#stage{height:600px}}
+</style>
+</head>
+<body data-page="beams">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab wide-controls">
+    <div>
+      <div class="stage" id="stage">
+        <canvas id="cv" aria-label="Beam, shear force, bending moment and deflection diagrams"></canvas>
+        <div class="hud hud-r">
+          <span class="readout">M<sub>max</sub> <b id="hudM">0</b> kN·m</span>
+          <span class="readout">δ<sub>max</sub> <b id="hudD">0</b> mm</span>
+          <span class="readout">SF <b id="hudSF">0</b></span>
+        </div>
+      </div>
+      <p class="small dim" style="margin:8px 2px 0">Drag loads, load ends and supports along the beam. Hover (or touch) anywhere on the diagrams to read V, M, deflection and stress at that section.</p>
+      <div class="panel" style="margin-top:14px">
+        <h3><i data-lucide="gauge"></i> Results</h3>
+        <div class="stats" id="resStats">
+          <div class="stat"><div class="k" id="kRA">R<sub>A</sub></div><div class="v" id="sRA">0<small>kN</small></div></div>
+          <div class="stat"><div class="k" id="kRB">R<sub>B</sub></div><div class="v" id="sRB">0<small>kN</small></div></div>
+          <div class="stat"><div class="k">|V| max</div><div class="v" id="sV">0</div></div>
+          <div class="stat"><div class="k">|M| max</div><div class="v" id="sM">0</div></div>
+          <div class="stat"><div class="k">Deflection max</div><div class="v" id="sD">0</div></div>
+          <div class="stat"><div class="k">I</div><div class="v" id="sI">0</div></div>
+          <div class="stat"><div class="k">Z = I/c</div><div class="v" id="sZ">0</div></div>
+          <div class="stat"><div class="k">Max stress</div><div class="v" id="sS">0</div></div>
+          <div class="stat"><div class="k">Mass</div><div class="v" id="sMass">0</div></div>
+          <div class="stat"><div class="k">Safety factor</div><div class="v" id="sSF">0</div></div>
+        </div>
+        <div class="sfbar"><i id="sfBar"></i></div>
+        <p class="small muted" id="verdict" style="margin:8px 0 0"></p>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="ruler"></i> Beam & supports</h3>
+        <div class="seg full" id="supSeg">
+          <button data-s="ss" class="on">Simple</button><button data-s="oh">Overhang</button><button data-s="cant">Cantilever</button><button data-s="prop">Propped</button><button data-s="ff">Fixed</button>
+        </div>
+        <div class="ctl"><label for="spanL">Beam length L</label><output>6 m</output><input type="range" id="spanL" min="2" max="12" step="0.5" value="6"></div>
+        <div class="panel-title">Loads</div>
+        <div class="btn-row">
+          <button class="btn sm" data-add="point"><i data-lucide="arrow-down"></i> Point</button>
+          <button class="btn sm" data-add="udl"><i data-lucide="rows-3"></i> UDL</button>
+          <button class="btn sm" data-add="tri"><i data-lucide="triangle-right"></i> Triangular</button>
+          <button class="btn sm" data-add="moment"><i data-lucide="rotate-ccw"></i> Moment</button>
+        </div>
+        <div class="loadlist" id="loadList"></div>
+        <div class="editor" id="editor"></div>
+        <label class="toggle"><span>Include self-weight of the beam</span><input type="checkbox" id="selfW"></label>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="square-dashed"></i> Section & material</h3>
+        <div class="seg full" id="shapeSeg">
+          <button data-sh="rect">Rect</button><button data-sh="I" class="on">I-beam</button><button data-sh="circ">Round</button><button data-sh="tube">Tube</button><button data-sh="box">Box</button>
+        </div>
+        <div class="ctl"><label for="secH" id="lblH">Depth h</label><output>300 mm</output><input type="range" id="secH" min="40" max="600" step="5" value="300"></div>
+        <div class="ctl" id="rowB"><label for="secB">Width b</label><output>150 mm</output><input type="range" id="secB" min="20" max="400" step="5" value="150"></div>
+        <div class="ctl" id="rowT"><label for="secT" id="lblT">Flange thickness t<sub>f</sub></label><output>12 mm</output><input type="range" id="secT" min="2" max="40" step="1" value="12"></div>
+        <div class="ctl" style="grid-template-columns:auto 1fr"><label for="mat">Material</label>
+          <select id="mat"><option value="steel">Structural steel S275</option><option value="alu">Aluminium 6061-T6</option><option value="timber">Softwood timber C24</option><option value="concrete">Plain concrete C30/37</option></select></div>
+        <canvas id="secCv"></canvas>
+        <p class="small dim" id="secNote" style="margin:6px 0 0"></p>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button><i data-lucide="table"></i> Formula sheet</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+
+    <!-- THEORY -->
+    <div class="tabpanel prose">
+      <h3>1. Static equilibrium and support reactions</h3>
+      <p>A beam is a slender member loaded perpendicular to its axis. Before we can find what happens <em>inside</em> it, we find the forces the supports exert on it. For a planar body at rest, the resultant force and resultant moment must both vanish:</p>
+      <div class="eq">$$\sum F_x = 0,\qquad \sum F_y = 0,\qquad \sum M_{\text{any point}} = 0$$</div>
+      <p>Each support provides certain reaction components:</p>
+      <ul>
+        <li><b>Roller</b>: one vertical force (free to slide and rotate).</li>
+        <li><b>Pin</b>: vertical and horizontal forces (free to rotate). With only vertical loads the horizontal reaction is zero.</li>
+        <li><b>Fixed (built-in)</b>: vertical force, horizontal force <em>and</em> a moment; prevents both translation and rotation.</li>
+      </ul>
+      <p>A pin plus a roller, or a single fixed support, gives exactly the three unknowns the three equilibrium equations can solve: the beam is <b>statically determinate</b>. A propped cantilever (fixed + roller) has one extra unknown and a fixed–fixed beam has two extra in bending; these are <b>statically indeterminate</b>, and we need the beam's deformation (compatibility) to find the reactions.</p>
+      <div class="callout"><i data-lucide="info"></i><div>For a distributed load, replace it by its <b>resultant</b> when taking moments: a UDL $w$ over length $a$ is a force $wa$ at its centre; a triangular load from 0 to $w$ over length $a$ is a force $\tfrac12 wa$ acting at $\tfrac{2}{3}a$ from the zero end (its centroid).</div></div>
+
+      <h3>2. Internal forces and sign convention</h3>
+      <p>Cut the beam at a section $x$. To keep each piece in equilibrium, the cut face must carry an internal <b>shear force</b> $V$ and <b>bending moment</b> $M$. This lab uses the most common textbook convention:</p>
+      <figure class="fig">
+        <svg viewBox="0 0 640 170" role="img" aria-label="Sign convention for shear and moment">
+          <rect x="60" y="60" width="160" height="40" rx="3" fill="#1e2a44" stroke="#5f6d8a"/>
+          <rect x="420" y="60" width="160" height="40" rx="3" fill="#1e2a44" stroke="#5f6d8a"/>
+          <line x1="228" y1="38" x2="228" y2="112" stroke="#60a5fa" stroke-width="2.5"/><polygon points="228,124 222,110 234,110" fill="#60a5fa"/>
+          <line x1="412" y1="122" x2="412" y2="48" stroke="#60a5fa" stroke-width="2.5"/><polygon points="412,36 406,50 418,50" fill="#60a5fa"/>
+          <text x="236" y="122" fill="#60a5fa" font-family="JetBrains Mono" font-size="13">V</text>
+          <text x="386" y="46" fill="#60a5fa" font-family="JetBrains Mono" font-size="13">V</text>
+          <path d="M226 118 A 44 44 0 0 0 226 42" fill="none" stroke="#f5a524" stroke-width="2.5"/><polygon points="214,42 228,35 228,49" fill="#f5a524"/>
+          <path d="M414 118 A 44 44 0 0 1 414 42" fill="none" stroke="#f5a524" stroke-width="2.5"/><polygon points="426,42 412,35 412,49" fill="#f5a524"/>
+          <text x="270" y="40" fill="#f5a524" font-family="JetBrains Mono" font-size="13">M</text>
+          <text x="356" y="40" fill="#f5a524" font-family="JetBrains Mono" font-size="13">M</text>
+          <text x="105" y="85" fill="#93a1bd" font-family="Inter" font-size="12">left part</text>
+          <text x="462" y="85" fill="#93a1bd" font-family="Inter" font-size="12">right part</text>
+          <path d="M268 140 Q 320 162 372 140" fill="none" stroke="#22d3ee" stroke-width="2" stroke-dasharray="4 4"/>
+          <text x="320" y="128" text-anchor="middle" fill="#22d3ee" font-family="Inter" font-size="12">sagging +M: "smile"</text>
+        </svg>
+        <figcaption>Positive internal forces at a cut: shear $V$ acts down on the left part and up on the right part; moment $M$ acts anticlockwise on the left part and clockwise on the right part. Positive (sagging) moment: bottom fibres in tension, the beam bends into a "smile". Hogging moments are negative.</figcaption>
+      </figure>
+      <p>Computed from the left part of the beam, with upward forces positive and anticlockwise applied couples $C$ positive:</p>
+      <div class="eq">$$V(x) = \sum_{\text{left}} F_i^{\uparrow} - \int_0^x w(s)\,ds,\qquad M(x)=\sum_{\text{left}} F_i^{\uparrow}(x-x_i) - \sum_{\text{left}} C_i - \int_0^x w(s)(x-s)\,ds$$</div>
+
+      <h3>3. Load, shear and moment relationships</h3>
+      <p>Equilibrium of a tiny slice $dx$ carrying a downward distributed load $w(x)$ gives the two differential relationships that make diagrams quick to sketch:</p>
+      <div class="eq">$$\frac{dV}{dx} = -w(x),\qquad \frac{dM}{dx} = V(x)\qquad\Longrightarrow\qquad \frac{d^2M}{dx^2} = -w(x)$$</div>
+      <ul>
+        <li>No distributed load: $V$ is constant and $M$ is a straight line.</li>
+        <li>Uniform load: $V$ is linear and $M$ is a parabola. A triangular load gives a quadratic $V$ and a cubic $M$.</li>
+        <li>A point load makes $V$ jump by the load; an applied couple $C$ makes $M$ jump by $C$ (down for an anticlockwise couple in this convention).</li>
+        <li>$M$ is a maximum or minimum where $V = 0$ or changes sign. That is where to look for the critical section.</li>
+        <li>The change in $M$ between two points equals the area under the shear diagram between them.</li>
+      </ul>
+
+      <h3>4. Bending stress and section properties</h3>
+      <p>In pure bending, plane sections remain plane and the strain varies linearly with distance $y$ from the neutral axis. With a linear elastic material this gives the <b>flexure formula</b>:</p>
+      <div class="eq">$$\sigma = \frac{M\,y}{I},\qquad \sigma_{\max} = \frac{M\,c}{I} = \frac{M}{Z},\qquad Z = \frac{I}{c}$$</div>
+      <p>$I=\int_A y^2\,dA$ is the second moment of area about the neutral axis and $c$ the distance to the extreme fibre. Material far from the neutral axis does most of the work, which is why I-beams and hollow sections are efficient.</p>
+      <table class="data">
+        <tr><th>Section</th><th>Area A</th><th>Second moment I</th><th>c</th></tr>
+        <tr><td>Rectangle $b\times h$</td><td>$bh$</td><td>$\dfrac{bh^3}{12}$</td><td>$h/2$</td></tr>
+        <tr><td>Solid circle, diameter $d$</td><td>$\dfrac{\pi d^2}{4}$</td><td>$\dfrac{\pi d^4}{64}$</td><td>$d/2$</td></tr>
+        <tr><td>Tube $D$, wall $t$, $d_i = D-2t$</td><td>$\dfrac{\pi(D^2-d_i^2)}{4}$</td><td>$\dfrac{\pi (D^4-d_i^4)}{64}$</td><td>$D/2$</td></tr>
+        <tr><td>Box $b\times h$, wall $t$</td><td>$bh-(b-2t)(h-2t)$</td><td>$\dfrac{bh^3-(b-2t)(h-2t)^3}{12}$</td><td>$h/2$</td></tr>
+        <tr><td>I-beam: flanges $b\times t_f$, web $t_w$</td><td>$2bt_f+(h-2t_f)t_w$</td><td>$\dfrac{bh^3-(b-t_w)(h-2t_f)^3}{12}$</td><td>$h/2$</td></tr>
+      </table>
+      <p class="small muted">In this lab the I-beam web thickness is taken as $t_w = 0.6\,t_f$, a typical proportion for rolled sections. The safety factor shown is $SF = f_y/\sigma_{\max}$, using the yield strength (steel, aluminium), the characteristic bending strength (timber) or the flexural tensile strength (plain concrete).</p>
+
+      <h3>5. Deflection: the Euler–Bernoulli equation</h3>
+      <p>For small slopes, the curvature of the deflected axis $y(x)$ is proportional to the bending moment:</p>
+      <div class="eq">$$EI\,\frac{d^2y}{dx^2} = M(x)\qquad\Longleftrightarrow\qquad EI\,\frac{d^4y}{dx^4} = -w(x)$$</div>
+      <p>Integrating twice gives slope $\theta = dy/dx$ and deflection $y$; the two constants of integration come from the support conditions ($y=0$ at a pin or roller, and $y=0,\ \theta=0$ at a fixed end). $E$ is Young's modulus and $EI$ is the <b>flexural rigidity</b>. Doubling the depth of a rectangular beam multiplies $I$ by 8 and divides the deflection by 8.</p>
+      <div class="callout"><i data-lucide="cpu"></i><div><b>How this lab computes.</b> The beam is split into a few hundred Euler–Bernoulli (Hermite cubic) beam elements with nodes at every support, load and load end. Solving $K\,u = F$ gives the deflections and, from them, the support reactions, so determinate and indeterminate beams are handled the same way. Shear and moment are then evaluated exactly from equilibrium. The model ignores shear deformation, local buckling and lateral–torsional buckling, and assumes linear elastic behaviour.</div></div>
+    </div>
+
+    <!-- WORKED -->
+    <div class="tabpanel prose wk">
+      <p>Each example below can be loaded into the lab so you can check every number against the live readouts.</p>
+
+      <div class="worked">
+        <h4 style="margin-top:0">Example 1: simply supported beam with a point load and a UDL</h4>
+        <p>A 6 m steel beam (pin A at 0, roller B at 6 m) carries a 20 kN point load at $x = 2$ m and a uniform load of 5 kN/m over the whole span. Section: I-beam $h=300$, $b=150$, $t_f=12$ mm ($t_w = 7.2$ mm). Self-weight ignored.</p>
+        <ol class="steps">
+          <li><b>Reactions.</b> Total UDL $= 5\times6 = 30$ kN at $x=3$ m. Moments about A: $6R_B = 20(2) + 30(3) = 130 \Rightarrow R_B = 21.67$ kN. Vertical equilibrium: $R_A = 50 - 21.67 = 28.33$ kN.</li>
+          <li><b>Shear.</b> $V = 28.33 - 5x$ for $0&lt;x&lt;2$, so $V(2^-) = 18.33$ kN; the point load drops it to $V(2^+) = -1.67$ kN; it then falls linearly to $-21.67$ kN at B.</li>
+          <li><b>Maximum moment.</b> $V$ changes sign at $x=2$ m, so $M_{\max} = 28.33(2) - 5(2)^2/2 = 46.67$ kN·m.</li>
+          <li><b>Section.</b> $I = \frac{0.15(0.3)^3 - (0.15-0.0072)(0.276)^3}{12} = 8.730\times10^{-5}$ m$^4$, $Z = I/0.15 = 5.820\times10^{-4}$ m$^3$ (582 cm³).</li>
+          <li><b>Stress.</b> $\sigma_{\max} = M/Z = 46.67\times10^3 / 5.820\times10^{-4} = 80.2$ MPa, so $SF = 275/80.2 = 3.43$.</li>
+          <li><b>Deflection</b> at mid-span by superposition ($EI = 200\times10^6 \times 8.730\times10^{-5} = 17\,460$ kN·m²):
+            $\delta_{\text{UDL}} = \frac{5wL^4}{384EI} = \frac{5(5)(6^4)}{384(17460)} = 4.83$ mm, $\delta_P = \frac{Pa(3L^2-4a^2)}{48EI} = \frac{20(2)(108-16)}{48(17460)} = 4.39$ mm, total $9.22$ mm. The true maximum (9.24 mm at about $x = 2.9$ m) sits slightly towards the point load.</li>
+        </ol>
+        <button class="btn sm primary" data-example="1"><i data-lucide="upload"></i> Load example 1 in the lab</button>
+      </div>
+
+      <div class="worked" style="margin-top:16px">
+        <h4 style="margin-top:0">Example 2: timber cantilever with a triangular load</h4>
+        <p>A 3 m timber cantilever (fixed at A, $x=0$) carries a triangular load rising from 0 at the wall to 4 kN/m at the free end, plus a 2 kN point load at the tip. Section: rectangle $b=100$, $h=250$ mm, C24 timber ($E = 11$ GPa).</p>
+        <ol class="steps">
+          <li><b>Resultants.</b> Triangle: $\tfrac12(4)(3)=6$ kN acting $\tfrac23(3)=2$ m from the wall. Tip load 2 kN at 3 m.</li>
+          <li><b>Reactions.</b> $R_A = 6+2 = 8$ kN upward. Fixed-end moment $M_A = 6(2)+2(3) = 18$ kN·m (anticlockwise on the beam), i.e. a hogging moment $M(0)=-18$ kN·m.</li>
+          <li><b>Section.</b> $I = bh^3/12 = 0.1(0.25)^3/12 = 1.302\times10^{-4}$ m$^4$, $Z = bh^2/6 = 1.042\times10^{-3}$ m$^3$, so $\sigma_{\max} = 18/1.042\times10^{-3} = 17.3$ MPa and $SF = 24/17.3 = 1.39$. Adequate in the elastic sense but below the 2.0 you might want.</li>
+          <li><b>Tip deflection</b> (superposition, $EI = 11\times10^6\times1.302\times10^{-4} = 1432$ kN·m²): point load $\frac{PL^3}{3EI} = \frac{2(27)}{3(1432)} = 12.57$ mm; triangle increasing to $w_0$ at the free end $\frac{11 w_0 L^4}{120 EI} = \frac{11(4)(81)}{120(1432)} = 20.74$ mm. Total 33.3 mm, which is $L/90$: too flexible for a floor.</li>
+        </ol>
+        <button class="btn sm primary" data-example="2"><i data-lucide="upload"></i> Load example 2 in the lab</button>
+      </div>
+
+      <div class="worked" style="margin-top:16px">
+        <h4 style="margin-top:0">Example 3: fixed–fixed versus simply supported</h4>
+        <p>An 8 m beam carries a UDL of 10 kN/m. Compare simple supports with both ends built in (steel I-beam $h=300$, $b=150$, $t_f=12$ mm, $EI = 17\,460$ kN·m²).</p>
+        <table class="data">
+          <tr><th>Quantity</th><th>Simply supported</th><th>Fixed–fixed</th></tr>
+          <tr><td>Reactions</td><td class="num">40 kN each</td><td class="num">40 kN, end moments 53.3 kN·m</td></tr>
+          <tr><td>Mid-span moment</td><td class="num">$wL^2/8 = 80.0$ kN·m</td><td class="num">$wL^2/24 = 26.7$ kN·m</td></tr>
+          <tr><td>Support moment</td><td class="num">0</td><td class="num">$-wL^2/12 = -53.3$ kN·m</td></tr>
+          <tr><td>Max deflection</td><td class="num">$\frac{5wL^4}{384EI} = 30.5$ mm</td><td class="num">$\frac{wL^4}{384EI} = 6.11$ mm</td></tr>
+          <tr><td>σ max</td><td class="num">137.5 MPa (SF 2.00)</td><td class="num">91.6 MPa (SF 3.00)</td></tr>
+        </table>
+        <p>Fixing the ends cuts the peak moment by a third and the deflection by a factor of five, but the critical section moves to the supports, which must now resist moment. The fixed-end moment cannot be found from statics alone: it comes from the condition that the slope is zero at both ends.</p>
+        <div class="btn-row"><button class="btn sm primary" data-example="3"><i data-lucide="upload"></i> Load simply supported</button><button class="btn sm" data-example="4"><i data-lucide="upload"></i> Load fixed–fixed</button></div>
+      </div>
+    </div>
+
+    <!-- CHALLENGES -->
+    <div class="tabpanel prose">
+      <p>Each challenge sets up the lab and then checks your design live. Change the section, supports or loads in the lab until the badge turns green.</p>
+      <div id="chals"></div>
+      <h3>Open experiments</h3>
+      <ol class="steps">
+        <li>With one point load on a simply supported beam, drag it from end to end. Where is the bending moment largest, and what is the maximum value as a function of $P$ and $L$?</li>
+        <li>Keep the load and section fixed and double the span. By what factor does the maximum deflection change? (Predict first: for a central point load, $\delta \propto L^3$.)</li>
+        <li>Switch a rectangular section from "flat" ($b > h$) to "upright" ($h > b$) with the same area. Compare $I$, stress and deflection.</li>
+        <li>Apply an anticlockwise moment at mid-span of a simply supported beam with no other load. Explain why the reactions form a couple and why the moment diagram jumps.</li>
+        <li>Choose plain concrete and watch the safety factor. Concrete is strong in compression but cracks at a few MPa of tension, which is why real concrete beams carry steel reinforcement in the tension zone.</li>
+      </ol>
+    </div>
+
+    <!-- FORMULA SHEET -->
+    <div class="tabpanel prose">
+      <h3>Standard cases (span $L$, flexural rigidity $EI$)</h3>
+      <table class="data">
+        <tr><th>Case</th><th>Max moment</th><th>Max deflection</th></tr>
+        <tr><td>Simply supported, central point load $P$</td><td>$PL/4$</td><td>$\dfrac{PL^3}{48EI}$</td></tr>
+        <tr><td>Simply supported, point load $P$ at $a$ ($b=L-a$)</td><td>$Pab/L$</td><td>at mid-span: $\dfrac{Pa(3L^2-4a^2)}{48EI}$ ($a\le L/2$)</td></tr>
+        <tr><td>Simply supported, UDL $w$</td><td>$wL^2/8$</td><td>$\dfrac{5wL^4}{384EI}$</td></tr>
+        <tr><td>Cantilever, tip load $P$</td><td>$PL$ (at wall)</td><td>$\dfrac{PL^3}{3EI}$</td></tr>
+        <tr><td>Cantilever, UDL $w$</td><td>$wL^2/2$</td><td>$\dfrac{wL^4}{8EI}$</td></tr>
+        <tr><td>Cantilever, triangular load 0 at wall to $w_0$ at tip</td><td>$w_0L^2/3$</td><td>$\dfrac{11w_0L^4}{120EI}$</td></tr>
+        <tr><td>Cantilever, triangular load $w_0$ at wall to 0 at tip</td><td>$w_0L^2/6$</td><td>$\dfrac{w_0L^4}{30EI}$</td></tr>
+        <tr><td>Propped cantilever, UDL $w$</td><td>$wL^2/8$ (at wall)</td><td>$\dfrac{wL^4}{185EI}$</td></tr>
+        <tr><td>Fixed–fixed, UDL $w$</td><td>$wL^2/12$ (ends), $wL^2/24$ (mid)</td><td>$\dfrac{wL^4}{384EI}$</td></tr>
+        <tr><td>Fixed–fixed, central point load $P$</td><td>$PL/8$</td><td>$\dfrac{PL^3}{192EI}$</td></tr>
+      </table>
+      <h3>Material data used in the lab</h3>
+      <table class="data">
+        <tr><th>Material</th><th>E (GPa)</th><th>Strength used (MPa)</th><th>Density (kg/m³)</th></tr>
+        <tr><td>Structural steel S275</td><td class="num">200</td><td class="num">275 (yield)</td><td class="num">7850</td></tr>
+        <tr><td>Aluminium 6061-T6</td><td class="num">69</td><td class="num">240 (0.2% proof)</td><td class="num">2700</td></tr>
+        <tr><td>Softwood timber C24</td><td class="num">11</td><td class="num">24 (bending)</td><td class="num">420</td></tr>
+        <tr><td>Plain concrete C30/37</td><td class="num">33</td><td class="num">2.9 (flexural tension)</td><td class="num">2400</td></tr>
+      </table>
+      <p class="small muted">Typical serviceability limits: floor beams $L/360$, roofs $L/250$, cantilevers $L/180$ (span measured as the cantilever length). Design codes also apply partial safety factors to loads and materials; this lab shows the plain elastic safety factor $f/\sigma$.</p>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = s => document.querySelector(s);
+  const fmt = SL.fmt;
+  const MATS = {
+    steel:    { name: 'Structural steel S275', E: 200e9, f: 275e6, rho: 7850, col: '#a9bdd9' },
+    alu:      { name: 'Aluminium 6061-T6', E: 69e9, f: 240e6, rho: 2700, col: '#d7dde6' },
+    timber:   { name: 'Softwood timber C24', E: 11e9, f: 24e6, rho: 420, col: '#c99a5b' },
+    concrete: { name: 'Plain concrete C30/37', E: 33e9, f: 2.9e6, rho: 2400, col: '#9aa1a8' },
+  };
+  const COL = { V: '#60a5fa', M: '#f5a524', D: '#22d3ee', R: '#34d399', load: '#fb7185', mom: '#c084fc', grid: 'rgba(255,255,255,.06)', text: '#93a1bd', dim: '#5f6d8a' };
+
+  /* ---------------- state ---------------- */
+  let uid = 1;
+  const S = {
+    L: 6, sup: 'ss',
+    supports: [{ type: 'pin', x: 0 }, { type: 'roller', x: 6 }],
+    loads: [],
+    sec: { shape: 'I', h: 300, b: 150, t: 12 },
+    mat: 'steel', selfw: false, sel: null,
+  };
+  const mk = o => Object.assign({ id: uid++ }, o);
+  S.loads = [mk({ type: 'point', x: 2, P: 20 }), mk({ type: 'udl', a: 0, b: 6, w: 5 })];
+  S.sel = S.loads[0].id;
+
+  /* ---------------- section properties ---------------- */
+  function secProps(sec = S.sec) {
+    const mm = 1e-3; let { shape, h, b, t } = sec; let A, I, c, note = '', slender = false, tw = 0;
+    if (shape === 'rect') { A = b * h; I = b * h ** 3 / 12; c = h / 2; }
+    else if (shape === 'circ') { A = Math.PI * h * h / 4; I = Math.PI * h ** 4 / 64; c = h / 2; }
+    else if (shape === 'tube') { t = Math.min(t, h / 2 - 0.5); const d = h - 2 * t; A = Math.PI * (h * h - d * d) / 4; I = Math.PI * (h ** 4 - d ** 4) / 64; c = h / 2; if (h / t > 60) { slender = true; note = 'Very thin wall (D/t > 60): local buckling would govern.'; } }
+    else if (shape === 'box') { t = Math.min(t, Math.min(b, h) / 2 - 0.5); A = b * h - (b - 2 * t) * (h - 2 * t); I = (b * h ** 3 - (b - 2 * t) * (h - 2 * t) ** 3) / 12; c = h / 2; if (Math.max(b, h) / t > 45) { slender = true; note = 'Slender walls (width/t > 45): local buckling would govern.'; } }
+    else { t = Math.min(t, h / 2 - 1); tw = 0.6 * t; A = 2 * b * t + (h - 2 * t) * tw; I = (b * h ** 3 - (b - tw) * (h - 2 * t) ** 3) / 12; c = h / 2; if (b / t > 24 || (h - 2 * t) / tw > 90) { slender = true; note = 'Slender flange or web (b/t<sub>f</sub> > 24 or d/t<sub>w</sub> > 90): local buckling would govern.'; } }
+    return { A: A * mm * mm, I: I * mm ** 4, c: c * mm, Z: I * mm ** 4 / (c * mm), t, tw, slender, note };
+  }
+
+  /* ---------------- solver ---------------- */
+  // Banded symmetric system, half bandwidth 3 (beam DOFs v,θ per node)
+  function solveBand(n, A, bw, rhs) {
+    const W = 2 * bw + 1, at = (i, j) => i * W + (j - i + bw);
+    let scale = 0; for (let i = 0; i < n; i++) scale = Math.max(scale, Math.abs(A[at(i, i)]));
+    for (let i = 0; i < n; i++) {
+      const p = A[at(i, i)]; if (Math.abs(p) < 1e-12 * scale) return null;
+      for (let r = i + 1; r <= Math.min(n - 1, i + bw); r++) {
+        const f = A[at(r, i)] / p; if (!f) continue;
+        for (let c = i; c <= Math.min(n - 1, i + bw); c++) A[at(r, c)] -= f * A[at(i, c)];
+        rhs[r] -= f * rhs[i];
+      }
+    }
+    const x = new Float64Array(n);
+    for (let i = n - 1; i >= 0; i--) { let s = rhs[i]; for (let c = i + 1; c <= Math.min(n - 1, i + bw); c++) s -= A[at(i, c)] * x[c]; x[i] = s / A[at(i, i)]; }
+    return x;
+  }
+
+  function gatherLoads() {
+    const pts = [], cps = [], ds = [];
+    S.loads.forEach(l => {
+      if (l.type === 'point') pts.push({ x: l.x, F: -l.P });
+      else if (l.type === 'moment') cps.push({ x: l.x, C: l.C });
+      else { const a = Math.min(l.a, l.b), b = Math.max(l.a, l.b); if (b - a > 1e-6) ds.push({ a, b, w1: l.type === 'udl' ? l.w : l.w1, w2: l.type === 'udl' ? l.w : l.w2 }); }
+    });
+    return { pts, cps, ds };
+  }
+
+  function solve() {
+    const L = S.L, sp = secProps(), mat = MATS[S.mat];
+    const EI = mat.E * sp.I / 1000; // kN·m²
+    const { pts, cps, ds } = gatherLoads();
+    const sw = mat.rho * sp.A * 9.81 / 1000; // kN/m
+    if (S.selfw) ds.push({ a: 0, b: L, w1: sw, w2: sw, self: true });
+    // mesh
+    let keys = [0, L]; const N = 240;
+    for (let i = 1; i < N; i++) keys.push(i * L / N);
+    S.supports.forEach(s => keys.push(s.x)); pts.forEach(p => keys.push(p.x)); cps.forEach(p => keys.push(p.x)); ds.forEach(d => keys.push(d.a, d.b));
+    keys = keys.map(x => SL.clamp(x, 0, L)).sort((a, b) => a - b);
+    const xs = []; keys.forEach(x => { if (!xs.length || x - xs[xs.length - 1] > 1e-7 * L) xs.push(x); });
+    const nn = xs.length, n = 2 * nn, bw = 3, W = 2 * bw + 1;
+    const nodeOf = x => { let lo = 0, hi = nn - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (xs[m] <= x) lo = m; else hi = m; } return Math.abs(xs[lo] - x) < Math.abs(xs[hi] - x) ? lo : hi; };
+    const K = new Float64Array(n * W), F = new Float64Array(n);
+    const add = (i, j, v) => { if (Math.abs(j - i) <= bw) K[i * W + (j - i + bw)] += v; };
+    for (let e = 0; e < nn - 1; e++) {
+      const l = xs[e + 1] - xs[e], k = EI / l ** 3;
+      const ke = [[12, 6 * l, -12, 6 * l], [6 * l, 4 * l * l, -6 * l, 2 * l * l], [-12, -6 * l, 12, -6 * l], [6 * l, 2 * l * l, -6 * l, 4 * l * l]];
+      const d = [2 * e, 2 * e + 1, 2 * e + 2, 2 * e + 3];
+      for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) add(d[r], d[c], k * ke[r][c]);
+      // distributed loads (piecewise linear, mesh nodes at every load end)
+      const xm = (xs[e] + xs[e + 1]) / 2;
+      ds.forEach(D => {
+        if (xm < D.a || xm > D.b) return;
+        const wAt = x => D.w1 + (D.w2 - D.w1) * (x - D.a) / (D.b - D.a);
+        const wa = wAt(xs[e]), wb = wAt(xs[e + 1]);
+        F[d[0]] -= l * (7 * wa + 3 * wb) / 20; F[d[1]] -= l * l * (3 * wa + 2 * wb) / 60;
+        F[d[2]] -= l * (3 * wa + 7 * wb) / 20; F[d[3]] += l * l * (2 * wa + 3 * wb) / 60;
+      });
+    }
+    pts.forEach(p => { F[2 * nodeOf(p.x)] += p.F; });
+    cps.forEach(p => { F[2 * nodeOf(p.x) + 1] += p.C; });
+    const Kfull = K.slice();
+    const fixed = [];
+    S.supports.forEach(s => { const k = nodeOf(s.x); fixed.push(2 * k); if (s.type === 'fixed') fixed.push(2 * k + 1); });
+    const rhs = F.slice();
+    fixed.forEach(dof => { for (let j = Math.max(0, dof - bw); j <= Math.min(n - 1, dof + bw); j++) { K[dof * W + (j - dof + bw)] = 0; K[j * W + (dof - j + bw)] = 0; } K[dof * W + bw] = 1; rhs[dof] = 0; });
+    const u = solveBand(n, K, bw, rhs);
+    if (!u) return { error: 'Unstable support arrangement' };
+    const react = dof => { let s = -F[dof]; for (let j = Math.max(0, dof - bw); j <= Math.min(n - 1, dof + bw); j++) s += Kfull[dof * W + (j - dof + bw)] * u[j]; return s; };
+    const reactions = S.supports.map(s => { const k = nodeOf(s.x); return { x: s.x, type: s.type, F: react(2 * k), C: s.type === 'fixed' ? react(2 * k + 1) : 0 }; });
+
+    // exact V and M from equilibrium
+    const forces = pts.map(p => ({ x: p.x, F: p.F })).concat(reactions.map(r => ({ x: r.x, F: r.F })));
+    const couples = cps.map(c => ({ x: c.x, C: c.C })).concat(reactions.filter(r => r.C).map(r => ({ x: r.x, C: r.C })));
+    function VM(x) {
+      let V = 0, M = 0;
+      forces.forEach(f => { if (f.x < x) { V += f.F; M += f.F * (x - f.x); } });
+      couples.forEach(c => { if (c.x < x) M -= c.C; });
+      ds.forEach(D => {
+        if (x <= D.a) return; const u2 = Math.min(x, D.b) - D.a, k = (D.w2 - D.w1) / (D.b - D.a), Dd = x - D.a;
+        V -= D.w1 * u2 + k * u2 * u2 / 2;
+        M -= D.w1 * (Dd * u2 - u2 * u2 / 2) + k * (Dd * u2 * u2 / 2 - u2 ** 3 / 3);
+      });
+      return [V, M];
+    }
+    const eps = 1e-7 * L;
+    let sx = []; for (let i = 0; i <= 600; i++) sx.push(i * L / 600);
+    forces.concat(couples).forEach(f => sx.push(f.x - eps, f.x + eps));
+    sx = sx.filter(x => x >= 0 && x <= L).sort((a, b) => a - b);
+    const samp = sx.map(x => { const [V, M] = VM(x); return { x, V, M }; });
+    samp[0].V = 0; samp[0].M = 0; // left free edge
+    const last = samp[samp.length - 1]; { const [V, M] = VM(L + eps); if (Math.abs(V) < 1e-6 * (1 + Math.abs(last.V))) last.V = 0; }
+    let Vmax = 0, xV = 0, Mpos = 0, xMp = 0, Mneg = 0, xMn = 0;
+    samp.forEach(s => { if (Math.abs(s.V) > Math.abs(Vmax)) { Vmax = s.V; xV = s.x; } if (s.M > Mpos) { Mpos = s.M; xMp = s.x; } if (s.M < Mneg) { Mneg = s.M; xMn = s.x; } });
+    const defl = xs.map((x, i) => ({ x, y: u[2 * i] }));
+    let Dmax = 0, xD = 0; defl.forEach(d => { if (Math.abs(d.y) > Math.abs(Dmax)) { Dmax = d.y; xD = d.x; } });
+    const Mabs = Math.max(Mpos, -Mneg), xM = Mpos >= -Mneg ? xMp : xMn;
+    const sigma = Mabs * 1e3 / sp.Z; // Pa
+    return { sp, mat, EI, sw, reactions, samp, defl, VM, Vmax, xV, Mpos, xMp, Mneg, xMn, Mabs, xM, Dmax, xD, sigma, SF: sigma > 0 ? mat.f / sigma : Infinity, mass: mat.rho * sp.A * L, ds, pts, cps };
+  }
+
+  /* ---------------- canvas ---------------- */
+  const cv = $('#cv'); let st = null; st = SL.canvas(cv, () => { if (st) draw(); });
+  let R = null;            // latest result
+  let shown = null;        // animated deflection (m) per node
+  let hoverX = null, drag = null, hoverHit = null;
+  const lay = () => {
+    const w = st.w, h = st.h, pl = w < 500 ? 46 : 62, pr = w < 500 ? 18 : 30;
+    const hb = Math.round(h * 0.4), hs = Math.round((h - hb) / 3);
+    return { w, h, pl, pr, X: x => pl + x / S.L * (w - pl - pr), invX: px => (px - pl) / (w - pl - pr) * S.L, yb: Math.round(42 + (hb - 42) * 0.5), hb, strips: [hb, hb + hs, hb + 2 * hs, h] };
+  };
+
+  function stressColor(r) {
+    r = Math.max(0, r);
+    if (r > 1) return '#ff3b3b';
+    const hue = 200 - 200 * Math.min(1, r);
+    return `hsl(${hue},85%,${48 + 6 * r}%)`;
+  }
+
+  function draw(t = 0) {
+    const { ctx, w, h } = st; if (!R || w < 10) return;
+    const G = lay(), X = G.X, L = S.L;
+    ctx.clearRect(0, 0, w, h);
+    // backdrop
+    const bg = ctx.createLinearGradient(0, 0, 0, G.hb); bg.addColorStop(0, '#0a1124'); bg.addColorStop(1, '#060a16');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, w, G.hb);
+    // ruler
+    ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+    const stepM = L <= 4 ? 0.5 : 1;
+    for (let x = 0; x <= L + 1e-9; x += stepM) { const px = X(x); ctx.strokeStyle = COL.grid; ctx.beginPath(); ctx.moveTo(px, 4); ctx.lineTo(px, h); ctx.stroke(); ctx.fillStyle = COL.dim; ctx.fillText(fmt(x, 1), px, G.hb - 6); }
+    ctx.textAlign = 'left'; ctx.fillStyle = COL.dim; ctx.fillText('x (m)', 6, G.hb - 6);
+    if (R.error) { ctx.fillStyle = '#ef4444'; ctx.font = '600 14px Inter'; ctx.fillText(R.error, G.pl, 30); return; }
+
+    drawBeam(ctx, G, t);
+    const [s1, s2, s3, s4] = G.strips;
+    drawDiagram(ctx, G, s1, s2, R.samp.map(s => [s.x, s.V]), COL.V, 'Shear force V', 'kN');
+    drawDiagram(ctx, G, s2, s3, R.samp.map(s => [s.x, s.M]), COL.M, 'Bending moment M', 'kN·m');
+    drawDiagram(ctx, G, s3, s4, shown.map((y, i) => [R.defl[i].x, y * 1000]), COL.D, 'Deflection y', 'mm', true);
+    // hover crosshair
+    if (hoverX !== null && !drag) {
+      const px = X(hoverX);
+      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(px, 6); ctx.lineTo(px, h); ctx.stroke(); ctx.setLineDash([]);
+      const [V, M] = R.VM(hoverX + 1e-9);
+      const y = interpDefl(hoverX) * 1000, sig = Math.abs(M) * 1e3 / R.sp.Z / 1e6;
+      const lines = [`x = ${fmt(hoverX, 2)} m`, `V = ${fmt(V, 2)} kN`, `M = ${fmt(M, 2)} kN·m`, `y = ${fmt(y, 2)} mm`, `σmax = ${fmt(sig, 1)} MPa`];
+      ctx.font = '11px JetBrains Mono, monospace';
+      const bwid = 150, bh = lines.length * 16 + 10; let bx = px + 12, by = G.strips[0] + 8; if (bx + bwid > w - 4) bx = px - bwid - 12;
+      ctx.fillStyle = 'rgba(5,9,19,.92)'; ctx.strokeStyle = '#2a3a5c'; roundRect(ctx, bx, by, bwid, bh, 8); ctx.fill(); ctx.stroke();
+      ctx.textAlign = 'left'; lines.forEach((s, i) => { ctx.fillStyle = [ '#e6ecf7', COL.V, COL.M, COL.D, '#fca5a5'][i]; ctx.fillText(s, bx + 9, by + 18 + i * 16); });
+    }
+  }
+  function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+  function interpDefl(x) { const d = R.defl; for (let i = 1; i < d.length; i++) if (d[i].x >= x) { const f = (x - d[i - 1].x) / (d[i].x - d[i - 1].x || 1); return SL.lerp(shown[i - 1], shown[i], f); } return 0; }
+
+  function drawBeam(ctx, G, t) {
+    const X = G.X, L = S.L, yb = G.yb, th = 14;
+    const mat = R.mat, Zs = R.sp.Z;
+    // deflected ghost (exaggerated)
+    const maxd = Math.max(1e-9, ...shown.map(Math.abs)); const amp = 34 / Math.max(maxd, Math.abs(R.Dmax) || 1e-9);
+    // beam body coloured by stress
+    const n = Math.max(40, Math.round((X(L) - X(0)) / 3));
+    for (let i = 0; i < n; i++) {
+      const x0 = i * L / n, x1 = (i + 1) * L / n, xm = (x0 + x1) / 2;
+      const M = R.VM(xm)[1]; const r = Math.abs(M) * 1e3 / Zs / mat.f;
+      ctx.fillStyle = stressColor(r);
+      const y0 = yb - interpDefl(x0) * amp, y1 = yb - interpDefl(x1) * amp;
+      ctx.beginPath(); ctx.moveTo(X(x0), y0 - th / 2); ctx.lineTo(X(x1) + .6, y1 - th / 2); ctx.lineTo(X(x1) + .6, y1 + th / 2); ctx.lineTo(X(x0), y0 + th / 2); ctx.closePath(); ctx.fill();
+    }
+    // undeformed reference
+    ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.setLineDash([5, 5]); ctx.strokeRect(X(0), yb - th / 2, X(L) - X(0), th); ctx.setLineDash([]);
+    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 8; ctx.restore();
+    // legend: stress colour scale + deflection exaggeration
+    { const lx = G.w / 2 - 110, ly = G.hb - 24; const gr = ctx.createLinearGradient(lx + 40, 0, lx + 120, 0);
+      for (let k = 0; k <= 10; k++) gr.addColorStop(k / 10, stressColor(k / 10));
+      ctx.font = '10px JetBrains Mono, monospace'; ctx.fillStyle = COL.dim; ctx.textAlign = 'left';
+      ctx.fillText('σ/f  0', lx, ly + 4); ctx.fillStyle = gr; ctx.fillRect(lx + 40, ly - 3, 80, 6); ctx.fillStyle = COL.dim; ctx.fillText('1', lx + 124, ly + 4);
+      ctx.fillText(`shape ×${fmt(amp, 0)}`, lx + 140, ly + 4); }
+    // supports & reactions
+    const maxR = Math.max(1, ...R.reactions.map(r => Math.abs(r.F)));
+    R.reactions.forEach((r, i) => {
+      const s = S.supports[i], px = X(s.x), yy = yb + th / 2 - interpDefl(s.x) * amp, sel = hoverHit && hoverHit.kind === 'sup' && hoverHit.i === i || drag && drag.kind === 'sup' && drag.i === i;
+      drawSupport(ctx, s, px, yy, sel, G);
+      // reaction arrow
+      const len = 12 + 22 * Math.abs(r.F) / maxR, up = r.F >= 0, base = yy + 32;
+      if (Math.abs(r.F) > 1e-6) {
+        ctx.save(); ctx.shadowColor = COL.R; ctx.shadowBlur = 8;
+        const ax = px + (s.type === 'fixed' ? (s.x < L / 2 ? -18 : 18) : 0);
+        if (up) SL.arrow(ctx, ax, base + len, ax, base, COL.R, 2.4); else SL.arrow(ctx, ax, base, ax, base + len, COL.R, 2.4);
+        ctx.restore();
+      }
+      const lab = ['A', 'B'][i];
+      ctx.fillStyle = COL.R; ctx.font = '600 11px JetBrains Mono, monospace';
+      const right = s.x > L * 0.8; ctx.textAlign = right ? 'right' : 'left';
+      const ox = s.type === 'fixed' ? (s.x < L / 2 ? -18 : 18) : 0, tx = px + ox + (right ? -9 : 9);
+      const ty = base + len * 0.55 + 4;
+      ctx.fillText(`R${lab} = ${fmt(r.F, 2)} kN`, tx, ty);
+      if (s.type === 'fixed') {
+        ctx.fillStyle = COL.mom; ctx.fillText(`M${lab} = ${fmt(r.C, 2)} kN·m`, tx, ty + 14);
+        drawCouple(ctx, px, yy - th / 2, 20, r.C, COL.mom, s.x < L / 2 ? 'L' : 'R');
+      }
+    });
+    // loads
+    const allP = R.pts.map(p => -p.F), maxP = Math.max(1, ...allP);
+    const maxW = Math.max(1, ...R.ds.map(d => Math.max(d.w1, d.w2)));
+    const avail = Math.max(50, yb - th / 2 - 40 - 16), dH = avail * 0.42;
+    S.loads.forEach(l => {
+      const sel = S.sel === l.id, hov = hoverHit && hoverHit.id === l.id;
+      const glow = sel ? 14 : hov ? 8 : 0;
+      ctx.save(); ctx.shadowColor = COL.load; ctx.shadowBlur = glow;
+      if (l.type === 'point') {
+        const px = X(l.x), yy = yb - th / 2 - interpDefl(l.x) * amp, len = (R.ds.length ? dH + 18 : 26) + (avail - (R.ds.length ? dH + 18 : 26)) * l.P / maxP;
+        if (l.P > 0) SL.arrow(ctx, px, yy - len, px, yy - 2, sel ? '#fda4af' : COL.load, 3, 11);
+        ctx.shadowBlur = 0; ctx.fillStyle = sel ? '#fff' : COL.load; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+        ctx.fillText(`${fmt(l.P, 1)} kN`, SL.clamp(px, G.pl + 20, G.w - G.pr - 20), yy - len - 6);
+      } else if (l.type === 'udl' || l.type === 'tri') {
+        const a = Math.min(l.a, l.b), b = Math.max(l.a, l.b), w1 = l.type === 'udl' ? l.w : l.w1, w2 = l.type === 'udl' ? l.w : l.w2;
+        const hh = v => 6 + (dH - 6) * v / maxW;
+        const top = yb - th / 2 - 4;
+        const ya = x => top - interpDefl(x) * amp;
+        ctx.fillStyle = l.type === 'udl' ? 'rgba(251,113,133,.16)' : 'rgba(251,113,133,.12)';
+        ctx.beginPath(); ctx.moveTo(X(a), ya(a)); ctx.lineTo(X(a), ya(a) - hh(w1)); ctx.lineTo(X(b), ya(b) - hh(w2)); ctx.lineTo(X(b), ya(b)); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = sel ? '#fda4af' : COL.load; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(X(a), ya(a) - hh(w1)); ctx.lineTo(X(b), ya(b) - hh(w2)); ctx.stroke();
+        const nA = Math.max(2, Math.round((X(b) - X(a)) / 22));
+        const phase = (t * 0.6) % 1;
+        for (let i = 0; i <= nA; i++) {
+          const x = a + (b - a) * i / nA, wv = w1 + (w2 - w1) * i / nA; if (wv < 0.05 * maxW) continue;
+          const y1 = ya(x) - hh(wv), y2 = ya(x);
+          SL.arrow(ctx, X(x), y1, X(x), y2, sel ? '#fda4af' : COL.load, 1.4, 6);
+        }
+        // end handles
+        [a, b].forEach((x, k) => { ctx.fillStyle = '#fff'; ctx.shadowBlur = 0; const yy = ya(x) - hh(k ? w2 : w1); ctx.fillRect(X(x) - 4, yy - 4, 8, 8); });
+        ctx.shadowBlur = 0; ctx.fillStyle = sel ? '#fff' : COL.load; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+        const lbl = l.type === 'udl' ? `${fmt(l.w, 1)} kN/m` : `${fmt(w1, 1)}→${fmt(w2, 1)} kN/m`;
+        ctx.fillText(lbl, (X(a) + X(b)) / 2, ya((a + b) / 2) - hh(Math.max(w1, w2)) - 7);
+      } else if (l.type === 'moment') {
+        const px = X(l.x), yy = yb - interpDefl(l.x) * amp;
+        drawCouple(ctx, px, yy, 22, l.C, sel ? '#e9d5ff' : COL.mom, 'C');
+        ctx.shadowBlur = 0; ctx.fillStyle = sel ? '#fff' : COL.mom; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+        ctx.fillText(`${fmt(l.C, 1)} kN·m`, SL.clamp(px, G.pl + 30, G.w - G.pr - 30), yy - 32);
+      }
+      ctx.restore();
+    });
+    if (S.selfw) { ctx.fillStyle = COL.dim; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText(`self-weight ${fmt(R.sw, 3)} kN/m`, G.pl, 14); }
+  }
+
+  function drawCouple(ctx, cx, cy, r, C, color, side) {
+    // anticlockwise positive arc with arrowhead
+    const ccw = C >= 0; let a0, a1;
+    if (side === 'L') { a0 = Math.PI * 0.55; a1 = Math.PI * 1.45; }
+    else if (side === 'R') { a0 = -Math.PI * 0.45; a1 = Math.PI * 0.45; }
+    else { a0 = Math.PI * 1.15; a1 = Math.PI * 1.85 + Math.PI * 0.6; }
+    ctx.save(); ctx.strokeStyle = ctx.fillStyle = color; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.arc(cx, cy, r, a0, a1); ctx.stroke();
+    // canvas angles go clockwise on screen; an anticlockwise (screen) couple has its head at a0
+    const ah = ccw ? a0 : a1, dir = ccw ? -1 : 1;
+    const hx = cx + r * Math.cos(ah), hy = cy + r * Math.sin(ah);
+    const tx = -Math.sin(ah) * dir, ty = Math.cos(ah) * dir;
+    ctx.beginPath(); ctx.moveTo(hx + tx * 8, hy + ty * 8); ctx.lineTo(hx - ty * 5, hy + tx * 5); ctx.lineTo(hx + ty * 5, hy - tx * 5); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawSupport(ctx, s, px, y, sel, G) {
+    ctx.save();
+    ctx.strokeStyle = sel ? '#fff' : '#cbd5e1'; ctx.fillStyle = sel ? 'rgba(245,165,36,.5)' : 'rgba(148,163,184,.25)'; ctx.lineWidth = 2;
+    if (s.type === 'fixed') {
+      const dir = s.x < S.L / 2 ? -1 : 1, x0 = px;
+      ctx.fillStyle = '#334155'; ctx.fillRect(x0 + (dir < 0 ? -12 : 0), y - 40, 12, 52);
+      ctx.strokeStyle = '#94a3b8'; ctx.beginPath(); ctx.moveTo(x0, y - 40); ctx.lineTo(x0, y + 12); ctx.stroke();
+      ctx.lineWidth = 1; for (let k = -40; k < 12; k += 7) { ctx.beginPath(); ctx.moveTo(x0 + dir * 2, y + k); ctx.lineTo(x0 + dir * 12, y + k + 8); ctx.stroke(); }
+    } else {
+      ctx.beginPath(); ctx.moveTo(px, y); ctx.lineTo(px - 11, y + 17); ctx.lineTo(px + 11, y + 17); ctx.closePath(); ctx.fill(); ctx.stroke();
+      let gy = y + 17;
+      if (s.type === 'roller') { ctx.beginPath(); ctx.arc(px - 6, y + 21, 3.5, 0, 7); ctx.arc(px + 6, y + 21, 3.5, 0, 7); ctx.stroke(); gy = y + 25; }
+      ctx.beginPath(); ctx.moveTo(px - 16, gy); ctx.lineTo(px + 16, gy); ctx.stroke();
+      ctx.lineWidth = 1; for (let k = -14; k < 16; k += 6) { ctx.beginPath(); ctx.moveTo(px + k, gy); ctx.lineTo(px + k - 5, gy + 6); ctx.stroke(); }
+    }
+    ctx.restore();
+  }
+
+  function drawDiagram(ctx, G, y0, y1, data, color, title, unit, invert) {
+    const { pl, pr, w } = G, X = G.X;
+    ctx.fillStyle = 'rgba(255,255,255,.012)'; ctx.fillRect(0, y0, w, y1 - y0);
+    ctx.strokeStyle = '#1e2a44'; ctx.beginPath(); ctx.moveTo(0, y0 + .5); ctx.lineTo(w, y0 + .5); ctx.stroke();
+    let mx = 0; data.forEach(d => mx = Math.max(mx, Math.abs(d[1])));
+    const zero = (y0 + y1) / 2 + 8, half = (y1 - y0) / 2 - 26;
+    const sc = mx > 1e-9 ? half / mx : 0;
+    const Y = v => zero - v * sc;
+    // title
+    ctx.font = '600 11px Inter, sans-serif'; ctx.fillStyle = color; ctx.textAlign = 'left'; ctx.fillText(`${title} (${unit})`, 8, y0 + 14);
+    ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(X(0), zero); ctx.lineTo(X(S.L), zero); ctx.stroke();
+    if (!sc) return;
+    // fills
+    ctx.save();
+    const path = () => { ctx.beginPath(); ctx.moveTo(X(data[0][0]), zero); data.forEach(d => ctx.lineTo(X(d[0]), Y(d[1]))); ctx.lineTo(X(data[data.length - 1][0]), zero); ctx.closePath(); };
+    const gp = ctx.createLinearGradient(0, zero - half, 0, zero + half);
+    gp.addColorStop(0, hexA(color, .38)); gp.addColorStop(.5, hexA(color, .05)); gp.addColorStop(1, hexA(color, .38));
+    ctx.fillStyle = gp; path(); ctx.fill();
+    ctx.shadowColor = color; ctx.shadowBlur = 8; ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.beginPath(); data.forEach((d, i) => i ? ctx.lineTo(X(d[0]), Y(d[1])) : ctx.moveTo(X(d[0]), Y(d[1]))); ctx.stroke();
+    ctx.restore();
+    // extremes
+    let iMax = 0, iMin = 0; data.forEach((d, i) => { if (d[1] > data[iMax][1]) iMax = i; if (d[1] < data[iMin][1]) iMin = i; });
+    ctx.font = '600 11px JetBrains Mono, monospace';
+    [[iMax, -7], [iMin, 15]].forEach(([i, dy]) => {
+      const v = data[i][1]; if (Math.abs(v) < mx * 0.02) return;
+      const px = X(data[i][0]); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(px, Y(v), 3, 0, 7); ctx.fill();
+      ctx.fillStyle = color; ctx.textAlign = px < pl + 50 ? 'left' : px > w - pr - 50 ? 'right' : 'center';
+      ctx.fillText(fmt(v, 2), px, Y(v) + dy);
+    });
+    ctx.textAlign = 'right'; ctx.fillStyle = COL.dim; ctx.font = '10px JetBrains Mono, monospace';
+    ctx.fillText(fmt(mx, mx < 10 ? 2 : 1), pl - 6, zero - half + 4); ctx.fillText(fmt(-mx, mx < 10 ? 2 : 1), pl - 6, zero + half + 4); ctx.fillText('0', pl - 6, zero + 4);
+  }
+  function hexA(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
+
+  /* ---------------- section canvas ---------------- */
+  const sc = $('#secCv'); let sst = null; sst = SL.canvas(sc, () => { if (sst) drawSection(); });
+  function drawSection() {
+    const { ctx, w, h } = sst; if (!R || w < 10) return; ctx.clearRect(0, 0, w, h);
+    const sec = S.sec, sp = R.sp, mat = MATS[S.mat];
+    const box = h - 50, cx = w * 0.3, cy = h / 2 + 2;
+    const bb = sec.shape === 'circ' || sec.shape === 'tube' ? sec.h : sec.b;
+    const scale = Math.min(box / sec.h, (w * 0.42) / bb);
+    const H = sec.h * scale, B = bb * scale, T = sp.t * scale;
+    ctx.fillStyle = hexA(mat.col, .85); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (sec.shape === 'rect') ctx.rect(cx - B / 2, cy - H / 2, B, H);
+    else if (sec.shape === 'circ') ctx.arc(cx, cy, H / 2, 0, 7);
+    else if (sec.shape === 'tube') { ctx.arc(cx, cy, H / 2, 0, 7); ctx.moveTo(cx + H / 2 - T, cy); ctx.arc(cx, cy, Math.max(0, H / 2 - T), 0, 7, true); }
+    else if (sec.shape === 'box') { ctx.rect(cx - B / 2, cy - H / 2, B, H); ctx.moveTo(cx - B / 2 + T, cy - H / 2 + T); ctx.lineTo(cx - B / 2 + T, cy + H / 2 - T); ctx.lineTo(cx + B / 2 - T, cy + H / 2 - T); ctx.lineTo(cx + B / 2 - T, cy - H / 2 + T); ctx.closePath(); }
+    else { const tw = Math.max(1, sp.tw * scale); ctx.rect(cx - B / 2, cy - H / 2, B, T); ctx.rect(cx - B / 2, cy + H / 2 - T, B, T); ctx.rect(cx - tw / 2, cy - H / 2 + T, tw, H - 2 * T); }
+    ctx.fill('evenodd'); ctx.stroke();
+    // neutral axis
+    ctx.setLineDash([4, 3]); ctx.strokeStyle = '#f5a524'; ctx.beginPath(); ctx.moveTo(cx - B / 2 - 10, cy); ctx.lineTo(w * 0.62 + 70, cy); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#f5a524'; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText('N.A.', 4, cy - 4);
+    // stress distribution at hovered section (or max-moment section)
+    const xq = hoverX !== null ? hoverX : R.xM; const M = R.VM(xq + 1e-9)[1];
+    const smax = M * 1e3 * sp.c / sp.I / 1e6; // MPa (bottom fibre, + tension for sagging)
+    const ax = w * 0.66, sw = w * 0.26, lim = Math.max(Math.abs(smax), 1e-9);
+    const top = cy - H / 2, bot = cy + H / 2;
+    ctx.strokeStyle = '#5f6d8a'; ctx.beginPath(); ctx.moveTo(ax, top); ctx.lineTo(ax, bot); ctx.stroke();
+    const dTop = -smax / lim * sw / 2, dBot = smax / lim * sw / 2;
+    ctx.fillStyle = 'rgba(96,165,250,.35)'; // compression blue
+    const tcol = v => v >= 0 ? 'rgba(248,113,113,.45)' : 'rgba(96,165,250,.45)';
+    ctx.fillStyle = tcol(-smax); ctx.beginPath(); ctx.moveTo(ax, top); ctx.lineTo(ax + dTop, top); ctx.lineTo(ax, cy); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = tcol(smax); ctx.beginPath(); ctx.moveTo(ax, bot); ctx.lineTo(ax + dBot, bot); ctx.lineTo(ax, cy); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#e6ecf7'; ctx.textAlign = 'center';
+    ctx.fillText(`${fmt(-smax, 1)} MPa`, ax + 2, top - 5); ctx.fillText(`${fmt(smax, 1)} MPa`, ax + 2, bot + 12);
+    ctx.fillStyle = COL.dim; ctx.textAlign = 'right'; ctx.fillText(`σ at x = ${fmt(xq, 2)} m`, w - 6, 12);
+    ctx.textAlign = 'left'; ctx.fillText('red = tension, blue = compression', 6, h - 5);
+  }
+
+  /* ---------------- UI ---------------- */
+  const loadName = { point: 'Point', udl: 'UDL', tri: 'Triangular', moment: 'Moment' };
+  function renderLoadList() {
+    const el = $('#loadList');
+    el.innerHTML = S.loads.map((l, i) => `<button data-id="${l.id}" class="${S.sel === l.id ? 'on' : ''}">${i + 1}. ${loadName[l.type]} ${l.type === 'point' ? fmt(l.P, 1) + ' kN' : l.type === 'udl' ? fmt(l.w, 1) + ' kN/m' : l.type === 'tri' ? fmt(Math.max(l.w1, l.w2), 1) + ' kN/m' : fmt(l.C, 1) + ' kN·m'}</button>`).join('') || '<span class="small dim">No loads. Add one above.</span>';
+  }
+  function ctl(id, label, min, max, step, val, unit) { return `<div class="ctl"><label for="${id}">${label}</label><output>${fmt(val, 2)} ${unit}</output><input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${val}"></div>`; }
+  function renderEditor() {
+    const el = $('#editor'); const l = S.loads.find(x => x.id === S.sel);
+    if (!l) { el.innerHTML = '<p class="small dim" style="margin:4px 0">Select a load (click it on the beam or in the list) to edit it.</p>'; return; }
+    let h = `<div class="ttl"><span>${loadName[l.type]} load</span><button class="btn sm ghost" id="delLoad"><i data-lucide="trash-2"></i> Remove</button></div>`;
+    const L = S.L;
+    if (l.type === 'point') h += ctl('eP', 'Magnitude P (down)', 0, 100, 0.5, l.P, 'kN') + ctl('eX', 'Position x', 0, L, 0.05, l.x, 'm');
+    else if (l.type === 'moment') h += ctl('eC', 'Couple C (anticlockwise +)', -100, 100, 0.5, l.C, 'kN·m') + ctl('eX', 'Position x', 0, L, 0.05, l.x, 'm');
+    else if (l.type === 'udl') h += ctl('eW', 'Intensity w', 0, 50, 0.5, l.w, 'kN/m') + ctl('eA', 'Start', 0, L, 0.05, l.a, 'm') + ctl('eB', 'End', 0, L, 0.05, l.b, 'm');
+    else h += ctl('eW1', 'w at start', 0, 50, 0.5, l.w1, 'kN/m') + ctl('eW2', 'w at end', 0, 50, 0.5, l.w2, 'kN/m') + ctl('eA', 'Start', 0, L, 0.05, l.a, 'm') + ctl('eB', 'End', 0, L, 0.05, l.b, 'm');
+    el.innerHTML = h; SL.refreshIcons(el);
+    const map = { eP: ['P', 'kN'], eX: ['x', 'm'], eC: ['C', 'kN·m'], eW: ['w', 'kN/m'], eA: ['a', 'm'], eB: ['b', 'm'], eW1: ['w1', 'kN/m'], eW2: ['w2', 'kN/m'] };
+    el.querySelectorAll('input[type=range]').forEach(inp => {
+      const [k, u] = map[inp.id];
+      inp.style.setProperty('--p', ((inp.value - inp.min) / (inp.max - inp.min) * 100) + '%');
+      inp.addEventListener('input', () => { l[k] = parseFloat(inp.value); inp.closest('.ctl').querySelector('output').textContent = `${fmt(l[k], 2)} ${u}`; update(false); renderLoadList(); });
+    });
+    $('#delLoad').onclick = () => { S.loads = S.loads.filter(x => x !== l); S.sel = S.loads.length ? S.loads[S.loads.length - 1].id : null; renderAll(); };
+  }
+  $('#loadList').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.sel = +b.dataset.id; renderLoadList(); renderEditor(); });
+  document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
+    const L = S.L, t = b.dataset.add; let l;
+    if (t === 'point') l = mk({ type: 'point', x: +(L * 0.5).toFixed(2), P: 10 });
+    else if (t === 'udl') l = mk({ type: 'udl', a: +(L * 0.25).toFixed(2), b: +(L * 0.75).toFixed(2), w: 5 });
+    else if (t === 'tri') l = mk({ type: 'tri', a: 0, b: +(L * 0.5).toFixed(2), w1: 0, w2: 8 });
+    else l = mk({ type: 'moment', x: +(L * 0.5).toFixed(2), C: 10 });
+    S.loads.push(l); S.sel = l.id; renderAll();
+  });
+
+  function setSupports(kind, keep) {
+    S.sup = kind; const L = S.L;
+    if (kind === 'ss') S.supports = [{ type: 'pin', x: 0 }, { type: 'roller', x: L }];
+    else if (kind === 'oh') S.supports = [{ type: 'pin', x: snap(L / 6) }, { type: 'roller', x: snap(L * 0.75) }];
+    else if (kind === 'cant') S.supports = [{ type: 'fixed', x: 0 }];
+    else if (kind === 'prop') S.supports = [{ type: 'fixed', x: 0 }, { type: 'roller', x: L }];
+    else S.supports = [{ type: 'fixed', x: 0 }, { type: 'fixed', x: L }];
+    document.querySelectorAll('#supSeg button').forEach(b => b.classList.toggle('on', b.dataset.s === kind));
+    if (!keep) update();
+  }
+  const snap = x => Math.round(x / 0.05) * 0.05;
+  document.querySelectorAll('#supSeg button').forEach(b => b.onclick = () => setSupports(b.dataset.s));
+
+  const spanEl = $('#spanL');
+  spanEl.addEventListener('input', () => {
+    const L0 = S.L, L = parseFloat(spanEl.value), f = L / L0; S.L = L;
+    S.supports.forEach(s => s.x = s.type === 'fixed' ? (s.x > L0 / 2 ? L : 0) : snap(s.x * f));
+    S.loads.forEach(l => { ['x', 'a', 'b'].forEach(k => { if (k in l) l[k] = SL.clamp(snap(l[k] * f), 0, L); }); });
+    spanEl.closest('.ctl').querySelector('output').textContent = fmt(L, 1) + ' m';
+    renderAll();
+  });
+
+  // section controls
+  function syncSecUI() {
+    const sh = S.sec.shape;
+    document.querySelectorAll('#shapeSeg button').forEach(b => b.classList.toggle('on', b.dataset.sh === sh));
+    $('#rowB').style.display = sh === 'circ' || sh === 'tube' ? 'none' : '';
+    $('#rowT').style.display = sh === 'rect' || sh === 'circ' ? 'none' : '';
+    $('#lblH').textContent = sh === 'circ' || sh === 'tube' ? 'Diameter D' : 'Depth h';
+    $('#lblT').innerHTML = sh === 'I' ? 'Flange thickness t<sub>f</sub> (t<sub>w</sub> = 0.6 t<sub>f</sub>)' : 'Wall thickness t';
+    [['#secH', 'h'], ['#secB', 'b'], ['#secT', 't']].forEach(([s, k]) => { const el = $(s); el.value = S.sec[k]; el.closest('.ctl').querySelector('output').textContent = S.sec[k] + ' mm'; el.style.setProperty('--p', ((el.value - el.min) / (el.max - el.min) * 100) + '%'); });
+    $('#mat').value = S.mat; $('#selfW').checked = S.selfw;
+  }
+  document.querySelectorAll('#shapeSeg button').forEach(b => b.onclick = () => { S.sec.shape = b.dataset.sh; syncSecUI(); update(); });
+  [['#secH', 'h'], ['#secB', 'b'], ['#secT', 't']].forEach(([s, k]) => { $(s).addEventListener('input', e => { S.sec[k] = +e.target.value; e.target.closest('.ctl').querySelector('output').textContent = S.sec[k] + ' mm'; update(); }); });
+  $('#mat').onchange = e => { S.mat = e.target.value; update(); };
+  $('#selfW').onchange = e => { S.selfw = e.target.checked; update(); };
+
+  /* ---------------- update & stats ---------------- */
+  function update() {
+    R = solve();
+    if (R.error) { draw(); return; }
+    if (!shown || shown.length !== R.defl.length) shown = R.defl.map(d => d.y);
+    const sp = R.sp, rA = R.reactions[0], rB = R.reactions[1];
+    $('#kRA').innerHTML = S.supports[0].type === 'fixed' ? 'R<sub>A</sub> / M<sub>A</sub>' : 'R<sub>A</sub>';
+    $('#sRA').innerHTML = `${fmt(rA.F, 2)}<small>kN</small>` + (S.supports[0].type === 'fixed' ? `<br><span style="font-size:.85rem;color:#c084fc">${fmt(rA.C, 2)}<small>kN·m</small></span>` : '');
+    if (rB) { $('#kRB').innerHTML = S.supports[1].type === 'fixed' ? 'R<sub>B</sub> / M<sub>B</sub>' : 'R<sub>B</sub>'; $('#sRB').innerHTML = `${fmt(rB.F, 2)}<small>kN</small>` + (S.supports[1].type === 'fixed' ? `<br><span style="font-size:.85rem;color:#c084fc">${fmt(rB.C, 2)}<small>kN·m</small></span>` : ''); }
+    else { $('#kRB').textContent = 'R_B'; $('#sRB').innerHTML = '<small>none</small>'; }
+    $('#sV').innerHTML = `${fmt(Math.abs(R.Vmax), 2)}<small>kN</small>`;
+    $('#sM').innerHTML = `${fmt(R.Mabs, 2)}<small>kN·m</small><div class="small dim">at x = ${fmt(R.xM, 2)} m</div>`;
+    $('#sD').innerHTML = `${fmt(Math.abs(R.Dmax) * 1000, 2)}<small>mm</small><div class="small dim">at x = ${fmt(R.xD, 2)} m</div>`;
+    $('#sI').innerHTML = `${fmt(sp.I * 1e12 / 1e6, 2)}<small>×10⁶ mm⁴</small>`;
+    $('#sZ').innerHTML = `${fmt(sp.Z * 1e9 / 1e3, 1)}<small>×10³ mm³</small>`;
+    $('#sS').innerHTML = `${fmt(R.sigma / 1e6, 1)}<small>MPa</small>`;
+    $('#sMass').innerHTML = `${fmt(R.mat.rho * sp.A, 1)}<small>kg/m</small><div class="small dim">total ${fmt(R.mass, 0)} kg</div>`;
+    const SF = R.SF; $('#sSF').innerHTML = isFinite(SF) ? fmt(SF, 2) : '∞';
+    $('#sSF').style.color = SF < 1 ? 'var(--bad)' : SF < 2 ? 'var(--warn)' : 'var(--ok)';
+    const bar = $('#sfBar'); const ut = R.sigma / R.mat.f; bar.style.width = Math.min(100, ut * 100) + '%'; bar.style.background = ut > 1 ? 'var(--bad)' : ut > 0.5 ? 'var(--warn)' : 'var(--ok)';
+    const span = spanForLimit(); const ratio = Math.abs(R.Dmax) > 0 ? span / Math.abs(R.Dmax) : Infinity;
+    const lim = S.sup === 'cant' ? 180 : 360;
+    $('#verdict').innerHTML = `Utilisation ${fmt(ut * 100, 0)}% of ${R.mat.name.split(' ').slice(-1)[0] === 'C30/37' ? 'flexural tensile strength' : 'strength'} (${fmt(R.mat.f / 1e6, 1)} MPa). Deflection = span/${isFinite(ratio) ? fmt(ratio, 0) : '∞'} ${ratio >= lim ? '<span style="color:var(--ok)">(within L/' + lim + ')</span>' : '<span style="color:var(--warn)">(exceeds L/' + lim + ')</span>'}.` + (sp.slender ? `<br><span style="color:var(--warn)">${sp.note}</span>` : '');
+    $('#secNote').innerHTML = `A = ${fmt(sp.A * 1e6, 0)} mm², c = ${fmt(sp.c * 1000, 1)} mm, EI = ${fmt(R.EI, 0)} kN·m²`;
+    $('#hudM').textContent = fmt(R.Mabs, 2); $('#hudD').textContent = fmt(Math.abs(R.Dmax) * 1000, 2); $('#hudSF').textContent = isFinite(SF) ? fmt(SF, 2) : '∞';
+    drawSection();
+    checkChallenges();
+  }
+  function spanForLimit() { if (S.sup === 'cant') return S.L; if (S.supports.length === 2) return Math.max(Math.abs(S.supports[1].x - S.supports[0].x), S.L); return S.L; }
+  function renderAll() { renderLoadList(); renderEditor(); update(); }
+
+  /* ---------------- pointer interaction ---------------- */
+  function hitTest(px, py) {
+    const G = lay(), X = G.X; if (py > G.hb) return null;
+    const yb = G.yb;
+    // load handles first (selected first)
+    const order = S.loads.slice().sort((a, b) => (a.id === S.sel) - (b.id === S.sel)).reverse();
+    for (const l of order) {
+      if (l.type === 'point' || l.type === 'moment') { if (Math.abs(px - X(l.x)) < 16 && py < yb + 22 && py > yb - 100) return { kind: 'load', id: l.id, key: 'x' }; }
+      else {
+        const a = Math.min(l.a, l.b), b = Math.max(l.a, l.b);
+        if (py < yb + 4 && py > yb - 80) {
+          if (Math.abs(px - X(l.a)) < 11) return { kind: 'load', id: l.id, key: 'a' };
+          if (Math.abs(px - X(l.b)) < 11) return { kind: 'load', id: l.id, key: 'b' };
+          if (px > X(a) && px < X(b)) return { kind: 'load', id: l.id, key: 'body' };
+        }
+      }
+    }
+    for (let i = 0; i < S.supports.length; i++) { const s = S.supports[i]; if (Math.abs(px - X(s.x)) < 18 && py > yb && py < yb + 60) return { kind: 'sup', i }; }
+    return null;
+  }
+  cv.addEventListener('pointerdown', e => {
+    const p = SL.ptr(e, cv), G = lay(); const hit = hitTest(p.x, p.y);
+    if (hit) {
+      cv.setPointerCapture(e.pointerId);
+      drag = Object.assign({ x0: G.invX(p.x) }, hit);
+      if (hit.kind === 'load') { const l = S.loads.find(x => x.id === hit.id); drag.orig = { x: l.x, a: l.a, b: l.b }; if (S.sel !== hit.id) { S.sel = hit.id; renderLoadList(); renderEditor(); } }
+      e.preventDefault();
+    } else { hoverX = SL.clamp(G.invX(p.x), 0, S.L); }
+  });
+  cv.addEventListener('pointermove', e => {
+    const p = SL.ptr(e, cv), G = lay(), xm = SL.clamp(G.invX(p.x), 0, S.L);
+    if (drag) {
+      if (drag.kind === 'load') {
+        const l = S.loads.find(x => x.id === drag.id); if (!l) return;
+        if (drag.key === 'x') l.x = snap(xm);
+        else if (drag.key === 'a') l.a = snap(xm);
+        else if (drag.key === 'b') l.b = snap(xm);
+        else { const dx = snap(xm - drag.x0), len = drag.orig.b - drag.orig.a; let a = drag.orig.a + dx; a = SL.clamp(a, Math.min(0, -len), S.L - Math.max(0, len)); a = SL.clamp(a, 0, S.L); l.a = snap(a); l.b = snap(SL.clamp(a + len, 0, S.L)); }
+        syncEditorValues(l);
+      } else {
+        const s = S.supports[drag.i];
+        if (s.type === 'fixed') s.x = xm < S.L / 2 ? 0 : S.L;
+        else {
+          let x = snap(xm); const other = S.supports[1 - drag.i];
+          if (other && Math.abs(x - other.x) < 0.25) x = other.x + (x < other.x ? -0.25 : 0.25);
+          s.x = SL.clamp(snap(x), 0, S.L);
+          if (S.sup === 'ss' && (s.x > 0.01 && s.x < S.L - 0.01)) { S.sup = 'oh'; document.querySelectorAll('#supSeg button').forEach(b => b.classList.toggle('on', b.dataset.s === 'oh')); }
+        }
+      }
+      update();
+    } else {
+      hoverX = xm; const h = hitTest(p.x, p.y); hoverHit = h ? Object.assign({ id: h.id }, h) : null;
+      cv.style.cursor = h ? (h.kind === 'sup' || h.key !== 'body' ? 'ew-resize' : 'grab') : 'crosshair';
+    }
+  });
+  const endDrag = () => { if (drag) { drag = null; renderLoadList(); } };
+  cv.addEventListener('pointerup', endDrag); cv.addEventListener('pointercancel', endDrag);
+  cv.addEventListener('pointerleave', () => { hoverX = null; hoverHit = null; });
+  function syncEditorValues(l) {
+    const set = (id, v, u) => { const el = document.getElementById(id); if (el) { el.value = v; el.closest('.ctl').querySelector('output').textContent = `${fmt(v, 2)} ${u}`; el.style.setProperty('--p', ((v - el.min) / (el.max - el.min) * 100) + '%'); } };
+    if ('x' in l) set('eX', l.x, 'm'); if ('a' in l) { set('eA', l.a, 'm'); set('eB', l.b, 'm'); }
+  }
+
+  /* ---------------- animation loop ---------------- */
+  let T = 0;
+  SL.loop((dt) => {
+    if (document.hidden || !R || R.error) return;
+    T += dt;
+    const k = 1 - Math.exp(-dt * 10);
+    R.defl.forEach((d, i) => { shown[i] += (d.y - shown[i]) * k; });
+    draw(T);
+    if (hoverX !== null) drawSection();
+  }).start();
+
+  /* ---------------- examples ---------------- */
+  function loadScenario(o) {
+    S.L = o.L; spanEl.value = o.L; spanEl.closest('.ctl').querySelector('output').textContent = fmt(o.L, 1) + ' m'; spanEl.style.setProperty('--p', ((o.L - 2) / 10 * 100) + '%');
+    setSupports(o.sup, true);
+    if (o.supports) S.supports = o.supports;
+    S.loads = o.loads.map(mk); S.sel = S.loads.length ? S.loads[0].id : null;
+    if (o.sec) S.sec = Object.assign({}, o.sec); if (o.mat) S.mat = o.mat; S.selfw = !!o.selfw;
+    shown = null; syncSecUI(); renderAll();
+  }
+  const EX = {
+    1: { L: 6, sup: 'ss', loads: [{ type: 'point', x: 2, P: 20 }, { type: 'udl', a: 0, b: 6, w: 5 }], sec: { shape: 'I', h: 300, b: 150, t: 12 }, mat: 'steel' },
+    2: { L: 3, sup: 'cant', loads: [{ type: 'tri', a: 0, b: 3, w1: 0, w2: 4 }, { type: 'point', x: 3, P: 2 }], sec: { shape: 'rect', h: 250, b: 100, t: 10 }, mat: 'timber' },
+    3: { L: 8, sup: 'ss', loads: [{ type: 'udl', a: 0, b: 8, w: 10 }], sec: { shape: 'I', h: 300, b: 150, t: 12 }, mat: 'steel' },
+    4: { L: 8, sup: 'ff', loads: [{ type: 'udl', a: 0, b: 8, w: 10 }], sec: { shape: 'I', h: 300, b: 150, t: 12 }, mat: 'steel' },
+  };
+  document.querySelectorAll('[data-example]').forEach(b => b.onclick = () => { loadScenario(EX[b.dataset.example]); document.querySelector('.lab').scrollIntoView({ behavior: 'smooth' }); SL.toast('Example loaded into the lab.', 'ok'); });
+
+  /* ---------------- challenges ---------------- */
+  // Lightest feasible I-beam for challenge 1 (6 m span, 15 kN/m, SF ≥ 2, δ ≤ L/360, compact proportions)
+  function bestIBeam() {
+    const L = 6, w = 15, mat = MATS.steel, M = w * L * L / 8, dlim = L / 360; let best = Infinity;
+    for (let h = 40; h <= 600; h += 5) for (let b = 20; b <= 400; b += 5) for (let t = 2; t <= 40; t++) {
+      const sp = secProps({ shape: 'I', h, b, t }); if (sp.slender) continue;
+      const m = mat.rho * sp.A; if (m >= best) continue;
+      if (mat.f / (M * 1e3 / sp.Z) < 2) continue;
+      if (5 * w * L ** 4 / (384 * mat.E * sp.I / 1000) > dlim) continue;
+      best = m;
+    }
+    return best;
+  }
+  let bestI = null;
+  const CH = [
+    { id: 'light', title: 'Lightest safe section', icon: 'feather',
+      text: 'A 6 m simply supported steel floor beam carries 15 kN/m. Find a section with safety factor ≥ 2, deflection ≤ L/360 and no slender-wall warning, whose mass per metre is within 10% of the lightest compact I-beam possible in this lab. Any shape counts.',
+      setup: () => loadScenario({ L: 6, sup: 'ss', loads: [{ type: 'udl', a: 0, b: 6, w: 15 }], sec: { shape: 'rect', h: 200, b: 100, t: 10 }, mat: 'steel' }),
+      check: () => { if (bestI === null) bestI = bestIBeam(); const m = R.mat.rho * R.sp.A; const ok = S.mat === 'steel' && S.sup === 'ss' && Math.abs(S.L - 6) < 1e-9 && R.SF >= 2 && Math.abs(R.Dmax) <= 6 / 360 + 1e-9 && !R.sp.slender && m <= bestI * 1.1 && S.loads.some(l => l.type === 'udl' && l.w >= 15 && l.b - l.a >= 6 - 1e-9);
+        return { ok, msg: `Current: ${fmt(m, 1)} kg/m, SF ${fmt(R.SF, 2)}, δ ${fmt(Math.abs(R.Dmax) * 1000, 1)} mm (limit 16.7). Target ≤ ${fmt(bestI * 1.1, 1)} kg/m.` }; } },
+    { id: 'overhang', title: 'Balance the overhangs', icon: 'scale',
+      text: 'A 10 m beam carries 8 kN/m over its full length. Drag the two supports so that the largest bending moment anywhere (sagging or hogging) is as small as possible: within 4% of the theoretical optimum.',
+      setup: () => loadScenario({ L: 10, sup: 'oh', loads: [{ type: 'udl', a: 0, b: 10, w: 8 }], sec: { shape: 'I', h: 300, b: 150, t: 12 }, mat: 'steel' }),
+      check: () => { const opt = 0.0214466 * 8 * 100; const ok = Math.abs(S.L - 10) < 1e-9 && S.supports.length === 2 && S.supports.every(s => s.type !== 'fixed') && R.Mabs <= opt * 1.04 && S.loads.length === 1 && S.loads[0].type === 'udl' && S.loads[0].w === 8 && S.loads[0].a === 0 && S.loads[0].b === 10;
+        return { ok, msg: `Peak |M| = ${fmt(R.Mabs, 2)} kN·m. Optimum ≈ ${fmt(opt, 2)} kN·m.` }; } },
+    { id: 'balcony', title: 'Timber balcony joist', icon: 'trees',
+      text: 'A 2.4 m timber cantilever joist carries a 1.5 kN point load at its tip and a 1 kN/m UDL. Using a rectangular section no wider than 75 mm, achieve SF ≥ 2 and tip deflection ≤ L/180 (13.3 mm), using as little timber as you can (area ≤ 15 000 mm²).',
+      setup: () => loadScenario({ L: 2.4, sup: 'cant', loads: [{ type: 'point', x: 2.4, P: 1.5 }, { type: 'udl', a: 0, b: 2.4, w: 1 }], sec: { shape: 'rect', h: 100, b: 50, t: 10 }, mat: 'timber' }),
+      check: () => { const A = R.sp.A * 1e6; const ok = S.mat === 'timber' && S.sec.shape === 'rect' && S.sec.b <= 75 && S.sup === 'cant' && Math.abs(S.L - 2.4) < 1e-9 && R.SF >= 2 && Math.abs(R.Dmax) <= 2.4 / 180 && A <= 15000 && S.loads.some(l => l.type === 'point' && l.P >= 1.5);
+        return { ok, msg: `Area ${fmt(A, 0)} mm², SF ${fmt(R.SF, 2)}, tip δ ${fmt(Math.abs(R.Dmax) * 1000, 1)} mm.` }; } },
+    { id: 'couple', title: 'Equal reactions with a couple', icon: 'rotate-ccw',
+      text: 'A 6 m simply supported beam has a 20 kN point load at 1.5 m. Add an applied moment (anywhere) so that both support reactions are equal (within 0.1 kN). Predict its value from ΣM = 0 before you try.',
+      setup: () => loadScenario({ L: 6, sup: 'ss', loads: [{ type: 'point', x: 1.5, P: 20 }], sec: { shape: 'I', h: 300, b: 150, t: 12 }, mat: 'steel' }),
+      check: () => { const r = R.reactions; const ok = S.supports.length === 2 && S.loads.some(l => l.type === 'moment' && Math.abs(l.C) > 0) && S.loads.some(l => l.type === 'point' && l.P === 20 && Math.abs(l.x - 1.5) < 1e-9) && Math.abs(r[0].F - r[1].F) < 0.1 && S.supports[0].x === 0 && Math.abs(S.supports[1].x - 6) < 1e-9;
+        return { ok, msg: r.length > 1 ? `R_A = ${fmt(r[0].F, 2)} kN, R_B = ${fmt(r[1].F, 2)} kN.` : '' }; } },
+  ];
+  let active = null; const done = new Set();
+  function renderChals() {
+    $('#chals').innerHTML = CH.map(c => `<div class="chal ${done.has(c.id) ? 'done' : ''} ${active === c.id ? 'active' : ''}" data-c="${c.id}"><h4><i data-lucide="${c.icon}"></i> ${c.title}<span class="state">${done.has(c.id) ? 'Completed' : active === c.id ? 'In progress' : 'Not started'}</span></h4><p>${c.text}</p><div class="btn-row"><button class="btn sm primary" data-start="${c.id}"><i data-lucide="play"></i> ${active === c.id ? 'Restart' : 'Start'}</button></div><p class="small mono muted" id="cm-${c.id}" style="margin:8px 0 0"></p></div>`).join('');
+    SL.refreshIcons($('#chals'));
+    document.querySelectorAll('[data-start]').forEach(b => b.onclick = () => { active = b.dataset.start; const c = CH.find(x => x.id === active); renderChals(); c.setup(); document.querySelector('.lab').scrollIntoView({ behavior: 'smooth' }); SL.toast(`<b>${c.title}</b>: ${c.text}`, '', 7000); });
+  }
+  function checkChallenges() {
+    if (!active || !R || R.error) return; const c = CH.find(x => x.id === active); const r = c.check();
+    const m = document.getElementById('cm-' + c.id); if (m) m.textContent = r.msg;
+    if (r.ok && !done.has(c.id)) { done.add(c.id); SL.toast(`Challenge complete: <b>${c.title}</b>. ${r.msg}`, 'ok', 6000); renderChals(); const m2 = document.getElementById('cm-' + c.id); if (m2) m2.textContent = r.msg; }
+  }
+  renderChals();
+
+  /* ---------------- quiz ---------------- */
+  SL.quiz('#quiz', [
+    { q: 'A simply supported beam of span $L$ carries a uniform load $w$. What is the maximum bending moment?', options: ['$wL^2/2$', '$wL^2/8$', '$wL^2/12$', '$wL/4$'], answer: 1, why: 'Reactions are $wL/2$; at mid-span $M = (wL/2)(L/2) - (wL/2)(L/4) = wL^2/8$.' },
+    { q: 'Where along a beam does the bending moment reach a local maximum or minimum?', options: ['Where the load is largest', 'Where the shear force is zero or changes sign', 'Always at mid-span', 'Where the deflection is zero'], answer: 1, why: 'Because $dM/dx = V$, stationary points of $M$ occur where $V = 0$ (or where $V$ jumps through zero at a point load).' },
+    { q: 'Over a segment with no distributed load, the shear force diagram is…', options: ['Parabolic', 'Linear and sloping', 'Constant (horizontal)', 'Zero'], answer: 2, why: '$dV/dx = -w = 0$, so $V$ is constant and the moment diagram is a straight line.' },
+    { q: 'A rectangular beam is turned from flat ($b=200, h=50$ mm) to upright ($b=50, h=200$ mm). By what factor does $I$ increase?', options: ['4', '8', '16', '64'], answer: 2, why: '$I = bh^3/12$. Upright: $50\\cdot200^3$; flat: $200\\cdot50^3$. Ratio $= (200/50)^2 = 16$.' },
+    { q: 'For the same load and span, a cantilever with a tip load deflects how much compared with a simply supported beam with the same load at mid-span?', options: ['The same', '4 times as much', '16 times as much', '48 times as much'], answer: 2, why: '$PL^3/3EI$ divided by $PL^3/48EI$ gives 16.' },
+    { q: 'Why is a fixed–fixed beam called statically indeterminate?', options: ['Its supports can move', 'It has more unknown reactions than independent equilibrium equations', 'Its deflection is zero everywhere', 'Its moment diagram is discontinuous'], answer: 1, why: 'Two fixed ends give four unknowns in bending (two forces, two moments) but only two useful equilibrium equations. Compatibility (zero slope and deflection at the ends) supplies the rest.' },
+    { q: 'A sagging bending moment of 50 kN·m acts on a section with $Z = 500\\times10^3$ mm³. What is the maximum bending stress?', options: ['10 MPa', '25 MPa', '100 MPa', '250 MPa'], answer: 2, why: '$\\sigma = M/Z = 50\\times10^6\\ \\text{N·mm} / 500\\times10^3\\ \\text{mm}^3 = 100$ MPa; tension at the bottom, compression at the top.' },
+    { q: 'An anticlockwise couple is applied at mid-span of a simply supported beam (no other loads). What does the bending moment diagram do there?', options: ['It has a kink but no jump', 'It jumps by the value of the couple', 'It becomes zero', 'Nothing: couples do not affect M'], answer: 1, why: 'A concentrated couple causes a step in $M$ equal to its magnitude; the shear is constant (the reactions form an equal and opposite couple).' },
+    { q: 'Doubling the span of a simply supported beam with a uniform load (same $w$, same section) multiplies the maximum deflection by…', options: ['2', '4', '8', '16'], answer: 3, why: '$\\delta = 5wL^4/384EI$, so $\\delta \\propto L^4$ and $2^4 = 16$.' },
+  ]);
+
+  /* ---------------- init ---------------- */
+  syncSecUI(); renderAll();
+  window.__beam = { S, solve, secProps, loadScenario, get R() { return R; } };
+})();
+</script>
+</body>
+</html>
