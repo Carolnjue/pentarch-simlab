@@ -49,6 +49,8 @@
   .chal .led{margin-top:6px;flex:none}
   .chal b{display:block}
   .chal .small{color:var(--muted)}
+  .chal .chal-now{display:block;margin-top:3px;color:var(--accent);font-family:var(--mono,monospace);font-size:12px}
+  .chal details{margin-top:3px}.chal summary{cursor:pointer;color:var(--muted)}
   .legend3d{position:absolute;right:12px;top:12px;display:flex;gap:10px;font:500 .72rem var(--mono);background:rgba(5,9,19,.78);border:1px solid var(--line2);padding:5px 9px;border-radius:8px;pointer-events:none}
   .legend3d i{display:inline-block;width:10px;height:3px;margin-right:4px;vertical-align:middle;border-radius:2px}
   .tbar{position:absolute;left:12px;bottom:12px;display:flex;gap:6px;flex-wrap:wrap;max-width:calc(100% - 24px)}
@@ -71,8 +73,8 @@
       <div class="stage" id="stage">
         <canvas id="cv" aria-label="3D robot arm"></canvas>
         <div class="hud">
-          <span class="readout">p = <b id="hP">-</b></span>
-          <span class="readout" id="hW">w <b>-</b></span>
+          <span class="readout" title="Tool position p = (x, y, z) in metres">tool p = <b id="hP">-</b></span>
+          <span class="readout" id="hW" title="Manipulability: how freely the tool can move in every direction. It falls to 0% at a singularity">w <b>-</b></span>
         </div>
         <div class="legend3d"><span><i style="background:#ef4444"></i>x</span><span><i style="background:#22c55e"></i>y</span><span><i style="background:#3b82f6"></i>z</span></div>
         <div class="tbar">
@@ -84,7 +86,7 @@
           <button class="btn sm on" id="bTrail" title="Tool trail"><i data-lucide="spline"></i><span>Trail</span></button>
         </div>
       </div>
-      <p class="small muted" style="margin:8px 2px 0" id="hint">Drag to orbit the camera, scroll or pinch to zoom. Switch to <b>IK</b> and drag the glowing target to make the arm follow.</p>
+      <p class="small muted" style="margin:8px 2px 0" id="hint"><b>Start here:</b> in <b>Joints</b> mode move the joint sliders and watch where the tool ends up (forward kinematics). Then switch to <b>IK target</b> (inverse kinematics: you place the tool, the solver finds the joint angles) and drag the glowing target. Drag empty space to orbit the camera; scroll or pinch to zoom.</p>
       <div class="fkcap" id="fkCap" aria-live="polite"></div>
   <div class="panel" id="plotPanel" style="margin-top:14px" hidden>
     <h3><i data-lucide="line-chart"></i> Trajectory profiles</h3>
@@ -108,14 +110,14 @@
       <div class="panel" id="pIK" hidden>
         <h3><i data-lucide="crosshair"></i> Inverse kinematics</h3>
         <div id="ikMethodWrap"><div class="panel-title" style="margin-top:0">Solver</div>
-          <div class="seg full" id="ikMethod"><button data-k="analytic" class="on">Analytic</button><button data-k="dls">Damped least squares</button></div></div>
+          <div class="seg full" id="ikMethod"><button data-k="analytic" class="on">Analytic</button><button data-k="dls" title="Damped least squares: an iterative solver that works for any robot and behaves well near singularities">Damped least squares</button></div></div>
         <div id="elbowWrap"><div class="panel-title">Elbow</div>
           <div class="seg full" id="elbowSeg"><button data-e="down" class="on">Elbow down (θ₂ &gt; 0)</button><button data-e="up">Elbow up (θ₂ &lt; 0)</button></div></div>
         <div class="ctl" id="phiCtl"><label for="phi">Tool angle φ</label><output></output><input type="range" id="phi" min="-180" max="180" step="1" value="0"></div>
         <div class="ctl" id="psiCtl"><label for="psi">Tool yaw ψ</label><output></output><input type="range" id="psi" min="-180" max="180" step="1" value="0"></div>
         <div class="ctl" id="tzCtl"><label for="tz">Target height z</label><output></output><input type="range" id="tz" min="0" max="0.4" step="0.005" value="0.2"></div>
         <label class="toggle" id="oriWrap">Hold tool orientation (6-D task) <input type="checkbox" id="ori"></label>
-        <div class="ctl" id="lamCtl"><label for="lam">Damping λ</label><output></output><input type="range" id="lam" min="0.005" max="0.3" step="0.005" value="0.05"></div>
+        <div class="ctl" id="lamCtl"><label for="lam" title="λ (lambda): larger values keep the arm calm near singularities but reach the target less exactly">Damping λ (stability vs accuracy)</label><output></output><input type="range" id="lam" min="0.005" max="0.3" step="0.005" value="0.05"></div>
         <div class="ikstat"><span class="led on" id="ikLed"></span><span id="ikTxt">Reachable</span></div>
       </div>
 
@@ -178,10 +180,12 @@
     <!-- THEORY -->
     <div class="tabpanel prose">
       <h3>1. Serial manipulators, joints and frames</h3>
+      <p><b>Why it matters:</b> to make a robot weld a seam or pick up a part, you must turn "put the gripper here" into motor angles, and back again. This page builds that mapping step by step, from simple 2-link arms to a six-joint industrial arm.</p>
       <p>A serial robot arm is a chain of rigid <b>links</b> connected by <b>joints</b>. A revolute joint (R) rotates by an angle $\theta$; a prismatic joint (P) slides by a distance $d$. The vector of joint variables $\mathbf q = (q_1,\dots,q_n)$ is the robot's <b>configuration</b>, and $n$ is its number of degrees of freedom (DOF). To position and orient a tool anywhere in 3D you need six: three for position and three for orientation.</p>
       <p><b>Forward kinematics (FK)</b> maps joint variables to the tool pose; <b>inverse kinematics (IK)</b> goes the other way. FK always has exactly one answer; IK may have none, one, several or infinitely many.</p>
 
       <h3>2. Rotation matrices</h3>
+      <p><b>Intuition:</b> attach a little set of x, y, z axes (a <b>frame</b>) to every link. A rotation matrix records which way one frame's axes point when seen from another frame.</p>
       <p>The orientation of frame $B$ relative to frame $A$ is a $3\times3$ rotation matrix $R^A_B$ whose columns are $B$'s unit axes written in $A$. It is orthonormal ($R^{\mathsf T}R = I$, $\det R = +1$), so $R^{-1} = R^{\mathsf T}$. The elementary rotations are</p>
       <div class="eq">$$R_x(\alpha)=\begin{bmatrix}1&0&0\\0&c_\alpha&-s_\alpha\\0&s_\alpha&c_\alpha\end{bmatrix}\quad R_y(\beta)=\begin{bmatrix}c_\beta&0&s_\beta\\0&1&0\\-s_\beta&0&c_\beta\end{bmatrix}\quad R_z(\theta)=\begin{bmatrix}c_\theta&-s_\theta&0\\s_\theta&c_\theta&0\\0&0&1\end{bmatrix}$$</div>
       <p>with the shorthand $c_\theta = \cos\theta$, $s_\theta = \sin\theta$, and later $c_{12} = \cos(\theta_1+\theta_2)$.</p>
@@ -192,6 +196,7 @@
       <p>The inverse is not the plain transpose: $\left(T^A_B\right)^{-1} = \begin{bmatrix} R^{\mathsf T} & -R^{\mathsf T}\mathbf p\\ \mathbf 0^{\mathsf T} & 1\end{bmatrix}$.</p>
 
       <h3>4. The Denavit–Hartenberg convention, step by step</h3>
+      <p><b>Intuition:</b> a general frame-to-frame transform needs six numbers. The Denavit–Hartenberg (DH) recipe places the frames cleverly so that each link needs only four, which is what the editable table under the stage shows.</p>
       <ol class="steps">
         <li><b>Number the joints and links.</b> Link 0 is the fixed base; joint $i$ connects link $i-1$ to link $i$.</li>
         <li><b>Assign $z_{i-1}$ along the axis of joint $i$</b> (the rotation axis for R, the sliding direction for P).</li>
@@ -238,7 +243,7 @@
       </div>
 
       <h3>7. Velocity kinematics: the Jacobian</h3>
-      <p>The Jacobian maps joint rates to the tool's linear and angular velocity, $\begin{bmatrix}\mathbf v\\ \boldsymbol\omega\end{bmatrix} = J(\mathbf q)\,\dot{\mathbf q}$. Column $i$ of the geometric Jacobian is built from frame $i-1$ (all read from the $T^0_{i-1}$ matrices):</p>
+      <p><b>Intuition:</b> if each joint turns a little, how fast and in which direction does the tool move? The Jacobian $J$ is the table of those sensitivities. The Jacobian maps joint rates $\dot{\mathbf q}$ (joint speeds) to the tool's linear velocity $\mathbf v$ and angular velocity $\boldsymbol\omega$, $\begin{bmatrix}\mathbf v\\ \boldsymbol\omega\end{bmatrix} = J(\mathbf q)\,\dot{\mathbf q}$. Column $i$ of the geometric Jacobian is built from frame $i-1$ (all read from the $T^0_{i-1}$ matrices):</p>
       <div class="eq">$$J_i = \begin{bmatrix} \mathbf z_{i-1}\times(\mathbf o_n-\mathbf o_{i-1})\\ \mathbf z_{i-1}\end{bmatrix}\ \text{(revolute)},\qquad J_i = \begin{bmatrix}\mathbf z_{i-1}\\ \mathbf 0\end{bmatrix}\ \text{(prismatic)}$$</div>
       <p>For the 2R arm (position rows only):</p>
       <div class="eq">$$J = \begin{bmatrix}-a_1s_1-a_2s_{12} & -a_2s_{12}\\ a_1c_1+a_2c_{12} & a_2c_{12}\end{bmatrix},\qquad \det J = a_1a_2\sin\theta_2$$</div>
@@ -1201,22 +1206,24 @@
 
   /* ============================== challenges ================================== */
   const CH = [
-    { t: 'Hit the spot', d: '2R arm, Joints mode: put the tool at (0.50, 0.20) m within 1 cm using only the sliders.', ok: () => S.key === 'rr' && S.mode === 'fk' && Math.hypot(K.tip[0] - 0.5, K.tip[1] - 0.2) < 0.01 },
-    { t: 'Find a singularity', d: '2R arm: reach a configuration where |det J| < 0.002.', ok: () => S.key === 'rr' && Math.abs(K.det) < 0.002 },
-    { t: 'Two ways there', d: '2R arm, IK: with the target at (0.30, 0.40) ± 1 cm, show both the elbow-down and elbow-up solutions.', ok: () => { if (S.key !== 'rr' || S.mode !== 'ik' || Math.hypot(S.target[0] - 0.3, S.target[1] - 0.4) > 0.01 || !S.ikOk) return false; S._eb = S._eb || new Set(); S._eb.add(S.q[1] > 0 ? 'd' : 'u'); return S._eb.size === 2; } },
-    { t: 'No hole in the middle', d: 'Edit the 2R DH table so the workspace becomes a full disc (a₁ = a₂ within 5 mm).', ok: () => S.key === 'rr' && Math.abs(S.rob.rows[0].a - S.rob.rows[1].a) < 0.005 },
-    { t: 'Wrist singularity', d: '6-DOF arm: set θ₅ within ±1° of zero and confirm the singularity indicator turns red.', ok: () => S.key === 'puma' && Math.abs(S.q[4]) < 1 && K.w / S.wMax < 0.03 },
-    { t: 'Straight-line move', d: 'Run a Cartesian straight-line trajectory on the 6-DOF arm that IK follows the whole way.', ok: () => S.key === 'puma' && S.playing && S.interp === 'cart' && S.traj && S.traj.ok },
-    { t: 'Pick and place', d: 'Deliver the block to the bin yourself (not with Demo) with any robot.', ok: () => S.lastPick && !S.lastPick.auto },
-    { t: 'Speed run', d: 'Deliver the block with the 6-DOF arm in under 40 s (not with Demo).', ok: () => S.lastPick && !S.lastPick.auto && S.lastPick.key === 'puma' && S.lastPick.secs < 40 },
+    { h: "Pick the 2R planar robot and Joints mode. Change θ₁ to point the arm at the target, then θ₂ to bend the elbow. The Live results panel shows the tool x and y.", now: () => S.key !== 'rr' ? 'Select 2R planar.' : `Now: tool at (${SL.fmt(K.tip[0],3)}, ${SL.fmt(K.tip[1],3)}) m, ${SL.fmt(Math.hypot(K.tip[0]-0.5,K.tip[1]-0.2)*100,1)} cm away.`, t: 'Hit the spot', d: '2R arm, Joints mode: put the tool at (0.50, 0.20) m within 1 cm using only the sliders.', ok: () => S.key === 'rr' && S.mode === 'fk' && Math.hypot(K.tip[0] - 0.5, K.tip[1] - 0.2) < 0.01 },
+    { h: "det J = a₁a₂ sin θ₂, so it is zero when the elbow is straight (θ₂ = 0°) or folded back (180°).", now: () => S.key !== 'rr' ? 'Select 2R planar.' : `Now: |det J| = ${SL.fmt(Math.abs(K.det),4)} (target below 0.002).`, t: 'Find a singularity', d: '2R arm: reach a configuration where |det J| < 0.002.', ok: () => S.key === 'rr' && Math.abs(K.det) < 0.002 },
+    { h: "Switch to IK target, drag the target to (0.30, 0.40), then press Elbow down and Elbow up in turn.", now: () => S.key !== 'rr' || S.mode !== 'ik' ? 'Select 2R planar and IK target mode.' : `Now: target ${SL.fmt(Math.hypot(S.target[0]-0.3,S.target[1]-0.4)*100,1)} cm from (0.30, 0.40); elbows seen: ${S._eb ? S._eb.size : 0} of 2.`, t: 'Two ways there', d: '2R arm, IK: with the target at (0.30, 0.40) ± 1 cm, show both the elbow-down and elbow-up solutions.', ok: () => { if (S.key !== 'rr' || S.mode !== 'ik' || Math.hypot(S.target[0] - 0.3, S.target[1] - 0.4) > 0.01 || !S.ikOk) return false; S._eb = S._eb || new Set(); S._eb.add(S.q[1] > 0 ? 'd' : 'u'); return S._eb.size === 2; } },
+    { h: "The hole has radius |a₁ − a₂|. Click the a cell of row 1 or 2 in the Denavit–Hartenberg table below the stage and type a new length.", now: () => S.key !== 'rr' ? 'Select 2R planar.' : `Now: a₁ = ${SL.fmt(S.rob.rows[0].a,3)} m, a₂ = ${SL.fmt(S.rob.rows[1].a,3)} m.`, t: 'No hole in the middle', d: 'Edit the 2R DH table so the workspace becomes a full disc (a₁ = a₂ within 5 mm).', ok: () => S.key === 'rr' && Math.abs(S.rob.rows[0].a - S.rob.rows[1].a) < 0.005 },
+    { h: "Select 6-DOF, stay in Joints mode and drag the θ₅ slider to 0°.", now: () => S.key !== 'puma' ? 'Select 6-DOF.' : `Now: θ₅ = ${SL.fmt(S.q[4],1)}°.`, t: 'Wrist singularity', d: '6-DOF arm: set θ₅ within ±1° of zero and confirm the singularity indicator turns red.', ok: () => S.key === 'puma' && Math.abs(S.q[4]) < 1 && K.w / S.wMax < 0.03 },
+    { h: "Trajectory mode: set A, move the joints a little, set B, choose Cartesian line, then Run. If IK fails on the way, pick A and B closer together.", now: () => S.key !== 'puma' ? 'Select 6-DOF.' : S.mode !== 'traj' ? 'Switch to Trajectory mode.' : `Interpolation: ${S.interp === 'cart' ? 'Cartesian line' : 'joint space'}.`, t: 'Straight-line move', d: 'Run a Cartesian straight-line trajectory on the 6-DOF arm that IK follows the whole way.', ok: () => S.key === 'puma' && S.playing && S.interp === 'cart' && S.traj && S.traj.ok },
+    { h: "Leave Drive with IK target on, drag the target onto the block, press Grip, drag to the bin and press Release.", now: () => S.mode !== 'pick' ? 'Switch to Pick & place mode.' : 'Mode ready: drag the target to the block.', t: 'Pick and place', d: 'Deliver the block to the bin yourself (not with Demo) with any robot.', ok: () => S.lastPick && !S.lastPick.auto },
+    { h: "Practise with the 2R arm first. With the 6-DOF arm, use the Top view so dragging the target is easier.", now: () => S.lastPick ? `Last delivery: ${SL.fmt(S.lastPick.secs,1)} s with ${S.lastPick.key}.` : 'No delivery yet.', t: 'Speed run', d: 'Deliver the block with the 6-DOF arm in under 40 s (not with Demo).', ok: () => S.lastPick && !S.lastPick.auto && S.lastPick.key === 'puma' && S.lastPick.secs < 40 },
   ];
   const done = new Set(); let chalReady = false;
   $('#chalTotal').textContent = CH.length;
-  function renderChal() { $('#chalList').innerHTML = CH.map((c, i) => `<div class="chal"><span class="led ${done.has(i) ? 'on' : ''}"></span><div><b>${c.t}</b><span class="small">${c.d}</span></div></div>`).join(''); $('#chalCount').textContent = done.size; }
+  const chNow = c => { try { return c.now(); } catch (e) { return ''; } };
+  function renderChal() { $('#chalList').innerHTML = CH.map((c, i) => `<div class="chal"><span class="led ${done.has(i) ? 'on' : ''}"></span><div><b>${c.t}</b><span class="small">${c.d}</span>${done.has(i) ? '<span class="small chal-now">Solved.</span>' : `<span class="small chal-now">${chNow(c)}</span><details class="small"><summary>Hint</summary>${c.h}</details>`}</div></div>`).join(''); $('#chalCount').textContent = done.size; }
   function checkChallenges() {
     let ch = false;
     CH.forEach((c, i) => { if (done.has(i)) return; let ok = false; try { ok = c.ok(); } catch (e) {} if (ok) { done.add(i); ch = true; if (chalReady) SL.toast(`<b>Challenge solved:</b> ${c.t}`, 'ok'); } });
-    if (ch) renderChal();
+    if (ch || !$('#chalList').innerHTML) renderChal();
+    else CH.forEach((c, i) => { const el = $('#chalList').children[i]?.querySelector('.chal-now'); if (el && !done.has(i)) el.textContent = chNow(c); });
   }
 
   /* ================================== quiz ==================================== */
