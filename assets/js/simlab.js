@@ -186,6 +186,44 @@
     return show;
   }
 
+  /* ---------------- Progress (per browser) ---------------- */
+  const PKEY = 'sl-progress-v1';
+  function progress() { try { return JSON.parse(localStorage.getItem(PKEY)) || {}; } catch (e) { return {}; } }
+  function saveProgress(p) { try { localStorage.setItem(PKEY, JSON.stringify(p)); } catch (e) {} }
+  function markVisit(id) { const p = progress(); p[id] = Object.assign(p[id] || {}, { v: Date.now() }); saveProgress(p); }
+  function markQuiz(id, score, total) { const p = progress(); const e = p[id] || {}; if (!e.q || score / total >= e.q[0] / e.q[1]) e.q = [score, total]; p[id] = e; saveProgress(p); }
+
+  function moreLabs(m) {
+    const same = MODULES.filter(x => x.dept === m.dept);
+    const i = same.indexOf(m), prev = same[(i - 1 + same.length) % same.length], next = same[(i + 1) % same.length];
+    const others = MODULES.filter(x => x.dept !== m.dept);
+    const pick = [...same.filter(x => x !== m && x !== prev && x !== next), ...others.filter((_, k) => (k * 7 + i) % 11 === 0)].slice(0, 3);
+    const d = deptById[m.dept];
+    const card = x => `<a class="card" href="${x.id}.html" data-dept="${x.dept}"><span class="badge">${deptById[x.dept].name}</span><span class="ic">${icon(x.icon)}</span><h3>${x.title}</h3><p>${x.desc}</p><span class="go">Open lab ${icon('arrow-right')}</span></a>`;
+    const sec = document.createElement('section');
+    sec.className = 'container sl-more';
+    sec.innerHTML = `<div class="sl-pn">
+        <a href="${prev.id}.html" class="sl-pn-a"><span>${icon('arrow-left')} Previous in ${d.name}</span><b>${prev.title}</b></a>
+        <a href="${next.id}.html" class="sl-pn-a right"><span>Next in ${d.name} ${icon('arrow-right')}</span><b>${next.title}</b></a>
+      </div>
+      <h3 class="sl-more-h">Keep exploring</h3>
+      <div class="grid3">${pick.map(card).join('')}</div>`;
+    return sec;
+  }
+
+  function decorateProgress() {
+    const p = progress();
+    document.querySelectorAll('a.card[href$=".html"], a.mlink[href$=".html"]').forEach(a => {
+      const id = a.getAttribute('href').replace('.html', ''), e = p[id];
+      if (!e || a.querySelector('.sl-done')) return;
+      const t = document.createElement('span'); t.className = 'sl-done';
+      t.title = e.q ? `Best quiz score ${e.q[0]}/${e.q[1]}` : 'Visited';
+      t.innerHTML = icon(e.q && e.q[0] === e.q[1] ? 'award' : 'check') + (e.q ? `<i>${e.q[0]}/${e.q[1]}</i>` : '');
+      a.appendChild(t);
+    });
+    refreshIcons();
+  }
+
   /* ---------------- Mount ---------------- */
   function mount() {
     const page = document.body.dataset.page;
@@ -193,7 +231,10 @@
     if (m && !document.body.dataset.dept) document.body.dataset.dept = m.dept;
     const h = document.getElementById('sl-header'); if (h) h.outerHTML = header();
     const hero = document.getElementById('sl-hero'); if (hero && m) hero.outerHTML = pageHero(m);
-    const f = document.getElementById('sl-footer'); if (f) f.outerHTML = footer();
+    const f = document.getElementById('sl-footer');
+    if (f && m) f.parentNode.insertBefore(moreLabs(m), f);
+    if (f) f.outerHTML = footer();
+    if (m) markVisit(m.id);
     if (m) document.title = document.title || `${m.title} · Pentarch SimLab`;
     const showPalette = palette();
     const sb = document.getElementById('slSearchBtn'); if (sb) sb.onclick = showPalette;
@@ -216,6 +257,7 @@
     document.addEventListener('input', e => { if (e.target.type === 'range') rangeFill(e.target); });
     refreshIcons();
     renderMath();
+    setTimeout(decorateProgress, 60);
     document.dispatchEvent(new CustomEvent('sl:ready'));
   }
 
@@ -332,6 +374,7 @@
       qd.classList.add('done'); answered++;
       qd.querySelectorAll('.opt')[q.answer].classList.add('right');
       if (j === q.answer) score++; else b.classList.add('wrong');
+      if (answered === questions.length && document.body.dataset.page) markQuiz(document.body.dataset.page, score, questions.length);
       el.querySelector('.score').textContent = `Score: ${score} / ${answered}${answered === questions.length ? (score === questions.length ? ' · Perfect score!' : '') : ''}`;
     });
     renderMath(el);
