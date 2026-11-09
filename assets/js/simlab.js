@@ -469,13 +469,26 @@
     return { el: m, close };
   }
 
+  /** Very small TeX-to-words converter for screen-reader text in quiz options. */
+  function texSpeech(str) {
+    let t = String(str).replace(/<[^>]+>/g, '');
+    t = t.replace(/\$([^$]*)\$/g, (_, m) => ' ' + m
+      .replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '$1 over $2').replace(/\\sqrt\{([^}]*)\}/g, 'square root of $1')
+      .replace(/\^2/g, ' squared').replace(/\^3/g, ' cubed').replace(/\^\{([^}]*)\}/g, ' to the power $1').replace(/\^(\w)/g, ' to the power $1')
+      .replace(/_\{([^}]*)\}/g, ' sub $1').replace(/_(\w)/g, ' sub $1')
+      .replace(/\\(cdot|times)/g, ' times ').replace(/\\(sin|cos|tan|ln|log|exp)/g, ' $1 ').replace(/\\pi/g, ' pi ')
+      .replace(/\\(alpha|beta|gamma|delta|theta|lambda|mu|omega|rho|sigma|tau|phi|Delta|Omega)/g, ' $1 ')
+      .replace(/\\(left|right|,|;|!|quad|text|mathrm)/g, ' ').replace(/[{}\\]/g, '').replace(/\s+/g, ' ') + ' ');
+    return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').trim();
+  }
+
   /** Quiz: questions = [{q, options:[...], answer:index, why}] */
   function quiz(container, questions) {
     const el = typeof container === 'string' ? document.querySelector(container) : container;
     if (!el) return;
     let score = 0, answered = 0;
     el.classList.add('quiz');
-    el.innerHTML = questions.map((q, i) => `<div class="q" data-i="${i}"><p>${i + 1}. ${q.q}</p><div class="opts">${q.options.map((o, j) => `<button class="opt" data-j="${j}" aria-label="${String(o).replace(/<[^>]+>/g, '').replace(/\$/g, '').replace(/\\/g, '').replace(/"/g, '&quot;')}">${o}</button>`).join('')}</div><div class="why">${q.why || ''}</div></div>`).join('') + `<p class="score"></p>`;
+    el.innerHTML = questions.map((q, i) => `<div class="q" data-i="${i}"><p>${i + 1}. ${q.q}</p><div class="opts">${q.options.map((o, j) => `<button class="opt" data-j="${j}">${o}${/\$/.test(String(o)) ? `<span class="sr-only">${texSpeech(o)}</span>` : ""}</button>`).join('')}</div><div class="why">${q.why || ''}</div></div>`).join('') + `<p class="score"></p>`;
     el.addEventListener('click', e => {
       const b = e.target.closest('.opt'); if (!b) return;
       const qd = b.closest('.q'); if (qd.classList.contains('done')) return;

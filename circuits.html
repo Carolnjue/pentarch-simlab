@@ -52,6 +52,7 @@
   .elist .sw{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:0}
   .elist .note{flex-basis:100%;font:400 .8rem var(--font);color:var(--dim);line-height:1.5}
   @media (max-width:520px){#stage{height:330px} #scv{height:240px}.sc-ctl select{min-height:36px}.lab .btn.sm{min-height:36px}}
+  .pbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}   /* keyboard focus */
 </style>
 </head>
 <body data-page="circuits">
@@ -86,16 +87,16 @@
             <div class="sc-meas" id="scMeas"></div>
           </div>
           <div class="sc-ctl">
-            <div class="full"><label class="ch1">CH1 signal</label><select id="ch1"></select></div>
-            <div><label class="ch1">CH1 scale /div</label><select id="vd1"></select></div>
-            <div><label class="ch1">CH1 position</label><select id="po1"></select></div>
-            <div class="full"><label class="ch2">CH2 signal</label><select id="ch2"></select></div>
-            <div><label class="ch2">CH2 scale /div</label><select id="vd2"></select></div>
-            <div><label class="ch2">CH2 position</label><select id="po2"></select></div>
-            <div><label>Time /div</label><select id="tdiv"></select></div>
-            <div><label>Trigger</label><select id="tsrc"><option value="1">CH1 ↑</option><option value="2">CH2 ↑</option><option value="-1">CH1 ↓</option><option value="-2">CH2 ↓</option></select></div>
-            <div><label>Trigger level</label><select id="tlev"></select></div>
-            <div><label>Mode</label><select id="tmode"><option value="auto">Auto</option><option value="normal">Normal</option><option value="single">Single</option></select></div>
+            <div class="full"><label class="ch1" for="ch1">CH1 signal</label><select id="ch1"></select></div>
+            <div><label class="ch1" for="vd1">CH1 scale /div</label><select id="vd1"></select></div>
+            <div><label class="ch1" for="po1">CH1 position</label><select id="po1"></select></div>
+            <div class="full"><label class="ch2" for="ch2">CH2 signal</label><select id="ch2"></select></div>
+            <div><label class="ch2" for="vd2">CH2 scale /div</label><select id="vd2"></select></div>
+            <div><label class="ch2" for="po2">CH2 position</label><select id="po2"></select></div>
+            <div><label for="tdiv">Time /div</label><select id="tdiv"></select></div>
+            <div><label for="tsrc">Trigger</label><select id="tsrc"><option value="1">CH1 ↑</option><option value="2">CH2 ↑</option><option value="-1">CH1 ↓</option><option value="-2">CH2 ↓</option></select></div>
+            <div><label for="tlev">Trigger level</label><select id="tlev"></select></div>
+            <div><label for="tmode">Mode</label><select id="tmode"><option value="auto">Auto</option><option value="normal">Normal</option><option value="single">Single</option></select></div>
             <div class="full btn-row" style="margin-top:4px"><button class="btn sm" id="autoset"><i data-lucide="wand-sparkles"></i> Auto scale</button><button class="btn sm" id="arm"><i data-lucide="crosshair"></i> Re-arm</button></div>
           </div>
         </div>
@@ -110,7 +111,7 @@
       <div class="panel props" id="props"></div>
       <div class="panel">
         <h3><i data-lucide="library"></i> Presets</h3>
-        <select id="preset">
+        <select id="preset" aria-label="Circuit preset">
           <option value="series">Series resistors</option><option value="parallel">Parallel resistors</option><option value="divider">Voltage divider</option>
           <option value="rc">RC charging</option><option value="lowpass" selected>RC low-pass filter</option><option value="rlc">RLC series resonance</option>
           <option value="ring">RLC step response (ringing)</option><option value="rl">RL time constant</option><option value="wheat">Wheatstone bridge</option><option value="led">LED with series resistor</option><option value="blank">Empty breadboard</option>
@@ -224,7 +225,7 @@
       <div class="prose">
         <p>The lab solves the circuit with phasors (complex modified nodal analysis) at each frequency, giving the ratio of the CH2 signal to the CH1 signal. Choose the signals with the oscilloscope selectors; usually CH1 is the source and CH2 the output. DC sources are treated as short circuits and LEDs as off.</p>
       </div>
-      <canvas id="bode"></canvas>
+      <canvas id="bode" role="img" aria-label="Bode plot: gain and phase of the circuit against frequency"></canvas>
       <div class="btn-row" style="margin-top:10px"><button class="btn sm primary" id="bodeBtn"><i data-lucide="refresh-cw"></i> Recalculate</button><span class="small muted" id="bodeInfo" style="align-self:center"></span></div>
     </div>
 
@@ -661,8 +662,17 @@
     const vertical = Math.abs(x2 - x1) < Math.abs(y2 - y1), mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
     ctx.save(); ctx.font = `600 ${Math.max(9, Math.min(12, c * 0.36))}px JetBrains Mono, monospace`; ctx.fillStyle = '#1f2937';
     let txt1 = e.label, txt2 = (e.type === 'amm' || e.type === 'volt') ? meterText(e) : valueText(e);
-    if (vertical) { ctx.textAlign = 'left'; ctx.fillText(txt1, mx + c * 0.72, my - 2); ctx.fillStyle = e.type === 'amm' || e.type === 'volt' ? '#065f46' : '#475569'; ctx.fillText(txt2, mx + c * 0.72, my + 12); }
-    else { ctx.textAlign = 'center'; ctx.fillText(txt1, mx, my - c * 0.62); ctx.fillStyle = e.type === 'amm' || e.type === 'volt' ? '#065f46' : '#475569'; ctx.fillText(txt2, mx, my + c * 0.62 + 9); }
+    // a pale halo keeps labels readable where they cross wires or the rail line
+    ctx.strokeStyle = 'rgba(234,229,216,.92)'; ctx.lineWidth = 3; ctx.lineJoin = 'round';
+    const put = (t, x, y) => { ctx.strokeText(t, x, y); ctx.fillText(t, x, y); };
+    if (vertical) {
+      // put the label on the left when it would run off the right edge of the board (phones)
+      const T = ctx.getTransform(), k = ctx.canvas.width / (ctx.canvas.clientWidth || 1), tw = Math.max(ctx.measureText(txt1).width, ctx.measureText(txt2).width);
+      const flip = (T.a * (mx + c * 0.72 + tw) + T.c * my + T.e) / k > ctx.canvas.clientWidth - 4;
+      const lx = flip ? mx - c * 0.72 : mx + c * 0.72; ctx.textAlign = flip ? 'right' : 'left';
+      put(txt1, lx, my - 2); ctx.fillStyle = e.type === 'amm' || e.type === 'volt' ? '#065f46' : '#475569'; put(txt2, lx, my + 12);
+    }
+    else { ctx.textAlign = 'center'; put(txt1, mx, my - c * 0.62); ctx.fillStyle = e.type === 'amm' || e.type === 'volt' ? '#065f46' : '#475569'; put(txt2, mx, my + c * 0.62 + 9); }
     ctx.restore();
   }
   function bands(R) {
@@ -754,16 +764,16 @@
     const el = $('#props'); const e = sel;
     if (!e) { el.innerHTML = `<h3><i data-lucide="settings-2"></i> Properties</h3><p class="small dim" style="margin:0 0 10px">Select a component to edit it. The multimeter shows the selected part.</p>` + meterHTML(); SL.refreshIcons(el); return; }
     let h = `<h3><i data-lucide="settings-2"></i> ${e.label || 'Wire'} · ${TYPES[e.type].name}</h3>`;
-    const logRow = k => { const [mn, mx, u, nm] = RANGES[k]; return `<div class="ctl"><label>${nm}</label><output>${eng(e[k], u)}</output><input type="range" data-log="${k}" min="${Math.log10(mn)}" max="${Math.log10(mx)}" step="0.005" value="${Math.log10(e[k])}"></div><div class="row"><label>Exact value</label><input type="text" data-num="${k}" value="${eng(e[k], u, 4).replace(' ', '')}"></div>`; };
-    const linRow = (k, nm, mn, mx, stp, u) => `<div class="ctl"><label>${nm}</label><output>${eng(e[k], u)}</output><input type="range" data-lin="${k}" min="${mn}" max="${mx}" step="${stp}" value="${e[k]}"></div>`;
+    const logRow = k => { const [mn, mx, u, nm] = RANGES[k]; return `<div class="ctl"><label>${nm}</label><output>${eng(e[k], u)}</output><input type="range" aria-label="${nm}" data-log="${k}" min="${Math.log10(mn)}" max="${Math.log10(mx)}" step="0.005" value="${Math.log10(e[k])}"></div><div class="row"><label>Exact value</label><input type="text" aria-label="${nm}: exact value" data-num="${k}" value="${eng(e[k], u, 4).replace(' ', '')}"></div>`; };
+    const linRow = (k, nm, mn, mx, stp, u) => `<div class="ctl"><label>${nm}</label><output>${eng(e[k], u)}</output><input type="range" aria-label="${nm}" data-lin="${k}" min="${mn}" max="${mx}" step="${stp}" value="${e[k]}"></div>`;
     if (e.locked) h += `<p class="small muted">This resistor's value is hidden. Find it by balancing the bridge.</p>`;
     else switch (e.type) {
-      case 'dc': h += linRow('V', 'Voltage', 0, 30, 0.1, 'V') + `<div class="row"><label>Internal resistance</label><input type="text" data-num="rint" value="${e.rint}"></div>`; break;
+      case 'dc': h += linRow('V', 'Voltage', 0, 30, 0.1, 'V') + `<div class="row"><label>Internal resistance</label><input type="text" aria-label="Internal resistance (ohms)" data-num="rint" value="${e.rint}"></div>`; break;
       case 'ac': h += linRow('Vp', 'Amplitude (peak)', 0, 20, 0.1, 'V') + logRow('f'); break;
       case 'res': h += logRow('R'); break; case 'cap': h += logRow('C'); break; case 'ind': h += logRow('L'); break;
       case 'lamp': h += logRow('R') + linRow('Pr', 'Rated power', 0.1, 60, 0.1, 'W'); break;
       case 'sw': h += `<button class="btn sm ${e.closed ? 'on' : ''}" data-toggle="closed"><i data-lucide="toggle-${e.closed ? 'right' : 'left'}"></i> ${e.closed ? 'Closed: tap to open' : 'Open: tap to close'}</button>`; break;
-      case 'led': h += `<div class="row"><label>Colour</label><select data-sel="color">${Object.keys(LED).map(k => `<option ${k === e.color ? 'selected' : ''}>${k}</option>`).join('')}</select></div>` + (e.burnt ? `<button class="btn sm" data-fix><i data-lucide="wrench"></i> Replace LED</button>` : ''); break;
+      case 'led': h += `<div class="row"><label>Colour</label><select data-sel="color" aria-label="LED colour">${Object.keys(LED).map(k => `<option ${k === e.color ? 'selected' : ''}>${k}</option>`).join('')}</select></div>` + (e.burnt ? `<button class="btn sm" data-fix><i data-lucide="wrench"></i> Replace LED</button>` : ''); break;
       case 'amm': case 'volt': h += `<label class="toggle"><span>AC mode (show RMS)</span><input type="checkbox" data-chk="acm" ${e.acm ? 'checked' : ''}></label>`; break;
       case 'wire': case 'gnd': h += `<p class="small dim">${e.type === 'wire' ? 'Ideal conductor (zero resistance).' : 'Reference node: 0 V.'}</p>`; break;
     }
@@ -924,7 +934,7 @@
       if (e.type === 'dc' || e.type === 'ac') { g.src -= pa; if (e.type === 'dc' && e.rint > 0) g.heat += e.i * e.i * e.rint; }
       else if (e.type === 'res' || e.type === 'lamp') g.heat += pa; else if (e.type === 'led') g.led += pa;
       else if (e.type === 'cap') { g.cap += pa; now.cap += pn; } else if (e.type === 'ind') { g.ind += pa; now.ind += pn; } });
-    const P = v => eng(Math.abs(v) < 1e-12 ? 0 : v, 'W'), tot = Math.max(1e-15, g.heat + g.led + Math.max(0, g.cap) + Math.max(0, g.ind));
+    const P = v => eng(Math.abs(v) < 1e-12 ? 0 : v, 'W').replace(/^-/, '−'), tot = Math.max(1e-15, g.heat + g.led + Math.max(0, g.cap) + Math.max(0, g.ind));
     const parts = [['heat', '#f97316', 'Resistors and lamps (heat)'], ['led', '#a3e635', 'LEDs (light + heat)'], ['cap', '#38bdf8', 'Capacitors (stored)'], ['ind', '#c084fc', 'Inductors (stored)']];
     $('#ebar').innerHTML = parts.map(([k, c]) => `<i style="width:${(Math.max(0, g[k]) / tot * 100).toFixed(1)}%;background:${c}"></i>`).join('');
     const has = t => C.some(e => e.type === t);

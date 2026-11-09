@@ -19,7 +19,8 @@
   .modebar .hint{color:var(--muted);font-size:.85rem}
   .hidden{display:none!important}
   .labcol{align-self:start;min-width:0}
-  @media (max-width:980px){.labcol{display:contents}.labcol .modebar{order:0}.labcol .stage{order:1}.labcol .flybar{order:2}.lab>aside{order:3}.labcol .chartbox{order:4;margin-top:0}}
+  @media (max-width:980px){.labcol{display:contents}.labcol .modebar{order:0}.labcol .stage{order:1}.labcol .flybar{order:2}.lab>aside{order:3}.labcol .chartbox{order:4;margin-top:0}.labcol #perfPanel{order:5;margin-top:0}}
+  .labcol #perfPanel{margin-top:14px}
   .seg.full{display:flex}.seg.full button{flex:1;text-align:center}
   .chartbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 10px 4px;margin-top:14px}
   .chartbox h4{font:600 .72rem var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:0 0 4px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
@@ -39,12 +40,14 @@
   @media (max-width:640px){.flybar{grid-template-columns:repeat(4,minmax(0,1fr))}.seg button{min-height:38px}}
   .flybar .btn{padding:10px 4px;font-size:.76rem;flex-direction:column;gap:3px;touch-action:none}
   .flybar .btn svg{width:18px;height:18px}
-  .mission{display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border:1px solid var(--line2);border-radius:10px;cursor:pointer;background:var(--bg2);margin-bottom:6px;transition:.15s}
+  .mission{font:inherit;color:inherit;text-align:left;width:100%;display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border:1px solid var(--line2);border-radius:10px;cursor:pointer;background:var(--bg2);margin-bottom:6px;transition:.15s}
   .mission:hover{border-color:var(--accent)}
   .mission.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--bg2))}
   .mission .led{margin-top:6px;flex:none}
   .mission b{display:block;font-size:.88rem}
-  .mission span{display:block;font-size:.78rem;color:var(--muted);line-height:1.35}
+  .mission .mt{display:block;flex:1;min-width:0}
+  .mission .mt span{display:block;font-size:.78rem;color:var(--muted);line-height:1.35}
+  .mission .mdone{font:600 .62rem var(--mono);font-style:normal;letter-spacing:.08em;text-transform:uppercase;color:var(--ok,#34d399);margin-left:6px;vertical-align:1px}
   .keys{font-size:.8rem;color:var(--muted);line-height:1.9}
   .banner{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(5,9,19,.9);border:1px solid var(--line2);border-radius:14px;padding:18px 22px;text-align:center;max-width:min(440px,90%);display:none;z-index:4}
   .banner h3{margin:0 0 6px}
@@ -60,6 +63,7 @@
   .warnbox.bad{border-color:rgba(239,68,68,.5);background:rgba(239,68,68,.1);color:#fecaca}
   svg.diag text{font-family:var(--mono);font-size:12px;fill:var(--muted)}
   svg.diag{width:100%;height:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+  .stage.pb:focus-visible{outline:2px solid var(--accent);outline-offset:2px}   /* keyboard focus */
 </style>
 </head>
 <body data-page="plane-builder">
@@ -74,7 +78,7 @@
         <span class="hint" id="modeHint">Design your aircraft in the hangar, then switch to Fly. Your design drives the flight physics.</span>
       </div>
       <div class="stage pb" id="stage" tabindex="0">
-        <canvas id="cv" aria-label="Aircraft designer and flight simulator"></canvas>
+        <canvas id="cv" aria-label="Aircraft designer: top and side views of your aircraft, with the centre of gravity and neutral point marked; in Fly mode, the flight view"></canvas>
         <div class="hud hidden" id="hudFly">
           <span class="readout">IAS <b id="hIas">0</b> kt</span>
           <span class="readout">ALT <b id="hAlt">0</b> m</span>
@@ -100,12 +104,33 @@
       <div class="chartbox" id="perfBox">
         <h4>Power required vs power available <span id="perfNote">at take-off mass, field elevation</span></h4>
         <div class="legend-row"><span><i style="background:#f87171"></i>P<sub>req</sub> = DV</span><span><i style="background:#34d399"></i>P<sub>avail</sub> = TV</span><span><i style="background:#93a1bd"></i>induced part</span><span><i style="background:#a78bfa"></i>parasite part</span></div>
-        <canvas id="chPerf"></canvas>
+        <canvas id="chPerf" role="img" aria-label="Power required and power available against true airspeed"></canvas>
       </div>
       <div class="chartbox hidden" id="fdrBox">
         <h4>Flight data recorder <span>last 2 minutes</span></h4>
         <div class="legend-row"><span><i style="background:#22d3ee"></i>altitude (m)</span><span><i style="background:#facc15"></i>airspeed ×5 (m/s)</span><span><i style="background:#f472b6"></i>angle of attack ×20 (°)</span></div>
-        <canvas id="chFdr"></canvas>
+        <canvas id="chFdr" role="img" aria-label="Flight data recorder traces over the flight"></canvas>
+      </div>
+      <!-- performance summary (both modes) -->
+      <div class="panel" id="perfPanel">
+        <h3><i data-lucide="clipboard-check"></i> Design performance</h3>
+        <div class="stats">
+          <div class="stat"><div class="k">Wing area S</div><div class="v" id="pS">—</div></div>
+          <div class="stat"><div class="k">Aspect ratio</div><div class="v" id="pAR">—</div></div>
+          <div class="stat"><div class="k">Take-off mass</div><div class="v" id="pM">—</div></div>
+          <div class="stat"><div class="k">Wing loading</div><div class="v" id="pWS">—</div></div>
+          <div class="stat"><div class="k">Stall (clean)</div><div class="v" id="pVs">—</div></div>
+          <div class="stat"><div class="k">Stall (flaps 30)</div><div class="v" id="pVs30">—</div></div>
+          <div class="stat"><div class="k">Thrust/weight</div><div class="v" id="pTW">—</div></div>
+          <div class="stat"><div class="k">Take-off roll</div><div class="v" id="pTO">—</div></div>
+          <div class="stat"><div class="k">Best glide L/D</div><div class="v" id="pLD">—</div></div>
+          <div class="stat"><div class="k">Best glide speed</div><div class="v" id="pVmd">—</div></div>
+          <div class="stat"><div class="k">Max climb rate</div><div class="v" id="pROC">—</div></div>
+          <div class="stat"><div class="k">Max level speed</div><div class="v" id="pVmax">—</div></div>
+          <div class="stat"><div class="k">Static margin</div><div class="v" id="pSM">—</div></div>
+          <div class="stat"><div class="k">Range (Breguet)</div><div class="v" id="pR">—</div></div>
+        </div>
+        <div id="designWarn"></div>
       </div>
     </div>
 
@@ -146,7 +171,7 @@
         </div>
         <div class="panel">
           <h3><i data-lucide="map-pin"></i> Airfield</h3>
-          <select id="field" class="inp">
+          <select id="field" class="inp" aria-label="Airfield">
             <option value="61">Mombasa, Moi International (61 m)</option>
             <option value="1624" selected>Nairobi, JKIA (1,624 m)</option>
             <option value="2118">Eldoret International (2,118 m)</option>
@@ -182,27 +207,6 @@
             <div class="stat"><div class="k">Stall speed</div><div class="v" id="fVs">—</div></div>
           </div>
         </div>
-      </div>
-      <!-- performance summary (both modes) -->
-      <div class="panel" id="perfPanel">
-        <h3><i data-lucide="clipboard-check"></i> Design performance</h3>
-        <div class="stats">
-          <div class="stat"><div class="k">Wing area S</div><div class="v" id="pS">—</div></div>
-          <div class="stat"><div class="k">Aspect ratio</div><div class="v" id="pAR">—</div></div>
-          <div class="stat"><div class="k">Take-off mass</div><div class="v" id="pM">—</div></div>
-          <div class="stat"><div class="k">Wing loading</div><div class="v" id="pWS">—</div></div>
-          <div class="stat"><div class="k">Stall (clean)</div><div class="v" id="pVs">—</div></div>
-          <div class="stat"><div class="k">Stall (flaps 30)</div><div class="v" id="pVs30">—</div></div>
-          <div class="stat"><div class="k">Thrust/weight</div><div class="v" id="pTW">—</div></div>
-          <div class="stat"><div class="k">Take-off roll</div><div class="v" id="pTO">—</div></div>
-          <div class="stat"><div class="k">Best glide L/D</div><div class="v" id="pLD">—</div></div>
-          <div class="stat"><div class="k">Best glide speed</div><div class="v" id="pVmd">—</div></div>
-          <div class="stat"><div class="k">Max climb rate</div><div class="v" id="pROC">—</div></div>
-          <div class="stat"><div class="k">Max level speed</div><div class="v" id="pVmax">—</div></div>
-          <div class="stat"><div class="k">Static margin</div><div class="v" id="pSM">—</div></div>
-          <div class="stat"><div class="k">Range (Breguet)</div><div class="v" id="pR">—</div></div>
-        </div>
-        <div id="designWarn"></div>
       </div>
     </aside>
   </section>
@@ -725,7 +729,7 @@
   let mission = 'climb';
   const missionDone = {};
   function renderMissions() {
-    $('#missions').innerHTML = MISSIONS.map(m => `<div class="mission ${m.id === mission ? 'on' : ''}" data-mis="${m.id}"><span class="led ${missionDone[m.id] ? 'on' : ''}"></span><div><b>${m.t}</b><span>${m.d}</span></div></div>`).join('');
+    $('#missions').innerHTML = MISSIONS.map(m => `<button type="button" class="mission ${m.id === mission ? 'on' : ''}" data-mis="${m.id}" aria-pressed="${m.id === mission}"><span class="led ${missionDone[m.id] ? 'on' : ''}" aria-hidden="true"></span><span class="mt"><b>${m.t}${missionDone[m.id] ? ' <em class="mdone">Completed</em>' : ''}</b><span>${m.d}</span></span></button>`).join('');
     document.querySelectorAll('[data-mis]').forEach(el => el.onclick = () => { mission = el.dataset.mis; renderMissions(); startMission(); stage.focus({ preventScroll: true }); });
   }
   function trim(D, V, gam, flap, gear, h) {
