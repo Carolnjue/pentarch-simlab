@@ -168,7 +168,7 @@
       <h3>Decibels: the language of the desk</h3>
       <p>Audio levels span an enormous range, so engineers use the logarithmic decibel. For amplitude-like quantities (voltage, sample value) the level relative to a reference is</p>
       <div class="eq">$$L = 20\log_{10}\!\left(\frac{A}{A_\text{ref}}\right)\ \text{dB},\qquad L_P = 10\log_{10}\!\left(\frac{P}{P_\text{ref}}\right)\ \text{dB}$$</div>
-      <p>so doubling the amplitude adds about $6.02$ dB and doubling the power adds about $3.01$ dB. A fader at $-6$ dB halves the signal amplitude. Every digital meter on this desk reads in <b>dBFS</b> (decibels relative to full scale): $0$ dBFS is the largest sample value a fixed-point converter can represent, so all real levels are negative. Analogue desks use <b>dBu</b> ($0$ dBu $= 0.775$ V RMS); the EBU alignment maps $0$ dBu (≈ 0 VU) to $-18$ dBFS, which is why $-18$ dBFS is the classic gain-staging target.</p>
+      <p>so doubling the amplitude adds about $6.02$ dB and doubling the power adds about $3.01$ dB. A fader at $-6$ dB halves the signal amplitude. Every digital meter on this desk reads in <b>dBFS</b> (decibels relative to full scale): $0$ dBFS is the largest sample value a fixed-point converter can represent, so all real levels are negative. Analogue desks use <b>dBu</b> ($0$ dBu $= 0.775$ V RMS); the EBU alignment level of $0$ dBu maps to $-18$ dBFS, which is why $-18$ dBFS is the classic gain-staging target.</p>
       <p>Two <i>uncorrelated</i> signals of equal level sum to $+3$ dB (powers add); two identical (<i>correlated</i>) signals sum to $+6$ dB (amplitudes add). That is why ten channels each peaking at $-18$ dBFS can still drive the mix bus towards $-6$ dBFS.</p>
 
       <h3>Signal flow through a channel strip</h3>
@@ -197,7 +197,7 @@
       <h3>Loudness and broadcast standards</h3>
       <p>Peak meters show how close you are to clipping, not how loud a mix sounds. Loudness meters (ITU-R BS.1770) first apply <b>K-weighting</b> (a high-frequency shelf of about $+4$ dB above 2 kHz plus a high-pass around 38 Hz, approximating the ear), then compute the mean square over a window:</p>
       <div class="eq">$$\text{LUFS} = -0.691 + 10\log_{10}\sum_{i} G_i\,\overline{z_i^2}$$</div>
-      <p>where $\overline{z_i^2}$ is the mean square of channel $i$ and $G_i = 1$ for left and right. <b>Momentary</b> loudness uses a 400 ms window, <b>short-term</b> 3 s, and <b>integrated</b> loudness averages the whole programme with gating (blocks quieter than $-70$ LUFS, and then quieter than 10 LU below the ungated average, are ignored). Targets: EBU R128 broadcast $-23$ LUFS (Kenyan and many African broadcasters follow EBU or ATSC practice), ATSC A/85 $-24$ LKFS, most streaming platforms about $-14$ LUFS, podcasts about $-16$ LUFS. The meter on this page is a simplified real-time approximation, accurate to roughly ±1 LU.</p>
+      <p>where $\overline{z_i^2}$ is the mean square of channel $i$ and $G_i = 1$ for left and right. <b>Momentary</b> loudness uses a 400 ms window, <b>short-term</b> 3 s, and <b>integrated</b> loudness averages the whole programme with gating (blocks quieter than $-70$ LUFS, and then blocks more than 10 LU below the average of the remaining blocks, are ignored). Targets: EBU R128 broadcast $-23$ LUFS (Kenyan and many African broadcasters follow EBU or ATSC practice), ATSC A/85 $-24$ LKFS, most streaming platforms about $-14$ LUFS, podcasts about $-16$ LUFS. The meter on this page is a simplified real-time approximation, accurate to roughly ±1 LU.</p>
       <div class="callout"><i data-lucide="info"></i><div>The instruments are synthesised live in your browser with the Web Audio API, so every change you make is processed in real time, exactly as on a digital console.</div></div>
     </div>
 
@@ -224,7 +224,7 @@
       </div>
       <h3>5. Hitting a loudness target</h3>
       <div class="worked">
-        <p>Your mix measures $-19.5$ LUFS integrated and the platform target is $-14$ LUFS. You need $+5.5$ dB. If the true peak is already $-4$ dBFS, adding 5.5 dB would push peaks to $+1.5$ dBFS, so the limiter must reduce peaks by at least 2.5 dB (more, if the ceiling is $-1$ dBFS). Loudness is gained at the cost of crest factor (peak-to-loudness ratio).</p>
+        <p>Your mix measures $-19.5$ LUFS integrated and the platform target is $-14$ LUFS. You need $+5.5$ dB. If the true peak is already $-4$ dBFS, adding 5.5 dB would push peaks to $+1.5$ dBFS, so the limiter must reduce peaks by at least 1.5 dB to stay below 0 dBFS, or 2.5 dB for a $-1$ dBTP ceiling. Loudness is gained at the cost of crest factor (peak-to-loudness ratio).</p>
       </div>
       <h3>6. HPF slope</h3>
       <div class="worked">
@@ -665,7 +665,7 @@
     draw();
     return { cell, draw };
   }
-  const round = (d, v) => d.log ? +v.toPrecision(3) : Math.round(v * 10) / 10;
+  const round = (d, v) => d.log ? +v.toPrecision(3) : d.max - d.min <= 2 ? Math.round(v * 100) / 100 : Math.round(v * 10) / 10; // pan (−1…1) needs finer steps, or the arrow keys cannot move it
   function shade(hex, pct) {
     const n = parseInt(hex.slice(1), 16); let r = n >> 16, g = (n >> 8) & 255, b = n & 255;
     const f = pct / 100; const m = x => Math.round(clamp(f > 0 ? x + (255 - x) * f : x * (1 + f), 0, 255));
@@ -980,7 +980,7 @@
     gain: { t: 'Lesson 1: gain staging', icon: 'gauge', d: 'The band has just plugged in and the input levels are all over the place. Using only the GAIN (trim) knobs, bring every channel to peak between −21 and −15 dBFS pre-fader. The number under each fader is the highest pre-fader peak over the last 8 bars (green = on target, red = too hot, blue = too low). Switch the meters to Pre-fader to watch them live.' },
     muddy: { t: 'Fix 1: muddy low end', icon: 'waves', d: 'The bass has a big boom around 250 Hz and the Keys and Pad are full of low-mids, so the mix sounds thick and unclear. Use HPFs on Keys and Pad and a low-mid (LM) cut on the Bass, without removing the bass fundamental (keep the Bass within 6 dB of flat at 80 Hz).' },
     harsh: { t: 'Fix 2: harsh vocal', icon: 'mic-vocal', d: 'The vocal sounds edgy and piercing: there is a strong resonance somewhere between 2 and 5 kHz. Find it (boost the HM band and sweep its frequency to hear where it jumps out), then cut it. Do not hollow out the voice: keep 1 kHz within 4 dB.' },
-    dyn: { t: 'Fix 3: vocal too dynamic', icon: 'activity', d: 'The singer alternates between belting and whispering, so the vocal jumps in and out of the mix. Switch in the vocal compressor and set threshold, ratio and make-up so that the loud and soft phrases end up within 8 dB of each other (pre-fader), without making the vocal quieter overall.' },
+    dyn: { t: 'Fix 3: vocal too dynamic', icon: 'activity', d: 'The singer alternates between belting and whispering, so the vocal jumps in and out of the mix. Switch in the vocal compressor and set threshold, ratio, attack and make-up so that the loud and soft phrases end up within 8 dB of each other (pre-fader peaks), without making the vocal quieter overall (loudest phrase at −24 dBFS or above). The meter reads peaks, so the attack must be fast enough to catch the start of each phrase.' },
     balance: { t: 'Challenge: match the reference', icon: 'scale', d: 'All faders and pans have been reset. Use “Hear reference” to A/B against a professional balance, then match it using faders and pan pots only. Your score compares relative fader levels (the overall level does not matter) and pan positions.' },
     flat: { t: 'Blank desk', icon: 'eraser', d: 'Every control at its default: no filters, no EQ, no compression, faders at 0 dB. Build your own mix from scratch.' },
   };
@@ -1065,7 +1065,7 @@
     const rms = Math.sqrt(d.reduce((a, b) => a + (b - mean) ** 2, 0) / d.length);
     const pan = CH.reduce((a, c) => a + Math.abs(c.p.pan - REF[c.id][1]), 0) / CH.length;
     const anyMute = CH.some(c => c.p.mute);
-    return { score: clamp(100 * Math.exp(-rms / 7) - pan * 60 - (anyMute ? 20 : 0), 0, 100), rms, pan };
+    return { score: clamp(100 * Math.exp(-rms / 10) - pan * 60 - (anyMute ? 20 : 0), 0, 100), rms, pan };
   }
   function checkTask() {
     const r = checks(task);

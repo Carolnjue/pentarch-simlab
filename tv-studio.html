@@ -186,6 +186,11 @@
   .role span{font-size:.76rem;color:#93a1bd;line-height:1.35}
   .rs-opts{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-top:14px}
   .rs-opts label{font-size:.78rem;color:#93a1bd;display:flex;gap:8px;align-items:center}
+  @media (max-width:1100px){ /* tablets and phones: the seat chooser flows in the page instead of scrolling inside the multiviewer */
+    .mv.selecting{height:auto!important}
+    .mv.selecting canvas{display:none}
+    .rolesel{position:relative;inset:auto}
+  }
   @media (max-width:700px){
     .mv.selecting{height:auto!important}
     .mv.selecting canvas{display:none}
@@ -1802,11 +1807,9 @@ let frameN = 0;
 function drawMV(t) {
   if (!LAY) return; const { ctx, w, h } = mvS;
   frameN++;
-  if (frameN % 2 === 0 || !drawMV.init) {
-    drawMV.init = true;
-    tileCtx.fillStyle = '#000'; tileCtx.fillRect(0, 0, w, h);
-    for (const tl of LAY.tiles) renderSource(tileCtx, tl.r, tl.src, t);
-  }
+  // source tiles refresh at half rate, staggered (half the tiles each frame) so no single frame carries all eight 3D renders
+  if (!drawMV.init || drawMV.lay !== LAY) { drawMV.init = true; drawMV.lay = LAY; tileCtx.fillStyle = '#000'; tileCtx.fillRect(0, 0, w, h); LAY.tiles.forEach(tl => renderSource(tileCtx, tl.r, tl.src, t)); }
+  else LAY.tiles.forEach((tl, i) => { if ((i & 1) === (frameN & 1)) { tileCtx.fillStyle = '#000'; tileCtx.fillRect(tl.r.x, tl.r.y, tl.r.w, tl.r.h); renderSource(tileCtx, tl.r, tl.src, t); } });
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(tileCv, 0, 0); ctx.restore();
   for (const tl of LAY.tiles) umd(ctx, tl.r, `${SRC[tl.src].label} ${SRC[tl.src].name}`, tallyOf(tl.src), LAY.lab, tl.src === 8 && EVS.playing ? (EVS.ended ? 'END' : Math.round(EVS.speed * 100) + '%') : '');
   // PVW
@@ -2380,7 +2383,7 @@ function startShow() {
   Object.assign(EVS, { clips: [], sel: null, playing: null, pos: 0, speed: .5, ended: false, rig: {}, rolls: 0 }); renderClips(); refreshEvsUI();
   Object.assign(VM, { pgm: 1, pvw: 6, trans: null, lastCut: -9, cuts: 0, shotStart: 0, lens: [], live: 0, wide: 0 });
   Object.assign(GFX, { bug: false, bugT: -9, lower: null, full: null, armed: null, fresh: {} });
-  S.inBreak = false; S.iso = M.players.find(p => p.team === 0 && p.slot === 9); S.focus = null; S.restartRun = 0; S.lineSeen = [0, 0]; S.loudRun = 0; S.chal = {}; S.musicOpenT = 0; S.evsOpenT = 0; S.overT = -9; S.swearPen = false;
+  S.inBreak = false; S.iso = M.players.find(p => p.team === 0 && p.slot === 9); S.focus = null; S.restartRun = 0; S.lineSeen = [0, 0]; S.loudRun = 0; S.chal = {}; S.musicOpenT = 0; S.evsOpenT = 0; S.overT = -9; S.swearPen = false; S.refShutT = 0; S.refOpenAtAlert = false; S.cutsAtHalf = 0;
   AU.blocks = []; AU.hist = []; AU.pw = []; AU.I = -90; AU.overs = 0; AU.peakHold = -90;
   for (const r of ['dir', 'snd', 'gfx', 'prod']) S.H[r] = S.role === r || (S.role === 'all' && r !== 'prod');
   // fader starting positions: crew levels, or a deliberately untidy desk for a human sound supervisor
@@ -2471,7 +2474,7 @@ function onMatchEvent(e) {
       if (e.pen) st.push([2, 'iso', { opt: 1 }], [3.5, 'replay', { opt: 1 }]);
       script(st, 'ev');
       if (e.heated) {
-        AU.alertRef = S.t + 3.2;
+        AU.alertRef = S.t + 3.2; S.refOpenAtAlert = !refClosed();
         script([[.25, 'dipref']], 'ev');
         later(2.5, () => { AU.swear = [atime() + .1, atime() + 1.8]; if (AU.ok) { AU.refV.busy = 0; say(AU.refV, 1.6, .95, 1.6); } log('Heated exchange on the referee microphone.', 'm'); });
       }
@@ -2548,7 +2551,7 @@ function onGfxTake(id, d, by) {
 }
 function onGfxBug(on, by) {}
 function onSoundAction(c, a, by) { if (by !== 'you') return; }
-function checkHalfChallenges() { if (S.H.dir && !S.lineSeen[M.half - 1] && VM.cuts > 5) chal('noLine'); }
+function checkHalfChallenges() { const n = VM.cuts - (S.cutsAtHalf || 0); S.cutsAtHalf = VM.cuts; if (S.H.dir && !S.lineSeen[M.half - 1] && n >= 6) chal('noLine'); }
 
 /* ---------- continuous scoring ---------- */
 function suit(src) {
@@ -2589,7 +2592,7 @@ function soundSample() {
   if (AU.peak > -1 && S.t - S.overT > 1.5) { S.overT = S.t; AU.overs++; if (AU.overs <= 12) penal('snd', 1.5, 'Programme peak above −1 dBFS'); }
   const d = Math.abs(AU.S10 + 23);
   quality('snd', d <= 2 ? 1 : d <= 4 ? .6 : d <= 7 ? .25 : 0);
-  if (S.H.snd) { if (d <= 2) { S.loudRun += .25; if (S.loudRun >= 60) chal('loud60'); } else S.loudRun = 0; }
+  if (S.H.snd) { if (d <= 3) { S.loudRun += .25; if (S.loudRun >= 60) chal('loud60'); } else S.loudRun = 0; }
   const at = atime(), sp = i => AU.speakWin[i][0] <= at && at <= AU.speakWin[i][1];
   const s0 = sp(0), s1 = sp(1);
   if (s0 || s1) {
@@ -2601,8 +2604,10 @@ function soundSample() {
   }
   if (AU.swear) {
     if (at >= AU.swear[0] && at <= AU.swear[1] && !refClosed() && !S.swearPen) { S.swearPen = true; penal('snd', 10, 'Swearing went to air on the ref mic'); if (!S.H.snd) log('Swearing reached air on the ref mic.', 'n'); }
-    if (at > AU.swear[1] + .3) { if (!S.swearPen && S.H.snd) chal('refSave'); AU.swear = null; S.swearPen = false; }
+    if (at > AU.swear[1] + .3) { if (!S.swearPen && S.H.snd && S.refOpenAtAlert) chal('refSave'); AU.swear = null; S.swearPen = false; }
   }
+  // the ref mic is for authenticity: dip it for trouble, then restore it; parking it shut all match is not the answer
+  if (S.H.snd && M.state === 'play' && refClosed()) { S.refShutT = (S.refShutT || 0) + .25; if (S.refShutT > 45) { penal('snd', 2, 'Referee mic left closed during play (dip it for trouble, then restore it)'); S.refShutT = -60; } } else if (!refClosed()) S.refShutT = 0;
   if (M.state === 'play' && chOpen('mus', -30)) { S.musicOpenT += .25; if (S.musicOpenT > 10) { penal('snd', 2, 'Music fader left open during play'); S.musicOpenT = -1e9; } } else if (M.state !== 'play') S.musicOpenT = 0;
 }
 
@@ -2647,7 +2652,7 @@ $('#rollBtn').addEventListener('click', () => { if (S.phase === 'live' && !S.H.d
   tb.addEventListener('pointermove', e => { if (drag) setPos(e); });
   tb.addEventListener('pointerup', () => drag = false); tb.addEventListener('pointercancel', () => drag = false);
 })();
-function drawTbar() { const tb = $('#tbar'); const H = tb.clientHeight - 22; const v = VM.trans && VM.trans.manual ? VM.tbar : (VM.trans ? (VM.tbarFrom ? 1 - VM.trans.p : VM.trans.p) : VM.tbarFrom); $('#th').style.top = (v * H) + 'px'; const f = $('#tfill'); const a = Math.min(v, VM.tbarFrom), b2 = Math.max(v, VM.tbarFrom); f.style.top = (11 + a * H) + 'px'; f.style.height = ((b2 - a) * H) + 'px'; }
+function drawTbar() { const tb = $('#tbar'); const H = tb.clientHeight - 22; const v = VM.trans && VM.trans.manual ? VM.tbar : (VM.trans ? (VM.tbarFrom ? 1 - VM.trans.p : VM.trans.p) : VM.tbarFrom); const key = v + '|' + H + '|' + VM.tbarFrom; if (key === drawTbar.k) return; drawTbar.k = key; $('#th').style.top = (v * H) + 'px'; const f = $('#tfill'); const a = Math.min(v, VM.tbarFrom), b2 = Math.max(v, VM.tbarFrom); f.style.top = (11 + a * H) + 'px'; f.style.height = ((b2 - a) * H) + 'px'; }
 function renderClips() {
   const el = $('#clips'); if (!EVS.clips.length) { el.innerHTML = '<span class="small muted">Clips are marked automatically by the EVS operator after key moments.</span>'; return; }
   el.innerHTML = EVS.clips.map(c => `<button class="clip ${c === EVS.sel ? 'on' : ''} ${c.played ? 'played' : ''}" data-id="${c.id}"><b>${esc(c.label)}</b>${c.min} · ${(c.tOut - c.tIn).toFixed(1)} s<br>A: ${SRC[c.angles.a].label} · B: ${SRC[c.angles.b].label}</button>`).join('');
@@ -2773,13 +2778,13 @@ function endShow() {
     if (r === 'snd') extra = `Integrated loudness ${fmtL(AU.I)} LUFS (target −23) · peak overs ${AU.overs} · last intelligibility margin ${S.intel !== undefined ? S.intel.toFixed(1) + ' dB' : '–'}`;
     if (r === 'gfx') extra = `Goals ${M.goals.length} · bookings ${M.cards.length} · substitutions ${M.subs.length}`;
     if (r === 'prod') extra = `Calls made ${s.calls} · on time ${s.hits} · missed ${s.misses}`;
-    if (r === 'prod' && sc >= 85) chal('prod85');
+    if (r === 'prod' && sc >= 85 && S.seg === 'off') chal('prod85');
     return `<div class="panel" style="margin-top:10px"><div style="display:flex;gap:14px;align-items:center"><div class="grade">${g[0]}</div><div><b>${ROLES[r]}: ${sc}/100</b><div class="small muted">${g[1]}${pb ? ` · previous best ${pb}` : ''}</div></div></div>
       <table class="data" style="margin-top:8px"><tr><td>Cue compliance</td><td class="num">${s.earned.toFixed(1)} / ${s.possible.toFixed(0)} pts</td></tr><tr><td>Continuous quality</td><td class="num">${q}</td></tr><tr><td>Penalties</td><td class="num">−${s.pen.toFixed(1)}</td></tr></table>
       <p class="small muted" style="margin:8px 0 4px">${extra}</p><ul class="small" style="margin:0;padding-left:1.2em">${pens}</ul></div>`;
   });
   try { localStorage.setItem('simlab-tv-best', JSON.stringify(best)); } catch (e) {}
-  if (S.role === 'all') chal('allRoles');
+  if (S.role === 'all' && S.seg === 'off') chal('allRoles');
   const goals = M.goals.map(g => `${g.name} (${TEAMS[g.team].short}) ${g.min}`).join(', ') || 'no goals';
   SL.modal(`<div class="report"><h3 style="margin:0 0 4px"><i data-lucide="clipboard-check"></i> Gallery report card</h3><p class="small muted" style="margin:0">${TEAMS[0].name} ${M.score[0]}–${M.score[1]} ${TEAMS[1].name} · ${goals}${S.seg !== 'off' ? ' · ended early, so only part of the match was scored' : ''}</p>
     ${rows.join('') || '<p class="muted" style="margin-top:12px">You observed this match. Choose a seat to be scored.</p>'}</div>`, { ok: 'Back to the gallery', onClose: resetToIdle });
@@ -2796,9 +2801,9 @@ function resetToIdle() {
 /* ---------- challenges ---------- */
 const CHAL = [
   ['replay10', 'Roll a replay of a goal within 10 seconds of the ball hitting the net (Director).'],
-  ['restart10', 'Be on a live camera for ten restarts in a row (Director).'],
+  ['restart10', 'Be on a match camera (CAM 1–4, ideally the wide) for ten restarts in a row (Director).'],
   ['noLine', 'Direct a whole half with at least six cuts and never cross the 180° line (Director).'],
-  ['loud60', 'Hold the 10-second programme loudness within ±2 LU of −23 LUFS for 60 seconds straight (Sound).'],
+  ['loud60', 'Hold the 10-second programme loudness within ±3 LU of −23 LUFS for 60 seconds straight, stoppages included (Sound).'],
   ['refSave', 'Dip the referee microphone before the swearing reaches air (Sound).'],
   ['goalIso', 'Fire the goal graphic while the ISO close-up (CAM 5) is on air (Graphics).'],
   ['prod85', 'Finish a match as Producer with a rating of 85 or more.'],
@@ -2860,9 +2865,9 @@ function uiStep() {
 }
 const main = SL.loop(dt => {
   if (S.phase === 'live' && !S.paused) { for (let k = 0; k < TS; k++) simStep(dt); rt = S.t; }
-  else if (S.phase === 'idle') { rt += dt; for (let k = 0; k < 2; k++) { const h = dt / 2; stepMatch(h); } for (const id of LIVE3D) updateRig(rig, id, liveWorld(), dt); }
-  drawMV(rt);
-  const desk = $('.desk.on');
+  else if (S.phase === 'idle' && mvVis) { rt += dt; for (let k = 0; k < 2; k++) { const h = dt / 2; stepMatch(h); } for (const id of LIVE3D) updateRig(rig, id, liveWorld(), dt); }
+  if (mvVis) drawMV(rt); // gallery scrolled far out of view: keep the match running, skip drawing
+  const desk = deskVis ? $('.desk.on') : null;
   if (desk && desk.id === 'desk-snd') { drawStrips(); drawLoud(); soundReadouts(); }
   if (desk && desk.id === 'desk-vm') drawTbar();
   if (desk && desk.id === 'desk-gfx') drawGfxPrev(rt);
@@ -2870,6 +2875,11 @@ const main = SL.loop(dt => {
 });
 
 /* ---------- boot ---------- */
+let mvVis = true, deskVis = true;
+if ('IntersectionObserver' in window) {
+  new IntersectionObserver(es => es.forEach(e => { mvVis = e.isIntersecting; }), { rootMargin: '200px' }).observe(mvEl);
+  const dk = $('.desk') && $('.desk').parentElement; if (dk) new IntersectionObserver(es => es.forEach(e => { deskVis = e.isIntersecting; }), { rootMargin: '200px' }).observe(dk);
+}
 resetScore(); resetMatch(); VM.pgm = 6; VM.pvw = 1;
 for (const id of LIVE3D) updateRig(rig, id, liveWorld(), 0, true);
 buildBuses(); buildStrips(); renderTpls(); renderCues(); renderRO(); applyRoleUI(); refreshEvsUI();
@@ -2897,7 +2907,7 @@ const startTour = () => SL.tour([
   { el: '#deskNav', title: 'The four desks', text: 'Switch between the vision mixer, sound desk, graphics and producer desks. Your own desks are marked; the others show the crew at work.', before: deskBtn('vm') },
   { el: '#busPvw', title: 'Preview and programme', text: 'Pick the next camera on the green preview (PVW) bus; the red programme (PGM) bus is what viewers see. On the multiviewer, tap a source to preview it and double-tap to cut to it.', before: deskBtn('vm') },
   { el: '#cutBtn', title: 'Cut, mix and replay', text: 'CUT (Space) swaps preview and programme instantly; AUTO or the T-bar mixes, wipes or stings. ROLL plays the selected EVS replay clip.', before: deskBtn('vm') },
-  { el: '#loudCv', title: 'Sound desk', text: 'Balance commentary, crowd and effects on the faders. The loudness meter shows momentary, short-term and integrated LUFS: aim for −23 LUFS without peaks hitting 0 dBFS.', before: deskBtn('snd') },
+  { el: '#loudCv', title: 'Sound desk', text: 'Balance commentary, crowd and effects on the faders. The loudness meter shows momentary, short-term and integrated LUFS: aim for −23 LUFS with peaks kept below −1 dBTP.', before: deskBtn('snd') },
   { el: '#tpls', title: 'Graphics', text: 'Arm a template (scorebug, caption, goal, booking), check it in the preview, then TAKE it to air and CLEAR it when done.', before: deskBtn('gfx') },
   { el: '.tabs .tablist button:nth-child(6)', title: 'Challenges', text: 'Open Challenges for graded tasks for each seat, then read Shot grammar before your first live match.', before: deskBtn('vm') },
 ]);

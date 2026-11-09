@@ -671,7 +671,7 @@
   function stopSong(silent) { song.on = false; nextHL.clear(); if (!silent && song.sg) updSongStats(); }
   $('#sgStart').onclick = () => startSong(false); $('#sgListen').onclick = () => startSong(true); $('#sgStop').onclick = () => stopSong();
   function updSongStats() {
-    const j = song.hits + song.miss, acc = j ? song.hits / (j + song.wrong * 0.5) : null;
+    const j = song.hits + song.miss, acc = j ? song.hits / (j + song.wrong) : null; // a wrong key costs as much as a missed note
     $('#sgAcc').textContent = acc === null ? '–' : Math.round(acc * 100) + '%'; $('#sgHits').textContent = `${song.hits} / ${song.sg ? song.sg.notes.length : 0}`; $('#sgWrong').textContent = song.wrong; $('#sgStreak').textContent = song.streak;
     return acc;
   }
@@ -910,7 +910,7 @@
   });
   $('#eRep').addEventListener('click', earPlay);
   $('#eRef').addEventListener('click', () => { if (ear.q && ensureAudio()) playAt(ear.q.notes[0], ac.currentTime + 0.02, 0.8, 0.6); });
-  ['#eType', '#eLvl'].forEach(s => $(s).addEventListener('change', () => { ear.q = null; earAnswers(); }));
+  ['#eType', '#eLvl'].forEach(s => $(s).addEventListener('change', () => { ear.q = null; ear.streak = 0; $('#eStreak').textContent = 0; earAnswers(); }));
   $('#eAns').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b || !ear.q || ear.answered) return; ear.answered = true; ear.n++;
     const ok = +b.dataset.v === ear.q.ans;
@@ -919,7 +919,7 @@
     $('#eScore').textContent = `${ear.score} / ${ear.n}`; $('#eStreak').textContent = ear.streak;
     const nm = $('#eType').value === 'int' ? INT_NAMES[ear.q.ans] : CTYPES[ear.q.ans][1];
     $('#eMsg').innerHTML = (ok ? 'Correct: ' : 'It was ') + `<b>${nm}</b> (${ear.q.notes.map(m => noteName(m)).join(', ')}). Press New question.`;
-    if (ok && ear.streak === 5) SL.toast('Five in a row! Your ear is getting sharper.', 'ok');
+    if (ok && ear.streak === 5) SL.toast(+$('#eLvl').value >= 2 ? 'Five in a row! Your ear is getting sharper.' : 'Five in a row at Beginner. Now try for five at Intermediate.', +$('#eLvl').value >= 2 ? 'ok' : '');
     // show the answer on the keys
     chordHL = new Set(ear.q.notes);
   });
@@ -977,6 +977,8 @@
   });
 
   /* ============ main loop ============ */
+  let labVis = true;
+  if ('IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(e => { labVis = e.isIntersecting; }), { rootMargin: '200px' }).observe(document.querySelector('.lab') || document.querySelector('main'));
   SL.loop((dt, t) => {
     const now = performance.now() / 1000;
     // auto-note visuals
@@ -984,8 +986,7 @@
     // metronome lights
     if (ac && met.on) { while (beatQ.length && beatQ[0].t <= ac.currentTime) { const b = beatQ.shift(); const is = $('#beats').querySelectorAll('i'); is.forEach((x, k) => x.className = k === (beatsPerBar() === 6 ? b.b : b.b) ? 'on' + (b.b === 0 ? ' acc' : '') : ''); } }
     songTick(dt);
-    if (mode === 'songs') drawFalling(now); else drawStaff();
-    drawKB(now);
+    if (labVis) { if (mode === 'songs') drawFalling(now); else drawStaff(); drawKB(now); } // skip drawing while the lab is scrolled far out of view
     if (!down.size && performance.now() - lastChordShow > 4000 && !auto.length) { $('#chName').textContent = ''; $('#chSub').textContent = ''; }
   }).start();
   // initial state
@@ -1009,7 +1010,7 @@
   const tourMode = m => () => { const b = document.querySelector(`#modes [data-m="${m}"]`); if (b && !b.classList.contains('on')) b.click(); };
   const startTour = () => SL.tour([
     { el: '#pstage .disp', title: 'The grand staff', text: 'Every note you play is written here in standard notation, spelled correctly for the current key. Before you play, it previews the selected scale.' },
-    { el: '#kb', title: 'Play the keyboard', text: 'Click or tap keys (several at once for chords). On a computer, the letter row A–K plays white keys and W, E, T, Y, U the black keys. Hold Space for the sustain pedal.' },
+    { el: '#kb', title: 'Play the keyboard', text: 'Click or tap keys (several at once for chords). On a computer, the bottom row Z X C V… plays from C3 (S, D, G, H, J are the black keys) and the top row Q W E R… from C4 (2, 3, 5, 6, 7). Hold Space for the sustain pedal.' },
     { el: '#kbbar', title: 'View and octave', text: 'Shift the computer-keyboard octave with the arrows, zoom from 2 octaves to all 88 keys, and toggle note names. The strip above the keys shows which part of the piano you are looking at.' },
     { el: '#modes', title: 'Pick a tool', text: 'Switch between scales, chords, the circle of fifths, ear training, play-along songs and the metronome/recorder.', before: tourMode('scales') },
     { el: '#scMode', title: 'Scales and modes', text: 'Choose a tonic and a scale or mode. The keys light up, the table shows the W/H step pattern, and Practise checks you as you play it.', before: tourMode('scales') },

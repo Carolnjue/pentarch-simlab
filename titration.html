@@ -190,7 +190,7 @@
       <p>In an acid–base titration a solution of known concentration (the <b>titrant</b>, in the burette) is added to a measured volume of the solution being analysed (the <b>analyte</b>, pipetted into the conical flask) until the reaction is exactly complete. For a strong acid and a strong base the net reaction is simply</p>
       <div class="eq">$$\mathrm{H_3O^+(aq) + OH^-(aq) \longrightarrow 2\,H_2O(l)}\qquad \Delta H \approx -57\ \mathrm{kJ\,mol^{-1}}$$</div>
       <p>Acidity is reported on the logarithmic pH scale. Water always self-ionises, which links the hydronium and hydroxide concentrations:</p>
-      <div class="eq">$$\mathrm{pH} = -\log_{10}[\mathrm{H_3O^+}],\qquad K_w=[\mathrm{H_3O^+}][\mathrm{OH^-}] = 1.0\times10^{-14}\ \text{at }25\,^\circ\mathrm{C},\qquad \mathrm{pH+pOH}=14.00$$</div>
+      <div class="eq">$$\mathrm{pH} = -\log_{10}[\mathrm{H_3O^+}],\qquad K_w=[\mathrm{H_3O^+}][\mathrm{OH^-}] = 1.0\times10^{-14}\ \text{at }25\,{}^\circ\mathrm{C},\qquad \mathrm{pH+pOH}=14.00$$</div>
       <h3>Weak acids and bases: $K_a$ and $K_b$</h3>
       <p>A weak acid is only partly ionised. Its strength is measured by the acid dissociation constant; for a weak base we use $K_b$. A conjugate pair is linked through $K_w$:</p>
       <div class="eq">$$\mathrm{HA + H_2O \rightleftharpoons H_3O^+ + A^-}\quad K_a=\frac{[\mathrm{H_3O^+}][\mathrm{A^-}]}{[\mathrm{HA}]},\qquad \mathrm{p}K_a=-\log K_a,\qquad K_a\,K_b = K_w$$</div>
@@ -697,6 +697,7 @@
   function land() {
     S.Vadd += DROP;
     S.pHtrue = flaskPH(S.Vadd);
+    if (!S.mystery) { const e1 = eqInfo().eq[0]; if (e1 && e1.V > 0) { S.reach = S.reach || {}; S.reach[S.pair] = Math.max(S.reach[S.pair] || 0, S.Vadd / e1.V); } } // how far each pair has actually been titrated
     S.pts.push([S.Vadd, S.pHtrue]);
     S.ripples.push({ age: 0 });
     if (S.plumes.length < 30) S.plumes.push({ x: bx + (Math.random() - .5) * 10, y: surfaceY(S.Va + S.Vadd) + 6, r: 6, a: 1, pH: titrantPH() });
@@ -917,9 +918,9 @@
   const CHALL = [
     { id: 'sasb', t: 'Hit the end point', d: 'HCl / NaOH with phenolphthalein: record an end point within ±0.10 mL (two drops) of the equivalence volume.' },
     { id: 'conc', t: 'Concordant titres', d: 'Record a rough titre and then at least two accurate titres within 0.10 mL of each other.' },
-    { id: 'indwa', t: 'Choose the indicator', d: 'Weak acid – strong base: which indicator gives a sharp end point?', quiz: { opts: ['Methyl orange', 'Methyl red', 'Phenolphthalein', 'Universal indicator'], ans: 2, why: 'The vertical section runs from about pH 7 to 11, which contains phenolphthalein’s 8.2–10 range.' } },
+    { id: 'indwa', t: 'Choose the indicator', d: 'Weak acid – strong base: run CH₃COOH / NaOH past the equivalence point, then choose the indicator that gives a sharp end point.', quiz: { pair: 'wa-sb', pairName: 'CH₃COOH / NaOH', opts: ['Methyl orange', 'Methyl red', 'Phenolphthalein', 'Universal indicator'], ans: 2, why: 'The vertical section runs from about pH 7 to 11, which contains phenolphthalein’s 8.2–10 range.' } },
     { id: 'pka', t: 'Measure pKa', d: 'Titrate CH₃COOH with NaOH, read the pH at half-equivalence and enter the pKa (±0.05).', input: true },
-    { id: 'indwb', t: 'Strong acid – weak base', d: 'NH₃ titrated with HCl has pH 5.28 at equivalence. Which indicator should you use?', quiz: { opts: ['Phenolphthalein', 'Methyl red', 'Bromothymol blue', 'None of them'], ans: 1, why: 'Methyl red (4.4–6.2) sits in the vertical section, which runs from about pH 7 down to 3.' } },
+    { id: 'indwb', t: 'Strong acid – weak base', d: 'NH₃ titrated with HCl has pH 5.28 at equivalence. Run it past the equivalence point, then choose the indicator you should use.', quiz: { pair: 'sa-wb', pairName: 'NH₃ / HCl', opts: ['Phenolphthalein', 'Methyl red', 'Bromothymol blue', 'None of them'], ans: 1, why: 'Methyl red (4.4–6.2) sits in the vertical section, which runs from about pH 7 down to 3.' } },
     { id: 'mystery', t: 'Solve the mystery sample', d: 'Turn on Mystery sample, find concordant titres and calculate the unknown concentration to within 1.5 %.' },
   ];
   function renderChall() {
@@ -935,10 +936,13 @@
     const b = e.target.closest('[data-q]');
     if (b) {
       const c = CHALL.find(x => x.id === b.dataset.q), i = +b.dataset.i;
+      const need = c.quiz.pair, seen = ((S.reach || {})[need] || 0) >= 1.2;
+      if (!seen) { SL.toast(`Run that titration first: set ${c.quiz.pairName} and add titrant past the equivalence point, then look at where the vertical section lies.`, 'warn', 5000); return; }
       if (i === c.quiz.ans) { b.classList.add('on'); complete(c.id); SL.toast(c.quiz.why, 'ok', 5000); } else SL.toast('Not that one. Look at where the vertical section of that curve lies.', 'bad');
     }
     if (e.target.closest('#pkaBtn')) {
       const v = parseFloat($('#pkaIn').value);
+      if (((S.reach || {})['wa-sb'] || 0) < 0.5) { SL.toast('Measure it first: titrate CH₃COOH with NaOH at least to half the equivalence volume and read the pH there.', 'warn', 5000); return; }
       if (Math.abs(v - 4.745) <= 0.06) complete('pka'); else SL.toast('Not quite. Find V(eq), halve it, and read the pH there.', 'bad');
     }
   });
@@ -1047,7 +1051,10 @@
     step(dt); render();
     acc += dt; if (acc > 0.1) { acc = 0; readouts(); if (chartDirty) { drawChart(); chartDirty = false; } }
   }).start();
-  document.addEventListener('visibilitychange', () => document.hidden ? L.stop() : L.start());
+  // pause the whole simulation while the lab is scrolled far out of view (reading the theory) or the tab is hidden
+  let labVis = true;
+  document.addEventListener('visibilitychange', () => document.hidden || !labVis ? L.stop() : L.start());
+  if ('IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(e => { labVis = e.isIntersecting; if (labVis && !document.hidden) L.start(); else L.stop(); }), { rootMargin: '300px' }).observe(document.querySelector('.lab'));
   const startTour = () => SL.tour([
     { el: '#stage', title: 'The apparatus', text: 'Burette, conical flask on a stirrer and a pH meter. The magnifier shows the meniscus: always read the bottom of the curve at eye level. You can also press and hold the stopcock in the picture.' },
     { el: '#holdBtn', title: 'Add titrant', text: 'Hold to run titrant in (dropwise or fast), or add a single 0.05 mL drop near the end point. Watch the indicator colour and the pH meter.' },

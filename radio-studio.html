@@ -388,7 +388,7 @@
       <div class="eq">$$1{:}50 + 0{:}20 + 1{:}05 + 0{:}08 = 3{:}23$$</div>
       <p>Latest start for the break: $07{:}00{:}00 - 3{:}23 = 06{:}56{:}37$. You are 3 s late, so you will be 3 s <b>over</b>: trim the link to 17 s, or fade the song 3 s early.</p></div>
       <h3>2. Talk-up to the post</h3>
-      <div class="worked"><p>A song’s intro is 14 s. Allow about 2 s to start the song and draw breath, leaving 12 s of talk. At a natural pace of around 2.5 words per second that is room for roughly $12 \times 2.5 = 30$ words. “It’s six fifty-four, eighteen degrees in Nairobi, traffic slow on Thika Road. Here’s Matatu Ride.” is 17 words, about 7 s, so you can add a short trail (“your calls on matatu fares after the news”) and still land on the post.</p></div>
+      <div class="worked"><p>A song’s intro is 14 s. Allow about 2 s to start the song and draw breath, leaving 12 s of talk. At a natural pace of around 2.5 words per second that is room for roughly $12 \times 2.5 = 30$ words. “It’s six fifty-four, eighteen degrees in Nairobi, traffic slow on Thika Road. Here’s Matatu Ride.” is 15 words, about 6 s, so you can add a short trail (“your calls on matatu fares after the news”, 8 more words) and still land on the post: 23 words is about 9 s.</p></div>
       <h3>3. Dipping the music under your voice</h3>
       <div class="worked"><p>The music sits at 0 dB and peaks at −6 dBFS. Your voice peaks at −8 dBFS. To sit your voice 6 dB above the music, dip the music fader by $(-6) - (-8) + 6 = 8$ dB, to −8 dB. Its amplitude is then $10^{-8/20} = 0.40$ of the original.</p></div>
       <h3>4. Delay after a dump</h3>
@@ -1044,7 +1044,7 @@ function onNewsJoin(e) {
   const ok = LEGAL.endedAt && Math.abs(LEGAL.endedAt - NEWS_AT) <= 6;
   if (S.scenHasLegal && !me('tech')) award(ok ? 6 : LEGAL.endedAt ? 3 : 0, 6, ok ? 'Legal ID landed on the junction' : LEGAL.endedAt ? `Legal ID played, ${Math.round(NEWS_AT - LEGAL.endedAt)} s early` : 'No legal ID before the news');
   const gapBefore = DA.sil; if (me('prod')) { const pd = LEGAL.pred; const tight = pd !== undefined && pd !== null && Math.abs(pd) <= 3; const near = pd !== undefined && pd !== null && Math.abs(pd) <= 10; award(crash ? 0 : tight ? 10 : near ? 6 : 2, 10, crash ? 'Crashed the news junction' : pd == null ? 'No legal ID to time the junction' : `Log timed to the junction (${pd > 0 ? 'over' : 'under'} by ${Math.abs(pd).toFixed(0)} s)`); }
-  if (!crash && gapBefore < 1.5) chal('junction');
+  if (!crash && gapBefore < 1.5 && (me('pres') || me('prod')) && (!S.scenHasLegal || LEGAL.endedAt)) chal('junction');
   if (aiOn() && micLive()) releaseMic();
   hint("We're into the news. Nice.", '');
   const ads = PO.log.filter(x => x.type === 'ad'); if (ads.length && (me('pres') || me('prod')) && S.scenHasBreak) { const full = ads.every(a => a.status === 'done' && !a.clipped && (a.played || 0) >= a.dur - 1); award(full ? 4 : 0, 4, full ? 'Every ad played in full' : 'Not every ad played in full'); if (full && S.scen === 'ids') chal('compliance'); }
@@ -1080,7 +1080,7 @@ function onProfanity(delay) {
 }
 function onDump(by, saved) {
   $('#dumpBtn').classList.remove('lit');
-  if (saved) { award(8, 8, 'Dumped the profanity before it reached air'); chal('dump'); tb('Good dump. Apologise on air and move on.', 'warn'); if (aiOn()) aiSpeak(3, 'Apologies for that language, that should not have happened. Let\'s move on.', null, true); }
+  if (saved) { award(8, 8, 'Dumped the profanity before it reached air'); if (by === 'you') chal('dump'); tb('Good dump. Apologise on air and move on.', 'warn'); if (aiOn()) aiSpeak(3, 'Apologies for that language, that should not have happened. Let\'s move on.', null, true); }
   else if (by === 'you') penal(2, 'Unnecessary dump: 7 s of good programme lost');
 }
 function onProfanityAired() { penal(12, 'Profanity reached air (not dumped within the delay)'); $('#dumpBtn').classList.remove('lit'); SC.possible += 8; }
@@ -1195,16 +1195,19 @@ function meterStep(dt) {
   const m = AU.pw.reduce((s, x) => s + x[1], 0) / Math.max(1, AU.pw.length); AU.S = m > 1e-12 ? -.691 + 10 * Math.log10(m) : -90;
 }
 function drawStrips() {
-  for (const c of AU.ch) {
-    if (!c.el) continue;
-    c.capEl.style.top = ((1 - c.pos) * 87 + 4.5) + '%';
-    c.dbEl.textContent = c.db <= -89 ? '−∞' : (c.db > .04 ? '+' : '') + (Math.abs(c.db) < .05 ? 0 : c.db).toFixed(1);
-    const cv = c.mCv, w = cv.clientWidth, h = cv.clientHeight; if (!w || !h) continue; if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  // read every meter size first, then write: interleaving reads and style writes forced a layout per channel per frame
+  const sz = AU.ch.map(c => c.el ? [c.mCv.clientWidth, c.mCv.clientHeight] : null);
+  AU.ch.forEach((c, k) => {
+    if (!c.el) return;
+    const top = ((1 - c.pos) * 87 + 4.5) + '%'; if (c._top !== top) { c._top = top; c.capEl.style.top = top; }
+    const txt = c.db <= -89 ? '−∞' : (c.db > .04 ? '+' : '') + (Math.abs(c.db) < .05 ? 0 : c.db).toFixed(1); if (c._txt !== txt) { c._txt = txt; c.dbEl.textContent = txt; }
+    const cueTxt = c.cueOff ? 'OFF?' : c.cue ? 'CUE ON' : 'CUE'; if (c._cue !== cueTxt) { c._cue = cueTxt; c.cueEl.classList.toggle('lit', !!(c.cue || c.cueOff)); c.cueEl.textContent = cueTxt; }
+    const [w, h] = sz[k]; if (!w || !h) return; const cv = c.mCv; let resized = false; if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; resized = true; }
+    const f = clamp((c.lvl + 60) / 60, 0, 1), segs = 30, lit = Math.ceil(f * segs - 1e-9);
+    if (!resized && c._lit === lit) return; c._lit = lit;
     const x = c.mCx; x.fillStyle = '#020304'; x.fillRect(0, 0, w, h);
-    const f = clamp((c.lvl + 60) / 60, 0, 1), segs = 30;
-    for (let i = 0; i < segs; i++) { const y = h - (i + 1) * h / segs, lit = i / segs < f, db = -60 + i * 2; x.fillStyle = lit ? (db > -6 ? '#ef4444' : db > -18 ? '#facc15' : '#22c55e') : '#0d1410'; x.fillRect(1, y + 1, w - 2, h / segs - 1.5); }
-    c.cueEl.classList.toggle('lit', !!(c.cue || c.cueOff)); c.cueEl.textContent = c.cueOff ? 'OFF?' : c.cue ? 'CUE ON' : 'CUE';
-  }
+    for (let i = 0; i < segs; i++) { const y = h - (i + 1) * h / segs, on = i / segs < f, db = -60 + i * 2; x.fillStyle = on ? (db > -6 ? '#ef4444' : db > -18 ? '#facc15' : '#22c55e') : '#0d1410'; x.fillRect(1, y + 1, w - 2, h / segs - 1.5); }
+  });
 }
 const pgmS = SL.canvas($('#pgmCv'));
 function drawPgm() {
@@ -1521,9 +1524,11 @@ function uiStep() {
   $('#dlyV').textContent = DLY.cur.toFixed(1) + ' s'; $('#dlyV').className = 'dv' + (DLY.cur < 6.9 ? ' low' : ''); $('#dlyBar').style.width = (DLY.cur / DLY.max * 100) + '%';
   $('#scoreNote').textContent = live ? `${SC.hits} done · ${SC.misses} missed` : '';
 }
+let labVis = true;
+if ('IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(e => { labVis = e.isIntersecting; }), { rootMargin: '200px' }).observe($('#studio'));
 const main = SL.loop(dt => {
   if (S.phase === 'live' && !S.paused) sim(dt);
-  drawClock(); drawPlayers(); drawStrips(); drawPgm(); drawCartProg();
+  if (labVis) { drawClock(); drawPlayers(); drawStrips(); drawPgm(); drawCartProg(); } // skip drawing while the studio is scrolled far out of view
   uiAcc += dt; if (uiAcc > .12) { uiAcc = 0; uiStep(); }
 });
 window.__radio = { S, PO, AU, SC, DA, DLY, PH, EV, score, get sim() { return sim; }, get playNext() { return playNext; }, get dump() { return dump; }, get fireCart() { return fireCart; }, chById };

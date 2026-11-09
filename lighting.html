@@ -118,8 +118,8 @@
       <h3>Classic portrait patterns (named after the nose shadow)</h3>
       <ul>
         <li><b>Butterfly / Paramount</b>: key in front of the face, high above the camera; a small butterfly-shaped shadow under the nose. Glamour and beauty.</li>
-        <li><b>Loop</b>: key 30–45° to the side and a little high; the nose shadow makes a small loop on the cheek that does not touch the cheek shadow.</li>
-        <li><b>Rembrandt</b>: key about 45° to the side and high; the nose and cheek shadows join, leaving a small triangle of light under the far eye.</li>
+        <li><b>Loop</b>: key about 15–40° to the side and a little above eye level; the nose shadow makes a small loop on the cheek that does not touch the cheek shadow.</li>
+        <li><b>Rembrandt</b>: key about 40–60° to the side and 25–50° above the eyes; the nose and cheek shadows join, leaving a small triangle of light under the far eye.</li>
         <li><b>Split</b>: key at 90°; half the face lit, half in shadow.</li>
         <li><b>Broad vs short</b>: with the face turned, broad lighting lights the side of the face turned towards the camera (widens the face), short lighting lights the side turned away (slims it and adds depth).</li>
         <li><b>High-key</b>: bright, low-contrast, white background lit about 1–2 stops over the subject. <b>Low-key</b>: dark background, strong contrast, rim light for separation.</li>
@@ -139,7 +139,7 @@
       <h3>4. Apparent size and softness</h3>
       <div class="worked"><p>A 90 cm softbox at 1.2 m subtends $\alpha \approx 0.9/1.2 = 0.75$ rad (43°): very soft. At 3 m it subtends 0.3 rad (17°): noticeably harder, and the illuminance falls by $(3/1.2)^2 = 6.25\times$, 2.6 stops.</p></div>
       <h3>5. Gels and white balance</h3>
-      <div class="worked"><p>Camera at 5600 K. A tungsten 3200 K lamp renders orange. A full CTB gel converts 3200 K to about 5600 K (shift ≈ −131 mired: $10^6/3200 - 10^6/5600 = 312.5 - 178.6 = 134$ mired) at the cost of about 1.5–2 stops of light.</p></div>
+      <div class="worked"><p>Camera at 5600 K. A tungsten 3200 K lamp renders orange. Going from 3200 K to 5600 K needs a shift of $10^6/5600 - 10^6/3200 = 178.6 - 312.5 = -134$ mired (micro reciprocal degrees; negative means bluer). A full CTB gel gives about −131 mired, so it converts 3200 K to roughly 5500–5600 K, at the cost of about 1.5–2 stops of light.</p></div>
     </div>
 
     <div class="tabpanel prose">
@@ -154,6 +154,7 @@
         </div>
       </div>
       <h3>More challenges (auto-checked)</h3>
+      <p class="small muted">A check that a freshly loaded preset already meets (or that Auto-expose sets for you) only counts once you have built it yourself: change the lights, then bring them back into range.</p>
       <ul class="checks" id="cList"></ul>
       <h3>Experiments</h3>
       <ol class="steps">
@@ -536,7 +537,7 @@
   $('#wb').addEventListener('change', e => { S.wb = +e.target.value; upd(); });
   $('#ap').addEventListener('input', e => { S.api = +e.target.value; upd(); });
   $('#iso').addEventListener('input', e => { S.isoi = +e.target.value; upd(); });
-  $('#autoExp').addEventListener('click', () => { autoExpose(); syncUI(); dirty = true; });
+  $('#autoExp').addEventListener('click', () => { autoExpose(); syncUI(); dirty = true; inh.expo = true; /* the auto button is the meter doing it for you: set the aperture yourself to earn the exposure challenge */ });
   // dragging on the plan
   const pc = $('#plan'); let drag = null;
   function pickLight(p) { const M = pm(); let best = null, bd = 26; NAMES.forEach(([id]) => { const l = S.L[id]; const d = Math.hypot(M.X(l.x) - p.x, M.Y(l.z) - p.y); if (d < bd) { bd = d; best = id; } }); return best; }
@@ -567,12 +568,13 @@
     ['ratio8', 'Dramatic portrait: lighting ratio of 8:1 or more with the fill still on', a => a.K > 0 && a.F > 0 && (a.K + a.F) / a.F >= 8],
     ['rem', 'Rembrandt: key 40–60° to the side of the face and 25–50° above the eyes', () => { const k = S.L.key; const az = Math.abs(Math.atan2(k.x, k.z) * 180 / Math.PI - S.yaw), el = Math.atan2(k.h - HEADY, Math.hypot(k.x, k.z)) * 180 / Math.PI; return k.on && az >= 40 && az <= 60 && el >= 25 && el <= 50; }],
     ['sep', 'Separation: back light on and placed behind the subject (z < 0), brighter than 300 lux at the head', () => { const l = S.L.back; if (!l.on || l.z >= 0) return false; const L = lightData(S).find(q => q.id === 'back'); const d2 = l.x * l.x + (l.h - HEADY) ** 2 + l.z * l.z; return L.I / d2 > 300; }],
-    ['expo', 'Correct exposure: aperture within ⅓ stop of what the meter needs for key + fill', a => a.K > 0 && Math.abs(2 * Math.log2(fNum(a.K + a.F) / APS[S.api])) <= 0.5],
+    ['expo', 'Correct exposure: aperture within ⅓ stop of what the meter needs for key + fill', a => a.K > 0 && Math.abs(2 * Math.log2(fNum(a.K + a.F) / APS[S.api])) <= 0.34],
   ];
+  const inh = {}; // a check already met by a freshly loaded preset only counts once you have broken and re-made it yourself
   function checkAll(a) {
-    $('#cList').innerHTML = CHECKS.map(([id, t, f]) => { const ok = f(a); if (ok && !tDone[id] && manual) { tDone[id] = true; SL.toast('Challenge complete: ' + t.split(':')[0], 'ok'); } return `<li class="${ok ? 'ok' : ''}"><span class="led ${ok || tDone[id] ? 'on' : ''}"></span>${t}</li>`; }).join('');
+    $('#cList').innerHTML = CHECKS.map(([id, t, f]) => { const ok = f(a); if (!manual || !ok) inh[id] = ok && !manual; if (ok && !tDone[id] && manual && !inh[id]) { tDone[id] = true; SL.toast('Challenge complete: ' + t.split(':')[0], 'ok'); } return `<li class="${ok ? 'ok' : ''}"><span class="led ${ok || tDone[id] ? 'on' : ''}"></span>${t}</li>`; }).join('');
     const sc = similarity(); $('#tScore').textContent = sc.toFixed(0) + ' %'; $('#tBar').style.width = sc + '%';
-    const k = $('#tSel').value; if (sc >= 92 && !tDone['t-' + k] && manual) { tDone['t-' + k] = true; SL.toast(`Reference matched: ${sc.toFixed(0)} % similarity!`, 'ok', 5000); }
+    const k = $('#tSel').value, tk = 't-' + k; if (!manual || sc < 92) inh[tk] = sc >= 92 && !manual; if (sc >= 92 && !tDone[tk] && manual && !inh[tk]) { tDone['t-' + k] = true; SL.toast(`Reference matched: ${sc.toFixed(0)} % similarity!`, 'ok', 5000); }
   }
 
   /* ================= loop ================= */

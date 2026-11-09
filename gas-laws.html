@@ -155,7 +155,7 @@
       <p>Effusion is the escape of gas through a hole much smaller than the mean free path. The rate is proportional to the mean speed, so at equal temperature and pressure</p>
       <div class="eq">$$\frac{\text{rate}_A}{\text{rate}_B} = \sqrt{\frac{M_B}{M_A}}$$</div>
       <h3>About this model</h3>
-      <div class="callout"><i data-lucide="info"></i><div>The particles move in a three-dimensional box (depth is shown by size and brightness) with real molecular speeds in m s⁻¹, slowed down on screen so you can follow them. Volumes and amounts are scaled: each particle stands for 5.0 mmol. The pressure readout is computed from the actual wall impulses and converted to kPa with the same scale factors, so it scatters around $nRT/V$ by a few per cent, just as a real, very small sample would. The heater acts as a thermostat by re-thermalising molecules at random, as if they had just bounced off the hot wall. With insulated walls this stops, and moving the piston changes the temperature (adiabatic compression or expansion). While the piston moves, the gas is fast-forwarded so the compression is slow compared with molecular motion, as in a real cylinder. Particle–particle collisions use a small molecular diameter, so the excluded-volume correction is only about 1 %.</div></div>
+      <div class="callout"><i data-lucide="info"></i><div>The particles move in a three-dimensional box (depth is shown by size and brightness) with real molecular speeds in m s⁻¹, slowed down on screen so you can follow them. Volumes and amounts are scaled: each particle stands for 5.0 mmol. The pressure readout is computed from the actual wall impulses and converted to kPa with the same scale factors, so it scatters around $nRT/V$ by a few per cent, just as a real, very small sample would. The heater acts as a thermostat by re-thermalising molecules at random, as if they had just bounced off the hot wall. With insulated walls this stops, and moving the piston changes the temperature (adiabatic compression or expansion). While the piston moves, the gas is fast-forwarded so the compression is slow compared with molecular motion, as in a real cylinder. Particle–particle collisions use a small molecular diameter, so the excluded-volume correction is only about 1 %. Every particle is a point mass with translational energy only, so diatomic N₂ behaves like a monatomic gas here ($\gamma = 5/3$); real N₂ also stores rotational energy ($\gamma \approx 1.4$, $TV^{0.4}$ = const) and warms less on the same compression.</div></div>
     </div>
 
     <div class="tabpanel prose">
@@ -756,9 +756,9 @@
 
   /* ===== challenges ===== */
   const CHALL = [
-    { id: 'boyle', t: 'Verify Boyle’s law', d: 'In Boyle mode, record at least 4 points spanning a factor of 3 in volume, each within 5 % of nRT/V.' },
-    { id: 'charles', t: 'Verify Charles’s law', d: 'In Charles mode, record at least 4 points spanning at least 400 K.' },
-    { id: 'gay', t: 'Double the pressure', d: 'In Gay-Lussac mode, start near 300 K and record a point, then heat to 600 K and record again. P should double.' },
+    { id: 'boyle', t: 'Verify Boyle’s law', d: 'In Boyle mode, record at least 4 points spanning a factor of 3 in volume, each within 8 % of nRT/V (re-record any point that misses). After each change wait about 5 s for the piston and the pressure average to settle: a small sample fluctuates by a few per cent.' },
+    { id: 'charles', t: 'Verify Charles’s law', d: 'In Charles mode, record at least 4 points spanning at least 400 K, with the piston floating (not against its stop) and V/T constant to within 10 %. Wait for V to settle after each change.' },
+    { id: 'gay', t: 'Double the pressure', d: 'In Gay-Lussac mode, start near 300 K and record a point, then heat to 600 K, wait for T and P to settle, and record again. P should double.' },
     { id: 'adia', t: 'Adiabatic heating', d: 'With insulated walls in Free mode, compress the gas until it is at least 150 K hotter than the heater setting.' },
     { id: 'graham', t: 'Graham’s law', d: 'In Effusion mode with two different gases, let at least 60 particles escape and get within 20 % of √(M_B/M_A).' },
   ];
@@ -767,11 +767,12 @@
   function checkLaws() {
     const r = S.recs, n = nTot();
     if (S.mode === 'boyle' && r.length >= 4) {
-      const Vs = r.map(p => p.V), ok = r.every(p => Math.abs(p.P - n * R * S.Tb / (p.V / 1000) / 1000) / p.P < 0.05);
-      if (ok && Math.max(...Vs) / Math.min(...Vs) >= 3) complete('boyle');
+      // a noisy reading does not spoil the set: any four good points spanning a factor of 3 count
+      const good = r.filter(p => Math.abs(p.P - n * R * S.Tb / (p.V / 1000) / 1000) / p.P < 0.08), Vs = good.map(p => p.V);
+      if (good.length >= 4 && Math.max(...Vs) / Math.min(...Vs) >= 3) complete('boyle');
     }
-    if (S.mode === 'charles' && r.length >= 4) { const Ts = r.map(p => p.T); if (Math.max(...Ts) - Math.min(...Ts) >= 400) complete('charles'); }
-    if (S.mode === 'gay' && r.length >= 2) { const lo = r.find(p => Math.abs(p.T - 300) < 25), hi = r.find(p => Math.abs(p.T - 600) < 30); if (lo && hi && Math.abs(hi.P / lo.P - hi.T / lo.T) < 0.12) complete('gay'); }
+    if (S.mode === 'charles' && r.length >= 4) { const Ts = r.map(p => p.T), k = r.map(p => p.V / p.T), km = k.reduce((a, b) => a + b, 0) / k.length; if (Math.max(...Ts) - Math.min(...Ts) >= 400 && k.every(x => Math.abs(x - km) / km < 0.1)) complete('charles'); }
+    if (S.mode === 'gay' && r.length >= 2) { const los = r.filter(p => Math.abs(p.T - 300) < 25), his = r.filter(p => Math.abs(p.T - 600) < 30); if (los.some(lo => his.some(hi => Math.abs(hi.P / lo.P - hi.T / lo.T) < 0.12))) complete('gay'); }
   }
 
   /* ===== quiz ===== */
@@ -804,7 +805,10 @@
     draw();
     acc += dt; if (acc > 0.12) { acc = 0; readouts(); drawHist(); drawLaw(); }
   }).start();
-  document.addEventListener('visibilitychange', () => document.hidden ? L.stop() : L.start());
+  // pause the whole simulation while the lab is scrolled far out of view (reading the theory) or the tab is hidden
+  let labVis = true;
+  document.addEventListener('visibilitychange', () => document.hidden || !labVis ? L.stop() : L.start());
+  if ('IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(e => { labVis = e.isIntersecting; if (labVis && !document.hidden) L.start(); else L.stop(); }), { rootMargin: '300px' }).observe(document.querySelector('.lab'));
   window.SimGas = { S, Pmeas, Pideal, Pvdw, Tkin, nTot, Vreal, physics, setMode };
   const startTour = () => SL.tour([
     { el: '#cv', title: 'The gas cylinder', text: 'Hundreds of particles bounce around a cylinder. Drag the piston handle up or down to change the volume and watch the pressure gauge respond.' },

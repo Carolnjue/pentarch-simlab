@@ -287,7 +287,7 @@
           <div class="stats" style="margin-top:6px">
             <div class="stat"><div class="k">Kp</div><div class="v" id="hbK">—</div></div>
             <div class="stat"><div class="k">NH₃ at equilibrium</div><div class="v" id="hbY">—<small>%</small></div></div>
-            <div class="stat"><div class="k">Relative rate</div><div class="v" id="hbR">—</div></div>
+            <div class="stat"><div class="k">Rate vs 450 °C, 200 atm</div><div class="v" id="hbR">—</div></div>
             <div class="stat"><div class="k">NH₃ per pass</div><div class="v" id="hbX">—<small>%</small></div></div>
             <div class="stat"><div class="k">Compression cost</div><div class="v" id="hbC">—</div></div>
             <div class="stat"><div class="k">Verdict</div><div class="v" id="hbV" style="font-size:.9rem">—</div></div>
@@ -315,7 +315,7 @@
         <p style="margin-top:10px">1→2: [A] ×2, rate ×4, so $m = 2$. 1→3: [B] ×3, rate ×3, so $n = 1$. Rate $= k[\mathrm A]^2[\mathrm B]$; $k = 2.0\times10^{-4}/(0.10^2\times0.10) = $ <b>0.20 M⁻² s⁻¹</b>.</p>
       </div>
       <h3>Example 6: Haber equilibrium at 450 °C and 200 atm</h3>
-      <div class="worked">$K_p(723\ \mathrm K) = 4.6\times10^{-5}\ \mathrm{atm^{-2}}$. With a 1 : 3 feed, let $x$ mol of N₂ react: $y_{\mathrm{NH_3}} = 2x/(4-2x)$ and $K_p = \dfrac{y_{\mathrm{NH_3}}^2}{y_{\mathrm{N_2}}\,y_{\mathrm{H_2}}^3\,P^2}$. Solving numerically gives $x = 0.40$ and <b>24.9 % NH₃</b> at equilibrium (the tab shows the same value). At 400 °C it would be 35 %, but the rate would be about four times slower.</div>
+      <div class="worked">$K_p(723\ \mathrm K) = 4.6\times10^{-5}\ \mathrm{atm^{-2}}$. With a 1 : 3 feed, let $x$ mol of N₂ react: $y_{\mathrm{NH_3}} = 2x/(4-2x)$ and $K_p = \dfrac{y_{\mathrm{NH_3}}^2}{y_{\mathrm{N_2}}\,y_{\mathrm{H_2}}^3\,P^2}$. Solving numerically gives $x = 0.40$ and <b>24.9 % NH₃</b> at equilibrium (the tab shows the same value). At 400 °C it would be 35 %, but with $E_a$ = 100 kJ mol⁻¹ the rate would be about 3.4 times slower ($e^{-(E_a/R)(1/673 - 1/723)} = 0.29$).</div>
     </div>
 
     <!-- CHALLENGES -->
@@ -592,8 +592,9 @@
       const sDone = S.stress; S.stress = null;
       const shift = sDone.c ? (c[2] - sDone.c[2]) : 0;
       explain(`<b>New equilibrium.</b> ${sDone.done} Q ≈ ${Q.toFixed(2)}, close to K = ${K.toFixed(2)}. Amount of C changed by ${shift >= 0 ? '+' : ''}${shift} since the stress.`);
-      if (sDone.kind === 'conc') complete('lc');
-      if (sDone.kind === 'heat' && S.dH < 0 && shift < 0) complete('heat');
+      // Le Chatelier challenges count only when the stress was applied to a system already at equilibrium
+      if (sDone.kind === 'conc' && sDone.base) complete('lc');
+      if (sDone.kind === 'heat' && sDone.base && S.dH < 0 && shift < 0) complete('heat');
     }
   }
   function applyStress(k) {
@@ -612,7 +613,7 @@
     if (k === 'comp') { kind = 'vol'; const nw = Math.max(50, Math.round(S.Wf * 100 * .7 / 5) * 5); $('#W').value = nw; $('#W').dispatchEvent(new Event('input')); mark('compress'); msg = '<b>Compressed.</b> Every concentration rises by the same factor, so Q = [C][D]/([A][B]) is unchanged: with equal numbers of molecules on each side (Δn = 0) there is no shift. Collisions are more frequent, so both rates rise equally.'; done = 'No shift occurred, because Δn = 0.'; }
     if (k === 'cat') { $('#cat').checked = !$('#cat').checked; $('#cat').dispatchEvent(new Event('change')); mark(S.cat ? '+cat' : '−cat'); kind = 'cat'; msg = `<b>Catalyst ${S.cat ? 'added' : 'removed'}.</b> Both barriers ${S.cat ? 'fall' : 'rise'} by the same amount, so forward and reverse rates change by the same factor. K is unchanged and the composition stays where it was; only the speed of reaching equilibrium changes.`; done = 'The composition is the same as before: catalysts do not shift equilibria.'; }
     if (!baseline && kind !== 'cat') msg += ' <span class="dim">(Tip: apply stresses once the LED shows equilibrium, so you can see the shift clearly.)</span>';
-    explain(msg); S.stress = { kind, c: c0, done }; S.isEq = false; S.eqT = 0; S.stressT = S.t; S.lqs = null;
+    explain(msg); S.stress = { kind, c: c0, done, base: baseline }; S.isEq = false; S.eqT = 0; S.stressT = S.t; S.lqs = null;
   }
   document.querySelectorAll('[data-s]').forEach(b => b.addEventListener('click', () => applyStress(b.dataset.s)));
 
@@ -658,6 +659,7 @@
   const Aof = (n, k, A0, t) => n === 0 ? Math.max(0, A0 - k * t) : n === 1 ? A0 * Math.exp(-k * t) : A0 / (1 + k * A0 * t);
   const unitsK = n => n === 0 ? 'mol L⁻¹ s⁻¹' : n === 1 ? 's⁻¹' : 'L mol⁻¹ s⁻¹';
   let mysPlot = null;
+  window.addEventListener('load', () => { try { drawRL(); } catch (e) {} }); // KaTeX loads deferred: re-render the live rate-law equation once it is available
   function drawRL() {
     const n = ord, k = kRL, half = n === 0 ? a0 / (2 * k) : n === 1 ? Math.LN2 / k : 1 / (k * a0);
     const tmax = n === 0 ? a0 / k * 1.25 : 4 * half * (n === 2 ? 1.5 : 1);
@@ -729,13 +731,14 @@
   SL.bind('#arA', v => { arA = v; drawAr(); }, v => `10^${v.toFixed(1)} s⁻¹`);
   SL.bind('#arCat', v => { arCat = v; drawAr(); }, v => v + ' kJ/mol');
   let AQ = null;
+  const sci = v => { const [m, e] = v.toExponential(2).split('e'); return +e === 0 ? m : `${m}\\times10^{${+e}}`; }; // 3.82 rather than 3.82×10^{+0}
   function newAr() {
     const Ea = Math.round(40 + Math.random() * 80), lA = 8 + Math.random() * 4, T1 = 280 + Math.round(Math.random() * 6) * 5, T2 = T1 + 20 + Math.round(Math.random() * 6) * 5;
     const k1 = kAr(Ea, lA, T1), k2 = kAr(Ea, lA, T2);
     const r3 = x => +x.toPrecision(3);
     const k1r = r3(k1), k2r = r3(k2);
     AQ = { Ea: R * Math.log(k2r / k1r) / (1 / T1 - 1 / T2) };
-    $('#arQ').innerHTML = `A first-order reaction has $k = ${k1r.toExponential(2).replace(/e([+-]\d+)/, '\\times10^{$1}')}\\ \\mathrm{s^{-1}}$ at ${T1} K and $k = ${k2r.toExponential(2).replace(/e([+-]\d+)/, '\\times10^{$1}')}\\ \\mathrm{s^{-1}}$ at ${T2} K. Calculate the activation energy.`;
+    $('#arQ').innerHTML = `A first-order reaction has $k = ${sci(k1r)}\\ \\mathrm{s^{-1}}$ at ${T1} K and $k = ${sci(k2r)}\\ \\mathrm{s^{-1}}$ at ${T2} K. Calculate the activation energy.`;
     SL.renderMath($('#arQ'));
   }
   $('#arNew').onclick = newAr;
@@ -778,7 +781,7 @@
     const y = yNH3(T, P), r = rateH(T, P), x = perPass(T, P);
     $('#hbK').textContent = KpH(T).toExponential(2) + ' atm⁻²';
     $('#hbY').innerHTML = (y * 100).toFixed(1) + '<small>%</small>';
-    $('#hbR').textContent = '×' + SL.fmt(r, 2);
+    $('#hbR').textContent = '×' + SL.fmt(r / 2, 2); // relative to the 450 °C, 200 atm reference
     $('#hbX').innerHTML = (x * 100).toFixed(1) + '<small>%</small>';
     $('#hbC').textContent = P < 100 ? 'low' : P < 250 ? 'moderate' : P < 330 ? 'high' : 'very high';
     // find optimum T for per-pass at this P
@@ -828,7 +831,10 @@
     if (acc > 0.15) { const s = stats(acc); acc = 0; readouts(s); drawConc(); }
     if (accE > 0.4) { accE = 0; drawEnergy(); }
   }).start();
-  document.addEventListener('visibilitychange', () => document.hidden ? L.stop() : L.start());
+  // pause the whole simulation while the lab is scrolled far out of view (reading the theory) or the tab is hidden
+  let labVis = true;
+  document.addEventListener('visibilitychange', () => document.hidden || !labVis ? L.stop() : L.start());
+  if ('IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(e => { labVis = e.isIntersecting; if (labVis && !document.hidden) L.start(); else L.stop(); }), { rootMargin: '300px' }).observe(document.querySelector('.lab'));
   document.querySelector('[data-tabs]').addEventListener('tab', () => setTimeout(() => { drawRL(); drawAr(); drawHb(); }, 30));
   window.SimKin = { S, count, Kth, EaF, step, stats, yNH3, KpH, perPass, applyStress, reset };
   const startTour = () => SL.tour([

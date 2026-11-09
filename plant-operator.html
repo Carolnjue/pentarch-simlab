@@ -372,7 +372,7 @@
     <div class="worked">
       <p>BP-101 delivers 65 m³/h against a total head of 112 m (65 m pumping level plus 47 m at the wellhead). Hydraulic power:</p>
       <p>$P_h = \rho g Q H = 1000 \times 9.81 \times \frac{65}{3600} \times 112 = 19.8$ kW. With a pump efficiency of about 0.69, shaft power is about 28.8 kW.</p>
-      <p>The model's current is $I = \sqrt{I_m^2 + (k P)^2}$ with magnetising current $I_m = 0.35 \times 64 = 22.4$ A and $k = 1.91$ A/kW: $I = \sqrt{22.4^2 + 55^2} \approx 59$ A, about 92 % of the 64 A full-load current. Dry-running drops shaft power to about 5 kW, so $I \approx \sqrt{22.4^2 + 10^2} \approx 25$ A: the low-current alarm fires below 50 % (32 A). A throttled pump at 20 m³/h still draws about 40 A, so the alarm does not chatter during normal level control.</p>
+      <p>The model's current is $I = \sqrt{I_m^2 + (k P)^2}$ with magnetising current $I_m = 0.35 \times 64 = 22.4$ A and $k = 1.91$ A/kW: $I = \sqrt{22.4^2 + 55^2} \approx 59$ A, about 92 % of the 64 A full-load current. Dry-running drops shaft power to about 5 kW, so $I \approx \sqrt{22.4^2 + 9.6^2} \approx 24$ A: the low-current alarm fires below 50 % (32 A). A throttled pump at 20 m³/h still draws about 40 A, so the alarm does not chatter during normal level control.</p>
     </div>
     <h3>4. Hypochlorite consumption</h3>
     <div class="worked">
@@ -1166,6 +1166,8 @@ $('#twin').addEventListener('click', e => { const b = e.target.closest('button')
 /* ===================== HMI GRAPHIC ===================== */
 const C = { bg: '#2a2e35', pipe: '#6b7380', pipeOn: '#aeb6c2', eq: '#c9d1d9', eqDim: '#7d8590', fillRun: '#9ba3ae', txt: '#e6edf3', dim: '#98a1ad', water: '#435466', box: '#1f2329', boxLine: '#3d444e' };
 const cst = SL.canvas($('#cv'));
+let hmiVis = true;
+if ('IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(e => { hmiVis = e.isIntersecting; }), { rootMargin: '200px' }).observe($('#cv'));
 let HITS = [], animT = 0, hover = null, flash = true;
 function hit(id, x, y, w, h) { HITS.push({ id, x, y, w, h }); }
 function drawHMI(dt) {
@@ -1456,7 +1458,7 @@ function saveProg(id, score, resolved) { if (resolved) { PROG[id] = Math.max(PRO
 const CH = [
   { id: 'manual', t: 'Hand control', d: 'In Manual, hold the reservoir within ±0.1 m of 3.0 m for 30 minutes of plant time.' },
   { id: 'bw', t: 'Clean filter, happy town', d: 'Complete a backwash while the town stays above 1 bar throughout.' },
-  { id: 'affinity', t: 'Affinity laws', d: 'Run BP-101 at 40 Hz or less in Manual with at least 40 m³/h... impossible? Get as close as you can: run stably at 40 Hz for 10 min.' },
+  { id: 'affinity', t: 'Affinity laws', d: 'Run BP-101 in Manual at 40 Hz or less (above 30 Hz) for 10 minutes of plant time, and compare the flow with the 50 Hz value. Does Q fall in proportion to speed?' },
   { id: 'f3', t: 'Three emergencies', d: 'Resolve any three different emergencies.' },
   { id: 'f8', t: 'Senior operator', d: 'Resolve all eight emergencies.' },
   { id: 'ace', t: 'Textbook response', d: 'Score 90 or more on any emergency.' },
@@ -1477,7 +1479,6 @@ function checkChallenges(h) {
   if (Object.values(PROG).some(v => typeof v === 'number' && v >= 90)) award('ace');
 }
 function award(id) { if (PROG['ch_' + id]) return; PROG['ch_' + id] = true; try { localStorage.setItem('sl-plant-prog', JSON.stringify(PROG)); } catch (e) {} const c = CH.find(x => x.id === id); SL.toast(`<b>Challenge complete:</b> ${c.t}`, 'ok'); renderCh(); }
-CH[2].d = 'Run BP-101 in Manual at 40 Hz or less (above 30 Hz) for 10 minutes of plant time, and compare the flow with the 50 Hz value. Does Q fall in proportion to speed?';
 function renderCh() {
   $('#chal').innerHTML = CH.map(c => `<div class="chk"><span class="led ${PROG['ch_' + c.id] ? 'on' : ''}"></span><div><b>${c.t}</b><span class="muted small">${c.d}</span></div></div>`).join('') +
     `<h3>Emergency record</h3><table class="data"><tr><th>Emergency</th><th>Best score</th></tr>${Object.entries(FAULTS).map(([k, f]) => `<tr><td>${f.name}</td><td class="num">${PROG[k] != null ? PROG[k] : '–'}</td></tr>`).join('')}</table>`;
@@ -1552,7 +1553,7 @@ function tick(dt) {
     let simDt = dt * speed;
     while (simDt > 1e-6) { const hh = Math.min(2, simDt); step(hh); evalAlarms(hh); scoreTick(hh); hist(); checkChallenges(hh); simDt -= hh; }
   }
-  drawHMI(dt); horn(dt);
+  if (hmiVis) drawHMI(dt); else animT += dt; horn(dt); // the plant keeps running while you read the theory; only the drawing pauses
   uiT += dt; slowT += dt;
   if (uiT > 0.25) {
     uiT = 0;

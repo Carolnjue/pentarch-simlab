@@ -236,7 +236,7 @@
       <div class="worked">
         <p>Call answered at $t=0$. You confirm the address and "not breathing normally" at 0:40 and start CPR coaching at 1:30 (sim). The ALS unit arrives at 7:00.</p>
         <div class="eq">$$S = 70 - 10(1.5) - 3.5(7.0 - 1.5) = 70 - 15 - 19.25 = 35.75\%$$</div>
-        <p>Without CPR coaching: $S = 70 - 10(7.0) = 0\%$. Telephone CPR more than doubles the chance of survival, which is why it is the most valuable thing a dispatcher does.</p>
+        <p>Without CPR coaching: $S = 70 - 10(7.0) = 0\%$. Telephone CPR turns a near-zero chance of survival into roughly one in three, which is why it is the most valuable thing a dispatcher does.</p>
       </div>
       <h3>Worked example 3: utilisation</h3>
       <div class="worked">
@@ -394,7 +394,7 @@
     const facNodes = new Set(FAC.map(f => node(f.i, f.j)));
     let i, j, n; do { i = 1 + Math.floor(rnd() * (NX - 2)); j = Math.floor(rnd() * NY); n = node(i, j); } while (facNodes.has(n) || S.incidents.some(x => x.node === n));
     const panic = Math.min(2, Math.floor(rnd() * (diff === 2 ? 3 : 2.6)));
-    const c = { id: S.idSeq++, tp, node: n, i, j, panic, ring: S.rt, ringSim: S.t, answered: null, asked: new Set(), tx: [], prio: null, units: [], firstDispatch: null, firstArrive: null, cprStart: null, paiSaid: new Set(), state: 'ring', addrKnown: false, reassured: 0, weapon: false, ended: false, outcome: null, dispatchNotes: [], addrFirst: null, abandoned: false };
+    const c = { id: S.idSeq++, tp, node: n, i, j, panic, panic0: panic, ring: S.rt, ringSim: S.t, answered: null, asked: new Set(), tx: [], prio: null, units: [], firstDispatch: null, firstArrive: null, cprStart: null, paiSaid: new Set(), state: 'ring', addrKnown: false, reassured: 0, weapon: false, ended: false, outcome: null, dispatchNotes: [], addrFirst: null, abandoned: false };
     if (tp.weaponVar && rnd() < .45) { c.weapon = true; c.prioEff = 1; } else c.prioEff = tp.prio;
     S.calls.push(c);
     try { const ac = SL.audio(); if (ac && ac.state === 'running') ringTone(ac); } catch (e) {}
@@ -487,7 +487,7 @@
       const iv = []; for (let k = 1; k < S.taps.length; k++) iv.push(S.taps[k] - S.taps[k - 1]);
       const bpm = 60000 / (iv.reduce((a, b) => a + b, 0) / iv.length);
       if (el) { el.textContent = Math.round(bpm) + ' /min'; el.style.color = bpm >= 100 && bpm <= 120 ? '#86efac' : '#fca5a5'; }
-      if (c) { c.bpm = bpm; if (bpm >= 100 && bpm <= 120 && S.taps.length >= 9) c.bpmOk = true; }
+      if (c) { c.bpm = bpm; if (bpm >= 100 && bpm <= 120 && S.taps.length >= 9 && c.tp.pai === 'cpr' && c.cprStart !== null) c.bpmOk = true; } // counts only while actually coaching compressions
     }
     try { const ac = SL.audio(); if (ac) { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = 1200; g.gain.value = .04; o.connect(g).connect(ac.destination); o.start(); g.gain.exponentialRampToValueAtTime(.0001, ac.currentTime + .05); o.stop(ac.currentTime + .06); } } catch (e) {}
   }
@@ -860,7 +860,7 @@
     { id: 'c1', t: 'Answer five calls in a row within 10 seconds each.', live: () => { const a = S.calls.filter(c => c.answered != null).slice(-5); return a.length === 5 && a.every(c => c.answered - c.ring <= 10); } },
     { id: 'c2', t: 'Dispatch an ALS unit to a cardiac arrest within 60 s of answering.', live: () => S.calls.some(c => c.tp.id === 'arrest' && c.firstDispatch != null && c.firstDispatch - c.answered <= 60 && c.units.some(id => S.units.find(u => u.id === id).type === 'ALS')) },
     { id: 'c3', t: 'Coach compression-only CPR with a tapped rate between 100 and 120 per minute.', live: () => S.calls.some(c => c.bpmOk) },
-    { id: 'c4', t: 'Calm a hysterical caller and obtain a verified address.', live: () => S.calls.some(c => c.reassured && c.addrKnown && c.tx.some(x => /hysterical|I don't know!/.test(x[1]))) },
+    { id: 'c4', t: 'Calm a hysterical caller and obtain a verified address.', live: () => S.calls.some(c => c.panic0 >= 2 && c.reassured && c.addrKnown) }, // calming first and then asking is the right order, so it must count
     { id: 'c5', t: 'Finish a shift with priority accuracy of 80% or more and no abandoned calls.', end: r => r.parts[1][1] >= 80 && !S.calls.some(c => c.abandoned) && r.calls.length >= 3 },
     { id: 'c6', t: 'Finish a Major event shift with an overall grade of B or better.', end: r => diff === 2 && r.overall >= 70 },
   ];
