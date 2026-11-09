@@ -1,0 +1,1149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cell Explorer · Pentarch SimLab</title>
+<meta name="description" content="Zoom into every organelle of an animal and a plant cell, run diffusion, carrier and Na⁺/K⁺ pump experiments, watch osmosis swell or shrink cells, follow a protein through the secretory pathway and build a cell for a job.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .sec-head{margin:34px 0 0}
+  .sec-head h2{font-size:clamp(1.3rem,2.4vw,1.75rem);margin:0;display:flex;align-items:center;gap:10px}
+  .sec-head h2 svg{width:24px;height:24px;color:var(--accent)}
+  .sec-head p{margin:4px 0 0;color:var(--muted);max-width:780px;font-size:.95rem}
+  [hidden]{display:none!important}
+  #cellStage{height:620px;background:radial-gradient(circle at 50% 45%,#0b1a2b,#050913 70%)}
+  #cellSvg{display:block;width:100%;height:100%;touch-action:manipulation}
+  #cellSvg .org{cursor:pointer;transition:opacity .4s}
+  #cellSvg .org:hover{filter:drop-shadow(0 0 5px rgba(255,255,255,.75))}
+  #cellSvg.zoomed .org.dim{opacity:.35}
+  #cellSvg .lbl text{font:600 13px Inter,sans-serif;fill:#e2e8f0;paint-order:stroke;stroke:#050913;stroke-width:4px}
+  #cellSvg .lbl line{stroke:rgba(226,232,240,.55);stroke-width:1}
+  #trStage{height:470px} #osStage{height:460px} #secStage{height:440px} #bStage{height:520px}
+  .org-chips{display:flex;flex-wrap:wrap;gap:5px}
+  .org-chips button{all:unset;cursor:pointer;font:600 .72rem var(--mono);padding:4px 8px;border-radius:7px;border:1px solid var(--line2);color:var(--muted)}
+  .org-chips button:hover{border-color:var(--accent);color:var(--text)}
+  .org-chips button.seen{border-color:color-mix(in srgb,var(--accent) 45%,transparent);color:var(--text)}
+  .org-chips button.on{background:var(--accent);color:#06101f;border-color:var(--accent)}
+  .info h4{margin:0 0 4px;color:var(--accent);font-size:1.15rem}
+  .info .size{font:500 .74rem var(--mono);color:var(--dim);margin-bottom:8px}
+  .info dl{margin:0;display:grid;gap:8px}
+  .info dt{font:600 .68rem var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:6px}
+  .info dt svg{width:13px;height:13px;color:var(--accent)}
+  .info dd{margin:0;font-size:.86rem;color:var(--muted);line-height:1.5}
+  .mini{font-size:.8rem;color:var(--muted);line-height:1.45}
+  .narr{font-size:.88rem;color:var(--muted);line-height:1.55;min-height:110px}
+  .narr h4{color:var(--accent);margin:0 0 6px;font-size:1rem}
+  .phase-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:10px}
+  .phase-chips button{all:unset;cursor:pointer;font:600 .7rem var(--mono);padding:4px 7px;border-radius:6px;border:1px solid var(--line2);color:var(--muted)}
+  .phase-chips button.on{background:var(--accent);border-color:var(--accent);color:#06101f}
+  .phase-chips button.done{border-color:color-mix(in srgb,var(--accent) 50%,transparent);color:var(--text)}
+  .req{list-style:none;padding:0;margin:8px 0 0;font-size:.84rem}
+  .req li{display:flex;gap:8px;padding:5px 0;border-bottom:1px dashed var(--line);color:var(--muted)}
+  .req li b{color:var(--text)}
+  .req .ok{color:var(--ok)} .req .no{color:var(--bad)}
+  .chal{list-style:none;padding:0;margin:0}
+  .chal li{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px dashed var(--line)}
+  .chal li .led{margin-top:6px;flex:none}
+  .chal li b{display:block}
+  .chal li span{color:var(--muted);font-size:.88rem}
+  .tbl-wrap{overflow-x:auto}
+  @media (max-width:980px){ #cellStage{height:520px} #bStage{height:560px} }
+  @media (max-width:520px){ #cellStage{height:290px;min-height:0} #trStage{height:480px} #osStage{height:440px} #secStage{height:430px} #bStage{height:600px} }
+</style>
+</head>
+<body data-page="cell">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <!-- ================= 1. CELL EXPLORER ================= -->
+  <section class="lab wide-controls" id="cellLab">
+    <div class="stage" id="cellStage">
+      <svg id="cellSvg" viewBox="0 0 1000 680" preserveAspectRatio="xMidYMid meet" aria-label="Interactive cell diagram"></svg>
+      <div class="hud"><span class="readout" id="cellHud">Animal cell · click an organelle</span></div>
+      <div class="stage-toolbar"><button class="btn sm" id="zoomOut" hidden><i data-lucide="zoom-out"></i> Whole cell</button></div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="microscope"></i> Cell</h3>
+        <div class="seg" id="cellSeg"><button data-m="animal" class="on">Animal cell</button><button data-m="plant">Plant cell</button></div>
+        <label class="toggle" style="margin-top:8px">Labels <input type="checkbox" id="lblT" checked></label>
+        <label class="toggle">Cytoskeleton <input type="checkbox" id="cskT" checked></label>
+        <label class="toggle">Vesicle traffic and streaming <input type="checkbox" id="animT" checked></label>
+        <div class="panel-title">Jump to</div>
+        <div class="org-chips" id="orgChips"></div>
+      </div>
+      <div class="panel info" id="orgInfo"></div>
+    </aside>
+  </section>
+
+  <!-- ================= 2. MEMBRANE TRANSPORT ================= -->
+  <div class="sec-head"><h2><i data-lucide="arrow-down-up"></i> Membrane transport lab</h2>
+    <p>A close-up of the phospholipid bilayer. Small non-polar molecules slip straight through, glucose needs a carrier, ions need channels, and the Na⁺/K⁺-ATPase spends ATP to pump ions against their gradients.</p></div>
+  <section class="lab">
+    <div class="stage" id="trStage"><canvas id="cvTr"></canvas>
+      <div class="hud hud-b hud-r"><span class="readout" id="trHud">Simple diffusion</span></div></div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="sliders-horizontal"></i> Mechanism</h3>
+        <div class="seg" id="trSeg"><button data-m="simple" class="on">Simple</button><button data-m="facil">Facilitated</button><button data-m="active">Active pump</button></div>
+        <div id="trSimple" style="margin-top:8px">
+          <div class="ctl"><label for="o2out">O₂ outside</label><output></output><input type="range" id="o2out" min="0" max="120" step="5" value="90"></div>
+          <div class="ctl"><label for="o2in">O₂ inside</label><output></output><input type="range" id="o2in" min="0" max="120" step="5" value="10"></div>
+          <label class="toggle">Add glucose and Na⁺ (cannot cross) <input type="checkbox" id="addPolar" checked></label>
+        </div>
+        <div id="trFacil" hidden style="margin-top:8px">
+          <div class="ctl"><label for="gout">Glucose outside</label><output></output><input type="range" id="gout" min="0" max="120" step="5" value="80"></div>
+          <div class="ctl"><label for="gin">Glucose inside</label><output></output><input type="range" id="gin" min="0" max="120" step="5" value="10"></div>
+          <div class="ctl"><label for="nglut">GLUT carriers</label><output></output><input type="range" id="nglut" min="0" max="6" step="1" value="3"></div>
+          <label class="toggle">Hexokinase traps glucose inside <input type="checkbox" id="hexo" checked></label>
+          <label class="toggle">K⁺ channels open <input type="checkbox" id="kOpen" checked></label>
+        </div>
+        <div id="trActive" hidden style="margin-top:8px">
+          <div class="ctl"><label for="npump">Na⁺/K⁺ pumps</label><output></output><input type="range" id="npump" min="1" max="4" step="1" value="2"></div>
+          <label class="toggle">ATP supply (mitochondria working) <input type="checkbox" id="atpOn" checked></label>
+          <label class="toggle">Ouabain (pump inhibitor) <input type="checkbox" id="ouab"></label>
+          <label class="toggle">K⁺ leak channels <input type="checkbox" id="kLeak"></label>
+        </div>
+        <div class="btn-row" style="margin-top:8px"><button class="btn sm" id="trReset"><i data-lucide="rotate-ccw"></i> Reset</button><button class="btn sm" id="trPause"><i data-lucide="pause"></i> Pause</button></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="gauge"></i> Live counts</h3>
+        <div class="stats" id="trStats"></div>
+        <p class="mini" id="trNote" style="margin-top:10px"></p>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ================= 3. OSMOSIS ================= -->
+  <div class="sec-head"><h2><i data-lucide="droplets"></i> Osmosis</h2>
+    <p>Change the concentration of the surrounding solution. Water moves across the membrane towards the more concentrated side until water potentials balance; an animal cell may burst or shrink, while a plant cell is protected by its wall.</p></div>
+  <section class="lab">
+    <div class="stage" id="osStage"><canvas id="cvOs"></canvas>
+      <div class="hud"><span class="readout" id="osHud">Isotonic</span></div></div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="beaker"></i> Solution</h3>
+        <div class="seg" id="osSeg"><button data-m="rbc" class="on">Red blood cell</button><button data-m="plant">Plant cell</button></div>
+        <div class="ctl" style="margin-top:8px"><label for="osC">Solute concentration outside</label><output></output><input type="range" id="osC" min="0" max="900" step="5" value="300"></div>
+        <div class="btn-row"><button class="btn sm" data-c="0">Pure water</button><button class="btn sm" data-c="100">Hypotonic</button><button class="btn sm" data-c="300">Isotonic (0.9 % NaCl)</button><button class="btn sm" data-c="600">Hypertonic</button></div>
+        <button class="btn sm" id="osReset" style="margin-top:8px"><i data-lucide="rotate-ccw"></i> Fresh cell</button>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="gauge"></i> Water potential</h3>
+        <div class="stats" id="osStats"></div>
+        <p class="mini" id="osNote" style="margin-top:10px"></p>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ================= 4. SECRETORY PATHWAY ================= -->
+  <div class="sec-head"><h2><i data-lucide="route"></i> The secretory pathway</h2>
+    <p>Follow one protein from gene to destination through the endomembrane system. The address label in its sequence decides where it ends up.</p></div>
+  <section class="lab">
+    <div class="stage" id="secStage"><canvas id="cvSec"></canvas>
+      <div class="hud"><span class="readout" id="secHud">Step 1</span></div></div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="package"></i> Protein</h3>
+        <div class="seg" id="secSeg"><button data-m="ins" class="on">Insulin (secreted)</button><button data-m="lys">Lysosomal enzyme</button><button data-m="mem">Membrane receptor</button></div>
+        <div class="btn-row" style="margin-top:10px">
+          <button class="btn sm" id="sPrev" aria-label="Previous step"><i data-lucide="skip-back"></i></button>
+          <button class="btn sm primary" id="sPlay"><i data-lucide="play"></i> Play</button>
+          <button class="btn sm" id="sNext"><i data-lucide="skip-forward"></i> Step</button>
+        </div>
+        <div class="phase-chips" id="secChips"></div>
+      </div>
+      <div class="panel narr" id="secNarr"></div>
+    </aside>
+  </section>
+
+  <!-- ================= 5. BUILD A CELL ================= -->
+  <div class="sec-head"><h2><i data-lucide="puzzle"></i> Build a cell for the job</h2>
+    <p>Cells specialise by changing their mix of organelles. Pick a job, drag organelles from the tray into the empty cell (drag them out again to remove), then check whether your cell could do its work.</p></div>
+  <section class="lab">
+    <div class="stage" id="bStage"><canvas id="cvB"></canvas></div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="briefcase"></i> Job</h3>
+        <select id="job"></select>
+        <p class="mini" id="jobDesc" style="margin:8px 0 0"></p>
+        <div class="btn-row" style="margin-top:10px"><button class="btn primary" id="bCheck"><i data-lucide="check-check"></i> Check viability</button><button class="btn sm" id="bClear"><i data-lucide="trash-2"></i> Empty cell</button></div>
+      </div>
+      <div class="panel"><h3><i data-lucide="clipboard-check"></i> Report</h3><div id="bReport" class="mini">Add organelles, then check.</div></div>
+    </aside>
+  </section>
+
+  <!-- ================= TABS ================= -->
+  <section class="tabs" data-tabs style="margin-top:30px">
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="table"></i> Organelle table</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+    <div class="tabpanel prose">
+      <h3>Cells: the units of life</h3>
+      <p>Cell theory states that all organisms are made of cells, the cell is the basic unit of structure and function, and cells arise only from pre-existing cells. <b>Prokaryotes</b> (bacteria and archaea, typically 1–5 µm) have no nucleus or membrane-bound organelles; their DNA lies in a nucleoid and they have 70S ribosomes. <b>Eukaryotes</b> (typically 10–100 µm) compartmentalise their chemistry in membrane-bound organelles. Mitochondria and chloroplasts are descendants of engulfed bacteria (endosymbiosis): they have two membranes, circular DNA and 70S ribosomes.</p>
+      <p>Compartments let incompatible reactions run side by side: acid hydrolases work at pH ≈ 4.5–5 inside lysosomes while the cytosol stays near pH 7.2; the ER lumen is oxidising so disulfide bonds can form; the mitochondrial inner membrane holds a proton gradient.</p>
+
+      <h3>The plasma membrane: fluid mosaic</h3>
+      <p>A 7–8 nm phospholipid bilayer with hydrophilic heads facing water and hydrophobic tails inside, studded with proteins (about 50 % of membrane mass), cholesterol (which buffers fluidity) and glycolipids/glycoproteins forming the glycocalyx. The hydrophobic core is what makes the membrane selectively permeable.</p>
+
+      <h3>Transport across membranes</h3>
+      <p><b>Simple diffusion</b> of small, non-polar molecules (O₂, CO₂, N₂, steroid hormones) follows Fick's law: the flux is proportional to the concentration difference.</p>
+      <div class="eq">$$J = -D\frac{dC}{dx} \quad\Rightarrow\quad J = P\,(C_\text{out} - C_\text{in})$$</div>
+      <p>$P$ is the permeability coefficient (m/s). <b>Facilitated diffusion</b> uses channels (fast, selective pores such as K⁺ channels and aquaporins) or carriers that change shape (such as GLUT1 for glucose). Carriers saturate, following Michaelis–Menten kinetics:</p>
+      <div class="eq">$$J = \frac{J_\text{max}\,[S]}{K_m + [S]}$$</div>
+      <p>For GLUT1, $K_m \approx 1$–3 mM. Both forms of diffusion are passive and run down the electrochemical gradient. <b>Active transport</b> uses energy to move substances against their gradient. The Na⁺/K⁺-ATPase (primary active transport) hydrolyses one ATP to export 3 Na⁺ and import 2 K⁺; because it moves one net positive charge out per cycle it is <b>electrogenic</b>. It uses about 20–25 % of the body's resting ATP (up to two-thirds in neurons). Secondary active transporters such as SGLT1 use the Na⁺ gradient it creates to import glucose.</p>
+
+      <h3>Osmosis and water potential</h3>
+      <p>Osmosis is the net diffusion of water across a selectively permeable membrane from a region of higher water potential (lower solute concentration) to lower water potential. Solutes lower water potential by the osmotic (solute) potential, given by the van 't Hoff relation, and pressure adds to it:</p>
+      <div class="eq">$$\Psi = \Psi_s + \Psi_p, \qquad \Psi_s = -iCRT$$</div>
+      <p>where $C$ is molar concentration and $i$ the number of particles per formula unit ($i \approx 2$ for NaCl). Body fluids are about 290–300 mOsm/L; 0.9 % NaCl (154 mM, ≈ 308 mOsm/L ideally) is isotonic. Red cells behave as osmometers following the Boyle–van 't Hoff law $V = b + (V_0 - b)\,C_0/C$, where $b$ (≈ 40 % of $V_0$) is the osmotically inactive volume. They lyse when swollen beyond about 1.6 times their normal volume (≈ 150 mOsm/L, 0.45 % NaCl).</p>
+      <p>Plant cells have a rigid cellulose wall. In a hypotonic solution water enters until wall pressure ($\Psi_p$, turgor) balances the solute potential: the cell is <b>turgid</b>, which keeps non-woody plants upright. In a hypertonic solution the protoplast loses water and pulls away from the wall: <b>plasmolysis</b>. Wilting is the loss of turgor.</p>
+
+      <h3>The endomembrane system and protein targeting</h3>
+      <p>Proteins made on free ribosomes stay in the cytosol or go to the nucleus, mitochondria, chloroplasts or peroxisomes. Proteins with an N-terminal <b>signal peptide</b> are recognised by the signal recognition particle (SRP) and translated into the rough ER. From there COPII vesicles carry them to the Golgi, which modifies glycans and sorts cargo at the trans-Golgi network: secretory granules, plasma membrane, or (with a mannose-6-phosphate tag) lysosomes. Fusion of vesicles with target membranes is driven by SNARE proteins.</p>
+      <div class="callout warn"><i data-lucide="triangle-alert"></i><div><b>Model notes.</b> Diagrams are schematic and not to scale: in a real 20 µm animal cell a mitochondrion is about 1 µm long and a ribosome 25 nm. Particle simulations are qualitative (counts of particles stand in for concentrations). The osmosis model assumes an ideal osmometer with $b = 0.4 V_0$ for the red cell and a plant cell sap of 400 mOsm/L at 25 °C.</div></div>
+    </div>
+
+    <div class="tabpanel">
+      <div class="tbl-wrap"><table class="data">
+        <thead><tr><th>Structure</th><th>Membrane</th><th>Main function</th><th>Animal</th><th>Plant</th><th>Bacteria</th></tr></thead>
+        <tbody>
+          <tr><td>Plasma membrane</td><td>Single bilayer</td><td>Selective barrier, signalling</td><td>✓</td><td>✓</td><td>✓</td></tr>
+          <tr><td>Nucleus</td><td>Double (envelope with pores)</td><td>Holds DNA; transcription</td><td>✓</td><td>✓</td><td>✗ (nucleoid)</td></tr>
+          <tr><td>Ribosomes</td><td>None</td><td>Protein synthesis</td><td>80S</td><td>80S</td><td>70S</td></tr>
+          <tr><td>Rough ER</td><td>Single</td><td>Synthesis of secreted and membrane proteins</td><td>✓</td><td>✓</td><td>✗</td></tr>
+          <tr><td>Smooth ER</td><td>Single</td><td>Lipids, steroids, detoxification, Ca²⁺ store</td><td>✓</td><td>✓</td><td>✗</td></tr>
+          <tr><td>Golgi apparatus</td><td>Single (stacked cisternae)</td><td>Modify, sort and package proteins</td><td>✓</td><td>✓</td><td>✗</td></tr>
+          <tr><td>Mitochondria</td><td>Double (cristae)</td><td>Aerobic respiration, ATP</td><td>✓</td><td>✓</td><td>✗</td></tr>
+          <tr><td>Chloroplasts</td><td>Double + thylakoids</td><td>Photosynthesis</td><td>✗</td><td>✓</td><td>✗</td></tr>
+          <tr><td>Lysosomes</td><td>Single</td><td>Intracellular digestion</td><td>✓</td><td>Lytic vacuole instead</td><td>✗</td></tr>
+          <tr><td>Peroxisomes</td><td>Single</td><td>Fatty acid oxidation, H₂O₂ breakdown</td><td>✓</td><td>✓ (photorespiration)</td><td>✗</td></tr>
+          <tr><td>Centrosome / centrioles</td><td>None</td><td>Organise microtubules, spindle</td><td>✓</td><td>✗ (most land plants)</td><td>✗</td></tr>
+          <tr><td>Large central vacuole</td><td>Single (tonoplast)</td><td>Turgor, storage</td><td>Small vacuoles only</td><td>✓</td><td>✗</td></tr>
+          <tr><td>Cell wall</td><td>None</td><td>Support, prevents bursting</td><td>✗</td><td>✓ cellulose</td><td>✓ peptidoglycan</td></tr>
+          <tr><td>Plasmodesmata</td><td>Lined by membrane</td><td>Cytoplasmic channels between cells</td><td>✗ (gap junctions)</td><td>✓</td><td>✗</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. Sizes and magnification</h3>
+      <div class="worked">
+        <p>A mitochondrion 1.5 µm long appears 30 mm long in an electron micrograph. Magnification $M = \text{image}/\text{actual} = 30\ \text{mm} / 1.5\ \mu\text{m} = 30\,000\ \mu\text{m}/1.5\ \mu\text{m} = 20\,000\times$.</p>
+        <p>The same micrograph shows a ribosome as a 0.5 mm dot: actual size $= 0.5\ \text{mm}/20\,000 = 25$ nm.</p>
+      </div>
+      <h3>2. Surface area to volume</h3>
+      <div class="worked">
+        <p>A spherical cell of radius 10 µm: $A = 4\pi r^2 = 1257\ \mu\text{m}^2$, $V = \tfrac43\pi r^3 = 4189\ \mu\text{m}^3$, $A/V = 3/r = 0.30\ \mu\text{m}^{-1}$.</p>
+        <p>Double the radius to 20 µm: $A/V = 0.15\ \mu\text{m}^{-1}$. Halving the surface available per unit volume limits how large a cell can grow and still exchange enough O₂ and nutrients by diffusion. This is one reason cells divide, and why absorptive cells carry microvilli.</p>
+      </div>
+      <h3>3. Isotonic saline</h3>
+      <div class="worked">
+        <p>0.9 % NaCl = 9 g/L. Molar mass 58.44 g/mol, so $C = 9/58.44 = 0.154$ mol/L. NaCl dissociates into 2 ions: ideal osmolarity $= 2 \times 154 = 308$ mOsm/L (about 286 measured, because the ions interact). Plasma is ≈ 290 mOsm/L, so 0.9 % saline is isotonic.</p>
+        <p>Solute potential at 25 °C: $\Psi_s = -CRT = -(300\ \text{mol m}^{-3})(8.314)(298) = -7.43\times10^{5}$ Pa $= -0.74$ MPa.</p>
+      </div>
+      <h3>4. Red cell volume in a hypotonic solution</h3>
+      <div class="worked">
+        <p>Boyle–van 't Hoff with $b = 0.4V_0$, $C_0 = 300$ mOsm/L. At 200 mOsm/L: $V/V_0 = 0.4 + 0.6 \times 300/200 = 1.30$: the cell swells by 30 %.</p>
+        <p>Lysis at $V/V_0 = 1.6$: $0.4 + 0.6 \times 300/C = 1.6 \Rightarrow C = 150$ mOsm/L (≈ 0.45 % NaCl). Try these values in the osmosis lab.</p>
+      </div>
+      <h3>5. Plant cell turgor</h3>
+      <div class="worked">
+        <p>Cell sap 400 mOsm/L: $\Psi_s = -0.4 \times 8.314 \times 298 / 1000 = -0.99$ MPa. In pure water ($\Psi = 0$) at equilibrium $\Psi_p = +0.99$ MPa, about ten times atmospheric pressure, held by the wall.</p>
+        <p>In 600 mOsm/L sucrose ($\Psi = -1.49$ MPa) the cell loses water until its sap reaches 600 mOsm/L: protoplast volume $\approx 400/600 = 67$ % and the cell is plasmolysed.</p>
+      </div>
+      <h3>6. Fick's law</h3>
+      <div class="worked">
+        <p>O₂ permeability of a lipid bilayer is roughly $P \approx 0.1$ m/s (very high). With 0.1 mol/m³ outside and 0.02 mol/m³ inside: $J = 0.1 \times 0.08 = 8\times10^{-3}$ mol m⁻² s⁻¹. Glucose's permeability is about $10^{-9}$ m/s, eight orders of magnitude less, which is why cells need GLUT carriers.</p>
+      </div>
+    </div>
+
+    <div class="tabpanel">
+      <div class="prose"><h3>Guided challenges</h3><p>Each challenge is checked automatically as you use the labs above.</p></div>
+      <ul class="chal" id="chalList"></ul>
+    </div>
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const visible = el => { const r = el.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight; };
+  const mulberry = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const f1 = v => Math.round(v * 10) / 10;
+  function rr(ctx, x, y, w, h, r) { r = Math.max(0, Math.min(r, w / 2, h / 2)); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+
+  /* =====================================================================
+     CHALLENGES
+     ===================================================================== */
+  const CHL = [
+    ['mito', 'Power station', 'Zoom into a mitochondrion and find its cristae.'],
+    ['eight', 'Organelle tour', 'Open the information card of at least 8 different structures.'],
+    ['chloro', 'Solar panels', 'Switch to the plant cell and zoom into a chloroplast.'],
+    ['lyse', 'Haemolysis', 'Put a red blood cell in a solution dilute enough to burst it.'],
+    ['crenate', 'Crenation', 'Shrink a red blood cell until it crenates.'],
+    ['plasmo', 'Plasmolysis', 'Make the plant protoplast pull away from its wall.'],
+    ['pump', 'Pumping iron… and sodium', 'Run 10 cycles of the Na⁺/K⁺-ATPase.'],
+    ['carrier', 'Saturated carriers', 'Move 20 glucose molecules into the cell through GLUT carriers.'],
+    ['secrete', 'Export order', 'Follow insulin all the way to exocytosis.'],
+    ['acinar', 'Enzyme factory', 'Build a viable pancreatic acinar cell.'],
+    ['rbc', 'Less is more', 'Build a viable mature red blood cell.'],
+  ];
+  const ch = {
+    st: {},
+    render() { $('#chalList').innerHTML = CHL.map(([k, t, d]) => `<li><span class="led ${this.st[k] ? 'on' : ''}"></span><div><b>${t}</b><span>${d}</span></div></li>`).join(''); },
+    done(k) { if (this.st[k]) return; this.st[k] = true; this.render(); SL.toast(`Challenge complete: <b>${CHL.find(c => c[0] === k)[1]}</b>`, 'ok'); }
+  };
+  ch.render();
+
+  /* =====================================================================
+     1. CELL EXPLORER (SVG)
+     ===================================================================== */
+  const ORG = {
+    nucleus: { name: 'Nucleus', size: '≈ 5–10 µm diameter', s: 'Enclosed by a double-membrane nuclear envelope continuous with the rough ER and perforated by ≈ 2000–4000 nuclear pore complexes (≈ 120 nm wide). Inside: chromatin (loose euchromatin and dense heterochromatin), the nucleolus where ribosomal RNA is made and ribosome subunits are assembled, and a supporting nuclear lamina of lamin filaments.', f: 'Stores and protects the genome, controls gene expression by transcribing DNA into RNA, processes (splices) mRNA and exports it through the pores.', a: 'The head office and its archive of blueprints: master copies never leave; photocopies (mRNA) are sent out.', d: 'Hutchinson–Gilford progeria (mutant lamin A, LMNA); other laminopathies such as Emery–Dreifuss muscular dystrophy. Enlarged, irregular nuclei are a hallmark pathologists use to grade cancers.' },
+    rer: { name: 'Rough endoplasmic reticulum', size: 'Flattened sacs (cisternae) ≈ 50 nm across', s: 'A network of flattened membrane sacs continuous with the outer nuclear membrane. Its cytosolic face is studded with ribosomes, giving the rough appearance in electron micrographs.', f: 'Synthesises proteins destined for secretion, the plasma membrane, lysosomes and the endomembrane system. In the lumen, chaperones fold proteins, disulfide bonds form and N-linked glycosylation begins. Misfolded proteins are retained and degraded.', a: 'A factory production line where products are made and quality-checked before shipping.', d: 'Cystic fibrosis: the common ΔF508 CFTR protein misfolds, is held in the ER and destroyed. α1-antitrypsin deficiency: the Z variant accumulates in liver-cell ER, causing cirrhosis. Pancreatic acinar and plasma cells are packed with RER.' },
+    ser: { name: 'Smooth endoplasmic reticulum', size: 'Tubules ≈ 30–60 nm diameter', s: 'A network of branching membrane tubules without ribosomes, continuous with the rough ER.', f: 'Makes phospholipids, cholesterol and steroid hormones; detoxifies drugs and alcohol using cytochrome P450 enzymes (especially in liver); stores Ca²⁺ (in muscle it is the sarcoplasmic reticulum, releasing Ca²⁺ to trigger contraction).', a: 'A chemical works and detox plant.', d: 'Drug tolerance: barbiturates and alcohol cause liver SER to proliferate, speeding their own breakdown. Malignant hyperthermia: a faulty RYR1 Ca²⁺ channel in muscle SR releases Ca²⁺ uncontrollably under some anaesthetics.' },
+    ribo: { name: 'Ribosomes', size: '≈ 25–30 nm (80S: 60S + 40S subunits)', s: 'Complexes of ribosomal RNA and about 80 proteins, without a membrane. Free ribosomes float in the cytosol (often as polysomes on one mRNA); bound ribosomes sit on the rough ER.', f: 'Translate mRNA into protein, reading codons and joining amino acids at the peptidyl transferase centre (a ribozyme). A ribosome adds about 2–6 amino acids per second in eukaryotes.', a: 'Assembly machines or 3D printers following a recipe tape.', d: 'Ribosomopathies such as Diamond–Blackfan anaemia. Antibiotics like streptomycin and tetracycline target bacterial 70S ribosomes; side effects arise partly because mitochondrial ribosomes are similar.' },
+    golgi: { name: 'Golgi apparatus', size: 'Stack of 4–8 cisternae, ≈ 1 µm across', s: 'A polarised stack of flattened cisternae: the cis face receives vesicles from the ER, cargo passes through medial cisternae, and the trans-Golgi network (TGN) sorts it into outgoing vesicles.', f: 'Modifies proteins and lipids (trims and builds glycans, adds sulfate, adds mannose-6-phosphate to lysosomal enzymes), sorts them and packages them into vesicles for secretion, the plasma membrane or lysosomes. In plants it makes cell-wall polysaccharides.', a: 'The post office and dispatch centre: labels, sorts and ships parcels.', d: 'I-cell disease (mucolipidosis II): no mannose-6-phosphate tag is added, so lysosomal enzymes are secreted instead of delivered, and undigested material accumulates.' },
+    vesicle: { name: 'Vesicles', size: '≈ 50–200 nm (secretory granules up to 1 µm)', s: 'Small membrane-bound sacs. Coat proteins shape them as they bud: COPII (ER to Golgi), COPI (back to the ER) and clathrin (from the TGN and plasma membrane). SNARE proteins on vesicle and target membranes zip together to fuse them.', f: 'Carry cargo between compartments; secretory vesicles release contents by exocytosis, and endocytic vesicles bring material in. Motor proteins carry them along microtubules.', a: 'Delivery vans running between depots.', d: 'Botulinum and tetanus toxins cleave SNARE proteins, blocking neurotransmitter release and causing paralysis. Botulinum toxin in tiny doses is used medically and cosmetically.' },
+    mito: { name: 'Mitochondrion', size: '≈ 0.5–1 µm wide, 1–10 µm long', s: 'Two membranes. The smooth outer membrane is permeable to small molecules (porins); the inner membrane folds into cristae carrying the electron transport chain and ATP synthase. The matrix contains Krebs-cycle enzymes, 70S-like ribosomes and several copies of circular mtDNA (16.6 kb, 37 genes).', f: 'Aerobic respiration: pyruvate oxidation and the Krebs cycle in the matrix, oxidative phosphorylation on the cristae, making about 30–32 ATP per glucose. Also controls apoptosis (cytochrome c release), buffers Ca²⁺ and generates heat in brown fat.', a: 'The power station, burning fuel to charge the cell’s batteries (ATP).', d: 'Mitochondrial DNA diseases inherited through the mother, such as MELAS and Leber hereditary optic neuropathy. Cyanide blocks complex IV (cytochrome c oxidase). Muscle and heart cells are packed with mitochondria.' },
+    lyso: { name: 'Lysosome', size: '≈ 0.1–1 µm', s: 'A single membrane enclosing about 60 acid hydrolases (proteases, nucleases, lipases, glycosidases). A V-type H⁺-ATPase keeps the lumen at pH ≈ 4.5–5; heavily glycosylated membrane proteins protect the membrane from digestion.', f: 'Digests material taken in by endocytosis and phagocytosis, recycles worn-out organelles (autophagy) and helps kill bacteria in macrophages and neutrophils.', a: 'The recycling centre and waste-disposal unit.', d: 'Lysosomal storage diseases: Tay–Sachs (hexosaminidase A), Gaucher (glucocerebrosidase), Pompe (acid maltase). Silicosis: silica particles rupture macrophage lysosomes in the lung.' },
+    perox: { name: 'Peroxisome', size: '≈ 0.2–1 µm', s: 'A single membrane around a dense matrix of oxidative enzymes, including catalase. Many mammals have a crystalline urate-oxidase core, which humans lack (one reason humans get gout). Proteins are imported fully folded.', f: 'Breaks down very-long-chain fatty acids (β-oxidation), converts toxic H₂O₂ to water and oxygen with catalase, helps detoxify ethanol in liver, and makes plasmalogens for myelin. In plants, peroxisomes take part in photorespiration.', a: 'A specialised hazardous-chemicals unit.', d: 'Zellweger syndrome (no functional peroxisomes) and X-linked adrenoleukodystrophy (ABCD1 transporter), where very-long-chain fatty acids build up and damage myelin.' },
+    centro: { name: 'Centrosome and centrioles', size: 'Each centriole ≈ 0.2 µm × 0.5 µm', s: 'Two centrioles at right angles, each a cylinder of nine microtubule triplets, embedded in pericentriolar material rich in γ-tubulin ring complexes that nucleate microtubules. Duplicates once per cell cycle.', f: 'The main microtubule-organising centre: anchors the radial microtubule array, forms the poles of the mitotic spindle and, as basal bodies, builds cilia and flagella. Most land plants have no centrioles and organise their spindle without them.', a: 'The central railway terminus from which tracks radiate.', d: 'Primary microcephaly (mutations in centrosome genes such as ASPM, CENPJ); ciliopathies such as Bardet–Biedl syndrome; extra centrosomes are common in cancer cells and cause faulty division.' },
+    cyto: { name: 'Cytoskeleton', size: 'Microfilaments 7 nm · intermediate filaments 10 nm · microtubules 25 nm', s: 'Three protein filament systems: actin microfilaments (dense under the membrane), intermediate filaments (keratins, vimentin, neurofilaments, nuclear lamins) and hollow microtubules of α/β-tubulin radiating from the centrosome.', f: 'Gives shape and mechanical strength, tracks for motor proteins (kinesin and dynein on microtubules, myosin on actin) carrying vesicles and organelles, cell crawling, muscle contraction and chromosome separation in division.', a: 'Scaffolding plus the road and rail network.', d: 'Epidermolysis bullosa simplex (keratin 5/14 mutations: skin blisters with slight friction). Anti-cancer drugs taxol (stabilises) and vincristine (depolymerises) act on microtubules; colchicine for gout blocks microtubule assembly in white cells.' },
+    membrane: { name: 'Plasma membrane', size: '≈ 7–8 nm thick', s: 'A fluid mosaic: a phospholipid bilayer with cholesterol, integral and peripheral proteins (channels, carriers, pumps, receptors, adhesion molecules) and a glycocalyx of carbohydrate chains on the outer surface.', f: 'A selective barrier controlling what enters and leaves, plus signalling (receptors), cell recognition (glycoproteins, e.g. blood groups) and adhesion to neighbours and the matrix.', a: 'The border fence with customs posts and intercoms.', d: 'Cystic fibrosis (CFTR Cl⁻ channel), familial hypercholesterolaemia (LDL receptor), and many drugs that target membrane receptors (about a third of all approved drugs act on G-protein-coupled receptors).' },
+    wall: { name: 'Cell wall', size: 'Primary wall ≈ 0.1–1 µm; secondary walls thicker', s: 'Cellulose microfibrils embedded in a matrix of hemicelluloses and pectins, outside the plasma membrane. Neighbouring cells are glued by the pectin-rich middle lamella. Woody cells add a lignified secondary wall.', f: 'Gives shape and mechanical support, resists turgor pressure so the cell does not burst in hypotonic solutions, and limits pathogen entry. It is freely permeable to water and small solutes.', a: 'A brick wall or the steel frame of a building.', d: 'Fungal and bacterial pathogens secrete cellulases and pectinases to attack walls. Humans cannot digest cellulose: it is dietary fibre. (Bacterial walls are peptidoglycan instead, the target of penicillin.)' },
+    chloro: { name: 'Chloroplast', size: '≈ 5–10 µm long, 2–3 µm thick', s: 'A double envelope around the stroma, which contains Rubisco, circular DNA (≈ 120–160 kb), 70S ribosomes and starch grains. Inside, thylakoid membranes stack into grana linked by stroma lamellae. Chlorophyll and the photosystems sit in the thylakoid membranes.', f: 'Photosynthesis. Light-dependent reactions in the thylakoids split water, release O₂ and make ATP and NADPH; the Calvin cycle in the stroma fixes CO₂ into sugars. Chloroplasts descend from engulfed cyanobacteria.', a: 'A solar farm with a sugar factory next door.', d: 'Chlorosis (yellowing) from nitrogen, magnesium or iron deficiency, common on poor soils. The herbicide atrazine blocks photosystem II; paraquat diverts electrons from photosystem I to make destructive free radicals.' },
+    vacuole: { name: 'Large central vacuole', size: 'Up to 80–90 % of cell volume', s: 'A single large compartment bounded by the tonoplast membrane, filled with cell sap: water, ions, sugars, organic acids, pigments such as anthocyanins, and hydrolytic enzymes.', f: 'Generates turgor pressure by osmosis, pushing the cytoplasm against the wall; stores nutrients, wastes and defence chemicals; acts as the plant’s lysosome. Lets the cell grow large cheaply by filling space with water.', a: 'A water tank and storeroom.', d: 'Wilting happens when vacuoles lose water and turgor drops. The colour of red onion skin and hibiscus petals comes from anthocyanins in the vacuole.' },
+    plasmo: { name: 'Plasmodesmata', size: '≈ 50–60 nm channels', s: 'Channels through the cell wall lined by plasma membrane and threaded by a desmotubule of ER, linking the cytoplasm of neighbouring cells into one continuous symplast.', f: 'Allow water, sugars, ions, signalling molecules and even some RNAs and proteins to move between cells. Callose deposition can close them.', a: 'Doorways and corridors between rooms of a house.', d: 'Plant viruses such as tobacco mosaic virus spread from cell to cell by using movement proteins to widen plasmodesmata.' },
+  };
+  const ICONS = { s: 'layers', f: 'cog', a: 'lightbulb', d: 'stethoscope' };
+  const svg = $('#cellSvg'), NS = 'http://www.w3.org/2000/svg';
+  let cellMode = 'animal', VB = [0, 0, 1000, 680], vbFrom = null, vbTo = null, vbT = 1, zoomedK = null;
+  const seen = new Set();
+  const R = mulberry(17);
+  function ellipsePts(cx, cy, rx, ry, n, wob, seed) {
+    const r = mulberry(seed || 3), ph = [r() * 6, r() * 6, r() * 6]; const pts = [];
+    for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; const k = 1 + wob * (.5 * Math.sin(3 * a + ph[0]) + .3 * Math.sin(5 * a + ph[1]) + .2 * Math.sin(2 * a + ph[2])); pts.push([cx + Math.cos(a) * rx * k, cy + Math.sin(a) * ry * k]); }
+    return pts;
+  }
+  const smoothPath = pts => { const n = pts.length; let d = ''; for (let i = 0; i < n; i++) { const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n]; if (!i) d += `M${p1[0].toFixed(1)},${p1[1].toFixed(1)}`; const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6], c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6]; d += `C${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`; } return d + 'Z'; };
+  const openPath = pts => pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join('');
+  const inside = (pts, x, y) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+
+  const DEFS = `<defs>
+    <radialGradient id="gCyto" cx="45%" cy="40%" r="70%"><stop offset="0" stop-color="#14304a"/><stop offset=".7" stop-color="#0e2236"/><stop offset="1" stop-color="#0b1a2b"/></radialGradient>
+    <radialGradient id="gNuc" cx="40%" cy="35%" r="75%"><stop offset="0" stop-color="#4c3a9e"/><stop offset="1" stop-color="#2a1f63"/></radialGradient>
+    <radialGradient id="gNucleolus" cx="40%" cy="35%"><stop offset="0" stop-color="#8b5cf6"/><stop offset="1" stop-color="#4c1d95"/></radialGradient>
+    <linearGradient id="gMito" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fb923c"/><stop offset="1" stop-color="#c2410c"/></linearGradient>
+    <linearGradient id="gChl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4ade80"/><stop offset="1" stop-color="#15803d"/></linearGradient>
+    <radialGradient id="gLyso" cx="40%" cy="35%"><stop offset="0" stop-color="#f472b6"/><stop offset="1" stop-color="#9d174d"/></radialGradient>
+    <radialGradient id="gPerox" cx="40%" cy="35%"><stop offset="0" stop-color="#bef264"/><stop offset="1" stop-color="#4d7c0f"/></radialGradient>
+    <radialGradient id="gPCM" cx="50%" cy="50%"><stop offset="0" stop-color="rgba(250,204,21,.45)"/><stop offset="1" stop-color="rgba(250,204,21,0)"/></radialGradient>
+    <radialGradient id="gVac" cx="45%" cy="40%" r="70%"><stop offset="0" stop-color="#1e4f6e"/><stop offset="1" stop-color="#123650"/></radialGradient>
+    <linearGradient id="gWall" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#65a30d"/><stop offset="1" stop-color="#3f6212"/></linearGradient>
+  </defs>`;
+  function nucleusSVG(cx, cy, rx, ry, seed) {
+    const r = mulberry(seed); let s = `<g class="org" data-k="nucleus">`;
+    s += `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#2a1f63" stroke="#a78bfa" stroke-width="3"/>`;
+    s += `<ellipse cx="${cx}" cy="${cy}" rx="${rx - 6}" ry="${ry - 6}" fill="url(#gNuc)" stroke="#c4b5fd" stroke-width="1.5"/>`;
+    // heterochromatin along envelope
+    for (let i = 0; i < 14; i++) { const a = r() * 6.283, k = .82 + r() * .08; s += `<ellipse cx="${(cx + Math.cos(a) * (rx - 6) * k).toFixed(1)}" cy="${(cy + Math.sin(a) * (ry - 6) * k).toFixed(1)}" rx="${(6 + r() * 7).toFixed(1)}" ry="${(3 + r() * 3).toFixed(1)}" transform="rotate(${(a * 57.3 + 90).toFixed(0)} ${(cx + Math.cos(a) * (rx - 6) * k).toFixed(1)} ${(cy + Math.sin(a) * (ry - 6) * k).toFixed(1)})" fill="#1e1452" opacity=".8"/>`; }
+    // euchromatin threads
+    for (let i = 0; i < 16; i++) { let x = cx + (r() - .5) * rx * 1.2, y = cy + (r() - .5) * ry * 1.2; const pts = []; for (let k = 0; k < 9; k++) { pts.push([x, y]); x += (r() - .5) * 18; y += (r() - .5) * 18; } s += `<path d="${openPath(pts)}" fill="none" stroke="#7c6fd6" stroke-width="1.3" opacity=".55" stroke-linecap="round"/>`; }
+    // nucleolus
+    const nx = cx + rx * .22, ny = cy - ry * .18, nr = Math.min(rx, ry) * .3;
+    s += `<circle cx="${nx}" cy="${ny}" r="${nr}" fill="url(#gNucleolus)"/>`;
+    for (let i = 0; i < 26; i++) { const a = r() * 6.283, d = Math.sqrt(r()) * nr * .85; s += `<circle cx="${(nx + Math.cos(a) * d).toFixed(1)}" cy="${(ny + Math.sin(a) * d).toFixed(1)}" r="${(1 + r() * 1.4).toFixed(1)}" fill="#c4b5fd" opacity=".7"/>`; }
+    // pores
+    const np = 26; for (let i = 0; i < np; i++) { const a = i / np * 6.283 + .1, x = cx + Math.cos(a) * (rx - 3), y = cy + Math.sin(a) * (ry - 3); s += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(a * 57.3).toFixed(0)})"><rect x="-4" y="-4.5" width="8" height="9" fill="#0b1a2b"/><rect x="-4" y="-5.5" width="8" height="2.2" rx="1" fill="#e9d5ff"/><rect x="-4" y="3.3" width="8" height="2.2" rx="1" fill="#e9d5ff"/></g>`; }
+    return s + `</g>`;
+  }
+  function rerSVG(cx, cy, rx, ry, a0, a1, layers) {
+    let s = `<g class="org" data-k="rer">`;
+    for (let k = 0; k < layers; k++) {
+      const f = 1.22 + k * .15, pts = []; const n = 40;
+      for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; const w = 1 + .03 * Math.sin(a * 7 + k); pts.push([cx + Math.cos(a) * rx * f * w, cy + Math.sin(a) * ry * f * w]); }
+      const d = openPath(pts);
+      s += `<path d="${d}" fill="none" stroke="#3b82f6" stroke-width="9" stroke-linecap="round" opacity=".95"/><path d="${d}" fill="none" stroke="#93c5fd" stroke-width="3.5" stroke-linecap="round"/>`;
+      for (let i = 1; i < n; i++) { const [x, y] = pts[i], [x2, y2] = pts[i + 1]; const dx = x2 - x, dy = y2 - y, L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L; for (const sd of [-1, 1]) s += `<circle cx="${(x + nx * sd * 6.2).toFixed(1)}" cy="${(y + ny * sd * 6.2).toFixed(1)}" r="1.9" fill="#fcd34d"/>`; }
+    }
+    return s + `</g>`;
+  }
+  function serSVG(paths) {
+    let s = `<g class="org" data-k="ser">`;
+    paths.forEach(pts => { const d = openPath(pts); s += `<path d="${d}" fill="none" stroke="#0e7490" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="#67e8f9" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>`; });
+    return s + `</g>`;
+  }
+  function wiggle(x, y, dx, dy, n, amp, seed) { const r = mulberry(seed); const pts = []; for (let i = 0; i <= n; i++) pts.push([x + dx * i / n + (r() - .5) * amp, y + dy * i / n + (r() - .5) * amp]); return pts; }
+  function golgiSVG(x, y, rot, sc) {
+    let s = `<g class="org" data-k="golgi" transform="translate(${x} ${y}) rotate(${rot}) scale(${sc || 1})">`;
+    const cols = ['#a3e635', '#d9f99d', '#facc15', '#fbbf24', '#f59e0b', '#ea580c'];
+    for (let k = 0; k < 6; k++) {
+      const yy = -40 + k * 15, w = 62 - Math.abs(k - 2.5) * 5;
+      const d = `M${-w},${yy + 10} Q0,${yy - 14} ${w},${yy + 10}`;
+      s += `<path d="${d}" fill="none" stroke="${cols[k]}" stroke-width="9" stroke-linecap="round"/><path d="${d}" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="2.5" stroke-linecap="round"/>`;
+      s += `<circle cx="${-w - 3}" cy="${yy + 12}" r="6" fill="${cols[k]}"/><circle cx="${w + 3}" cy="${yy + 12}" r="6" fill="${cols[k]}"/>`;
+    }
+    // cis-face incoming vesicles and trans-face budding
+    [[-30, -66], [-4, -70], [24, -64]].forEach(([vx, vy]) => s += `<circle cx="${vx}" cy="${vy}" r="6" fill="none" stroke="#a3e635" stroke-width="2.5"/>`);
+    [[-46, 64], [-14, 70], [20, 68], [52, 58]].forEach(([vx, vy]) => s += `<circle cx="${vx}" cy="${vy}" r="7" fill="#7c2d12" stroke="#fb923c" stroke-width="2.5"/>`);
+    s += `<text x="-64" y="-58" font-size="9" fill="#d9f99d" font-family="JetBrains Mono" opacity=".85">cis</text><text x="56" y="80" font-size="9" fill="#fdba74" font-family="JetBrains Mono" opacity=".85">trans</text>`;
+    return s + `</g>`;
+  }
+  function mitoSVG(x, y, len, wid, rot, seed) {
+    const r = mulberry(seed); let s = `<g class="org" data-k="mito" transform="translate(${x} ${y}) rotate(${rot})">`;
+    s += `<rect x="${-len / 2}" y="${-wid / 2}" width="${len}" height="${wid}" rx="${wid / 2}" fill="url(#gMito)" stroke="#fdba74" stroke-width="2"/>`;
+    s += `<rect x="${-len / 2 + 4}" y="${-wid / 2 + 4}" width="${len - 8}" height="${wid - 8}" rx="${wid / 2 - 4}" fill="#7c2d12" stroke="#fed7aa" stroke-width="1.4"/>`;
+    // cristae
+    const top = -wid / 2 + 4, bot = wid / 2 - 4; let up = true;
+    for (let cx = -len / 2 + wid * .55; cx < len / 2 - wid * .5; cx += 8 + r() * 3) {
+      const depth = wid * (.45 + r() * .2), y0 = up ? top : bot, y1 = up ? top + depth : bot - depth;
+      s += `<path d="M${cx - 2.5},${y0} L${cx - 2.5},${y1} Q${cx},${y1 + (up ? 4 : -4)} ${cx + 2.5},${y1} L${cx + 2.5},${y0}" fill="#c2410c" stroke="#fed7aa" stroke-width="1.2"/>`;
+      for (let k = 1; k < 4; k++) s += `<circle cx="${cx + 3.6}" cy="${(y0 + (y1 - y0) * k / 4).toFixed(1)}" r=".9" fill="#fef3c7"/>`;
+      up = !up;
+    }
+    // matrix granules and mtDNA
+    for (let i = 0; i < 6; i++) s += `<circle cx="${((r() - .5) * (len - wid)).toFixed(1)}" cy="${((r() - .5) * wid * .3).toFixed(1)}" r="1.4" fill="#fde68a" opacity=".8"/>`;
+    s += `<circle cx="${len * .18}" cy="0" r="3" fill="none" stroke="#fef08a" stroke-width=".9"/>`;
+    return s + `</g>`;
+  }
+  function lysoSVG(x, y, rr0, seed) {
+    const r = mulberry(seed); let s = `<g class="org" data-k="lyso"><circle cx="${x}" cy="${y}" r="${rr0}" fill="url(#gLyso)" stroke="#fbcfe8" stroke-width="2"/>`;
+    for (let i = 0; i < 9; i++) { const a = r() * 6.283, d = Math.sqrt(r()) * rr0 * .7; s += `<circle cx="${(x + Math.cos(a) * d).toFixed(1)}" cy="${(y + Math.sin(a) * d).toFixed(1)}" r="${(1.2 + r()).toFixed(1)}" fill="#500724"/>`; }
+    return s + `</g>`;
+  }
+  function peroxSVG(x, y, rr0) {
+    let s = `<g class="org" data-k="perox"><circle cx="${x}" cy="${y}" r="${rr0}" fill="url(#gPerox)" stroke="#d9f99d" stroke-width="2"/>`;
+    const c = rr0 * .45; s += `<rect x="${x - c / 2}" y="${y - c / 2}" width="${c}" height="${c}" fill="#365314" transform="rotate(20 ${x} ${y})"/>`;
+    for (let i = 1; i < 3; i++) s += `<line x1="${x - c / 2 + c * i / 3}" y1="${y - c / 2}" x2="${x - c / 2 + c * i / 3}" y2="${y + c / 2}" stroke="#bef264" stroke-width=".6" transform="rotate(20 ${x} ${y})"/><line x1="${x - c / 2}" y1="${y - c / 2 + c * i / 3}" x2="${x + c / 2}" y2="${y - c / 2 + c * i / 3}" stroke="#bef264" stroke-width=".6" transform="rotate(20 ${x} ${y})"/>`;
+    return s + `</g>`;
+  }
+  function centroSVG(x, y) {
+    let s = `<g class="org" data-k="centro"><circle cx="${x}" cy="${y}" r="34" fill="url(#gPCM)"/>`;
+    // side-on centriole
+    s += `<g transform="translate(${x - 8} ${y}) rotate(-25)"><rect x="-15" y="-6" width="30" height="12" rx="2" fill="#a16207" stroke="#fde047" stroke-width="1.2"/>`;
+    for (let i = -2; i <= 2; i++) s += `<line x1="-14" y1="${i * 2.2}" x2="14" y2="${i * 2.2}" stroke="#fef08a" stroke-width=".6"/>`;
+    s += `</g>`;
+    // end-on centriole: 9 triplets
+    const cx = x + 14, cy = y + 6; s += `<circle cx="${cx}" cy="${cy}" r="9" fill="#422006" stroke="#a16207" stroke-width="1"/>`;
+    for (let i = 0; i < 9; i++) { const a = i / 9 * 6.283; for (let k = 0; k < 3; k++) { const rr2 = 6.2, off = (k - 1) * 1.6; const px = cx + Math.cos(a) * rr2 + Math.cos(a + 1.2) * off, py = cy + Math.sin(a) * rr2 + Math.sin(a + 1.2) * off; s += `<circle cx="${px.toFixed(2)}" cy="${py.toFixed(2)}" r=".8" fill="#fde047"/>`; } }
+    return s + `</g>`;
+  }
+  function chloroSVG(x, y, len, wid, rot) {
+    let s = `<g class="org chl" data-k="chloro" transform="translate(${x} ${y}) rotate(${rot})"><ellipse rx="${len / 2}" ry="${wid / 2}" fill="url(#gChl)" stroke="#bbf7d0" stroke-width="2"/><ellipse rx="${len / 2 - 3.5}" ry="${wid / 2 - 3.5}" fill="#166534" stroke="#86efac" stroke-width="1"/>`;
+    // stroma lamellae
+    s += `<line x1="${-len * .36}" y1="0" x2="${len * .36}" y2="0" stroke="#86efac" stroke-width="1.2"/><line x1="${-len * .3}" y1="-4" x2="${len * .3}" y2="4" stroke="#86efac" stroke-width=".8"/>`;
+    // grana
+    const n = Math.max(3, Math.round(len / 16));
+    for (let i = 0; i < n; i++) { const gx = -len * .34 + i * (len * .68 / (n - 1)); const h = wid * (.42 - .12 * Math.abs(i - (n - 1) / 2) / n); for (let k = 0; k < 5; k++) s += `<rect x="${gx - 5}" y="${(-h / 2 + k * h / 5).toFixed(1)}" width="10" height="${(h / 5 - .8).toFixed(1)}" rx="1.2" fill="#4ade80" stroke="#14532d" stroke-width=".5"/>`; }
+    s += `<ellipse cx="${len * .2}" cy="${wid * .22}" rx="5" ry="3.2" fill="#f5f5f4" opacity=".85"/>`;
+    return s + `</g>`;
+  }
+  function ribosomes(n, test, seed, poly) {
+    const r = mulberry(seed); let s = `<g class="org" data-k="ribo">`; let c = 0, tries = 0;
+    while (c < n && tries < n * 30) { tries++; const x = 60 + r() * 880, y = 40 + r() * 600; if (!test(x, y)) continue; c++;
+      if (poly && r() < .25) { for (let k = 0; k < 5; k++) s += `<circle cx="${(x + k * 4.5).toFixed(1)}" cy="${(y + Math.sin(k) * 3).toFixed(1)}" r="1.9" fill="#fcd34d"/>`; }
+      else s += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.9" fill="#fcd34d" opacity=".9"/>`; }
+    return s + `</g>`;
+  }
+
+  // layout data
+  let LAY = null;
+  function buildCell() {
+    const plant = cellMode === 'plant';
+    let s = DEFS;
+    let mem, memPts, nuc, test, golgiAt, cent = null, vesTargets = [], streamPath;
+    if (!plant) {
+      memPts = ellipsePts(500, 340, 440, 292, 90, .045, 5); mem = smoothPath(memPts);
+      nuc = [420, 320, 118, 102];
+      test = (x, y) => inside(memPts.map(p => [500 + (p[0] - 500) * .94, 340 + (p[1] - 340) * .94]), x, y) && ((x - nuc[0]) / (nuc[2] * 1.9)) ** 2 + ((y - nuc[1]) / (nuc[3] * 1.9)) ** 2 > 1;
+      s += `<path d="${mem}" fill="url(#gCyto)"/>`;
+      // cytoskeleton
+      cent = [270, 470];
+      let cs = `<g class="org csk" data-k="cyto">`; const rc = mulberry(8);
+      for (let i = 0; i < 30; i++) { const p = memPts[Math.floor(i * memPts.length / 30)]; const tx = 500 + (p[0] - 500) * .95, ty = 340 + (p[1] - 340) * .95; cs += `<path d="M${cent[0]},${cent[1]} Q${((cent[0] + tx) / 2 + (rc() - .5) * 80).toFixed(1)},${((cent[1] + ty) / 2 + (rc() - .5) * 80).toFixed(1)} ${tx.toFixed(1)},${ty.toFixed(1)}" fill="none" stroke="#34d399" stroke-width="1.4" opacity=".32"/>`; }
+      for (let i = 0; i < memPts.length; i += 2) { const p = memPts[i], q = memPts[(i + 3) % memPts.length]; const k1 = .9 + rc() * .05, k2 = .9 + rc() * .05; cs += `<line x1="${(500 + (p[0] - 500) * k1).toFixed(1)}" y1="${(340 + (p[1] - 340) * k1).toFixed(1)}" x2="${(500 + (q[0] - 500) * k2).toFixed(1)}" y2="${(340 + (q[1] - 340) * k2).toFixed(1)}" stroke="#f87171" stroke-width="1" opacity=".45"/>`; }
+      for (let i = 0; i < 6; i++) { const a = rc() * 6.283; const pts = wiggle(nuc[0] + Math.cos(a) * nuc[2], nuc[1] + Math.sin(a) * nuc[3], Math.cos(a) * 220, Math.sin(a) * 160, 12, 18, 30 + i); cs += `<path d="${openPath(pts)}" fill="none" stroke="#cbd5e1" stroke-width="1.2" opacity=".25"/>`; }
+      s += cs + `</g>`;
+      s += serSVG([wiggle(130, 300, 70, 140, 8, 16, 2), wiggle(150, 380, 110, 10, 8, 14, 4), wiggle(190, 250, 40, 160, 7, 16, 6), [[120, 330], [160, 345], [200, 330], [230, 360]]]);
+      s += rerSVG(nuc[0], nuc[1], nuc[2], nuc[3], -1.05, 1.55, 4);
+      s += nucleusSVG(nuc[0], nuc[1], nuc[2], nuc[3], 11);
+      golgiAt = [740, 250]; s += golgiSVG(golgiAt[0], golgiAt[1], 28, 1);
+      [[300, 130, 70, 28, 18, 1], [600, 120, 76, 28, -8, 2], [820, 400, 74, 28, 82, 3], [640, 520, 80, 30, -18, 4], [430, 565, 70, 26, 8, 5], [170, 470, 64, 26, 70, 6], [860, 230, 56, 24, 60, 7]].forEach(m => s += mitoSVG(...m));
+      [[770, 520, 17, 1], [530, 470, 14, 2], [250, 545, 15, 3], [900, 330, 13, 4]].forEach(l => s += lysoSVG(...l));
+      [[360, 470, 12], [700, 420, 11], [130, 410, 11], [610, 210, 11]].forEach(p => s += peroxSVG(...p));
+      s += centroSVG(cent[0], cent[1]);
+      s += ribosomes(110, test, 9, true);
+      vesTargets = memPts.filter(p => p[0] > 760).map(p => [500 + (p[0] - 500) * .985, 340 + (p[1] - 340) * .985]);
+      streamPath = null;
+    } else {
+      memPts = []; const x0 = 92, x1 = 908, y0 = 78, y1 = 602;
+      // rounded rectangle points
+      const corner = 30; const add = (x, y) => memPts.push([x, y]);
+      for (let i = 0; i <= 20; i++) add(x0 + corner + (x1 - x0 - 2 * corner) * i / 20, y0);
+      for (let i = 1; i <= 6; i++) { const a = -Math.PI / 2 + i / 6 * Math.PI / 2; add(x1 - corner + Math.cos(a) * corner, y0 + corner + Math.sin(a) * corner); }
+      for (let i = 1; i <= 14; i++) add(x1, y0 + corner + (y1 - y0 - 2 * corner) * i / 14);
+      for (let i = 1; i <= 6; i++) { const a = i / 6 * Math.PI / 2; add(x1 - corner + Math.cos(a) * corner, y1 - corner + Math.sin(a) * corner); }
+      for (let i = 1; i <= 20; i++) add(x1 - corner - (x1 - x0 - 2 * corner) * i / 20, y1);
+      for (let i = 1; i <= 6; i++) { const a = Math.PI / 2 + i / 6 * Math.PI / 2; add(x0 + corner + Math.cos(a) * corner, y1 - corner + Math.sin(a) * corner); }
+      for (let i = 1; i <= 14; i++) add(x0, y1 - corner - (y1 - y0 - 2 * corner) * i / 14);
+      for (let i = 1; i < 6; i++) { const a = Math.PI + i / 6 * Math.PI / 2; add(x0 + corner + Math.cos(a) * corner, y0 + corner + Math.sin(a) * corner); }
+      mem = openPath(memPts) + 'Z';
+      // wall
+      let w = `<g class="org" data-k="wall"><path d="M20,10 H980 V670 H20 Z M${x0 - 4},${y0 - 4} H${x1 + 4} V${y1 + 4} H${x0 - 4} Z" fill="url(#gWall)" fill-rule="evenodd"/>`;
+      const rw = mulberry(4); for (let i = 0; i < 120; i++) { const t = rw(); const side = Math.floor(rw() * 4); let xA, yA, xB, yB; if (side < 2) { xA = 30 + t * 940; yA = side ? 640 + rw() * 20 : 18 + rw() * 50; xB = xA + 40; yB = yA + (rw() - .5) * 6; } else { yA = 30 + t * 620; xA = side === 2 ? 26 + rw() * 56 : 916 + rw() * 56; xB = xA + (rw() - .5) * 6; yB = yA + 40; } w += `<line x1="${xA.toFixed(0)}" y1="${yA.toFixed(0)}" x2="${xB.toFixed(0)}" y2="${yB.toFixed(0)}" stroke="#bef264" stroke-width=".8" opacity=".35"/>`; }
+      w += `<rect x="4" y="-6" width="992" height="692" fill="none" stroke="#a16207" stroke-width="10" opacity=".8"/>`;
+      w += `</g>`;
+      s += w;
+      // plasmodesmata
+      let pd = `<g class="org" data-k="plasmo">`;
+      [[300, 'h', 10, y0], [620, 'h', 10, y0], [460, 'h', y1, 676], [780, 'h', y1, 676], [250, 'v', 10, x0], [430, 'v', x1, 996], [520, 'v', 4, x0]].forEach(([p, o, a, b]) => {
+        if (o === 'h') pd += `<rect x="${p - 5}" y="${a}" width="10" height="${b - a}" fill="#0e2236"/><line x1="${p}" y1="${a}" x2="${p}" y2="${b}" stroke="#67e8f9" stroke-width="2"/>`;
+        else pd += `<rect x="${a}" y="${p - 5}" width="${b - a}" height="10" fill="#0e2236"/><line x1="${a}" y1="${p}" x2="${b}" y2="${p}" stroke="#67e8f9" stroke-width="2"/>`;
+      });
+      s += pd + `</g>`;
+      s += `<path d="${mem}" fill="url(#gCyto)"/>`;
+      nuc = [215, 200, 78, 66];
+      test = (x, y) => x > x0 + 10 && x < x1 - 10 && y > y0 + 10 && y < y1 - 10 && ((x - 540) / 330) ** 2 + ((y - 350) / 215) ** 2 > 1 && ((x - nuc[0]) / (nuc[2] * 1.7)) ** 2 + ((y - nuc[1]) / (nuc[3] * 1.7)) ** 2 > 1;
+      let cs = `<g class="org csk" data-k="cyto">`; const rc = mulberry(8);
+      for (let i = 0; i < memPts.length; i += 2) { const p = memPts[i], q = memPts[(i + 2) % memPts.length]; cs += `<line x1="${(p[0] + (500 - p[0]) * .03).toFixed(1)}" y1="${(p[1] + (340 - p[1]) * .04).toFixed(1)}" x2="${(q[0] + (500 - q[0]) * .03).toFixed(1)}" y2="${(q[1] + (340 - q[1]) * .04).toFixed(1)}" stroke="#34d399" stroke-width="1.2" opacity=".35"/>`; }
+      s += cs + `</g>`;
+      // vacuole
+      const vac = ellipsePts(540, 350, 300, 192, 70, .04, 12);
+      s += `<g class="org" data-k="vacuole"><path d="${smoothPath(vac)}" fill="url(#gVac)" stroke="#7dd3fc" stroke-width="3"/>`;
+      const rv = mulberry(22); for (let i = 0; i < 40; i++) s += `<circle cx="${(540 + (rv() - .5) * 460).toFixed(0)}" cy="${(350 + (rv() - .5) * 280).toFixed(0)}" r="${(1 + rv() * 1.5).toFixed(1)}" fill="#bae6fd" opacity=".25"/>`;
+      s += `<text x="540" y="356" text-anchor="middle" font-size="14" fill="#7dd3fc" opacity=".45" font-family="Inter" font-weight="600">cell sap</text></g>`;
+      s += `<g id="chlLayer"></g>`;
+      s += serSVG([wiggle(130, 470, 70, 90, 7, 14, 2), wiggle(160, 560, 120, -10, 7, 12, 5)]);
+      s += rerSVG(nuc[0], nuc[1], nuc[2], nuc[3], -.2, 1.9, 3);
+      s += nucleusSVG(nuc[0], nuc[1], nuc[2], nuc[3], 13);
+      golgiAt = [360, 110]; s += golgiSVG(golgiAt[0], golgiAt[1] + 8, 90, .62);
+      [[800, 190, 52, 20, 70, 1], [420, 548, 56, 21, 6, 2], [235, 420, 50, 20, 88, 3], [815, 480, 50, 20, -60, 4]].forEach(m => s += mitoSVG(...m));
+      [[180, 580, 10], [880, 330, 10], [740, 95, 9]].forEach(p => s += peroxSVG(...p));
+      // chloroplasts placed later (animated along stream path)
+      streamPath = [];
+      streamPath = memPts.map(p => [540 + (p[0] - 540) * .9, 340 + (p[1] - 340) * .85]);
+      s += ribosomes(70, test, 9, true);
+      vesTargets = [[300, y0 + 2], [420, y0 + 2], [520, y0 + 2]];
+    }
+    s += `<g id="streamLayer"></g><g id="vesLayer"></g>`;
+    // membrane on top
+    s += `<g class="org" data-k="membrane"><path d="${mem}" fill="none" stroke="#5eead4" stroke-width="7" opacity=".9" pointer-events="stroke"/><path d="${mem}" fill="none" stroke="#0b1a2b" stroke-width="2" pointer-events="none"/>`;
+    const rp = mulberry(14); for (let i = 0; i < memPts.length; i += 3) { const p = memPts[i]; const col = ['#f472b6', '#fbbf24', '#a78bfa', '#60a5fa'][Math.floor(rp() * 4)]; s += `<ellipse cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" rx="3.5" ry="5.5" fill="${col}" opacity=".9"/>`; }
+    if (!plant) for (let i = 1; i < memPts.length; i += 4) { const p = memPts[i], dx = p[0] - 500, dy = p[1] - 340, L = Math.hypot(dx, dy); const ox = p[0] + dx / L * 7, oy = p[1] + dy / L * 7; s += `<path d="M${ox.toFixed(1)},${oy.toFixed(1)} l${(dx / L * 7).toFixed(1)},${(dy / L * 7).toFixed(1)} m${(-dx / L * 3).toFixed(1)},${(-dy / L * 3).toFixed(1)} l3,-3" stroke="#bef264" stroke-width="1" opacity=".55" fill="none"/>`; }
+    s += `</g>`;
+    // labels
+    s += `<g class="lbl" id="lblLayer" pointer-events="none">${labelsFor(plant, nuc, golgiAt, cent).map(([t, ax, ay, lx, ly]) => `<line x1="${ax}" y1="${ay}" x2="${lx}" y2="${ly}"/><text x="${lx}" y="${ly + (ly < ay ? -4 : 13)}" text-anchor="${lx < 120 ? 'start' : lx > 880 ? 'end' : 'middle'}">${t}</text>`).join('')}</g>`;
+    svg.innerHTML = s;
+    LAY = { plant, memPts, nuc, golgiAt, vesTargets, streamPath, cent };
+    initAnim();
+    $('#lblLayer').style.display = $('#lblT').checked ? '' : 'none';
+    svg.querySelectorAll('.csk').forEach(g => g.style.display = $('#cskT').checked ? '' : 'none');
+    chips();
+  }
+  function labelsFor(plant, nuc, g, cent) {
+    if (!plant) return [
+      ['Nucleus', nuc[0] - 90, nuc[1] - 40, 150, 120], ['Nucleolus', nuc[0] + 26, nuc[1] - 18, 470, 24], ['Rough ER', 560, 380, 610, 330], ['Golgi apparatus', g[0] + 20, g[1] - 50, 790, 30],
+      ['Mitochondrion', 640, 520, 690, 640], ['Smooth ER', 170, 330, 60, 320], ['Lysosome', 770, 520, 850, 600], ['Peroxisome', 360, 470, 330, 600],
+      ['Centrosome', cent[0], cent[1] + 20, 210, 590], ['Plasma membrane', 862, 168, 960, 60], ['Vesicle', 820, 300, 970, 420],
+    ];
+    return [
+      ['Cell wall', 960, 300, 985, 380], ['Plasma membrane', 908, 220, 960, 50], ['Nucleus', nuc[0], nuc[1] + 60, 150, 300], ['Large central vacuole', 640, 350, 640, 300],
+      ['Chloroplast', 820, 560, 760, 650], ['Golgi', g[0], g[1] + 10, 480, 40], ['Mitochondrion', 430, 552, 540, 650], ['Plasmodesma', 620, 40, 680, 30],
+      ['Rough ER', 300, 260, 340, 300], ['Smooth ER', 160, 520, 60, 640],
+    ];
+  }
+  // ---- animation layers
+  let ves = [], stream = [], chl = [];
+  function initAnim() {
+    const vl = $('#vesLayer'), sl = $('#streamLayer'); ves = []; stream = []; chl = [];
+    const r = mulberry(31);
+    const n = LAY.plant ? 3 : 6;
+    for (let i = 0; i < n; i++) {
+      const c = document.createElementNS(NS, 'circle'); c.setAttribute('r', 7); c.setAttribute('fill', '#7c2d12'); c.setAttribute('stroke', '#fb923c'); c.setAttribute('stroke-width', 2.5); c.classList.add('org'); c.dataset.k = 'vesicle';
+      vl.appendChild(c); ves.push({ el: c, t: i / n, tgt: LAY.vesTargets[i % LAY.vesTargets.length], sp: .09 + r() * .05 });
+    }
+    for (let i = 0; i < 46; i++) { const c = document.createElementNS(NS, 'circle'); c.setAttribute('r', 1.6); c.setAttribute('fill', '#94a3b8'); c.setAttribute('opacity', .35); sl.appendChild(c); stream.push({ el: c, a: r() * 6.283, k: .55 + r() * .4, sp: .05 + r() * .05 }); }
+    if (LAY.plant) {
+      const cl = $('#chlLayer'); const N = 9;
+      for (let i = 0; i < N; i++) { const g = document.createElementNS(NS, 'g'); g.innerHTML = chloroSVG(0, 0, 72, 34, 0); const node = g.firstChild; cl.appendChild(node); chl.push({ el: node, u: i / N }); }
+    }
+    animStep(0);
+  }
+  function animStep(dt) {
+    const on = $('#animT').checked; if (!on) dt = 0;
+    const L = LAY; if (!L) return;
+    ves.forEach(v => {
+      v.t += dt * v.sp; if (v.t > 1) { v.t = 0; v.tgt = L.vesTargets[Math.floor(Math.random() * L.vesTargets.length)]; }
+      const sx = L.golgiAt[0] + (L.plant ? 0 : 30), sy = L.golgiAt[1] + (L.plant ? 40 : 60), [tx, ty] = v.tgt;
+      const e = ease(Math.min(1, v.t / .85)); const x = SL.lerp(sx, tx, e) + Math.sin(e * 3.1) * 20, y = SL.lerp(sy, ty, e);
+      const fuse = v.t > .85 ? 1 - (v.t - .85) / .15 : 1;
+      v.el.setAttribute('cx', x.toFixed(1)); v.el.setAttribute('cy', y.toFixed(1)); v.el.setAttribute('r', (7 * Math.max(.05, fuse)).toFixed(2));
+    });
+    const [ncx, ncy] = L.plant ? [540, 350] : [L.nuc[0], L.nuc[1]];
+    stream.forEach(p => {
+      p.a += dt * p.sp; const rx = L.plant ? 340 * (1 + p.k * .06) : 140 + p.k * 260, ry = L.plant ? 225 * (1 + p.k * .06) : 120 + p.k * 160;
+      p.el.setAttribute('cx', (ncx + Math.cos(p.a) * rx).toFixed(1)); p.el.setAttribute('cy', (ncy + Math.sin(p.a) * ry).toFixed(1));
+    });
+    chl.forEach(c => {
+      if (zoomedK !== 'chloro') c.u = (c.u + dt * .012) % 1; const P = L.streamPath, n = P.length, f = c.u * n, i = Math.floor(f), a = P[i % n], b = P[(i + 1) % n];
+      const x = SL.lerp(a[0], b[0], f - i), y = SL.lerp(a[1], b[1], f - i), ang = Math.atan2(b[1] - a[1], b[0] - a[0]) * 57.3;
+      c.el.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${ang.toFixed(1)})`);
+    });
+  }
+  // ---- zoom
+  function svgPt(x, y) { const p = svg.createSVGPoint(); p.x = x; p.y = y; return p.matrixTransform(svg.getScreenCTM().inverse()); }
+  function zoomTo(el, k) {
+    const r = el.getBoundingClientRect(); const a = svgPt(r.left, r.top), b = svgPt(r.right, r.bottom);
+    let w = b.x - a.x, h = b.y - a.y; const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+    const pad = k === 'membrane' || k === 'wall' || k === 'cyto' || k === 'ribo' ? 1 : 1.8;
+    let W = Math.max(w * pad, 90), H = Math.max(h * pad, 60);
+    if (k === 'membrane' || k === 'wall') { W = 260; H = 180; const pts = LAY.memPts; const p = pts[Math.floor(pts.length * .1)]; setVB([p[0] - W / 2, p[1] - H / 2, W, H]); }
+    else if (k === 'cyto' || k === 'ribo') setVB([LAY.plant ? 60 : 150, LAY.plant ? 380 : 300, 360, 245]);
+    else { const ar = 1000 / 680; if (W / H > ar) H = W / ar; else W = H * ar; setVB([cx - W / 2, cy - H / 2, W, H]); }
+    zoomedK = k; svg.classList.add('zoomed'); svg.querySelectorAll('.org').forEach(o => o.classList.toggle('dim', o.dataset.k !== k));
+    $('#zoomOut').hidden = false; info(k);
+    if (k === 'mito') ch.done('mito'); if (k === 'chloro') ch.done('chloro');
+  }
+  function setVB(t) { vbFrom = VB.slice(); vbTo = t; vbT = 0; }
+  function zoomOut() { setVB([0, 0, 1000, 680]); zoomedK = null; svg.classList.remove('zoomed'); svg.querySelectorAll('.org.dim').forEach(o => o.classList.remove('dim')); $('#zoomOut').hidden = true; $('#cellHud').textContent = (cellMode === 'animal' ? 'Animal' : 'Plant') + ' cell · click an organelle'; chips(); }
+  $('#zoomOut').onclick = zoomOut;
+  svg.addEventListener('click', e => {
+    const g = e.target.closest('.org'); if (!g) { if (zoomedK) zoomOut(); return; }
+    const k = g.dataset.k; if (zoomedK === k && k !== 'vesicle') { zoomOut(); return; }
+    zoomTo(g, k);
+  });
+  svg.addEventListener('pointermove', e => { const g = e.target.closest('.org'); if (!zoomedK) $('#cellHud').textContent = g ? ORG[g.dataset.k].name : (cellMode === 'animal' ? 'Animal' : 'Plant') + ' cell · click an organelle'; });
+  function info(k) {
+    const o = ORG[k]; seen.add(k); if (seen.size >= 8) ch.done('eight');
+    $('#orgInfo').innerHTML = `<h4>${o.name}</h4><div class="size">${o.size}</div><dl>
+      <dt><i data-lucide="${ICONS.s}"></i>Structure</dt><dd>${o.s}</dd><dt><i data-lucide="${ICONS.f}"></i>Function</dt><dd>${o.f}</dd>
+      <dt><i data-lucide="${ICONS.a}"></i>Analogy</dt><dd>${o.a}</dd><dt><i data-lucide="${ICONS.d}"></i>Related diseases and examples</dt><dd>${o.d}</dd></dl>`;
+    SL.refreshIcons($('#orgInfo')); $('#cellHud').textContent = o.name + ' · click again or press Whole cell to zoom out'; chips();
+  }
+  function infoDefault() { $('#orgInfo').innerHTML = `<h3><i data-lucide="info"></i> Organelle details</h3><p class="mini">Click any structure in the cell to zoom in. The card shows its structure, function, an everyday analogy and related diseases. ${cellMode === 'plant' ? 'Plant cells have a wall, chloroplasts and a large vacuole, but no centrioles; their vacuole does the job of lysosomes.' : 'Animal cells have centrioles and lysosomes but no wall, chloroplasts or large central vacuole.'}</p>`; SL.refreshIcons($('#orgInfo')); }
+  function chips() {
+    const keys = cellMode === 'animal' ? ['nucleus', 'rer', 'ser', 'golgi', 'mito', 'lyso', 'perox', 'centro', 'vesicle', 'ribo', 'cyto', 'membrane'] : ['wall', 'plasmo', 'membrane', 'vacuole', 'chloro', 'nucleus', 'rer', 'ser', 'golgi', 'mito', 'perox', 'ribo', 'cyto'];
+    $('#orgChips').innerHTML = keys.map(k => `<button data-k="${k}" class="${zoomedK === k ? 'on' : seen.has(k) ? 'seen' : ''}">${ORG[k].name.replace(' apparatus', '').replace('Large central vacuole', 'Vacuole').replace(' and centrioles', '').replace('endoplasmic reticulum', 'ER')}</button>`).join('');
+  }
+  $('#orgChips').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const k = b.dataset.k; const el = svg.querySelector(`.org[data-k="${k}"]`); if (el) { if (k === 'cyto') { $('#cskT').checked = true; svg.querySelectorAll('.csk').forEach(g => g.style.display = ''); } zoomTo(el, k); } });
+  document.querySelectorAll('#cellSeg button').forEach(b => b.onclick = () => { cellMode = b.dataset.m; document.querySelectorAll('#cellSeg button').forEach(x => x.classList.toggle('on', x === b)); VB = [0, 0, 1000, 680]; vbTo = null; svg.setAttribute('viewBox', VB.join(' ')); zoomedK = null; svg.classList.remove('zoomed'); $('#zoomOut').hidden = true; buildCell(); infoDefault(); $('#cellHud').textContent = (cellMode === 'animal' ? 'Animal' : 'Plant') + ' cell · click an organelle'; });
+  $('#lblT').onchange = e => $('#lblLayer').style.display = e.target.checked ? '' : 'none';
+  $('#cskT').onchange = e => svg.querySelectorAll('.csk').forEach(g => g.style.display = e.target.checked ? '' : 'none');
+  if (innerWidth < 600) $('#lblT').checked = false;
+  buildCell(); infoDefault();
+  function cellFrame(dt) {
+    if (vbTo) { vbT = Math.min(1, vbT + dt / .9); const e = ease(vbT); VB = vbFrom.map((v, i) => SL.lerp(v, vbTo[i], e)); svg.setAttribute('viewBox', VB.map(v => v.toFixed(2)).join(' ')); if (vbT >= 1) vbTo = null; }
+    $('#lblLayer') && ($('#lblLayer').style.opacity = zoomedK ? 0 : 1);
+    animStep(dt);
+  }
+
+  /* =====================================================================
+     2. MEMBRANE TRANSPORT
+     ===================================================================== */
+  const tr = { mode: 'simple', parts: null, carriers: [], pumps: [], channels: [], t: 0, paused: false, cnt: { glucIn: 0, cycles: 0, atp: 0, naOut: 0, kIn: 0 }, hist: [], atp: 60 };
+  const TR = SL.canvas($('#cvTr'), () => { if (tr.parts) trReset(); });
+  const TYPES = { O2: { r: 3.4, col: '#f87171', lab: 'O₂' }, CO2: { r: 3.6, col: '#cbd5e1', lab: 'CO₂' }, Glu: { r: 5, col: '#facc15', lab: 'glucose' }, G6P: { r: 5, col: '#fb923c', lab: 'glucose-6-P' }, Na: { r: 3.4, col: '#fbbf24', lab: 'Na⁺' }, K: { r: 3.6, col: '#a78bfa', lab: 'K⁺' } };
+  const geomT = () => { const { w, h } = TR; const mc = h * .5, half = 24; return { w, h, mc, m0: mc - half, m1: mc + half }; };
+  function addP(type, side, n) { const G = geomT(); for (let i = 0; i < n; i++) tr.parts.push({ type, x: 10 + Math.random() * (G.w - 20), y: side > 0 ? 8 + Math.random() * (G.m0 - 16) : G.m1 + 8 + Math.random() * (G.h - G.m1 - 16), vx: 0, vy: 0, bound: null }); }
+  function trReset() {
+    const G = geomT(); tr.parts = []; tr.carriers = []; tr.pumps = []; tr.channels = []; tr.t = 0; tr.hist = []; tr.cnt = { glucIn: 0, cycles: 0, atp: 0, naOut: 0, kIn: 0 }; tr.atp = 60;
+    if (tr.mode === 'simple') { addP('O2', 1, +$('#o2out').value); addP('O2', -1, +$('#o2in').value); addP('CO2', -1, 30); addP('CO2', 1, 6); if ($('#addPolar').checked) { addP('Glu', 1, 14); addP('Na', 1, 14); } }
+    if (tr.mode === 'facil') {
+      addP('Glu', 1, +$('#gout').value); addP('Glu', -1, +$('#gin').value); addP('K', -1, 34); addP('K', 1, 8);
+      const n = +$('#nglut').value; for (let i = 0; i < n; i++) tr.carriers.push({ x: G.w * (i + .5) / (n + 1.6), state: Math.random() < .5 ? 'out' : 'in', flip: 0, bound: null, timer: Math.random() });
+      tr.channels = [{ x: G.w * (n + .9) / (n + 1.6) }];
+      tr.channels.push({ x: G.w * (n + 1.25) / (n + 1.6) });
+    }
+    if (tr.mode === 'active') {
+      addP('Na', 1, 30); addP('Na', -1, 30); addP('K', 1, 30); addP('K', -1, 30);
+      const n = +$('#npump').value; for (let i = 0; i < n; i++) tr.pumps.push({ x: G.w * (i + 1) / (n + 1), st: 'E1', t: 0, na: [], k: [], phos: false });
+      tr.channels = [{ x: G.w * .06 }, { x: G.w * .94 }];
+    }
+    trStats();
+  }
+  function setTrMode(m) { tr.mode = m; document.querySelectorAll('#trSeg button').forEach(b => b.classList.toggle('on', b.dataset.m === m)); $('#trSimple').hidden = m !== 'simple'; $('#trFacil').hidden = m !== 'facil'; $('#trActive').hidden = m !== 'active'; $('#trHud').textContent = { simple: 'Simple diffusion through the bilayer', facil: 'Facilitated diffusion: GLUT carriers and K⁺ channels', active: 'Primary active transport: Na⁺/K⁺-ATPase' }[m]; trReset(); }
+  document.querySelectorAll('#trSeg button').forEach(b => b.onclick = () => setTrMode(b.dataset.m));
+  ['#o2out', '#o2in', '#gout', '#gin', '#nglut', '#npump'].forEach(s => SL.bind(s, () => { if (tr.parts) trReset(); }));
+  $('#addPolar').onchange = trReset; $('#hexo').onchange = trReset; $('#trReset').onclick = trReset;
+  $('#trPause').onclick = () => { tr.paused = !tr.paused; $('#trPause').innerHTML = tr.paused ? '<i data-lucide="play"></i> Resume' : '<i data-lucide="pause"></i> Pause'; SL.refreshIcons($('#trPause')); };
+  function countSides() { const G = geomT(); const c = {}; tr.parts.forEach(p => { if (p.bound) return; const k = p.type + (p.y < G.mc ? 'o' : 'i'); c[k] = (c[k] || 0) + 1; }); return c; }
+  function trStats() {
+    const c = countSides(), st = (k, v, u) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u ? '<small>' + u + '</small>' : ''}</div></div>`;
+    let html = '', note = '';
+    if (tr.mode === 'simple') { const o = c.O2o || 0, i = c.O2i || 0; html = st('O₂ outside', o) + st('O₂ inside', i) + st('CO₂ outside', c.CO2o || 0) + st('CO₂ inside', c.CO2i || 0) + st('Glucose crossed', 0) + st('Na⁺ crossed', 0);
+      note = `O₂ and CO₂ are small and non-polar, so they dissolve in the hydrophobic core and diffuse down their gradients until concentrations equalise (net flux ∝ C<sub>out</sub> − C<sub>in</sub> = ${o - i}). Glucose and Na⁺ bounce off: they are too polar or charged.`; }
+    if (tr.mode === 'facil') { html = st('Glucose out', c.Gluo || 0) + st('Glucose in', (c.Glui || 0) + (c.G6Pi || 0)) + st('Net moved in', tr.cnt.glucIn) + st('K⁺ out / in', `${c.Ko || 0}/${c.Ki || 0}`);
+      const n = tr.carriers.length; note = n ? `Each GLUT carrier alternates between outward- and inward-facing shapes, carrying glucose either way, so net flow is down the gradient. ${$('#hexo').checked ? 'Hexokinase converts incoming glucose to glucose-6-phosphate (orange), which cannot leave, keeping the gradient steep.' : 'Without hexokinase, glucose inside is carried back out and the gradient runs down.'} With few carriers the rate saturates (J<sub>max</sub> ∝ ${n} carriers).` : 'No carriers: glucose cannot cross at all, even with a steep gradient.'; }
+    if (tr.mode === 'active') { html = st('Na⁺ out / in', `${c.Nao || 0}/${c.Nai || 0}`) + st('K⁺ out / in', `${c.Ko || 0}/${c.Ki || 0}`) + st('Pump cycles', tr.cnt.cycles) + st('ATP used', tr.cnt.atp) + st('ATP left', Math.floor(tr.atp)) + st('Net charge out', `+${tr.cnt.cycles}`);
+      note = `Each cycle: 3 Na⁺ out, 2 K⁺ in, 1 ATP → ADP + Pi. Gradients build up against diffusion.${$('#ouab').checked ? ' <b>Ouabain</b> locks the pump in its outward-facing E2 state.' : ''}${!$('#atpOn').checked && tr.atp <= 0 ? ' <b>Out of ATP:</b> the pump stalls.' : ''}`; }
+    $('#trStats').innerHTML = html; $('#trNote').innerHTML = note;
+  }
+  function trStep(dt) {
+    if (tr.paused || !tr.parts) return; const G = geomT(); tr.t += dt;
+    const T = 1;
+    // recruit the nearest suitable particle towards each open binding site
+    const recruit = (x, y, type, side, owner, need) => {
+      const have = tr.parts.filter(p => p.target === owner).length; if (have >= need) return;
+      let best = null, bd = 160; tr.parts.forEach(p => { if (p.bound || p.target || p.type !== type || (side > 0) !== (p.y < G.mc)) return; const d = Math.hypot(p.x - x, p.y - y); if (d < bd) { bd = d; best = p; } });
+      if (best) { best.target = owner; best.tx = x; best.ty = y; }
+    };
+    tr.pumps.forEach(q => { if ($('#ouab').checked) return; if (q.st === 'E1') recruit(q.x, G.m1 + 8, 'Na', -1, q, 3 - q.na.length); if (q.st === 'E2') recruit(q.x, G.m0 - 8, 'K', 1, q, 2 - q.k.length); });
+    tr.parts.forEach(p => { if (p.target && (p.bound || (p.target.st && ((p.type === 'Na' && p.target.st !== 'E1') || (p.type === 'K' && p.target.st !== 'E2'))) || (p.target.state && (p.target.flip > 0 || p.target.bound)))) p.target = null; });
+    tr.parts.forEach(p => {
+      if (p.bound) return;
+      if (p.nocap > 0) p.nocap -= dt;
+      if (p.g6p > 0) { p.g6p -= dt; if (p.g6p <= 0) p.type = 'G6P'; }
+      const sp = p.type === 'Glu' || p.type === 'G6P' ? 100 : 110;
+      const kick = (p.type === 'Glu' || p.type === 'G6P' ? 14 : 6) * sp * dt; p.vx += (Math.random() - .5) * kick; p.vy += (Math.random() - .5) * kick; p.vx *= .96; p.vy *= .96;
+      const v = Math.hypot(p.vx, p.vy), vmax = sp * .9; if (v > vmax) { p.vx *= vmax / v; p.vy *= vmax / v; }
+      if (p.target) { const dx = p.tx - p.x, dy = p.ty - p.y, d = Math.hypot(dx, dy) || 1; const vv = 160; p.vx = SL.lerp(p.vx, dx / d * vv, .25); p.vy = SL.lerp(p.vy, dy / d * vv, .25); }
+      // attraction to open pump/carrier sites
+      if (tr.mode === 'active') tr.pumps.forEach(q => { const want = (q.st === 'E1' && p.type === 'Na' && p.y > G.mc && q.na.length < 3) || (q.st === 'E2' && p.type === 'K' && p.y < G.mc && q.k.length < 2 && !$('#ouab').checked); if (want) { const ty = p.y > G.mc ? G.m1 + 10 : G.m0 - 10; const dx = q.x - p.x, dy = ty - p.y, d = Math.hypot(dx, dy) || 1; if (d < 150) { p.vx += dx / d * 260 * dt; p.vy += dy / d * 260 * dt; } } });
+      if (tr.mode === 'facil' && p.type === 'Glu') tr.carriers.forEach(c => { if (c.bound || c.flip > 0) return; const out = p.y < G.mc; if ((c.state === 'out') !== out) return; const ty = out ? G.m0 - 6 : G.m1 + 6; const dx = c.x - p.x, dy = ty - p.y, d = Math.hypot(dx, dy) || 1; if (d < 60) { p.vx += dx / d * 120 * dt; p.vy += dy / d * 120 * dt; } });
+      let nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
+      const r = TYPES[p.type].r;
+      if (nx < r || nx > G.w - r) { p.vx *= -1; nx = SL.clamp(nx, r, G.w - r); }
+      if (ny < r || ny > G.h - r) { p.vy *= -1; ny = SL.clamp(ny, r, G.h - r); }
+      // membrane interaction
+      const permeable = (p.type === 'O2' || p.type === 'CO2');
+      const inChannel = tr.channels.some(c => Math.abs(nx - c.x) < 7) && p.type === 'K' && ((tr.mode === 'facil' && $('#kOpen').checked) || (tr.mode === 'active' && $('#kLeak').checked));
+      if (!permeable && !inChannel) {
+        const wasOut = p.y < G.mc;
+        if (wasOut && ny + r > G.m0) { ny = G.m0 - r; p.vy = -Math.abs(p.vy); }
+        if (!wasOut && ny - r < G.m1) { ny = G.m1 + r; p.vy = Math.abs(p.vy); }
+      } else if (permeable && ny > G.m0 && ny < G.m1) { p.vx *= .7; }
+      if (inChannel && ny > G.m0 - 4 && ny < G.m1 + 4) { const c = tr.channels.find(c => Math.abs(nx - c.x) < 7); nx = SL.lerp(nx, c.x, .4); }
+      p.x = nx; p.y = ny;
+    });
+    // carriers
+    tr.carriers.forEach(c => {
+      if (c.flip > 0) { c.flip -= dt; if (c.flip <= 0) { c.state = c.state === 'out' ? 'in' : 'out'; if (c.bound) { const p = c.bound; p.bound = null; p.x = c.x + (Math.random() - .5) * 8; p.y = c.state === 'in' ? G.m1 + 30 : G.m0 - 30; p.vy = c.state === 'in' ? 90 : -90; p.nocap = .6; c.cool = .3; if (c.state === 'in' && $('#hexo').checked) { p.g6p = .8; p.nocap = 99; } if (c.state === 'in') { tr.cnt.glucIn++; if (tr.cnt.glucIn >= 20) ch.done('carrier'); } else tr.cnt.glucIn--; c.bound = null; } } return; }
+      if (c.cool > 0) { c.cool -= dt; return; }
+      if (!c.bound) {
+        const my = c.state === 'out' ? G.m0 - 6 : G.m1 + 6;
+        const p = tr.parts.find(p => !p.bound && !(p.nocap > 0) && p.type === 'Glu' && Math.abs(p.x - c.x) < 28 && Math.abs(p.y - my) < 48 && (c.state === 'out') === (p.y < G.mc));
+        if (p) { c.bound = p; p.bound = c; p.target = null; c.flip = .22; return; }
+        c.timer -= dt; if (c.timer < 0) { c.timer = .25 + Math.random() * .3; c.flip = .22; }
+      }
+    });
+    // pumps
+    const ouab = $('#ouab').checked;
+    if ($('#atpOn').checked && tr.atp < 60) tr.atp = Math.min(60, tr.atp + dt * 3);
+    tr.pumps.forEach(q => {
+      q.t += dt;
+      if (ouab) { if (q.st === 'E1' && !q.na.length) { q.st = 'E2'; } }
+      if (q.st === 'E1') {
+        if (q.na.length < 3) { const p = tr.parts.find(p => !p.bound && p.type === 'Na' && p.y > G.mc && Math.abs(p.x - q.x) < 20 && p.y < G.m1 + 26); if (p) { p.bound = q; p.target = null; q.na.push(p); } }
+        else if (tr.atp >= 1 && !ouab) { tr.atp = Math.floor(tr.atp - 1); tr.cnt.atp++; q.st = 'P'; q.t = 0; q.adp = 1; }
+      } else if (q.st === 'P') { if (q.t > .45) { q.st = 'E2'; q.t = 0; q.na.forEach((p, i) => { p.bound = null; p.x = q.x - 8 + i * 8; p.y = G.m0 - 12; p.vy = -60; }); tr.cnt.naOut += 3; q.na = []; } }
+      else if (q.st === 'E2') {
+        if (!ouab && q.k.length < 2) { const p = tr.parts.find(p => !p.bound && p.type === 'K' && p.y < G.mc && Math.abs(p.x - q.x) < 20 && p.y > G.m0 - 26); if (p) { p.bound = q; p.target = null; q.k.push(p); } }
+        if (q.k.length === 2) { q.st = 'D'; q.t = 0; q.pi = 1; }
+      } else if (q.st === 'D') { if (q.t > .45) { q.st = 'E1'; q.t = 0; q.k.forEach((p, i) => { p.bound = null; p.x = q.x - 4 + i * 8; p.y = G.m1 + 12; p.vy = 60; }); tr.cnt.kIn += 2; q.k = []; tr.cnt.cycles++; if (tr.cnt.cycles >= 10) ch.done('pump'); } }
+      // place bound ions
+      q.na.forEach((p, i) => { p.x = q.x - 7 + i * 7; p.y = q.st === 'P' ? SL.lerp(G.m1 - 6, G.m0 + 6, Math.min(1, q.t / .45)) : G.m1 - 6; });
+      q.k.forEach((p, i) => { p.x = q.x - 4 + i * 8; p.y = q.st === 'D' ? SL.lerp(G.m0 + 6, G.m1 - 6, Math.min(1, q.t / .45)) : G.m0 + 6; });
+    });
+    if (Math.floor(tr.t * 4) !== Math.floor((tr.t - dt) * 4)) trStats();
+  }
+  function drawTr() {
+    const { ctx, w, h } = TR; const G = geomT(); ctx.clearRect(0, 0, w, h);
+    let g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#0b2238'); g.addColorStop(.5, '#0a1626'); g.addColorStop(1, '#1b1035'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    const nar = w < 600; ctx.font = '600 10.5px JetBrains Mono, monospace'; ctx.fillStyle = '#7dd3fc'; ctx.textAlign = 'left'; ctx.fillText(nar ? 'OUTSIDE' : 'OUTSIDE (extracellular fluid)', 10, 16); ctx.fillStyle = '#c4b5fd'; ctx.fillText(nar ? 'INSIDE' : 'INSIDE (cytoplasm)', 10, nar ? G.m1 + 40 : h - 8);
+    // bilayer
+    const gaps = [...tr.carriers.map(c => [c.x, 18]), ...tr.pumps.map(p => [p.x, 24]), ...tr.channels.map(c => [c.x, 12])];
+    for (let x = 4; x < w; x += 7) {
+      if (gaps.some(([gx, gw]) => Math.abs(x - gx) < gw)) continue;
+      ctx.strokeStyle = 'rgba(148,163,184,.35)'; ctx.lineWidth = 1; ctx.beginPath();
+      for (const s of [-1, 1]) { ctx.moveTo(x - 1, G.mc + s * (G.m1 - G.mc - 4)); ctx.lineTo(x - 1, G.mc + s * 2); ctx.moveTo(x + 1, G.mc + s * (G.m1 - G.mc - 4)); ctx.lineTo(x + 1, G.mc + s * 2); } ctx.stroke();
+      ctx.fillStyle = '#5b8bd6'; ctx.beginPath(); ctx.arc(x, G.m0 + 3, 3.2, 0, 7); ctx.arc(x, G.m1 - 3, 3.2, 0, 7); ctx.fill();
+    }
+    // channels
+    tr.channels.forEach(c => { const open = (tr.mode === 'facil' && $('#kOpen').checked) || (tr.mode === 'active' && $('#kLeak').checked); ctx.fillStyle = '#6366f1'; for (const s of [-1, 1]) { rr(ctx, c.x + s * (open ? 7 : 4) - 4, G.m0 - 4, 8, G.m1 - G.m0 + 8, 3); ctx.fill(); } ctx.fillStyle = '#93a1bd'; ctx.font = '600 9px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(open ? 'K⁺ channel' : 'closed', c.x, G.m1 + 18); });
+    // carriers
+    tr.carriers.forEach(c => {
+      const f = c.flip > 0 ? 1 - c.flip / .22 : 1; let o = c.state === 'out' ? 1 : -1; if (c.flip > 0) o = o * (1 - 2 * f);
+      ctx.fillStyle = '#0ea5e9';
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(c.x + s * 4, G.mc); ctx.lineTo(c.x + s * (4 + 8 * Math.max(0, o)), G.m0 - 4); ctx.lineTo(c.x + s * 16, G.m0 - 4); ctx.lineTo(c.x + s * 16, G.m1 + 4); ctx.lineTo(c.x + s * (4 + 8 * Math.max(0, -o)), G.m1 + 4); ctx.closePath(); ctx.fill(); }
+      ctx.fillStyle = '#93a1bd'; ctx.font = '600 9px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText('GLUT', c.x, G.m1 + 18);
+      if (c.bound) { c.bound.x = c.x; c.bound.y = G.mc + (c.state === 'out' ? -1 : 1) * 10 * (c.flip > 0 ? (1 - 2 * f) : 1); }
+    });
+    // pumps
+    tr.pumps.forEach(q => {
+      const open = q.st === 'E1' || q.st === 'P' ? 'in' : 'out';
+      const gp = ctx.createLinearGradient(q.x - 20, 0, q.x + 20, 0); gp.addColorStop(0, '#10b981'); gp.addColorStop(1, '#047857'); ctx.fillStyle = gp;
+      rr(ctx, q.x - 22, G.m0 - 12, 44, G.m1 - G.m0 + 24, 10); ctx.fill();
+      ctx.fillStyle = '#052e1f'; rr(ctx, q.x - 9, open === 'in' ? G.mc - 4 : G.m0 - 12, 18, (G.m1 - G.m0) / 2 + 16, 6); ctx.fill();
+      if (q.st === 'P' || q.st === 'E2' && false) { ctx.fillStyle = '#f472b6'; ctx.beginPath(); ctx.arc(q.x + 20, G.m1 + 4, 5, 0, 7); ctx.fill(); ctx.font = '700 8px JetBrains Mono, monospace'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText('P', q.x + 20, G.m1 + 7); }
+      if (q.st === 'P' && q.t < .45) { const a = q.t / .45; ctx.globalAlpha = 1 - a; ctx.fillStyle = '#fde047'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText('ATP → ADP', q.x, G.m1 + 22 + a * 16); ctx.globalAlpha = 1; }
+      if (q.st === 'D' && q.t < .45) { const a = q.t / .45; ctx.globalAlpha = 1 - a; ctx.fillStyle = '#f472b6'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText('Pi released', q.x, G.m1 + 22 + a * 16); ctx.globalAlpha = 1; }
+      ctx.fillStyle = '#d1fae5'; ctx.font = '600 9px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText($('#ouab').checked ? 'blocked' : { E1: 'E1 · binds 3Na⁺', P: 'E1-P · flipping', E2: 'E2 · binds 2K⁺', D: 'E2 · flipping' }[q.st], q.x, G.m0 - 18);
+    });
+    // particles
+    tr.parts.forEach(p => {
+      const T = TYPES[p.type]; ctx.fillStyle = T.col;
+      if (p.type === 'Glu' || p.type === 'G6P') { ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = k / 6 * 6.283; ctx.lineTo(p.x + Math.cos(a) * T.r, p.y + Math.sin(a) * T.r); } ctx.closePath(); ctx.fill(); }
+      else if (p.type === 'O2' || p.type === 'CO2') { ctx.beginPath(); ctx.arc(p.x - 2, p.y, T.r * .75, 0, 7); ctx.arc(p.x + 2, p.y, T.r * .75, 0, 7); ctx.fill(); if (p.type === 'CO2') { ctx.fillStyle = '#334155'; ctx.beginPath(); ctx.arc(p.x, p.y, 1.6, 0, 7); ctx.fill(); } }
+      else { ctx.shadowColor = T.col; ctx.shadowBlur = 6; ctx.beginPath(); ctx.arc(p.x, p.y, T.r, 0, 7); ctx.fill(); ctx.shadowBlur = 0; }
+    });
+    // legend
+    const present = [...new Set(tr.parts.map(p => p.type))]; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'right'; let lx = w - 10;
+    ctx.fillStyle = 'rgba(5,9,19,.7)'; ctx.fillRect(nar ? 0 : w * .5, nar ? 22 : 4, nar ? w : w * .5, 16);
+    present.reverse().forEach(t => { const txt = '● ' + TYPES[t].lab; ctx.fillStyle = TYPES[t].col; ctx.fillText(txt, lx, nar ? 32 : 16); lx -= ctx.measureText(txt).width + 12; });
+  }
+
+  /* =====================================================================
+     3. OSMOSIS
+     ===================================================================== */
+  const OS = SL.canvas($('#cvOs'));
+  const os = { mode: 'rbc', C: 300, V: 1, lysed: 0, water: [] };
+  SL.bind('#osC', v => { os.C = v; }, v => v + ' mOsm/L');
+  document.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { $('#osC').value = b.dataset.c; $('#osC').dispatchEvent(new Event('input')); });
+  document.querySelectorAll('#osSeg button').forEach(b => b.onclick = () => { os.mode = b.dataset.m; document.querySelectorAll('#osSeg button').forEach(x => x.classList.toggle('on', x === b)); os.V = 1; os.lysed = 0; });
+  $('#osReset').onclick = () => { os.V = 1; os.lysed = 0; };
+  const RT = 8.314 * 298.15 / 1e6; // MPa per mOsm/L (mol/m^3)
+  function osTarget() { if (os.mode === 'rbc') return os.C <= 0 ? 3 : .4 + .6 * 300 / os.C; return os.C <= 400 ? 1 : 400 / os.C; }
+  function osStep(dt) {
+    const tgt = Math.min(osTarget(), os.mode === 'rbc' ? 2.2 : 1); const prev = os.V;
+    if (!os.lysed) os.V += (tgt - os.V) * Math.min(1, dt * 1.2);
+    os.dV = (os.V - prev) / Math.max(dt, 1e-3);
+    if (os.mode === 'rbc' && !os.lysed && os.V >= 1.6) { os.lysed = .001; ch.done('lyse'); }
+    if (os.lysed) os.lysed += dt;
+    if (os.mode === 'rbc' && os.V < .8) ch.done('crenate');
+    if (os.mode === 'plant' && os.V < .9) ch.done('plasmo');
+  }
+  function osState() {
+    if (os.mode === 'rbc') { if (os.lysed) return ['Haemolysed: the membrane burst', 'bad']; if (os.C < 270) return ['Hypotonic: water enters, the cell swells', 'warn']; if (os.C > 330) return ['Hypertonic: water leaves, the cell crenates', 'warn']; return ['Isotonic: no net water movement', 'ok']; }
+    if (os.C < 380) return ['Turgid: the wall resists further entry of water', 'ok']; if (os.C <= 420) return ['Flaccid: incipient plasmolysis', 'warn']; return ['Plasmolysed: the protoplast has pulled away from the wall', 'bad'];
+  }
+  let osLast = 0;
+  function osStats() {
+    const Psi_out = -os.C * RT; let html = '';
+    const st = (k, v, u) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u ? '<small>' + u + '</small>' : ''}</div></div>`;
+    const nacl = os.C / 308 * .9;
+    if (os.mode === 'rbc') {
+      const Cin = os.lysed ? os.C : 300 * .6 / (os.V - .4);
+      html = st('Ψ outside', Psi_out.toFixed(2), 'MPa') + st('Ψ inside', (-Cin * RT).toFixed(2), 'MPa') + st('Volume', Math.round(os.V * 100), '% of normal') + st('≈ NaCl', nacl.toFixed(2), '%');
+      $('#osNote').innerHTML = `Boyle–van 't Hoff: V/V₀ = 0.4 + 0.6 × 300/C. Lysis at V/V₀ ≈ 1.6, i.e. below about 150 mOsm/L (0.45 % NaCl).${os.lysed ? ' Press <b>Fresh cell</b> to try again.' : ''}`;
+    } else {
+      const Cin = os.C <= 400 ? 400 : os.C, psiS = -Cin * RT, psiP = os.C <= 400 ? (400 - os.C) * RT : 0;
+      html = st('Ψ outside', Psi_out.toFixed(2), 'MPa') + st('Ψs cell', psiS.toFixed(2), 'MPa') + st('Ψp (turgor)', psiP.toFixed(2), 'MPa') + st('Protoplast', Math.round(os.V * 100), '% vol');
+      $('#osNote').innerHTML = `Cell sap 400 mOsm/L. At equilibrium Ψ<sub>cell</sub> = Ψs + Ψp = Ψ<sub>outside</sub>. Below 400 mOsm/L the wall supplies turgor pressure; above it the protoplast shrinks (Ψp = 0).`;
+    }
+    $('#osStats').innerHTML = html;
+    const [txt] = osState(); $('#osHud').textContent = txt;
+  }
+  function drawOs(dt) {
+    const { ctx, w, h } = OS; ctx.clearRect(0, 0, w, h);
+    const narrow = w < 600;
+    // solution background
+    const c = SL.clamp(os.C / 900, 0, 1); const bg = ctx.createLinearGradient(0, 0, 0, h); bg.addColorStop(0, `rgb(${10 + c * 30},${30 + c * 10},${60 - c * 10})`); bg.addColorStop(1, `rgb(${8 + c * 20},${20},${40})`); ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+    // solute particles
+    const r = mulberry(5); const n = Math.round(os.C / 6); ctx.fillStyle = 'rgba(250,204,21,.45)'; const tt = performance.now() / 1000;
+    for (let i = 0; i < n; i++) { const x = r() * w, y = r() * h; ctx.beginPath(); ctx.arc(x + Math.sin(tt + i) * 2, y + Math.cos(tt * .8 + i) * 2, 1.8, 0, 7); ctx.fill(); }
+    const cx = narrow ? w / 2 : w * .38, cy = narrow ? h * .3 : h / 2, R0 = Math.min(narrow ? w * .26 : w * .2, narrow ? h * .19 : h * .3);
+    // water particles crossing
+    const dir = os.dV > .002 ? 1 : os.dV < -.002 ? -1 : 0;
+    if (Math.random() < .9) os.water.push({ a: Math.random() * 6.283, t: 0, d: dir === 0 ? (Math.random() < .5 ? 1 : -1) : (Math.random() < .85 ? dir : -dir) });
+    os.water = os.water.filter(p => p.t < 1); ctx.fillStyle = '#60a5fa';
+    const Rc = os.mode === 'rbc' ? R0 * Math.cbrt(os.V) : R0 * 1.25;
+    os.water.forEach(p => { p.t += dt * 1.4; const rad = Rc + (p.d > 0 ? 30 * (1 - p.t) - 15 : 30 * p.t - 15); ctx.globalAlpha = Math.sin(p.t * Math.PI) * .9; ctx.beginPath(); ctx.arc(cx + Math.cos(p.a) * rad, cy + Math.sin(p.a) * rad, 2.2, 0, 7); ctx.fill(); });
+    ctx.globalAlpha = 1;
+    if (os.mode === 'rbc') drawRBC(ctx, cx, cy, R0); else drawPlantOs(ctx, cx, cy, R0);
+    // chart
+    const gx = narrow ? 44 : w * .66, gy = narrow ? h * .74 : h * .2, gw = narrow ? w - 64 : w * .3, gh = narrow ? h * .2 : h * .5;
+    ctx.strokeStyle = '#2a3a5c'; ctx.lineWidth = 1; ctx.strokeRect(gx, gy, gw, gh);
+    ctx.fillStyle = '#93a1bd'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText(os.mode === 'rbc' ? 'Cell volume vs outside concentration' : 'Protoplast volume vs concentration', gx, gy - 6);
+    const vmax = os.mode === 'rbc' ? 2.2 : 1.1, X = C => gx + C / 900 * gw, Y = v => gy + gh - v / vmax * gh;
+    if (os.mode === 'rbc') { ctx.fillStyle = 'rgba(239,68,68,.12)'; ctx.fillRect(gx, Y(vmax), X(150) - gx, gh); }
+    ctx.strokeStyle = '#34d399'; ctx.lineWidth = 2; ctx.beginPath();
+    for (let C = 10; C <= 900; C += 10) { const v = Math.min(vmax, os.mode === 'rbc' ? .4 + .6 * 300 / C : (C <= 400 ? 1 : 400 / C)); C === 10 ? ctx.moveTo(X(C), Y(v)) : ctx.lineTo(X(C), Y(v)); } ctx.stroke();
+    ctx.setLineDash([3, 3]); ctx.strokeStyle = '#94a3b8'; ctx.beginPath(); ctx.moveTo(gx, Y(1)); ctx.lineTo(gx + gw, Y(1)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(X(os.C), Y(Math.min(vmax, os.V)), 4.5, 0, 7); ctx.fill();
+    ctx.fillStyle = '#5f6d8a'; ctx.font = '9px JetBrains Mono, monospace'; ctx.textAlign = 'center'; [0, 300, 600, 900].forEach(C => ctx.fillText(C, X(C), gy + gh + 12)); ctx.textAlign = 'right'; ctx.fillText('V/V₀ 1', gx - 3, Y(1) + 3);
+    if (os.mode === 'rbc') { ctx.fillStyle = '#ef4444'; ctx.textAlign = 'left'; ctx.fillText('lysis', gx + 3, gy + 12); }
+    osLast += dt; if (osLast > .2) { osLast = 0; osStats(); }
+  }
+  function drawRBC(ctx, cx, cy, R0) {
+    const V = os.V;
+    if (os.lysed) {
+      const t = Math.min(1, os.lysed / 2);
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R0 * (1.2 + t * 1.6)); g.addColorStop(0, `rgba(220,38,38,${.5 * (1 - t * .6)})`); g.addColorStop(1, 'rgba(220,38,38,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R0 * (1.2 + t * 1.6), 0, 7); ctx.fill();
+      ctx.strokeStyle = 'rgba(252,165,165,.6)'; ctx.lineWidth = 2; for (let k = 0; k < 7; k++) { const a = k / 7 * 6.283 + .3; ctx.beginPath(); ctx.arc(cx, cy, R0 * 1.15, a, a + .55); ctx.stroke(); }
+      ctx.fillStyle = '#fecaca'; ctx.font = '600 12px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('ghost membrane · haemoglobin released', cx, cy + R0 * 1.9); return;
+    }
+    const Rr = R0 * Math.cbrt(V); const spikes = V < .97 ? Math.min(1, (1 - V) / .25) : 0;
+    ctx.save(); ctx.beginPath();
+    const N = 120; for (let i = 0; i <= N; i++) { const a = i / N * 6.283; const k = 1 + spikes * .09 * Math.pow(Math.max(0, Math.sin(a * 11)), 6) - spikes * .02; const x = cx + Math.cos(a) * Rr * k, y = cy + Math.sin(a) * Rr * k; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.closePath();
+    const pallor = SL.clamp(1 - (V - 1) / .45, 0, 1) * (1 - spikes * .6);
+    const g = ctx.createRadialGradient(cx - Rr * .2, cy - Rr * .2, 0, cx, cy, Rr);
+    g.addColorStop(0, pallor > .1 ? `rgba(248,113,113,${1 - .55 * pallor})` : '#f87171'); g.addColorStop(.45, `rgba(239,68,68,${1 - .35 * pallor})`); g.addColorStop(.85, '#b91c1c'); g.addColorStop(1, '#7f1d1d');
+    ctx.fillStyle = g; ctx.shadowColor = 'rgba(239,68,68,.5)'; ctx.shadowBlur = 20; ctx.fill(); ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(254,202,202,.7)'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+    // side profile
+    const px = cx, py = cy + Rr * 1.55, pw = Rr * .9, th = 10 + 14 * Math.min(1, Math.max(0, V - .6)), dip = pallor * th * .7;
+    ctx.fillStyle = '#dc2626'; ctx.beginPath(); ctx.moveTo(px - pw, py);
+    ctx.bezierCurveTo(px - pw, py - th, px - pw * .5, py - th, px, py - th + dip); ctx.bezierCurveTo(px + pw * .5, py - th, px + pw, py - th, px + pw, py);
+    ctx.bezierCurveTo(px + pw, py + th, px + pw * .5, py + th, px, py + th - dip); ctx.bezierCurveTo(px - pw * .5, py + th, px - pw, py + th, px - pw, py); ctx.fill();
+    ctx.fillStyle = '#93a1bd'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(V > 1.15 ? 'side view: spherical' : V < .9 ? 'side view: crenated' : 'side view: biconcave disc', px, py + th + 16);
+  }
+  function drawPlantOs(ctx, cx, cy, R0) {
+    const W = R0 * 2.6, H = R0 * 1.9, x0 = cx - W / 2, y0 = cy - H / 2;
+    ctx.fillStyle = '#4d7c0f'; rr(ctx, x0 - 10, y0 - 10, W + 20, H + 20, 16); ctx.fill(); ctx.fillStyle = 'rgba(10,25,45,.95)'; rr(ctx, x0, y0, W, H, 10); ctx.fill();
+    // external solution in gap
+    const c = SL.clamp(os.C / 900, 0, 1); ctx.fillStyle = `rgba(250,204,21,${.08 + .18 * c})`; rr(ctx, x0, y0, W, H, 10); ctx.fill();
+    const s = Math.sqrt(os.V); const pw = (W - 6) * (os.V >= 1 ? 1 : s * .98), ph = (H - 6) * (os.V >= 1 ? 1 : s * .98), px = cx - pw / 2, py = cy - ph / 2;
+    const rad = os.V >= 1 ? 9 : 9 + (1 - os.V) * 80;
+    // Hechtian strands
+    if (os.V < 1) { ctx.strokeStyle = 'rgba(94,234,212,.5)'; ctx.lineWidth = 1; [[x0, cy - H * .2, px, cy - ph * .2], [x0 + W, cy + H * .15, px + pw, cy + ph * .15], [cx + W * .2, y0, cx + pw * .2, py], [cx - W * .25, y0 + H, cx - pw * .25, py + ph]].forEach(([a, b, c2, d]) => { ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c2, d); ctx.stroke(); }); }
+    ctx.fillStyle = '#14304a'; rr(ctx, px, py, pw, ph, rad); ctx.fill(); ctx.strokeStyle = '#5eead4'; ctx.lineWidth = 3; ctx.stroke();
+    // vacuole
+    ctx.fillStyle = '#1e4f6e'; rr(ctx, px + pw * .14, py + ph * .16, pw * .72, ph * .68, rad * .8 + 10); ctx.fill(); ctx.strokeStyle = '#7dd3fc'; ctx.lineWidth = 2; ctx.stroke();
+    // chloroplasts
+    for (let i = 0; i < 10; i++) { const t = i / 10; let x, y; if (i < 4) { x = px + pw * (.15 + t * 1.8); y = py + ph * .08; } else if (i < 7) { x = px + pw * (.15 + (i - 4) * .3); y = py + ph * .92; } else { x = i === 7 ? px + pw * .07 : px + pw * .93; y = py + ph * (i === 9 ? .5 : .45); } ctx.fillStyle = '#22c55e'; ctx.beginPath(); ctx.ellipse(x, y, 9, 5, i < 7 ? 0 : 1.57, 0, 7); ctx.fill(); }
+    ctx.fillStyle = '#6d5bd0'; ctx.beginPath(); ctx.ellipse(px + pw * .1, py + ph * .2, 10, 9, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#cbd5e1'; ctx.font = '600 10px Inter, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('cell wall', cx, y0 - 16); ctx.fillText('vacuole', cx, cy + 4);
+    if (os.V < .97) { ctx.fillStyle = '#fde68a'; ctx.fillText('outside solution fills the gap', cx, y0 + H + 26); }
+  }
+
+  /* =====================================================================
+     4. SECRETORY PATHWAY
+     ===================================================================== */
+  const SC = SL.canvas($('#cvSec'));
+  const SEC = { prot: 'ins', step: 0, t: 0, playing: false, prog: 1 };
+  const SECSTEPS = [
+    ['Transcription and export', 'The gene is transcribed in the nucleus; the mRNA is capped, spliced and polyadenylated, then exported through a nuclear pore into the cytosol.'],
+    ['Signal peptide and SRP', 'A free ribosome starts translating. The first ≈ 20 hydrophobic amino acids form a <b>signal peptide</b>; the signal recognition particle (SRP) binds it, pauses translation and docks the ribosome on an SRP receptor at the rough ER.'],
+    ['Into the ER', 'Translation resumes and the chain threads through the Sec61 <b>translocon</b> into the ER lumen. Signal peptidase removes the signal peptide; chaperones such as BiP help it fold, disulfide bonds form and, on glycoproteins, N-linked glycans are added (proinsulin itself is not glycosylated).'],
+    ['ER to Golgi', 'Correctly folded proteins leave the ER in <b>COPII-coated vesicles</b> that travel to the cis face of the Golgi. Misfolded proteins are retained and sent for degradation (ER-associated degradation).'],
+    ['Through the Golgi', 'Cargo moves from cis through medial to trans cisternae as they mature. On glycoproteins, glycans are trimmed and rebuilt into complex forms; cargo is concentrated as it goes.'],
+    ['Sorting at the trans-Golgi network', ''],
+    ['Transport', ''],
+    ['Arrival', ''],
+  ];
+  const PROT = {
+    ins: { col: '#22d3ee', name: 'Insulin', s4: 'Proinsulin is processed in the Golgi; in the TGN it is packed into dense <b>secretory granules</b> where prohormone convertases cut out the C-peptide, leaving insulin (A and B chains joined by disulfide bonds) stored as zinc–insulin crystals.', s6: 'Granules travel along microtubules (kinesin motors) to the cell periphery and wait. This is <b>regulated secretion</b>.', s7: 'When blood glucose rises, β cells depolarise, Ca²⁺ enters and SNARE proteins fuse the granules with the plasma membrane: <b>exocytosis</b> releases insulin into the blood.' },
+    lys: { col: '#f472b6', name: 'Lysosomal enzyme', s4: 'In the cis-Golgi the enzyme receives a <b>mannose-6-phosphate (M6P)</b> tag. In the TGN, M6P receptors collect it into clathrin-coated vesicles.', s6: 'The vesicles deliver the enzyme to late endosomes; the acidic pH releases it from its receptor, which is recycled to the Golgi.', s7: 'The endosome matures into or fuses with a <b>lysosome</b>, where the hydrolase works at pH ≈ 5. Without the M6P tag (I-cell disease) the enzyme would be secreted instead.' },
+    mem: { col: '#a3e635', name: 'Membrane receptor', s4: 'A hydrophobic <b>stop-transfer sequence</b> anchored the protein in the ER membrane during translation, so it travels as an integral membrane protein, with its glycosylated domain facing the lumen.', s6: 'Constitutive transport vesicles carry it continuously to the cell surface, no signal needed.', s7: 'Vesicle fusion inserts the receptor into the plasma membrane. The domain that faced the ER and Golgi lumen now faces outside the cell, ready to bind its ligand.' },
+  };
+  function secNarr() { const s = SEC.step, P = PROT[SEC.prot]; const txt = s === 5 ? P.s4 : s === 6 ? P.s6 : s === 7 ? P.s7 : SECSTEPS[s][1]; const ttl = s === 7 ? (SEC.prot === 'ins' ? 'Exocytosis' : SEC.prot === 'lys' ? 'Delivery to a lysosome' : 'Insertion into the membrane') : SECSTEPS[s][0]; $('#secNarr').innerHTML = `<h4>${s + 1}. ${ttl}</h4>${txt}`; $('#secHud').textContent = `${P.name} · step ${s + 1} of 8`; $('#secChips').innerHTML = SECSTEPS.map((x, i) => `<button data-i="${i}" class="${i === s ? 'on' : i < s ? 'done' : ''}">${i + 1}</button>`).join(''); }
+  function secGo(i) { SEC.step = SL.clamp(i, 0, 7); SEC.prog = 0; secNarr(); if (SEC.step === 7 && SEC.prot === 'ins') ch.done('secrete'); }
+  $('#secChips').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { SEC.playing = false; secPlayBtn(); secGo(+b.dataset.i); } });
+  $('#sNext').onclick = () => { SEC.playing = false; secPlayBtn(); secGo(SEC.step + 1); }; $('#sPrev').onclick = () => { SEC.playing = false; secPlayBtn(); secGo(SEC.step - 1); };
+  const secPlayBtn = () => { $('#sPlay').innerHTML = SEC.playing ? '<i data-lucide="pause"></i> Pause' : '<i data-lucide="play"></i> Play'; SL.refreshIcons($('#sPlay')); };
+  $('#sPlay').onclick = () => { SEC.playing = !SEC.playing; if (SEC.playing && SEC.step === 7) secGo(0); secPlayBtn(); };
+  document.querySelectorAll('#secSeg button').forEach(b => b.onclick = () => { SEC.prot = b.dataset.m; document.querySelectorAll('#secSeg button').forEach(x => x.classList.toggle('on', x === b)); secGo(0); });
+  secGo(0);
+  function secLayout() {
+    const { w, h } = SC; const narrow = w < 600;
+    return { w, h, nuc: [w * .12, h * .45, Math.min(w * .1, h * .22)], er: [w * .32, h * .45], golgi: [w * .58, h * .4], mem: w * .9, lyso: [w * .74, h * .82], narrow };
+  }
+  function cargoPos(L, step, p) {
+    const n = L.nuc, er = L.er, g = L.golgi;
+    const pts = [
+      [[n[0], n[1]], [n[0] + n[2] * 1.4, n[1] - n[2] * .5]],
+      [[n[0] + n[2] * 1.4, n[1] - n[2] * .5], [er[0] - 22, er[1] - 50]],
+      [[er[0] - 22, er[1] - 50], [er[0], er[1]]],
+      [[er[0], er[1]], [g[0] - 50, g[1] - 40]],
+      [[g[0] - 40, g[1] - 36], [g[0] + 20, g[1] + 36]],
+      [[g[0] + 20, g[1] + 36], [g[0] + 40, g[1] + 62]],
+      SEC.prot === 'lys' ? [[g[0] + 40, g[1] + 62], [L.lyso[0] - 30, L.lyso[1] - 10]] : [[g[0] + 40, g[1] + 62], [L.mem - 28, g[1] + 40]],
+      SEC.prot === 'lys' ? [[L.lyso[0] - 30, L.lyso[1] - 10], [L.lyso[0], L.lyso[1]]] : [[L.mem - 28, g[1] + 40], [L.mem - 6, g[1] + 40]],
+    ][step];
+    const e = ease(p); return [SL.lerp(pts[0][0], pts[1][0], e) + (step === 6 ? Math.sin(e * Math.PI) * 18 : 0), SL.lerp(pts[0][1], pts[1][1], e)];
+  }
+  function drawSec(dt) {
+    const { ctx, w, h } = SC; ctx.clearRect(0, 0, w, h); const L = secLayout(); const P = PROT[SEC.prot];
+    SEC.prog = Math.min(1, SEC.prog + dt / 1.8);
+    if (SEC.playing && SEC.prog >= 1) { SEC.t += dt; if (SEC.t > 1.4) { SEC.t = 0; if (SEC.step < 7) secGo(SEC.step + 1); else { SEC.playing = false; secPlayBtn(); } } }
+    const tt = performance.now() / 1000;
+    // cytoplasm
+    const g = ctx.createRadialGradient(w * .4, h * .4, 10, w * .4, h * .5, w * .8); g.addColorStop(0, '#12283a'); g.addColorStop(1, '#0a1622'); ctx.fillStyle = g; ctx.fillRect(0, 0, L.mem, h);
+    // outside
+    ctx.fillStyle = '#071425'; ctx.fillRect(L.mem, 0, w - L.mem, h);
+    ctx.strokeStyle = '#5eead4'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(L.mem, 0); ctx.lineTo(L.mem, h); ctx.stroke();
+    ctx.fillStyle = '#93a1bd'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+    ctx.save(); ctx.translate(L.mem + (w - L.mem) / 2 + 4, h / 2); ctx.rotate(-Math.PI / 2); ctx.fillText(SEC.prot === 'ins' ? 'blood capillary side' : 'outside the cell', 0, 0); ctx.restore();
+    // microtubule track
+    ctx.strokeStyle = 'rgba(52,211,153,.35)'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.beginPath(); ctx.moveTo(L.golgi[0] + 40, L.golgi[1] + 62); ctx.quadraticCurveTo((L.golgi[0] + L.mem) / 2, L.golgi[1] + 80, L.mem - 28, L.golgi[1] + 40); ctx.stroke(); ctx.setLineDash([]);
+    // nucleus
+    const [nx, ny, nr] = L.nuc; ctx.fillStyle = '#2a1f63'; ctx.beginPath(); ctx.arc(nx, ny, nr, 0, 7); ctx.fill(); ctx.strokeStyle = '#a78bfa'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.fillStyle = '#4c1d95'; ctx.beginPath(); ctx.arc(nx - nr * .2, ny + nr * .1, nr * .3, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(167,139,250,.55)'; ctx.lineWidth = 1.5; for (let j = 0; j < 5; j++) { ctx.beginPath(); for (let i = 0; i < 24; i++) { const t = i / 23; ctx.lineTo(nx - nr * .6 + t * nr * 1.2, ny - nr * .5 + j * nr * .25 + Math.sin(t * 14 + j * 2) * nr * .06); } ctx.stroke(); }
+    // ER
+    const [ex, ey] = L.er; for (let k = 0; k < 4; k++) { const x = ex - 30 + k * 18; ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 10; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x, ey - h * .32); ctx.quadraticCurveTo(x + 14, ey, x, ey + h * .32); ctx.stroke(); ctx.strokeStyle = '#93c5fd'; ctx.lineWidth = 4; ctx.stroke(); ctx.fillStyle = '#fcd34d'; for (let j = 0; j < 12; j++) { const t = j / 11, yy = ey - h * .32 + t * h * .64, xx = x + 14 * 2 * t * (1 - t) * 1; ctx.beginPath(); ctx.arc(xx - 7, yy, 1.8, 0, 7); ctx.fill(); } }
+    // Golgi
+    const [gx, gy] = L.golgi; const cols = ['#a3e635', '#d9f99d', '#facc15', '#fbbf24', '#f59e0b'];
+    for (let k = 0; k < 5; k++) { ctx.strokeStyle = cols[k]; ctx.lineWidth = 9; ctx.beginPath(); ctx.moveTo(gx - 46 + k * 4, gy - 40 + k * 18); ctx.quadraticCurveTo(gx + 10, gy - 60 + k * 18, gx + 46 - k * 2, gy - 34 + k * 18); ctx.stroke(); }
+    ctx.lineCap = 'butt';
+    // lysosome
+    if (SEC.prot === 'lys') { const [lx, ly] = L.lyso; const lg = ctx.createRadialGradient(lx - 6, ly - 6, 2, lx, ly, 26); lg.addColorStop(0, '#f472b6'); lg.addColorStop(1, '#9d174d'); ctx.fillStyle = lg; ctx.beginPath(); ctx.arc(lx, ly, 24, 0, 7); ctx.fill(); ctx.fillStyle = '#fbcfe8'; ctx.font = '600 10px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('lysosome (pH 5)', lx, ly + 40); }
+    // labels
+    ctx.fillStyle = '#cbd5e1'; ctx.font = '600 11px Inter, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Nucleus', nx, ny + nr + 18); ctx.fillText('Rough ER', ex, ey + h * .32 + 22); ctx.fillText('Golgi', gx, gy - 66); if (!L.narrow) ctx.fillText('Plasma membrane', L.mem - 50, 18);
+    // cargo
+    const s = SEC.step, [cx, cy] = cargoPos(L, s, SEC.prog);
+    if (s === 0) { ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2.5; ctx.beginPath(); for (let k = 0; k < 14; k++) ctx.lineTo(cx - 20 + k * 3, cy + Math.sin(k + tt * 4) * 3); ctx.stroke(); ctx.fillStyle = '#fde68a'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.fillText('mRNA', cx, cy - 10); }
+    else if (s <= 2) {
+      // ribosome with nascent chain and SRP
+      ctx.fillStyle = '#fcd34d'; ctx.beginPath(); ctx.ellipse(cx, cy, 12, 8, 0, 0, 7); ctx.fill(); ctx.beginPath(); ctx.ellipse(cx, cy + 9, 9, 6, 0, 0, 7); ctx.fill();
+      ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx - 26, cy + 14); ctx.lineTo(cx + 26, cy + 14); ctx.stroke();
+      const len = s === 1 ? 10 + SEC.prog * 12 : 22 + SEC.prog * 14; ctx.strokeStyle = P.col; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(cx, cy - 6); for (let k = 0; k < len; k += 2) ctx.lineTo(cx + Math.sin(k * .7) * 4, cy - 6 - k); ctx.stroke();
+      if (s === 1) { ctx.fillStyle = '#e879f9'; ctx.beginPath(); ctx.arc(cx + 8, cy - 18 - len * .3, 6, 0, 7); ctx.fill(); ctx.fillStyle = '#f5d0fe'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.fillText('SRP', cx + 26, cy - 22 - len * .3); }
+      if (s === 2) { ctx.fillStyle = '#f5d0fe'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.fillText('translocon', cx - 30, cy - 18); }
+    } else {
+      // protein (with vesicle when moving)
+      const released = s === 7 && SEC.prot === 'ins' && SEC.prog > .6;
+      if (released) { ctx.strokeStyle = '#fb923c'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(L.mem - 10, cy, 14, Math.PI * .35, Math.PI * 1.65); ctx.stroke(); }
+      const inVes = !released && (s === 3 || s >= 5);
+      if (inVes) { ctx.strokeStyle = s === 3 ? '#a3e635' : SEC.prot === 'lys' ? '#f9a8d4' : '#fb923c'; ctx.lineWidth = 3; ctx.fillStyle = 'rgba(12,30,48,.8)'; const vr = SEC.prot === 'ins' && s >= 5 ? 16 : 12; ctx.beginPath(); ctx.arc(cx, cy, vr, 0, 7); ctx.fill(); ctx.stroke(); if (s === 3) { for (let k = 0; k < 8; k++) { const a = k / 8 * 6.283; ctx.fillStyle = '#a3e635'; ctx.beginPath(); ctx.arc(cx + Math.cos(a) * 14, cy + Math.sin(a) * 14, 1.8, 0, 7); ctx.fill(); } } }
+      ctx.fillStyle = P.col; ctx.shadowColor = P.col; ctx.shadowBlur = 10;
+      if (released) {} else if (SEC.prot === 'ins' && s >= 5) { for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.arc(cx + Math.cos(k) * 6, cy + Math.sin(k * 1.7) * 6, 3, 0, 7); ctx.fill(); } }
+      else { ctx.beginPath(); ctx.arc(cx - 3, cy, 4.5, 0, 7); ctx.arc(cx + 4, cy + 2, 4, 0, 7); ctx.fill(); }
+      ctx.shadowBlur = 0;
+      if (s >= 2 && SEC.prot !== 'ins' && !released) { ctx.strokeStyle = '#fef08a'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(cx + 2, cy - 4); ctx.lineTo(cx + 2, cy - 11); ctx.moveTo(cx + 2, cy - 9); ctx.lineTo(cx - 2, cy - 13); ctx.moveTo(cx + 2, cy - 9); ctx.lineTo(cx + 6, cy - 13); ctx.stroke(); }
+      if (SEC.prot === 'lys' && s >= 4) { ctx.fillStyle = '#fde047'; ctx.font = '700 9px JetBrains Mono, monospace'; ctx.fillText('M6P', cx, cy + 22); }
+      if (s === 7 && SEC.prot === 'ins' && SEC.prog > .6) { const k = (SEC.prog - .6) / .4; for (let i = 0; i < 10; i++) { ctx.fillStyle = P.col; ctx.globalAlpha = 1 - k * .5; ctx.beginPath(); ctx.arc(L.mem + 8 + k * 40 * Math.abs(Math.cos(i)), cy + k * 50 * Math.sin(i * 1.3), 3, 0, 7); ctx.fill(); } ctx.globalAlpha = 1; }
+      if (s === 7 && SEC.prot === 'mem' && SEC.prog > .7) { ctx.fillStyle = '#a3e635'; ctx.fillRect(L.mem - 4, cy - 14, 8, 28); ctx.beginPath(); ctx.arc(L.mem + 14, cy, 8, 0, 7); ctx.fill(); }
+    }
+  }
+
+  /* =====================================================================
+     5. BUILD A CELL
+     ===================================================================== */
+  const BT = { nucleus: ['Nucleus', '#7c6fd6'], rer: ['Rough ER', '#3b82f6'], ser: ['Smooth ER', '#06b6d4'], golgi: ['Golgi', '#f59e0b'], mito: ['Mitochondrion', '#f97316'], lyso: ['Lysosome', '#ec4899'], perox: ['Peroxisome', '#84cc16'], vesicle: ['Secretory vesicle', '#fb923c'], centro: ['Centrosome', '#facc15'], cyto: ['Cytoskeleton', '#34d399'], chloro: ['Chloroplast', '#22c55e'], vacuole: ['Central vacuole', '#38bdf8'] };
+  const JOBS = {
+    acinar: { name: 'Pancreatic acinar cell', plant: false, desc: 'Makes and secretes large amounts of digestive enzymes (amylase, trypsinogen, lipase) into the pancreatic duct.', req: [['nucleus', 1, 1, 'one nucleus to hold the genes and supply mRNA'], ['rer', 4, 99, 'lots of rough ER to make secreted enzymes'], ['golgi', 2, 99, 'a large Golgi to package them'], ['vesicle', 4, 99, 'many zymogen (secretory) granules'], ['mito', 3, 99, 'mitochondria to power protein synthesis and secretion'], ['chloro', 0, 0, 'animal cells have no chloroplasts'], ['vacuole', 0, 0, 'no large central vacuole in animal cells']] },
+    muscle: { name: 'Cardiac muscle cell', plant: false, desc: 'Contracts about once a second for a lifetime; must never run out of ATP and needs to store and release Ca²⁺.', req: [['nucleus', 1, 2, 'one or two nuclei'], ['mito', 8, 99, 'packed with mitochondria (about a third of the cell volume)'], ['ser', 2, 99, 'sarcoplasmic (smooth) reticulum to store Ca²⁺'], ['cyto', 3, 99, 'abundant actin and myosin filaments to contract'], ['chloro', 0, 0, 'animal cells have no chloroplasts'], ['vacuole', 0, 0, 'no central vacuole']] },
+    hepato: { name: 'Liver hepatocyte', plant: false, desc: 'Detoxifies drugs and alcohol, makes plasma proteins and lipids, and breaks down fatty acids.', req: [['nucleus', 1, 2, 'one or two nuclei'], ['ser', 4, 99, 'abundant smooth ER for detoxification (cytochrome P450)'], ['rer', 2, 99, 'rough ER for plasma proteins such as albumin'], ['perox', 3, 99, 'many peroxisomes for fatty-acid oxidation and H₂O₂ breakdown'], ['mito', 4, 99, 'plenty of mitochondria'], ['golgi', 1, 99, 'Golgi to export lipoproteins'], ['chloro', 0, 0, 'no chloroplasts'], ['vacuole', 0, 0, 'no central vacuole']] },
+    macro: { name: 'Macrophage', plant: false, desc: 'Crawls through tissues, engulfs bacteria and debris by phagocytosis and digests them.', req: [['nucleus', 1, 1, 'one nucleus'], ['lyso', 5, 99, 'many lysosomes to digest what it engulfs'], ['cyto', 2, 99, 'an active actin cytoskeleton for crawling and phagocytosis'], ['mito', 2, 99, 'mitochondria for energy'], ['golgi', 1, 99, 'Golgi to make lysosomal enzymes'], ['rer', 1, 99, 'rough ER to make lysosomal enzymes'], ['chloro', 0, 0, 'no chloroplasts']] },
+    rbc: { name: 'Mature red blood cell', plant: false, desc: 'Carries oxygen bound to haemoglobin through narrow capillaries for about 120 days.', req: [['nucleus', 0, 0, 'mammalian red cells expel their nucleus, making room for haemoglobin and flexibility'], ['mito', 0, 0, 'no mitochondria: they make ATP by glycolysis so they do not use the oxygen they carry'], ['rer', 0, 0, 'no ER: they cannot make new proteins'], ['golgi', 0, 0, 'no Golgi'], ['cyto', 1, 99, 'a spectrin–actin cytoskeleton keeps the flexible biconcave shape'], ['chloro', 0, 0, 'no chloroplasts'], ['lyso', 0, 0, 'no lysosomes'], ['vesicle', 0, 0, 'no secretory vesicles']] },
+    leaf: { name: 'Palisade mesophyll (leaf) cell', plant: true, desc: 'The main photosynthetic cell of a leaf, packed just under the upper surface.', req: [['nucleus', 1, 1, 'one nucleus'], ['chloro', 8, 99, 'many chloroplasts to capture light'], ['vacuole', 1, 1, 'one large central vacuole for turgor'], ['mito', 2, 99, 'mitochondria still needed for respiration at night'], ['centro', 0, 0, 'flowering plants have no centrioles'], ['lyso', 0, 0, 'the vacuole acts as the lysosome']] },
+  };
+  $('#job').innerHTML = Object.entries(JOBS).map(([k, j]) => `<option value="${k}">${j.name}</option>`).join('');
+  const bld = { job: 'acinar', items: [], drag: null, tray: [] };
+  let BL = null;
+  const BB = SL.canvas($('#cvB'), () => { if (BL) bLayout(); });
+  $('#job').onchange = e => { bld.job = e.target.value; bld.items = []; bLayout(); $('#jobDesc').textContent = JOBS[bld.job].desc; $('#bReport').innerHTML = 'Add organelles, then check.'; };
+  $('#jobDesc').textContent = JOBS.acinar.desc;
+  $('#bClear').onclick = () => { bld.items = []; $('#bReport').innerHTML = 'Add organelles, then check.'; };
+  function bLayout() {
+    const { w, h } = BB; const narrow = w < 600; const keys = Object.keys(BT);
+    const tray = []; if (narrow) { const cols = 4, cw = (w - 20) / cols, chh = 50; keys.forEach((k, i) => tray.push({ k, x: 10 + (i % cols) * cw + cw / 2, y: 12 + Math.floor(i / cols) * chh + 20, w: cw - 6, h: chh - 6 })); }
+    else { const cols = 2, cw = 92, chh = (h - 20) / Math.ceil(keys.length / cols); keys.forEach((k, i) => tray.push({ k, x: 10 + (i % cols) * cw + cw / 2, y: 10 + Math.floor(i / cols) * chh + chh / 2, w: cw - 6, h: chh - 6 })); }
+    const trayB = narrow ? { x: 0, y: 0, w, h: 12 + Math.ceil(keys.length / 4) * 50 + 4 } : { x: 0, y: 0, w: 200, h };
+    const area = narrow ? { x: 10, y: trayB.h + 10, w: w - 20, h: h - trayB.h - 20 } : { x: 210, y: 10, w: w - 220, h: h - 20 };
+    const cell = { cx: area.x + area.w / 2, cy: area.y + area.h / 2, rx: area.w * .46, ry: area.h * .44 };
+    BL = { tray, trayB, cell, narrow };
+  }
+  bLayout();
+  const inCell = (x, y) => { const c = BL.cell; if (JOBS[bld.job].plant) return Math.abs(x - c.cx) < c.rx - 6 && Math.abs(y - c.cy) < c.ry - 6; return ((x - c.cx) / c.rx) ** 2 + ((y - c.cy) / c.ry) ** 2 < .92; };
+  const cvB = $('#cvB');
+  cvB.addEventListener('pointerdown', e => {
+    const p = SL.ptr(e, cvB);
+    const it = [...bld.items].reverse().find(i => Math.hypot(i.x - p.x, i.y - p.y) < (i.k === 'nucleus' || i.k === 'vacuole' ? 34 : 18));
+    if (it) { bld.drag = { item: it, dx: it.x - p.x, dy: it.y - p.y }; }
+    else { const t = BL.tray.find(t => Math.abs(t.x - p.x) < t.w / 2 && Math.abs(t.y - p.y) < t.h / 2); if (t) { const item = { k: t.k, x: p.x, y: p.y, rot: Math.random() * 3, isNew: true }; bld.items.push(item); bld.drag = { item, dx: 0, dy: 0 }; } }
+    if (bld.drag) { cvB.setPointerCapture(e.pointerId); e.preventDefault(); }
+  });
+  cvB.addEventListener('pointermove', e => { const p = SL.ptr(e, cvB); if (bld.drag) { bld.drag.item.x = p.x + bld.drag.dx; bld.drag.item.y = p.y + bld.drag.dy; } else { const t = BL.tray.find(t => Math.abs(t.x - p.x) < t.w / 2 && Math.abs(t.y - p.y) < t.h / 2); const it = bld.items.find(i => Math.hypot(i.x - p.x, i.y - p.y) < 18); cvB.style.cursor = t || it ? 'grab' : 'default'; } });
+  const endDrag = () => { if (!bld.drag) return; const it = bld.drag.item; if (!inCell(it.x, it.y)) bld.items = bld.items.filter(i => i !== it); it.isNew = false; bld.drag = null; };
+  cvB.addEventListener('pointerup', endDrag); cvB.addEventListener('pointercancel', endDrag);
+  cvB.style.touchAction = 'none';
+  function drawIcon(ctx, k, x, y, s, rot) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot || 0); ctx.scale(s, s);
+    const C = BT[k][1];
+    switch (k) {
+      case 'nucleus': ctx.fillStyle = '#2a1f63'; ctx.strokeStyle = '#a78bfa'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.ellipse(0, 0, 28, 24, 0, 0, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#6d28d9'; ctx.beginPath(); ctx.arc(6, -4, 8, 0, 7); ctx.fill(); break;
+      case 'rer': ctx.lineCap = 'round'; for (let i = 0; i < 3; i++) { ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(0, 18, 14 + i * 7, -2.5, -.6); ctx.stroke(); ctx.fillStyle = '#fcd34d'; for (let a = -2.5; a < -.6; a += .25) { ctx.beginPath(); ctx.arc(Math.cos(a) * (17.5 + i * 7), 18 + Math.sin(a) * (17.5 + i * 7), 1.3, 0, 7); ctx.fill(); } } break;
+      case 'ser': ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-14, -8); ctx.quadraticCurveTo(-4, 4, 6, -6); ctx.quadraticCurveTo(12, -10, 14, 6); ctx.moveTo(-4, 0); ctx.lineTo(-8, 12); ctx.stroke(); break;
+      case 'golgi': ctx.lineCap = 'round'; ['#a3e635', '#facc15', '#fbbf24', '#f59e0b'].forEach((c, i) => { ctx.strokeStyle = c; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(-15, -6 + i * 6); ctx.quadraticCurveTo(0, -12 + i * 6, 15, -6 + i * 6); ctx.stroke(); }); break;
+      case 'mito': ctx.fillStyle = '#c2410c'; ctx.strokeStyle = '#fdba74'; ctx.lineWidth = 1.5; rr(ctx, -16, -7, 32, 14, 7); ctx.fill(); ctx.stroke(); ctx.strokeStyle = '#fed7aa'; ctx.lineWidth = 1; for (let i = -10; i <= 10; i += 5) { ctx.beginPath(); ctx.moveTo(i, i % 2 ? -5 : 5); ctx.lineTo(i, 0); ctx.stroke(); } break;
+      case 'lyso': ctx.fillStyle = '#be185d'; ctx.strokeStyle = '#fbcfe8'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, 9, 0, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#500724'; [[-3, -2], [3, 2], [0, 4]].forEach(([a, b]) => { ctx.beginPath(); ctx.arc(a, b, 1.5, 0, 7); ctx.fill(); }); break;
+      case 'perox': ctx.fillStyle = '#4d7c0f'; ctx.strokeStyle = '#d9f99d'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, 8, 0, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#365314'; ctx.fillRect(-3, -3, 6, 6); break;
+      case 'vesicle': ctx.fillStyle = '#7c2d12'; ctx.strokeStyle = '#fb923c'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 7, 0, 7); ctx.fill(); ctx.stroke(); break;
+      case 'centro': ctx.fillStyle = 'rgba(250,204,21,.25)'; ctx.beginPath(); ctx.arc(0, 0, 12, 0, 7); ctx.fill(); ctx.fillStyle = '#facc15'; ctx.fillRect(-8, -2.5, 12, 5); ctx.fillRect(2, -6, 5, 12); break;
+      case 'cyto': ctx.strokeStyle = '#34d399'; ctx.lineWidth = 1.5; for (let i = 0; i < 5; i++) { const a = i * 1.26; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * 16, Math.sin(a) * 16); ctx.stroke(); } ctx.strokeStyle = '#f87171'; ctx.beginPath(); ctx.moveTo(-14, 10); ctx.lineTo(14, 12); ctx.stroke(); break;
+      case 'chloro': ctx.fillStyle = '#15803d'; ctx.strokeStyle = '#bbf7d0'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(0, 0, 15, 8, 0, 0, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#4ade80'; for (let i = -8; i <= 8; i += 8) ctx.fillRect(i - 2.5, -4, 5, 8); break;
+      case 'vacuole': ctx.fillStyle = '#1e4f6e'; ctx.strokeStyle = '#7dd3fc'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(0, 0, 34, 26, 0, 0, 7); ctx.fill(); ctx.stroke(); break;
+    }
+    ctx.restore();
+  }
+  function drawB() {
+    const { ctx, w, h } = BB; ctx.clearRect(0, 0, w, h); if (!BL) return; const job = JOBS[bld.job];
+    // tray
+    ctx.fillStyle = 'rgba(15,23,41,.9)'; ctx.fillRect(BL.trayB.x, BL.trayB.y, BL.trayB.w, BL.trayB.h);
+    BL.tray.forEach(t => { ctx.fillStyle = '#131d33'; ctx.strokeStyle = '#2a3a5c'; rr(ctx, t.x - t.w / 2, t.y - t.h / 2, t.w, t.h, 8); ctx.fill(); ctx.stroke(); const big = t.k === 'nucleus' || t.k === 'vacuole'; drawIcon(ctx, t.k, t.x, t.y - 6, big ? .55 : .85); ctx.fillStyle = '#93a1bd'; ctx.font = '600 9px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(BT[t.k][0], t.x, t.y + t.h / 2 - 5); });
+    // cell
+    const c = BL.cell;
+    if (job.plant) { ctx.fillStyle = '#4d7c0f'; rr(ctx, c.cx - c.rx - 10, c.cy - c.ry - 10, c.rx * 2 + 20, c.ry * 2 + 20, 18); ctx.fill(); ctx.fillStyle = '#0e2236'; rr(ctx, c.cx - c.rx, c.cy - c.ry, c.rx * 2, c.ry * 2, 12); ctx.fill(); ctx.strokeStyle = '#5eead4'; ctx.lineWidth = 3; ctx.stroke(); }
+    else { ctx.fillStyle = '#0e2236'; ctx.beginPath(); ctx.ellipse(c.cx, c.cy, c.rx, c.ry, 0, 0, 7); ctx.fill(); ctx.strokeStyle = '#5eead4'; ctx.lineWidth = 4; ctx.stroke(); }
+    ctx.fillStyle = '#5f6d8a'; ctx.font = '600 11px Inter, sans-serif'; ctx.textAlign = 'center'; if (!bld.items.length) ctx.fillText('Drag organelles from the tray into the cell', c.cx, c.cy);
+    // items: big ones first
+    const order = [...bld.items].sort((a, b) => (b.k === 'vacuole') - (a.k === 'vacuole') || (b.k === 'nucleus') - (a.k === 'nucleus'));
+    order.forEach(it => { const bad = bld.drag && bld.drag.item === it && !inCell(it.x, it.y); ctx.globalAlpha = bad ? .45 : 1; drawIcon(ctx, it.k, it.x, it.y, 1, it.k === 'mito' || it.k === 'chloro' || it.k === 'rer' ? it.rot : 0); ctx.globalAlpha = 1; });
+    // counts
+    const cnt = {}; bld.items.forEach(i => cnt[i.k] = (cnt[i.k] || 0) + 1);
+    ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillStyle = '#93a1bd';
+    const parts = Object.entries(cnt).map(([k, n]) => `${BT[k][0]} ×${n}`); const lines = ['']; const maxW = w - (BL.narrow ? 20 : 224);
+    parts.forEach(p => { const t = lines[lines.length - 1]; if (ctx.measureText(t + '  ·  ' + p).width > maxW && t) lines.push(p); else lines[lines.length - 1] = t ? t + '  ·  ' + p : p; });
+    lines.forEach((l, i) => ctx.fillText(l, BL.narrow ? 10 : 214, h - 8 - (lines.length - 1 - i) * 13));
+  }
+  $('#bCheck').onclick = () => {
+    const job = JOBS[bld.job], cnt = {}; bld.items.forEach(i => cnt[i.k] = (cnt[i.k] || 0) + 1);
+    const res = job.req.map(([k, mn, mx, why]) => { const n = cnt[k] || 0; return { ok: n >= mn && n <= mx, k, n, mn, mx, why }; });
+    const ok = res.every(r => r.ok) && bld.items.length > 0;
+    $('#bReport').innerHTML = `<b style="color:${ok ? 'var(--ok)' : 'var(--bad)'}">${ok ? 'Viable: this cell can do its job.' : 'Not viable yet.'}</b><ul class="req">${res.map(r => `<li><span class="${r.ok ? 'ok' : 'no'}">${r.ok ? '✓' : '✗'}</span><span><b>${BT[r.k][0]}</b> ${r.mx === 0 ? 'none' : r.mx >= 99 ? '≥ ' + r.mn : r.mn === r.mx ? 'exactly ' + r.mn : r.mn + '–' + r.mx} (you have ${r.n}): ${r.why}</span></li>`).join('')}</ul>`;
+    if (ok) { SL.toast(`${job.name}: viable!`, 'ok'); if (bld.job === 'acinar') ch.done('acinar'); if (bld.job === 'rbc') ch.done('rbc'); }
+  };
+
+  /* ---------------- quiz ---------------- */
+  SL.quiz('#quiz', [
+    { q: 'Which organelle would be most abundant in a cell that secretes large amounts of protein, such as a pancreatic acinar cell?', options: ['Smooth ER', 'Rough ER', 'Lysosomes', 'Peroxisomes'], answer: 1, why: 'Secreted proteins are made by ribosomes on the rough ER, then packaged by the Golgi.' },
+    { q: 'Which molecule crosses a pure phospholipid bilayer most easily?', options: ['Glucose', 'Na⁺', 'O₂', 'ATP'], answer: 2, why: 'Small, non-polar molecules such as O₂ and CO₂ dissolve in the hydrophobic core. Ions and large polar molecules need proteins.' },
+    { q: 'For each ATP hydrolysed, the Na⁺/K⁺-ATPase moves:', options: ['2 Na⁺ out and 3 K⁺ in', '3 Na⁺ out and 2 K⁺ in', '3 Na⁺ in and 2 K⁺ out', '1 Na⁺ out and 1 K⁺ in'], answer: 1, why: '3 Na⁺ out and 2 K⁺ in, a net transfer of one positive charge out per cycle (electrogenic).' },
+    { q: 'Why does facilitated diffusion through carriers show a maximum rate?', options: ['The membrane runs out of lipid', 'All carriers become occupied (saturation)', 'ATP runs out', 'The concentration gradient reverses'], answer: 1, why: 'Carriers have a finite number of binding sites and a finite turnover rate, giving Michaelis–Menten saturation.' },
+    { q: 'A red blood cell is placed in 0.3 % NaCl (≈ 100 mOsm/L). What happens?', options: ['It crenates', 'Nothing', 'It swells and lyses', 'It plasmolyses'], answer: 2, why: 'The solution is strongly hypotonic; water enters and the cell swells beyond its lysis limit (≈ 150 mOsm/L).' },
+    { q: 'Why does a plant cell not burst in pure water?', options: ['Its vacuole pumps water out', 'The cell wall resists expansion, building turgor pressure', 'Its membrane is impermeable to water', 'Chloroplasts absorb the water'], answer: 1, why: 'Turgor pressure (Ψp) rises until Ψs + Ψp equals the water potential outside, so net entry stops.' },
+    { q: 'Which pair of organelles both have a double membrane and their own DNA?', options: ['Nucleus and Golgi', 'Mitochondria and chloroplasts', 'Lysosomes and peroxisomes', 'Rough and smooth ER'], answer: 1, why: 'Mitochondria and chloroplasts descend from endosymbiotic bacteria: double membranes, circular DNA and 70S ribosomes.' },
+    { q: 'A lysosomal enzyme lacking its mannose-6-phosphate tag will most likely be:', options: ['Delivered normally to lysosomes', 'Secreted from the cell', 'Kept in the nucleus', 'Degraded by peroxisomes'], answer: 1, why: 'Without M6P it is not captured by M6P receptors in the trans-Golgi network and follows the default secretory route (I-cell disease).' },
+    { q: 'Which structure is found in animal cells but not in most flowering-plant cells?', options: ['Golgi apparatus', 'Mitochondria', 'Centrioles', 'Peroxisomes'], answer: 2, why: 'Higher plants organise their spindle without centrioles.' },
+    { q: 'The solute potential of a 0.3 mol/L solution at 25 °C (Ψs = −CRT) is about:', options: ['−0.07 MPa', '−0.74 MPa', '−7.4 MPa', '+0.74 MPa'], answer: 1, why: 'Ψs = −(300 mol/m³)(8.314 J mol⁻¹ K⁻¹)(298 K) ≈ −7.4 × 10⁵ Pa = −0.74 MPa.' },
+  ]);
+
+  /* ---------------- loop ---------------- */
+  setTrMode('simple');
+  const els = { cell: $('#cellStage'), tr: $('#trStage'), os: $('#osStage'), sec: $('#secStage'), b: $('#bStage') };
+  SL.loop(dt => {
+    if (document.hidden) return;
+    if (visible(els.cell)) cellFrame(dt);
+    if (visible(els.tr)) { trStep(dt); drawTr(); }
+    osStep(dt); if (visible(els.os)) drawOs(dt);
+    if (visible(els.sec)) drawSec(dt);
+    if (visible(els.b)) drawB();
+  }).start();
+})();
+</script>
+</body>
+</html>
