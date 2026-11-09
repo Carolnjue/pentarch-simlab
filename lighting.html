@@ -23,7 +23,9 @@
   .lights button{all:unset;cursor:pointer;text-align:center;padding:7px 2px;border-radius:9px;font-size:.72rem;font-weight:600;color:var(--muted);background:var(--bg2);border:1px solid var(--line);position:relative}
   .lights button i.dot{display:block;width:10px;height:10px;border-radius:50%;margin:0 auto 3px;box-shadow:0 0 8px currentColor}
   .lights button.on{border-color:var(--accent);color:var(--text);background:color-mix(in srgb,var(--accent) 16%,var(--bg2))}
-  .lights button.off{opacity:.45}
+  .lights button.off{color:var(--dim);border-style:dashed}
+  .lights button.off i.dot{opacity:.35;box-shadow:none}
+  .chalbox .stat .k{color:var(--muted)}
   .lcap{margin-top:10px;font-size:.86rem;line-height:1.55;color:var(--muted);background:var(--bg2);border:1px solid var(--line2);border-left:3px solid var(--accent);border-radius:10px;padding:9px 12px}
   .lcap b{color:var(--text)}
   @media (pointer:coarse){.presets .btn{padding:9px 11px}.lights button{padding:9px 2px}}
@@ -50,8 +52,8 @@
   <section class="lab wide-controls">
     <div style="min-width:0">
       <div class="stage lstage" id="lstage">
-        <div class="pane"><canvas id="plan" aria-label="Studio floor plan: drag the lights"></canvas><span class="tag">Floor plan · top view · 0.5 m grid</span></div>
-        <div class="pane"><canvas id="view" aria-label="Camera view of the lit subject"></canvas>
+        <div class="pane"><canvas id="plan" role="img" aria-label="Studio floor plan, top view. Drag a light to move it; or choose a light with the light buttons, focus this plan and use the arrow keys (Shift for bigger steps)."></canvas><span class="tag">Floor plan · top view · 0.5 m grid</span></div>
+        <div class="pane"><canvas id="view" role="img" aria-label="Camera view of the lit subject"></canvas>
           <div class="hud"><span class="readout">Pattern <b id="hPat">–</b></span><span class="readout">Key:fill <b id="hRatio">–</b></span></div>
           <span class="tag">Camera view</span></div>
       </div>
@@ -145,7 +147,7 @@
     <div class="tabpanel prose">
       <h3>Challenge: match the reference look</h3>
       <div class="chalbox">
-        <canvas id="target" width="200" height="240" aria-label="Target lighting"></canvas>
+        <canvas id="target" width="200" height="240" role="img" aria-label="Reference lighting look to recreate"></canvas>
         <div>
           <div class="row2"><div><label for="tSel">Reference</label><select id="tSel"></select></div><div><label>&nbsp;</label><button class="btn sm" id="tReveal" style="width:100%"><i data-lucide="eye"></i> Reveal setup</button></div></div>
           <p class="small muted" style="margin:4px 0">Recreate the reference image: move, switch and adjust the lights (and head turn, backdrop and exposure). The score compares the two images pixel by pixel (brightness and colour), live.</p>
@@ -500,7 +502,7 @@
     const az = Math.atan2(k.x, k.z) * 180 / Math.PI, rel = az - S.yaw, el = Math.atan2(k.h - HEADY, Math.hypot(k.x, k.z)) * 180 / Math.PI, a = Math.abs(rel);
     let p = a < 12 && el > 20 ? 'Butterfly' : a < 12 ? 'Flat / frontal' : a < 38 ? 'Loop' : a < 62 ? (el > 15 ? 'Rembrandt' : 'Loop / Rembrandt') : a < 110 ? 'Split' : 'Rim';
     if (Math.abs(S.yaw) > 10 && a < 110 && a >= 12) { const broad = Math.sign(k.x) !== Math.sign(S.yaw); p += broad ? ' · broad' : ' · short'; }
-    return `${p} (${Math.round(rel)}°, ${Math.round(el)}° up)`;
+    return `${p} (${String(Math.round(rel)).replace("-", "−")}°, ${String(Math.round(el)).replace("-", "−")}° up)`;
   }
   function autoExpose() { const Ls = lightData(S); let E = 0; Ls.forEach(L => { if (L.id === 'key' || L.id === 'fill') E += incident(L); }); if (E <= 0) return; const n = fNum(E); let bi = 0, bd = 1e9; APS.forEach((a, i) => { const d = Math.abs(Math.log2(a / n)); if (d < bd) { bd = d; bi = i; } }); S.api = bi; }
 
@@ -509,7 +511,7 @@
   $('#lGel').innerHTML = Object.entries(GELS).map(([k, g]) => `<option value="${k}">${g[0]}</option>`).join('');
   $('#presets').innerHTML = Object.entries(PRESETS).map(([k, p]) => `<button class="btn sm" data-k="${k}">${p.n}</button>`).join('');
   $('#presets').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { loadPreset(b.dataset.k); SL.toast(`Preset: <b>${PRESETS[b.dataset.k].n}</b>`, 'ok', 1500); } });
-  function renderLightBtns() { $('#lights').innerHTML = NAMES.map(([id, n, c]) => `<button data-id="${id}" class="${id === sel ? 'on' : ''} ${S.L[id] && S.L[id].on ? '' : 'off'}"><i class="dot" style="color:${c};background:${c}"></i>${n}</button>`).join(''); }
+  function renderLightBtns() { const fid = document.activeElement && document.activeElement.closest && document.activeElement.closest('#lights button') ? document.activeElement.dataset.id : null; $('#lights').innerHTML = NAMES.map(([id, n, c]) => `<button data-id="${id}" class="${id === sel ? 'on' : ''} ${S.L[id] && S.L[id].on ? '' : 'off'}" aria-pressed="${id === sel}"><i class="dot" style="color:${c};background:${c}"></i>${n}${S.L[id] && S.L[id].on ? '' : '<span class="sr-only"> (off)</span>'}</button>`).join(''); if (fid) { const n = $('#lights').querySelector(`[data-id="${fid}"]`); if (n) n.focus(); } }
   $('#lights').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { sel = b.dataset.id; syncUI(); } });
   function syncUI() {
     const l = S.L[sel];
@@ -544,6 +546,15 @@
   pc.addEventListener('pointerdown', e => { const p = SL.ptr(e, pc), id = pickLight(p); if (!id) return; e.preventDefault(); pc.setPointerCapture(e.pointerId); sel = id; drag = id; pc.style.cursor = 'grabbing'; syncUI(); dirty = true; });
   pc.addEventListener('pointermove', e => { const p = SL.ptr(e, pc); if (!drag) { pc.style.cursor = pickLight(p) ? 'grab' : 'default'; return; } const M = pm(); const l = S.L[drag]; manual = true; l.x = clamp(M.ix(p.x), -2.6, 2.6); l.z = clamp(M.iz(p.y), -1.35, 3.2); if (Math.hypot(l.x, l.z) < 0.35) { const a = Math.atan2(l.z, l.x); l.x = Math.cos(a) * 0.35; l.z = Math.sin(a) * 0.35; } dirty = true; });
   const endDrag = () => { drag = null; pc.style.cursor = 'grab'; };
+  pc.tabIndex = 0;
+  pc.addEventListener('keydown', e => {   // keyboard: arrows move the selected light (Shift = bigger steps), PageUp/PageDown change its height
+    const k = e.key; if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown'].includes(k) || !sel || !S.L[sel]) return;
+    e.preventDefault(); const l = S.L[sel], M = pm(), st = e.shiftKey ? 0.5 : 0.1, sy = Math.sign(M.Y(1) - M.Y(0)) || 1;
+    if (k === 'PageUp' || k === 'PageDown') l.h = clamp(l.h + (k === 'PageUp' ? 0.05 : -0.05), 0.3, 3.2);
+    else { manual = true; if (k === 'ArrowLeft') l.x -= st; if (k === 'ArrowRight') l.x += st; if (k === 'ArrowUp') l.z -= st * sy; if (k === 'ArrowDown') l.z += st * sy;
+      l.x = clamp(l.x, -2.6, 2.6); l.z = clamp(l.z, -1.35, 3.2); if (Math.hypot(l.x, l.z) < 0.35) { const a = Math.atan2(l.z, l.x); l.x = Math.cos(a) * 0.35; l.z = Math.sin(a) * 0.35; } }
+    syncUI(); dirty = true;
+  });
   pc.addEventListener('pointerup', endDrag); pc.addEventListener('pointercancel', endDrag);
   pc.addEventListener('wheel', e => { const id = pickLight(SL.ptr(e, pc)); if (!id) return; e.preventDefault(); S.L[id].h = clamp(S.L[id].h - Math.sign(e.deltaY) * 0.05, 0.3, 3.2); sel = id; syncUI(); dirty = true; }, { passive: false });
 
@@ -560,7 +571,7 @@
     renderTo(timg, tgt); tctx.putImageData(timg, 0, 0); tgtLum = small(timg.data); dirty = true;
   }
   $('#tSel').addEventListener('change', e => setTarget(e.target.value));
-  $('#tReveal').addEventListener('click', () => { const k = $('#tSel').value; SL.modal(`<h3>Reference setup</h3><p>This is the <b>${PRESETS[k].n}</b> preset (head turn ${PRESETS[k].yaw}°, ${PRESETS[k].bd} backdrop). Load it from the Presets panel to compare with your version.</p>`); });
+  $('#tReveal').addEventListener('click', () => { const k = $('#tSel').value; SL.modal(`<h3>Reference setup</h3><p>This is the <b>${PRESETS[k].n}</b> preset (head turn ${String(PRESETS[k].yaw).replace("-", "−")}°, ${PRESETS[k].bd} backdrop). Load it from the Presets panel to compare with your version.</p>`); });
   function small(data) { const G = 25, out = new Float32Array(G * 30 * 3); for (let j = 0; j < 30; j++) for (let i = 0; i < G; i++) { let r = 0, g = 0, b = 0; for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const p = ((j * 8 + y) * W + i * 8 + x) * 4; r += data[p]; g += data[p + 1]; b += data[p + 2]; } const k = (j * G + i) * 3; out[k] = r / 64 / 255; out[k + 1] = g / 64 / 255; out[k + 2] = b / 64 / 255; } return out; }
   function similarity() { if (!tgtLum) return 0; const cur = small(img.data); let e = 0; for (let i = 0; i < cur.length; i++) e += (cur[i] - tgtLum[i]) ** 2; const rmse = Math.sqrt(e / cur.length); return clamp(100 * (1 - rmse / 0.25), 0, 100); }
   const CHECKS = [

@@ -35,6 +35,7 @@
   .shot{flex:none;width:190px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px;font:500 .7rem var(--mono);color:var(--muted)}
   .shot canvas{width:100%;border-radius:6px;display:block;margin-bottom:5px}
   .shot b{color:var(--text)}
+  .cam-meters>.panel{margin:0}
   .chal{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
   .chal .card{padding:14px;cursor:pointer}
   .chal .card.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
@@ -58,7 +59,7 @@
     .lab.wide-controls>.cam-left>.cstage{order:0} .cam-left>.why{order:1} .lab.wide-controls>aside{order:2} .cam-left>.strip{order:3} .cam-left>.cam-meters{order:4}
   }
   @media (pointer:coarse){.wbchips button{padding:9px 10px;font-size:.78rem}.wbchips{gap:6px}}
-  @media (max-width:600px){.cstage .hud .readout{font-size:.66rem;padding:3px 6px}.shot{white-space:normal}.shutter-btn{width:46px;height:46px;right:8px}.vf{font-size:.66rem;gap:8px}}
+  @media (max-width:600px){.cstage .hud .readout{font-size:.66rem;padding:3px 6px}.cstage .hud .readout:nth-child(3){display:none}.shot{white-space:normal}.shutter-btn{width:46px;height:46px;right:8px}.vf{font-size:.66rem;gap:8px}}
 </style>
 </head>
 <body data-page="camera">
@@ -69,7 +70,7 @@
   <section class="lab wide-controls">
     <div style="min-width:0" class="cam-left">
       <div class="stage cstage" id="cstage">
-        <canvas id="cv" aria-label="Camera live view of a Nairobi street"></canvas>
+        <canvas id="cv" role="img" aria-label="Camera live view of a Nairobi street: a portrait subject in front of shops, with a passing matatu and cyclist"></canvas>
         <div class="hud"><span class="readout">EV<sub>100</sub> scene <b id="hEV">12</b></span><span class="readout">Exposure <b id="hDelta">0.0</b> stops</span><span class="readout">Subject blur <b id="hBlur">0</b> px</span></div>
         <div class="vf" id="vf"></div>
         <button class="shutter-btn" id="shoot" aria-label="Take photo" title="Take photo"></button>
@@ -78,8 +79,8 @@
       <div class="why" id="why" aria-live="off"></div>
       <div class="strip" id="strip"><div class="shot" style="width:auto;color:var(--dim);padding:10px 12px"><i data-lucide="images" style="width:14px;height:14px;vertical-align:-2px"></i> Your photos appear here. Tap the image to focus on that point; press the round button to take a photo.</div></div>
       <div class="grid2 cam-meters" style="margin-top:8px">
-        <div class="panel"><h3><i data-lucide="bar-chart-3"></i> Histogram &amp; light meter</h3><canvas id="hist"></canvas><div style="height:8px"></div><canvas id="meterCv"></canvas></div>
-        <div class="panel"><h3><i data-lucide="ruler"></i> Depth-of-field calculator</h3><canvas id="dofCv"></canvas>
+        <div class="panel"><h3><i data-lucide="bar-chart-3"></i> Histogram &amp; light meter</h3><canvas id="hist" role="img" aria-label="RGB and luminance histogram of the live view"></canvas><div style="height:8px"></div><canvas id="meterCv" role="img" aria-label="Exposure light meter scale from −3 to +3 stops"></canvas></div>
+        <div class="panel"><h3><i data-lucide="ruler"></i> Depth-of-field calculator</h3><canvas id="dofCv" role="img" aria-label="Depth-of-field band on a distance scale, with the subject, cyclist and shops marked"></canvas>
           <div class="stats" style="margin-top:8px"><div class="stat"><div class="k">Near limit</div><div class="v" id="dNear">–</div></div><div class="stat"><div class="k">Far limit</div><div class="v" id="dFar">–</div></div><div class="stat"><div class="k">Total DoF</div><div class="v" id="dTot">–</div></div><div class="stat"><div class="k">Hyperfocal</div><div class="v" id="dH">–</div></div></div>
         </div>
       </div>
@@ -114,7 +115,7 @@
       </div>
       <div class="panel">
         <h3><i data-lucide="triangle"></i> Exposure triangle</h3>
-        <svg id="tri" viewBox="0 0 320 220"></svg>
+        <svg id="tri" viewBox="0 0 320 220" role="img" aria-label="Exposure triangle linking aperture, shutter speed and ISO to the current settings"></svg>
       </div>
     </aside>
   </section>
@@ -515,7 +516,7 @@
     const k = Math.max(sig > 2 ? Math.min(8, sig / 1.6) : 1, motion > 8 ? Math.min(2.5, motion / 8) : 1);
     const LL = light.ctx;
     if (k === 1 && offs.length === 1) {
-      [C, LL].forEach((X, q) => { X.globalCompositeOperation = q ? 'destination-out' : 'source-over'; X.filter = sig > 0.35 ? `blur(${sig.toFixed(2)}px)` : 'none'; X.drawImage(layer, x0, y0, w, h, x0, y0, w, h); X.filter = 'none'; X.globalCompositeOperation = 'source-over'; });
+      [C, LL].forEach((X, q) => { if (q && !lightsUsed) return; X.globalCompositeOperation = q ? 'destination-out' : 'source-over'; X.filter = sig > 0.35 ? `blur(${sig.toFixed(2)}px)` : 'none'; X.drawImage(layer, x0, y0, w, h, x0, y0, w, h); X.filter = 'none'; X.globalCompositeOperation = 'source-over'; });
       PT('blur', _t0); return;
     }
     // work on a down-sampled copy: motion smear (running average of shifted copies) then defocus blur
@@ -532,14 +533,17 @@
     smc.setTransform(1, 0, 0, 1, 0, 0); smc.clearRect(0, 0, sw + 2, sh + 2);
     smc.filter = `blur(${Math.max(sig / k, k > 1.5 ? 0.6 : 0).toFixed(2)}px)`; smc.drawImage(src, sx, sy, swd, sht, 0, 0, sw, sh); smc.filter = 'none';
     C.imageSmoothingEnabled = true; C.imageSmoothingQuality = 'high'; C.drawImage(small, 0, 0, sw, sh, x0, y0, w, h);
-    LL.globalCompositeOperation = 'destination-out'; LL.drawImage(small, 0, 0, sw, sh, x0, y0, w, h); LL.globalCompositeOperation = 'source-over';   // objects hide the lights behind them
+    if (lightsUsed) { LL.globalCompositeOperation = 'destination-out'; LL.drawImage(small, 0, 0, sw, sh, x0, y0, w, h); LL.globalCompositeOperation = 'source-over'; }   // objects hide the lights behind them
     PT('blur', _t0);
   }
   function samplesFor(maxPx) { const k = maxPx > 8 ? Math.min(2.5, maxPx / 8) : 1; return clamp(Math.ceil(maxPx / k / 1.4), 1, 24); }
   // light buffer: linear, 255 = LMAX x mid-exposure; point-light brightness relative to the ambient scene
   const LMAX = 3, BULBS = [[255, 214, 150], [255, 170, 90], [255, 120, 170], [140, 220, 255]];
   const lightK = () => Math.pow(2, 10.5 - SC().EV) * 0.5 * SC().lights;
+  let lightsUsed = false;   // the light buffer stays empty until lights are drawn: skip occluding and reading it until then
   function drawLights(list, t, Texp) {
+    if (!list.length || !(SC().lights > 0)) return;
+    lightsUsed = true;
     const L = light.ctx; L.globalCompositeOperation = 'lighter';
     const poly = N() >= 2.8;
     list.forEach(p => {
@@ -571,6 +575,7 @@
   // black-body approximation (Tanner Helland), returns linear-ish RGB normalised to G
   function kelvin(K) { const t = K / 100; let r, g, b; if (t <= 66) { r = 255; g = 99.47 * Math.log(t) - 161.12; b = t <= 19 ? 0 : 138.52 * Math.log(t - 10) - 305.04; } else { r = 329.7 * Math.pow(t - 60, -0.1332); g = 288.12 * Math.pow(t - 60, -0.0755); b = 255; } const lr = LIN[clamp(Math.round(r), 0, 255)], lg = LIN[clamp(Math.round(g), 0, 255)], lb = LIN[clamp(Math.round(b), 0, 255)]; return [lr / lg, 1, lb / lg]; }
   const NOISE = new Float32Array(1 << 19); { for (let i = 0; i < NOISE.length; i += 2) { const u = Math.random() || 1e-9, v = Math.random(); const m = Math.sqrt(-2 * Math.log(u)); NOISE[i] = m * Math.cos(6.2832 * v); NOISE[i + 1] = m * Math.sin(6.2832 * v); } }
+  const LUT_R = new Float32Array(256), LUT_G = new Float32Array(256), LUT_B = new Float32Array(256);
   const hist = { l: new Uint32Array(64), r: new Uint32Array(64), g: new Uint32Array(64), b: new Uint32Array(64), clip: 0 };
   const camWB = () => st.wbAuto ? Math.round(SC().K * 0.8 + 5200 * 0.2) : st.wb;
   function pixelPass(tNow) {
@@ -579,26 +584,30 @@
     const gR = ill[0] / wbc[0] * E, gG = E, gB = ill[2] / wbc[2] * E;
     const K = LMAX;
     const lR = dayL[0] / wbc[0] * E * K / 255, lG = E * K / 255, lB = dayL[2] / wbc[2] * E * K / 255;   // light buffer is stored linearly
-    const base = comp.ctx.getImageData(0, 0, RW, RH).data, lt = light.ctx.getImageData(0, 0, RW, RH).data, o = imgOut.data;
+    const base = comp.ctx.getImageData(0, 0, RW, RH).data, lt = lightsUsed ? light.ctx.getImageData(0, 0, RW, RH).data : null, o = imgOut.data;
     // noise: photons per output pixel at ISO 100 for a linear value of 1
-    const P0 = 60000 * S().area, k = ISO() / (100 * P0) * Math.pow(2, Math.max(0, -0)) , rd = 4 * k;
+    const P0 = 60000 * S().area, k = ISO() / (100 * P0), rd = 4 * k;
     const noiseOn = ISO() >= 200 || S().area < 0.5;
     const off = (Math.random() * (NOISE.length - 4 * RW)) | 0, mask = NOISE.length - 1;
     const blinkOn = st.blink && (Math.floor(tNow * 3) % 2 === 0);
     hist.l.fill(0); hist.r.fill(0); hist.g.fill(0); hist.b.fill(0); let clip = 0;
-    for (let i = 0, p = 0; i < o.length; i += 4, p++) {
-      const la = lt[i + 3] * (1 / 255);   // getImageData is un-premultiplied: weight by alpha
-      let r = LIN[base[i]] * gR + lt[i] * la * lR, g = LIN[base[i + 1]] * gG + lt[i + 1] * la * lG, b = LIN[base[i + 2]] * gB + lt[i + 2] * la * lB;
+    // per-frame lookup tables: sRGB byte -> linear x exposure/white-balance gain
+    for (let v = 0; v < 256; v++) { const l = LIN[v]; LUT_R[v] = l * gR; LUT_G[v] = l * gG; LUT_B[v] = l * gB; }
+    const u32 = new Uint32Array(o.buffer, o.byteOffset, o.length >> 2), n = u32.length;
+    const hl = hist.l, hr = hist.r, hg = hist.g, hb = hist.b;
+    for (let p = 0, i = 0; p < n; p++, i += 4) {
+      let r = LUT_R[base[i]], g = LUT_G[base[i + 1]], b = LUT_B[base[i + 2]];
+      const a = lt ? lt[i + 3] : 0;
+      if (a !== 0) { const la = a * (1 / 255); r += lt[i] * la * lR; g += lt[i + 1] * la * lG; b += lt[i + 2] * la * lB; }   // getImageData is un-premultiplied: weight by alpha
       if (noiseOn) {
         const j = (off + p * 2) & mask, nl = NOISE[j], nc = NOISE[(j + 1) & mask], nc2 = NOISE[(j + 7919) & mask];
-        const y = 0.3 * r + 0.6 * g + 0.1 * b, sg = Math.sqrt(Math.max(y, 0) * k + rd * rd);
+        const y = 0.3 * r + 0.6 * g + 0.1 * b, sg = Math.sqrt((y > 0 ? y : 0) * k + rd * rd);
         r += sg * (0.75 * nl + 0.6 * nc); g += sg * (0.8 * nl + 0.35 * nc2); b += sg * (0.75 * nl - 0.6 * nc);
       }
       let R = TONE[r <= 0 ? 0 : r >= 4 ? 4096 : (r * 1024) | 0], G = TONE[g <= 0 ? 0 : g >= 4 ? 4096 : (g * 1024) | 0], B = TONE[b <= 0 ? 0 : b >= 4 ? 4096 : (b * 1024) | 0];
-      const isClip = R >= 254 || G >= 254 || B >= 254; if (isClip) clip++;
-      if (blinkOn && isClip) { R = 255; G = 0; B = 60; }
-      o[i] = R; o[i + 1] = G; o[i + 2] = B; o[i + 3] = 255;
-      if ((p & 3) === 0) { hist.l[(0.2126 * R + 0.7152 * G + 0.0722 * B) >> 2]++; hist.r[R >> 2]++; hist.g[G >> 2]++; hist.b[B >> 2]++; }
+      if (R >= 254 || G >= 254 || B >= 254) { clip++; if (blinkOn) { R = 255; G = 0; B = 60; } }
+      u32[p] = (0xff000000 | (B << 16) | (G << 8) | R) >>> 0;
+      if ((p & 3) === 0) { hl[(0.2126 * R + 0.7152 * G + 0.0722 * B) >> 2]++; hr[R >> 2]++; hg[G >> 2]++; hb[B >> 2]++; }
     }
     hist.clip = clip / (RW * RH);
     octx.putImageData(imgOut, 0, 0);
@@ -611,7 +620,7 @@
     const sd = SC(), Texp = T();
     const C = comp.ctx, L = light.ctx;
     C.setTransform(1, 0, 0, 1, 0, 0); L.setTransform(1, 0, 0, 1, 0, 0);
-    C.clearRect(0, 0, RW, RH); L.clearRect(0, 0, RW, RH);
+    C.clearRect(0, 0, RW, RH); L.clearRect(0, 0, RW, RH); lightsUsed = false;
     const lights = [];
     // estimate motion extents to choose sample counts
     const pv = panV(), panRate = Math.abs(pv), sh = shakeOmega() * PJ.F;
@@ -678,6 +687,7 @@
     document.querySelectorAll('input[type=range]').forEach(r => r.dispatchEvent(new Event('sl-fill')));
     document.querySelectorAll('input[type=range]').forEach(r => { const min = +r.min || 0, max = +r.max || 100; r.style.setProperty('--p', ((r.value - min) / (max - min) * 100) + '%'); });
     updPanels();
+    document.querySelectorAll('#mode button,#wbchips button').forEach(b => b.setAttribute('aria-pressed', b.classList.contains('on')));
   }
   const fdToSlider = d => clamp(Math.log(d / 0.3) / Math.log(100 / 0.3), 0, 1);
   const sliderToFd = v => v >= 0.999 ? 1e6 : 0.3 * Math.pow(100 / 0.3, v);
@@ -805,8 +815,9 @@
     panning: { t: 'Panning shot', icon: 'move-horizontal', d: 'Tick “Pan with the cyclist”. Keep the cyclist sharp (≤ 0.3 %) while the background streaks by at least 2 % of the frame width, exposure within ±1 stop. In bright light you may need an ND filter.' },
   };
   let chal = null;
-  $('#chal').innerHTML = Object.entries(CH).map(([k, c]) => `<div class="card" data-k="${k}"><h4><i data-lucide="${c.icon}"></i>${c.t}<span class="led" style="margin-left:auto" id="led-${k}"></span></h4><p>${c.d}</p></div>`).join('');
-  $('#chal').addEventListener('click', e => { const c = e.target.closest('.card'); if (!c) return; chal = c.dataset.k; $('#chal').querySelectorAll('.card').forEach(x => x.classList.toggle('on', x === c)); $('#cTitle').textContent = CH[chal].t; $('#cDesc').textContent = CH[chal].d; $('#cChecks').innerHTML = ''; if (chal === 'night' && st.scene !== 'night') { st.scene = 'night'; $('#scene').value = 'night'; sync(); } document.querySelector('.cstage').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+  $('#chal').innerHTML = Object.entries(CH).map(([k, c]) => `<div class="card" data-k="${k}" role="button" tabindex="0" aria-pressed="false"><h4><i data-lucide="${c.icon}"></i>${c.t}<span class="led" style="margin-left:auto" id="led-${k}"></span><span class="sr-only" id="ledt-${k}"></span></h4><p>${c.d}</p></div>`).join('');
+  $('#chal').addEventListener('click', e => { const c = e.target.closest('.card'); if (!c) return; chal = c.dataset.k; $('#chal').querySelectorAll('.card').forEach(x => { x.classList.toggle('on', x === c); x.setAttribute('aria-pressed', x === c); }); $('#cTitle').textContent = CH[chal].t; $('#cDesc').textContent = CH[chal].d; $('#cChecks').innerHTML = ''; if (chal === 'night' && st.scene !== 'night') { st.scene = 'night'; $('#scene').value = 'night'; sync(); } document.querySelector('.cstage').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+  $('#chal').addEventListener('keydown', e => { const c = e.target.closest('.card'); if (c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); c.click(); } });
   function evaluate(info, k) {
     const d = delta(), pc = v => (v * 100).toFixed(2) + ' %';
     const inDof = focusOK() || (blurMM(subjDist()) <= S().c);
@@ -823,7 +834,7 @@
     // render a frame exactly now and store it
     render(simT);
     const th = document.createElement('div'); th.className = 'shot';
-    const c = document.createElement('canvas'); c.width = 360; c.height = 240; c.getContext('2d').drawImage(cv, 0, 0, 360, 240);
+    const c = document.createElement('canvas'); c.width = 360; c.height = 240; c.setAttribute('role', 'img'); c.setAttribute('aria-label', `Photo ${shots + 1}`); c.getContext('2d').drawImage(cv, 0, 0, 360, 240);
     th.appendChild(c);
     const d = delta();
     th.insertAdjacentHTML('beforeend', `<b>#${++shots}</b> ${fmtT(TS[st.Ti])} · f/${N()} · ISO ${ISO()} · ${f()} mm<br>${SC().n} · ${(d > 0 ? '+' : '') + d.toFixed(1)} EV${chal ? '' : ''}`);
@@ -831,9 +842,9 @@
     strip.prepend(th); while (strip.children.length > 8) strip.lastElementChild.remove();
     if (chal) {
       const r = evaluate(lastInfo, chal), ok = r.every(x => x[1]);
-      $('#cChecks').innerHTML = r.map(([t, o]) => `<li class="${o ? 'ok' : ''}"><span class="led ${o ? 'on' : 'bad'}"></span>${t}</li>`).join('');
+      $('#cChecks').innerHTML = r.map(([t, o]) => `<li class="${o ? 'ok' : ''}"><span class="led ${o ? 'on' : 'bad'}"></span><span class="sr-only">${o ? 'Pass: ' : 'Not yet: '}</span>${t}</li>`).join('');
       th.insertAdjacentHTML('beforeend', `<br><span style="color:${ok ? 'var(--ok)' : 'var(--warn)'}">${CH[chal].t}: ${ok ? 'passed' : 'not yet'}</span>`);
-      if (ok) { SL.toast(`<b>${CH[chal].t}</b>: challenge complete!`, 'ok', 5000); $('#led-' + chal).className = 'led on'; }
+      if (ok) { SL.toast(`<b>${CH[chal].t}</b>: challenge complete!`, 'ok', 5000); $('#led-' + chal).className = 'led on'; $('#led-' + chal).title = 'Completed'; $('#ledt-' + chal).textContent = '(completed)'; }
       else SL.toast(`${CH[chal].t}: ${r.filter(x => !x[1]).length} check(s) not met. See the Experiments tab.`, 'warn');
     }
   });
