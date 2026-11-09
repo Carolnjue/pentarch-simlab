@@ -1,0 +1,1303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Supply &amp; Demand Market · Pentarch SimLab</title>
+<meta name="description" content="Drag supply and demand curves, add taxes, subsidies, price controls and quotas, measure surplus and deadweight loss, then trade tomatoes in a live double-auction market.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .modebar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-top:22px}
+  .modebar .seg button{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;font-size:.9rem}
+  .modebar .seg svg{width:16px;height:16px}
+  .modebar p{margin:0;color:var(--muted);font-size:.88rem;max-width:560px}
+  .lab[hidden]{display:none}
+  .lab{padding-top:14px}
+  .leftcol{min-width:0}
+  @media (min-width:981px){ .leftcol.sticky{position:sticky;top:calc(var(--hdr) + 12px);align-self:start} }
+  .tip{position:absolute;pointer-events:none;background:rgba(5,9,19,.92);border:1px solid var(--line2);border-radius:8px;padding:6px 9px;font:500 .74rem var(--mono);color:var(--text);white-space:nowrap;display:none;z-index:3;line-height:1.45}
+  .tip b{color:var(--accent)}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.78rem;color:var(--muted);margin:10px 2px 0}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{display:inline-block;width:12px;height:12px;border-radius:3px}
+  .stats.tight{margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(118px,1fr))}
+  .stat .v.pos{color:#34d399} .stat .v.neg{color:#f87171}
+  .stat .sub{font:500 .7rem var(--mono);color:var(--muted)}
+  .ctl select{grid-column:1/-1}
+  .polval[hidden]{display:none}
+  .presets{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .presets .btn{justify-content:flex-start;font-size:.78rem;padding:7px 9px}
+  .hint{font-size:.78rem;color:var(--dim);margin:6px 0 0}
+  .chall{list-style:none;padding:0;margin:0}
+  .chall li{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
+  .chall li .led{margin-top:6px;flex:none}
+  .chall li b{display:block}
+  .chall li.done b{color:#86efac}
+  .chartstage{min-height:0;margin-top:12px}
+  .mini{width:100%;height:170px;display:block;background:#050913;border:1px solid var(--line);border-radius:10px}
+  .ev .btn{flex:1 1 calc(50% - 8px);font-size:.8rem}
+  .role-panel[hidden]{display:none}
+  .kv{display:flex;justify-content:space-between;font-size:.84rem;color:var(--muted);padding:3px 0}
+  .kv b{font-family:var(--mono);color:var(--text);font-weight:600}
+  .tbl-wrap{overflow-x:auto}
+  .disclaimer{font-size:.8rem;color:var(--dim)}
+</style>
+</head>
+<body data-page="market">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <div class="modebar">
+    <div class="seg" id="modeSeg" role="tablist" aria-label="Lab mode">
+      <button class="on" data-mode="curves"><i data-lucide="line-chart"></i> Curve lab</button>
+      <button data-mode="game"><i data-lucide="store"></i> Live market game</button>
+    </div>
+    <p id="modeNote">Drag the curves, rotate them with the white handles, or use the shifters. Add a tax, subsidy, price control or quota and watch the surplus areas change.</p>
+  </div>
+
+  <!-- ===================== (a) CURVE LAB ===================== -->
+  <section class="lab wide-controls" id="labCurves">
+    <div class="leftcol sticky">
+      <div class="stage" id="stageC" style="height:540px">
+        <canvas id="cvC" aria-label="Supply and demand diagram"></canvas>
+        <div class="hud">
+          <span class="readout">P* <b id="hP">100</b> KES/kg</span>
+          <span class="readout">Q* <b id="hQ">50</b> t/day</span>
+          <span class="readout" id="hPol" style="display:none"></span>
+        </div>
+        <div class="tip" id="tipC"></div>
+      </div>
+      <div class="legend" id="legendC">
+        <span><i style="background:rgba(96,165,250,.55)"></i>Consumer surplus</span>
+        <span><i style="background:rgba(52,211,153,.55)"></i>Producer surplus</span>
+        <span><i style="background:rgba(167,139,250,.6)"></i>Tax revenue / quota rent</span>
+        <span><i style="background:rgba(239,68,68,.65)"></i>Deadweight loss</span>
+        <span><i style="background:rgba(250,204,21,.45)"></i>Total revenue P×Q</span>
+      </div>
+      <div class="stats tight" id="statsC">
+        <div class="stat"><div class="k">Consumer surplus</div><div class="v" id="sCS">0</div><div class="sub">KES '000/day</div></div>
+        <div class="stat"><div class="k">Producer surplus</div><div class="v" id="sPS">0</div><div class="sub">KES '000/day</div></div>
+        <div class="stat"><div class="k" id="kGov">Gov. revenue</div><div class="v" id="sGov">0</div><div class="sub" id="subGov">KES '000/day</div></div>
+        <div class="stat"><div class="k">Deadweight loss</div><div class="v" id="sDWL">0</div><div class="sub">KES '000/day</div></div>
+        <div class="stat"><div class="k">Total surplus</div><div class="v" id="sTS">0</div><div class="sub" id="subTS">max 0</div></div>
+        <div class="stat"><div class="k" id="kInc">Buyers' share</div><div class="v" id="sInc">—</div><div class="sub" id="subInc">of the tax</div></div>
+        <div class="stat"><div class="k">Elasticity Ed</div><div class="v" id="sEd">—</div><div class="sub" id="subEd">at the marked point</div></div>
+        <div class="stat"><div class="k">Elasticity Es</div><div class="v" id="sEs">—</div><div class="sub">supply, at E</div></div>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="spline"></i> Curves</h3>
+        <div class="seg" id="formSeg" style="margin-bottom:8px"><button class="on" data-f="lin">Linear</button><button data-f="ce">Constant elasticity</button></div>
+        <div id="linCtl">
+          <div class="ctl"><label for="aD">Demand choke price (P-intercept)</label><output></output><input type="range" id="aD" min="100" max="360" step="1" value="180"></div>
+          <div class="ctl"><label for="bD">Demand slope (KES per tonne)</label><output></output><input type="range" id="bD" min="0.3" max="6" step="0.05" value="1.6"></div>
+          <div class="ctl"><label for="aS">Supply intercept (min. price)</label><output></output><input type="range" id="aS" min="0" max="120" step="1" value="40"></div>
+          <div class="ctl"><label for="bS">Supply slope (KES per tonne)</label><output></output><input type="range" id="bS" min="0.3" max="6" step="0.05" value="1.2"></div>
+        </div>
+        <div id="ceCtl" hidden>
+          <div class="ctl"><label for="eD">Demand elasticity |Ed|</label><output></output><input type="range" id="eD" min="0.2" max="3" step="0.05" value="1.25"></div>
+          <div class="ctl"><label for="eS">Supply elasticity Es</label><output></output><input type="range" id="eS" min="0.2" max="3" step="0.05" value="1.65"></div>
+          <p class="hint">Curves $Q_d = A P^{-\varepsilon_d}$ and $Q_s = B P^{\varepsilon_s}$, calibrated through (50 t, KES 100). Consumer surplus is counted up to KES 1,000/kg.</p>
+        </div>
+        <label class="toggle">Shade surplus areas <input type="checkbox" id="tSur" checked></label>
+        <label class="toggle">Elasticity &amp; total revenue <input type="checkbox" id="tEl"></label>
+        <label class="toggle">Show original curves after shifts <input type="checkbox" id="tBase" checked></label>
+      </div>
+
+      <div class="panel">
+        <h3><i data-lucide="move-horizontal"></i> Shifters</h3>
+        <div class="panel-title" style="margin-top:0">Demand (buyers)</div>
+        <div class="ctl"><label for="inc">Household income</label><output></output><input type="range" id="inc" min="-30" max="30" step="1" value="0"></div>
+        <div class="ctl"><label for="good">Type of good</label><select id="good"><option value="normal">Normal good (demand rises with income)</option><option value="inferior">Inferior good (demand falls with income)</option></select></div>
+        <div class="ctl"><label for="pref">Tastes &amp; preferences</label><output></output><input type="range" id="pref" min="-5" max="5" step="0.5" value="0"></div>
+        <div class="ctl"><label for="buyers">Number of buyers</label><output></output><input type="range" id="buyers" min="-40" max="40" step="1" value="0"></div>
+        <div class="panel-title">Both sides</div>
+        <div class="ctl"><label for="expct">Expected future price</label><output></output><input type="range" id="expct" min="-5" max="5" step="0.5" value="0"></div>
+        <div class="panel-title">Supply (sellers)</div>
+        <div class="ctl"><label for="cost">Input costs (fuel, fertiliser)</label><output></output><input type="range" id="cost" min="-30" max="60" step="1" value="0"></div>
+        <div class="ctl"><label for="tech">Technology &amp; growing conditions</label><output></output><input type="range" id="tech" min="-5" max="5" step="0.5" value="0"></div>
+        <div class="ctl"><label for="sellers">Number of sellers</label><output></output><input type="range" id="sellers" min="-50" max="50" step="1" value="0"></div>
+        <div class="btn-row" style="margin-top:8px"><button class="btn sm" id="clearShift"><i data-lucide="eraser"></i> Clear shifts</button></div>
+      </div>
+
+      <div class="panel">
+        <h3><i data-lucide="landmark"></i> Government policy</h3>
+        <div class="seg" id="polSeg">
+          <button class="on" data-p="none">None</button><button data-p="tax">Tax</button><button data-p="sub">Subsidy</button><button data-p="ceil">Ceiling</button><button data-p="floor">Floor</button><button data-p="quota">Quota</button>
+        </div>
+        <div class="ctl polval" data-for="tax"><label for="vTax">Per-unit tax (KES/kg)</label><output></output><input type="range" id="vTax" min="0" max="100" step="1" value="28"></div>
+        <div class="polval" data-for="tax" style="margin:2px 0 4px"><div class="seg" id="taxOnSeg"><button class="on" data-t="sellers">Levied on sellers</button><button data-t="buyers">Levied on buyers</button></div></div>
+        <div class="ctl polval" data-for="sub"><label for="vSub">Per-unit subsidy (KES/kg)</label><output></output><input type="range" id="vSub" min="0" max="80" step="1" value="20"></div>
+        <div class="ctl polval" data-for="ceil"><label for="vCeil">Maximum price (KES/kg)</label><output></output><input type="range" id="vCeil" min="10" max="230" step="1" value="88"></div>
+        <div class="ctl polval" data-for="floor"><label for="vFloor">Minimum price (KES/kg)</label><output></output><input type="range" id="vFloor" min="10" max="230" step="1" value="116"></div>
+        <div class="ctl polval" data-for="quota"><label for="vQuota">Quota (tonnes/day)</label><output></output><input type="range" id="vQuota" min="1" max="115" step="0.5" value="40"></div>
+        <p class="hint" id="polHint">No intervention: the market clears at the equilibrium.</p>
+      </div>
+
+      <div class="panel">
+        <h3><i data-lucide="sparkles"></i> Scenarios</h3>
+        <div class="presets">
+          <button class="btn" data-preset="reset"><i data-lucide="rotate-ccw"></i> Default market</button>
+          <button class="btn" data-preset="drought"><i data-lucide="sun"></i> Drought</button>
+          <button class="btn" data-preset="fuel"><i data-lucide="fuel"></i> Fuel price rise</button>
+          <button class="btn" data-preset="festive"><i data-lucide="gift"></i> Festive demand</button>
+          <button class="btn" data-preset="tax"><i data-lucide="receipt"></i> KES 28 excise</button>
+          <button class="btn" data-preset="ceil"><i data-lucide="arrow-down-to-line"></i> Price ceiling</button>
+          <button class="btn" data-preset="floor"><i data-lucide="arrow-up-to-line"></i> Price floor</button>
+          <button class="btn" data-preset="quota"><i data-lucide="package"></i> Import quota</button>
+          <button class="btn" data-preset="inelastic"><i data-lucide="arrow-down-up"></i> Inelastic + tax</button>
+          <button class="btn" data-preset="elastic"><i data-lucide="waves"></i> Elastic + tax</button>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ===================== (b) LIVE MARKET GAME ===================== -->
+  <section class="lab wide-controls" id="labGame" hidden>
+    <div class="leftcol">
+      <div class="stage" id="stageG" style="height:470px">
+        <canvas id="cvG" aria-label="Animated fresh produce market"></canvas>
+        <div class="hud hud-b">
+          <span class="readout">Day <b id="gDay">1</b></span>
+          <span class="readout">Crates sold <b id="gTr">0</b></span>
+          <span class="readout">Avg price <b id="gAvg">—</b></span>
+          <span class="readout">Equilibrium <b id="gEq">—</b></span>
+        </div>
+        <div class="tip" id="tipG"></div>
+      </div>
+      <div class="stage chartstage" style="height:250px">
+        <canvas id="cvP" aria-label="Real-time trade price chart"></canvas>
+      </div>
+      <div class="legend">
+        <span><i style="background:#facc15;border-radius:50%"></i>Each trade</span>
+        <span><i style="background:#22d3ee;height:3px"></i>Daily average</span>
+        <span><i style="background:rgba(52,211,153,.35)"></i>Competitive equilibrium band</span>
+        <span><i style="background:#f87171;height:3px"></i>Price cap / floor</span>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="user-round-cog"></i> Your role</h3>
+        <div class="seg" id="roleSeg"><button class="on" data-r="observer">Observer</button><button data-r="seller">Stall owner</button><button data-r="regulator">Regulator</button></div>
+        <div class="role-panel" data-role="observer"><p class="hint">Twenty farmers' stalls (one crate each) and twenty buyers with private valuations trade by continuous double auction. Nobody knows the curves, yet prices home in on the equilibrium.</p></div>
+        <div class="role-panel" data-role="seller" hidden>
+          <p class="hint" style="margin-bottom:6px">Your stall (gold) holds 3 crates a day at a cost of KES 3,500 each. Set your asking price.</p>
+          <div class="ctl"><label for="gAsk">Your asking price (KES/crate)</label><output></output><input type="range" id="gAsk" min="2000" max="8000" step="50" value="5200"></div>
+          <div class="kv">Sold today <b id="gSold">0 / 3</b></div>
+          <div class="kv">Profit today <b id="gProfT">KES 0</b></div>
+          <div class="kv">Total profit <b id="gProf">KES 0</b></div>
+        </div>
+        <div class="role-panel" data-role="regulator" hidden>
+          <div class="ctl"><label for="gPol">Policy</label><select id="gPol"><option value="none">No intervention</option><option value="cap">Maximum price (cap)</option><option value="floor">Minimum price (floor)</option><option value="tax">Tax per crate (paid by sellers)</option></select></div>
+          <div class="ctl" id="gPolCtl"><label for="gPolV">Level (KES/crate)</label><output></output><input type="range" id="gPolV" min="0" max="8000" step="50" value="3800"></div>
+          <div class="kv">Unserved buyers (last day) <b id="gUnmet">0</b></div>
+          <div class="kv">Unsold crates (last day) <b id="gUnsold">0</b></div>
+          <div class="kv">Tax collected (total) <b id="gRev">KES 0</b></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="play-circle"></i> Market clock</h3>
+        <div class="btn-row"><button class="btn primary" id="gPlay"><i data-lucide="pause"></i> Pause</button><button class="btn" id="gReset"><i data-lucide="rotate-ccw"></i> New market</button></div>
+        <div class="ctl" style="margin-top:6px"><label for="gSpeed">Speed (offers per second)</label><output></output><input type="range" id="gSpeed" min="2" max="60" step="1" value="14"></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="cloud-lightning"></i> Events</h3>
+        <div class="btn-row ev">
+          <button class="btn" data-ev="drought"><i data-lucide="sun"></i> Drought</button>
+          <button class="btn" data-ev="fuel"><i data-lucide="fuel"></i> Fuel price rise</button>
+          <button class="btn" data-ev="festive"><i data-lucide="gift"></i> Festive season</button>
+          <button class="btn" data-ev="normal"><i data-lucide="sunrise"></i> Back to normal</button>
+        </div>
+        <p class="hint" id="gEvNote">Normal season.</p>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="bar-chart-3"></i> Induced supply &amp; demand</h3>
+        <canvas class="mini" id="cvMini"></canvas>
+        <div class="stats tight" style="margin-top:10px">
+          <div class="stat"><div class="k">Efficiency</div><div class="v" id="gEff">—</div><div class="sub">last day</div></div>
+          <div class="stat"><div class="k">Predicted Q*</div><div class="v" id="gQs">—</div><div class="sub">crates/day</div></div>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ===================== LEARNING TABS ===================== -->
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button><i data-lucide="globe-2"></i> Real world</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>The law of demand and the law of supply</h3>
+      <p>A <b>demand curve</b> shows the quantity buyers are willing and able to purchase at each price, holding everything else constant (<i>ceteris paribus</i>). The <b>law of demand</b> says quantity demanded falls as price rises: the curve slopes down because of the substitution effect (other goods become relatively cheaper) and the income effect (a higher price reduces purchasing power). A <b>supply curve</b> shows the quantity sellers offer at each price; it slopes up because higher prices cover the rising marginal cost of producing more and draw in new producers.</p>
+      <p>In the lab the linear curves are written in inverse form, price as a function of quantity:</p>
+      <div class="eq">$$\text{Demand: } P = a_d - b_d\,Q \qquad\qquad \text{Supply: } P = a_s + b_s\,Q$$</div>
+      <p>The default tomato market has $P = 180 - 1.6Q$ and $P = 40 + 1.2Q$, with $P$ in KES per kg and $Q$ in tonnes per day. Because 1 tonne is 1,000 kg, an area of "KES per kg × tonnes" is measured in <b>thousands of shillings</b> (KES '000).</p>
+
+      <h3>Movements along versus shifts of a curve</h3>
+      <p>A change in the good's own price moves the market <i>along</i> a curve (a change in quantity demanded or supplied). A change in anything else <i>shifts</i> the whole curve (a change in demand or supply):</p>
+      <div class="grid2">
+        <div class="callout"><i data-lucide="shopping-basket"></i><div><b>Demand shifters</b><br>Income (normal goods rise, inferior goods fall), tastes and preferences, the number of buyers, prices of substitutes and complements, and expectations of future prices.</div></div>
+        <div class="callout"><i data-lucide="tractor"></i><div><b>Supply shifters</b><br>Input costs (fuel, fertiliser, wages), technology and growing conditions, the number of sellers, taxes and subsidies, and sellers' expectations of future prices.</div></div>
+      </div>
+      <p>An input-cost rise shifts supply <i>up</i> by the extra cost per unit; better technology or more sellers shift it <i>right</i>. The number of buyers or sellers scales a curve multiplicatively (twice as many farmers offer twice as much at every price), so it also changes the slope.</p>
+
+      <h3>Equilibrium</h3>
+      <p>The market clears where quantity demanded equals quantity supplied. For linear curves:</p>
+      <div class="eq">$$a_d - b_d Q^* = a_s + b_s Q^* \;\Rightarrow\; Q^* = \frac{a_d - a_s}{b_d + b_s}, \qquad P^* = a_d - b_d Q^*$$</div>
+      <p>Above $P^*$ there is excess supply (a surplus) and sellers cut prices; below it there is excess demand (a shortage) and buyers bid prices up. The live market game shows this adjustment emerging from individual offers.</p>
+
+      <h3>Consumer and producer surplus</h3>
+      <p><b>Consumer surplus</b> (CS) is the gap between what buyers would have been willing to pay and what they actually pay, summed over all units: the area below the demand curve and above the price. <b>Producer surplus</b> (PS) is the area above the supply curve and below the price sellers receive.</p>
+      <div class="eq">$$CS = \int_0^{Q} \big(P_d(q) - P_b\big)\,dq, \qquad PS = \int_0^{Q} \big(P_{s,\text{rec}} - P_s(q)\big)\,dq$$</div>
+      <p>For straight lines these are triangles: $CS = \tfrac12 Q^*(a_d - P^*)$ and $PS = \tfrac12 Q^*(P^* - a_s)$. A competitive market maximises total surplus $CS + PS$; any policy that moves quantity away from $Q^*$ creates a <b>deadweight loss</b> (DWL), the value of trades that would have benefited both sides but no longer happen.</p>
+
+      <h3>Elasticity</h3>
+      <p>The price elasticity of demand measures how strongly quantity responds to price:</p>
+      <div class="eq">$$\varepsilon_d = \frac{\%\Delta Q}{\%\Delta P} = \frac{dQ}{dP}\cdot\frac{P}{Q} \qquad\text{(point elasticity)}$$</div>
+      <p>For a discrete change use the <b>midpoint (arc) method</b>, which gives the same answer whichever direction you move:</p>
+      <div class="eq">$$\varepsilon_{\text{arc}} = \frac{(Q_2 - Q_1)\big/\tfrac12(Q_1+Q_2)}{(P_2 - P_1)\big/\tfrac12(P_1+P_2)}$$</div>
+      <p>Demand is <b>elastic</b> when $|\varepsilon_d| &gt; 1$, <b>inelastic</b> when $|\varepsilon_d| &lt; 1$ and <b>unit elastic</b> when $|\varepsilon_d| = 1$. Along a linear demand curve the slope is constant but elasticity is not: $\varepsilon_d = -\frac{1}{b_d}\frac{P}{Q}$ runs from $-\infty$ at the price axis to 0 at the quantity axis, passing through $-1$ at the <b>midpoint</b> $Q = a_d/(2b_d)$, $P = a_d/2$.</p>
+
+      <h3>Total revenue and the midpoint rule</h3>
+      <p>Total revenue is $TR = P \times Q$, the rectangle under the demand curve. Since $\frac{dTR}{dQ} = P\left(1 + \frac{1}{\varepsilon_d}\right)$:</p>
+      <ul>
+        <li>On the <b>elastic</b> upper half, cutting the price raises revenue.</li>
+        <li>On the <b>inelastic</b> lower half, raising the price raises revenue.</li>
+        <li>Revenue is <b>maximised at the midpoint</b>, where demand is unit elastic.</li>
+      </ul>
+      <p>Switch on "Elasticity &amp; total revenue" and drag the yellow point along the demand curve to see the rectangle and the revenue hump in the inset.</p>
+
+      <h3>Taxes, subsidies and incidence</h3>
+      <p>A per-unit tax $t$ drives a wedge between the price buyers pay $P_b$ and the price sellers keep $P_s$, with $P_b - P_s = t$. Who legally pays the tax does not matter: shifting supply up by $t$ (sellers pay) or demand down by $t$ (buyers pay) gives the same $P_b$, $P_s$ and $Q$. The economic burden (<b>incidence</b>) falls on the less elastic side. For small taxes:</p>
+      <div class="eq">$$\text{Buyers' share} = \frac{P_b - P^*}{t} \approx \frac{\varepsilon_s}{\varepsilon_s + |\varepsilon_d|}, \qquad \text{Sellers' share} \approx \frac{|\varepsilon_d|}{\varepsilon_s + |\varepsilon_d|}$$</div>
+      <p>(For linear curves the exact shares are $b_d/(b_d+b_s)$ for buyers and $b_s/(b_d+b_s)$ for sellers.) Government revenue is $tQ_t$ and the deadweight loss is approximately the triangle $\tfrac12\, t\,(Q^* - Q_t)$. A subsidy works in reverse: quantity rises above $Q^*$, the government pays $sQ_s$, and the extra units are worth less to buyers than they cost to produce, which is again a deadweight loss.</p>
+
+      <h3>Price controls and quotas</h3>
+      <ul>
+        <li><b>Price ceiling</b> (maximum price) below $P^*$: quantity traded falls to $Q_s(P_c)$ and a <b>shortage</b> $Q_d(P_c) - Q_s(P_c)$ appears. Queues, black markets or rationing follow. The lab assumes the scarce units go to the buyers who value them most; real rationing is usually worse.</li>
+        <li><b>Price floor</b> (minimum price) above $P^*$: quantity traded falls to $Q_d(P_f)$ and a <b>surplus</b> $Q_s(P_f) - Q_d(P_f)$ goes unsold (unless the government buys it).</li>
+        <li><b>Quota</b> below $Q^*$: buyers pay $P_d(Q_q)$, the marginal cost is only $P_s(Q_q)$, and the difference times the quota is a <b>quota rent</b> earned by whoever holds the licences. A quota of $Q_t$ has exactly the same prices and DWL as the tax $t$; only who collects the wedge differs.</li>
+      </ul>
+      <p>A control that does not bind (a ceiling above $P^*$, a floor below it, a quota above $Q^*$) has no effect.</p>
+
+      <h3>Introduction to market failure</h3>
+      <p>The welfare results above assume a competitive market with full information and no spillovers. Markets can fail to maximise social welfare because of <b>externalities</b> (pollution from a factory is a cost not on its supply curve), <b>public goods</b> (street lighting is non-rival and non-excludable, so it is under-supplied), <b>information asymmetry</b> (a used-car seller knows more than the buyer) and <b>market power</b> (a monopolist restricts output to raise price). In those cases a well-designed tax, subsidy or regulation can <i>raise</i> total surplus, which is why "taxes always cause deadweight loss" is only true in a market that was efficient to begin with.</p>
+      <div class="callout warn"><i data-lucide="info"></i><div>This is a simplified teaching model: one homogeneous good, price-taking buyers and sellers, linear or constant-elasticity curves and instant adjustment. Real markets have transport costs, quality differences and adjustment lags. It is not a forecast of real prices and is not investment advice.</div></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Example 1: Equilibrium and surplus (default market)</h3>
+      <div class="worked">
+        <p>Demand $P = 180 - 1.6Q$, supply $P = 40 + 1.2Q$.</p>
+        <ol>
+          <li>Set equal: $180 - 1.6Q = 40 + 1.2Q \Rightarrow 2.8Q = 140 \Rightarrow Q^* = 50$ tonnes/day.</li>
+          <li>Price: $P^* = 180 - 1.6(50) = 100$ KES/kg.</li>
+          <li>$CS = \tfrac12 \times 50 \times (180 - 100) = 2{,}000$ (KES '000/day, i.e. KES 2 million).</li>
+          <li>$PS = \tfrac12 \times 50 \times (100 - 40) = 1{,}500$. Total surplus $= 3{,}500$.</li>
+        </ol>
+        <p class="muted small">Press "Default market" in the lab: the stats panel shows exactly these values.</p>
+      </div>
+
+      <h3>Example 2: A KES 28 per kg tax</h3>
+      <div class="worked">
+        <ol>
+          <li>With the tax, $P_b - P_s = 28$: $(180 - 1.6Q) - (40 + 1.2Q) = 28 \Rightarrow 2.8Q = 112 \Rightarrow Q_t = 40$.</li>
+          <li>Buyers pay $P_b = 180 - 1.6(40) = 116$; sellers keep $P_s = 40 + 1.2(40) = 88$.</li>
+          <li>Incidence: buyers bear $116 - 100 = 16$ (57.1 %), sellers bear $100 - 88 = 12$ (42.9 %). Check: $b_d/(b_d+b_s) = 1.6/2.8 = 0.571$.</li>
+          <li>Revenue $= 28 \times 40 = 1{,}120$; $DWL = \tfrac12 \times 28 \times (50 - 40) = 140$.</li>
+          <li>$CS = \tfrac12 \times 40 \times 64 = 1{,}280$, $PS = \tfrac12 \times 40 \times 48 = 960$. Check: $1280 + 960 + 1120 + 140 = 3{,}500$, the original total surplus.</li>
+        </ol>
+        <p class="muted small">Try "Levied on buyers": the curve that moves changes, but every number stays the same.</p>
+      </div>
+
+      <h3>Example 3: Elasticity at the equilibrium</h3>
+      <div class="worked">
+        <ol>
+          <li>Point elasticity of demand: $\varepsilon_d = -\frac{1}{1.6}\times\frac{100}{50} = -1.25$ (elastic).</li>
+          <li>Supply: $\varepsilon_s = \frac{1}{1.2}\times\frac{100}{50} = 1.67$.</li>
+          <li>Midpoint of demand: $Q = 180/3.2 = 56.25$, $P = 90$, so revenue peaks at $TR = 90 \times 56.25 = 5{,}062.5$ versus $100 \times 50 = 5{,}000$ at equilibrium. Because demand is elastic at $P^* = 100$, a small price cut would <i>raise</i> sellers' revenue.</li>
+          <li>Arc elasticity from $P = 100$ to $P = 116$ ($Q$: 50 to 40): $\dfrac{-10/45}{16/108} = \dfrac{-0.222}{0.148} = -1.50$.</li>
+        </ol>
+      </div>
+
+      <h3>Example 4: Price ceiling and quota</h3>
+      <div class="worked">
+        <ol>
+          <li>Ceiling at KES 88: $Q_d = (180-88)/1.6 = 57.5$, $Q_s = (88-40)/1.2 = 40$, shortage $= 17.5$ t/day.</li>
+          <li>Only 40 t trade, so $DWL = \tfrac12 \times (116 - 88) \times 10 = 140$, the same as the tax. Consumers who get tomatoes gain: $CS = \tfrac12\times 40\times(180-116) + 40\times(116-88) = 1{,}280 + 1{,}120 = 2{,}400$.</li>
+          <li>Quota of 40 t: buyers pay $P_d(40) = 116$, marginal cost is $P_s(40) = 88$, quota rent $= 28 \times 40 = 1{,}120$: identical to the tax revenue in Example 2.</li>
+        </ol>
+      </div>
+
+      <h3>Example 5: A drought</h3>
+      <div class="worked">
+        <p>Set "Technology &amp; growing conditions" to −4: each step removes 3 t/day of supply at every price, so supply shifts left by 12 t: $Q_s = (P-40)/1.2 - 12$, i.e. $P = 54.4 + 1.2Q$.</p>
+        <ol>
+          <li>$180 - 1.6Q = 54.4 + 1.2Q \Rightarrow Q = 125.6/2.8 = 44.86$ t/day.</li>
+          <li>$P = 180 - 1.6(44.86) = 108.2$ KES/kg: price up 8.2 %, quantity down 10.3 %.</li>
+          <li>Sellers' revenue: $108.2\times 44.86 = 4{,}855$ versus 5,000 before. With elastic demand a supply shock lowers farm revenue; with inelastic demand (try the "Inelastic + tax" curves) it would raise it.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <p>Challenges tick themselves off when the lab reaches the target. Default curves are assumed unless stated.</p>
+      <ul class="chall" id="challList"></ul>
+      <h3>Guided experiments</h3>
+      <ol class="steps">
+        <li><b>Incidence does not depend on who pays.</b> Choose Tax, KES 28. Toggle between "Levied on sellers" and "Levied on buyers". Record $P_b$, $P_s$ and $Q$ each time. Explain why they are identical.</li>
+        <li><b>Elasticity decides the burden.</b> Press "Inelastic + tax", then "Elastic + tax". Compare the buyers' share and the size of the DWL triangle. Which tax raises more revenue with less distortion?</li>
+        <li><b>Shifts versus movements.</b> Raise household income to +20 %. Then switch the good to "inferior". Describe what happens to $P^*$ and $Q^*$ in each case.</li>
+        <li><b>Price controls under stress.</b> Apply "Drought", then add a ceiling at the old price of KES 100. Measure the shortage. Then remove the ceiling and see how much the price must rise to clear the market.</li>
+        <li><b>The midpoint rule.</b> Turn on "Elasticity &amp; total revenue". Drag the yellow point from the top of the demand curve to the bottom and watch the TR rectangle grow then shrink. Where is it largest?</li>
+        <li><b>Emergent equilibrium.</b> Open the Live market game. Let it run for 5 days and note the daily average price. Trigger "Drought" and record how many days the price takes to settle at the new equilibrium.</li>
+      </ol>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Where you can see these ideas in Kenya</h3>
+      <div class="grid2">
+        <div class="callout"><i data-lucide="cloud-sun"></i><div><b>Seasonal tomato prices.</b> Tomato prices in Nairobi markets swing sharply between the rains and dry spells. Demand for a staple ingredient is fairly inelastic, so a modest fall in supply produces a large price rise.</div></div>
+        <div class="callout"><i data-lucide="fuel"></i><div><b>Fuel price caps.</b> EPRA publishes maximum pump prices each month: a price ceiling. When a cap is set below the cost of imported fuel, stations may run short unless the gap is filled by a subsidy or stabilisation fund.</div></div>
+        <div class="callout"><i data-lucide="wheat"></i><div><b>Maize price support.</b> The National Cereals and Produce Board has at times bought maize from farmers at a set price above the market, a price floor backed by government purchases of the surplus.</div></div>
+        <div class="callout"><i data-lucide="receipt"></i><div><b>Excise duties.</b> Excise on products such as alcohol, cigarettes and bottled water is a per-unit or ad valorem tax. Demand for many of these goods is inelastic, so consumers bear much of the burden and revenue is relatively stable.</div></div>
+        <div class="callout"><i data-lucide="ship"></i><div><b>Import quotas.</b> Limits on duty-free imports of goods such as sugar protect local producers. Whoever holds the import permits earns the quota rent shown in the lab.</div></div>
+        <div class="callout"><i data-lucide="gift"></i><div><b>Festive demand.</b> In December demand for goats, chickens, travel and cooking ingredients rises; prices and quantities both go up, the signature of a demand shift.</div></div>
+      </div>
+      <h3>Why market experiments matter</h3>
+      <p>In 1962 Vernon Smith ran classroom double auctions in which each student knew only their own valuation or cost. Prices still converged quickly to the competitive equilibrium, work recognised by the 2002 Nobel memorial prize. Later, computer studies showed that even simple trading rules produce near-efficient outcomes in a double auction. The Live market game uses adaptive traders of this kind (a simplified "ZIP" rule): each trader nudges its price towards recent trades but never bids above its valuation or asks below its cost.</p>
+      <p class="disclaimer">The scenarios are illustrative and simplified. Figures are not real market data and nothing on this page is investment or trading advice.</p>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+  const F = (n, d = 0) => SL.fmt(n, d);
+  const COL = { D: '#60a5fa', S: '#fb923c', cs: 'rgba(96,165,250,.30)', ps: 'rgba(52,211,153,.30)', gov: 'rgba(167,139,250,.38)', dwl: 'rgba(239,68,68,.50)', tr: 'rgba(250,204,21,.16)', acc: '#facc15', grid: 'rgba(255,255,255,.06)', txt: '#93a1bd', dim: '#5f6d8a' };
+
+  /* =====================================================================
+     (a) CURVE LAB: model
+     ===================================================================== */
+  const PCAP = 1000, QMAX = 120, PMAX = 240;
+  const DEF = { mode: 'lin', aD: 180, bD: 1.6, aS: 40, bS: 1.2, eD: 1.25, eS: 1.65, levD: 1, levS: 1,
+    inc: 0, good: 'normal', pref: 0, buyers: 0, expct: 0, cost: 0, tech: 0, sellers: 0,
+    pol: 'none', tax: 28, taxOn: 'sellers', sub: 20, ceil: 88, floor: 116, quota: 40,
+    sur: true, el: false, base: true, elP: null };
+  const NUM = ['aD', 'bD', 'aS', 'bS', 'eD', 'eS', 'levD', 'levS', 'inc', 'pref', 'buyers', 'expct', 'cost', 'tech', 'sellers', 'tax', 'sub', 'ceil', 'floor', 'quota'];
+  const T = Object.assign({}, DEF);       // target state (controls)
+  const D = Object.assign({}, DEF);       // displayed state (tweened)
+
+  function fns(S, noShift) {
+    const z = noShift;
+    const mD = 1 + (z ? 0 : S.buyers) / 100;
+    const hD = z ? 0 : S.inc * 0.5 * (S.good === 'normal' ? 1 : -1) + S.pref * 3 + S.expct * 2;
+    const mS = 1 + (z ? 0 : S.sellers) / 100;
+    const hS = z ? 0 : S.tech * 3 - S.expct * 2;
+    const c = z ? 0 : S.cost;
+    let qd, qs;
+    if (S.mode === 'lin') {
+      qd = P => mD * (S.aD - P) / S.bD + hD;
+      qs = P => mS * (P - c - S.aS) / S.bS + hS;
+    } else {
+      qd = P => mD * S.levD * 50 * Math.pow(100 / Math.max(P, 1e-6), S.eD) + hD;
+      qs = P => (P - c <= 0 ? 0 : mS * S.levS * 50 * Math.pow((P - c) / 100, S.eS)) + hS;
+    }
+    const Qd = P => Math.max(0, qd(P)), Qs = P => Math.max(0, qs(P));
+    // inverse demand: price at which Qd = q (capped)
+    // inverses use the unclamped curves so that Pd(0) is the choke price and Ps(0) the supply intercept
+    const Pd = q => { if (qd(0) <= q) return 0; if (qd(PCAP) >= q) return PCAP; let lo = 0, hi = PCAP; for (let i = 0; i < 52; i++) { const m = (lo + hi) / 2; if (qd(m) > q) lo = m; else hi = m; } return (lo + hi) / 2; };
+    const Ps = q => { if (qs(0) >= q) return 0; if (qs(PCAP) < q) return PCAP; let lo = 0, hi = PCAP; for (let i = 0; i < 52; i++) { const m = (lo + hi) / 2; if (qs(m) < q) lo = m; else hi = m; } return (lo + hi) / 2; };
+    const kinks = [qd(PCAP), qs(0)].filter(k => k > 0);
+    return { Qd, Qs, Pd, Ps, mD, hD, mS, hS, c, kinks };
+  }
+  function rootDec(f, lo, hi) { // f decreasing; returns x with f(x)=0 (clamped)
+    if (f(lo) <= 0) return lo; if (f(hi) >= 0) return hi;
+    for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (f(m) > 0) lo = m; else hi = m; }
+    return (lo + hi) / 2;
+  }
+  function integ(f, a, b, kinks) { // Simpson, split at kinks of the integrand
+    const pts = [a, ...(kinks || []).filter(k => k > a && k < b).sort((x, y) => x - y), b]; let s = 0;
+    for (let i = 0; i + 1 < pts.length; i++) s += simpson(f, pts[i], pts[i + 1]);
+    return s;
+  }
+  function simpson(f, a, b, n = 160) {
+    if (Math.abs(b - a) < 1e-9) return 0;
+    const h = (b - a) / n; let s = f(a) + f(b);
+    for (let i = 1; i < n; i++) s += f(a + i * h) * (i % 2 ? 4 : 2);
+    return s * h / 3;
+  }
+  function elastAt(Q, P, fn) { const h = Math.max(1e-3, P * 1e-4); const q = fn(P); if (q <= 1e-9) return -Infinity; return (fn(P + h) - fn(P - h)) / (2 * h) * P / q; }
+
+  function compute(S) {
+    const f = fns(S);
+    const Peq = rootDec(P => f.Qd(P) - f.Qs(P), 0, PCAP), Qeq = f.Qd(Peq);
+    const out = { Peq, Qeq, f, pol: S.pol, binding: false, Q: Qeq, Pb: Peq, Prec: Peq, gov: 0, rent: 0, short: 0, surp: 0 };
+    const t = S.tax, s = S.sub;
+    if (S.pol === 'tax' && t > 0) {
+      const Pb = rootDec(P => f.Qd(P) - f.Qs(P - t), 0, PCAP);
+      Object.assign(out, { binding: true, Pb, Prec: Pb - t, Q: f.Qd(Pb) }); out.gov = t * out.Q;
+    } else if (S.pol === 'sub' && s > 0) {
+      const Pb = rootDec(P => f.Qd(P) - f.Qs(P + s), 0, PCAP);
+      Object.assign(out, { binding: true, Pb, Prec: Pb + s, Q: f.Qd(Pb) }); out.gov = -s * out.Q;
+    } else if (S.pol === 'ceil' && S.ceil < Peq) {
+      const Q = f.Qs(S.ceil); Object.assign(out, { binding: true, Pb: S.ceil, Prec: S.ceil, Q, short: f.Qd(S.ceil) - Q });
+    } else if (S.pol === 'floor' && S.floor > Peq) {
+      const Q = f.Qd(S.floor); Object.assign(out, { binding: true, Pb: S.floor, Prec: S.floor, Q, surp: f.Qs(S.floor) - Q });
+    } else if (S.pol === 'quota' && S.quota < Qeq) {
+      const Q = S.quota, Pb = f.Pd(Q), Pr = f.Ps(Q);
+      Object.assign(out, { binding: true, Pb, Prec: Pr, Q, rent: (Pb - Pr) * Q });
+    }
+    const Q = out.Q;
+    const kD = f.kinks.concat([f.Qd(out.Pb)]), kS = f.kinks.concat([f.Qs(out.Prec)]);
+    out.CS = integ(q => Math.max(0, f.Pd(q) - out.Pb), 0, Q, kD);
+    out.PS = integ(q => Math.max(0, out.Prec - f.Ps(q)), 0, Q, kS);
+    out.TS0 = integ(q => f.Pd(q) - f.Ps(q), 0, Qeq, f.kinks);
+    out.DWL = Math.abs(integ(q => f.Pd(q) - f.Ps(q), Math.min(Q, Qeq), Math.max(Q, Qeq), f.kinks));
+    out.TS = out.CS + out.PS + out.gov + out.rent;
+    out.Ed = elastAt(Qeq, Peq, f.Qd); out.Es = elastAt(Qeq, Peq, f.Qs);
+    // elasticity point on demand
+    const pE = S.elP == null ? Peq : SL.clamp(S.elP, 0.5, PCAP);
+    out.pE = pE; out.qE = f.Qd(pE); out.EdP = elastAt(out.qE, pE, f.Qd); out.TR = pE * out.qE;
+    const P1 = pE * 0.9, P2 = pE * 1.1, Q1 = f.Qd(P1), Q2 = f.Qd(P2);
+    out.arc = ((Q2 - Q1) / ((Q1 + Q2) / 2)) / ((P2 - P1) / ((P1 + P2) / 2));
+    if (S.mode === 'lin') { const alpha = f.mD * S.aD / S.bD + f.hD, beta = f.mD / S.bD; out.Pmid = alpha / (2 * beta); out.Qmid = alpha / 2; }
+    if (S.pol === 'tax' && out.binding) out.share = (out.Pb - Peq) / t;
+    if (S.pol === 'sub' && out.binding) out.share = (Peq - out.Pb) / s;
+    return out;
+  }
+
+  /* ---------------- controls ---------------- */
+  const fmtS = { aD: v => 'KES ' + v, bD: v => F(v, 2), aS: v => 'KES ' + v, bS: v => F(v, 2), eD: v => F(v, 2), eS: v => F(v, 2),
+    inc: v => (v > 0 ? '+' : '') + v + ' %', pref: v => (v > 0 ? '+' : '') + v, buyers: v => (v > 0 ? '+' : '') + v + ' %', expct: v => (v > 0 ? '+' : '') + v,
+    cost: v => (v > 0 ? '+' : '') + v + ' KES/kg', tech: v => (v > 0 ? '+' : '') + v, sellers: v => (v > 0 ? '+' : '') + v + ' %',
+    vTax: v => 'KES ' + v, vSub: v => 'KES ' + v, vCeil: v => 'KES ' + v, vFloor: v => 'KES ' + v, vQuota: v => F(v, 1) + ' t' };
+  const keyOf = { vTax: 'tax', vSub: 'sub', vCeil: 'ceil', vFloor: 'floor', vQuota: 'quota' };
+  let dirty = true, userTouched = false;
+  ['aD', 'bD', 'aS', 'bS', 'eD', 'eS', 'inc', 'pref', 'buyers', 'expct', 'cost', 'tech', 'sellers', 'vTax', 'vSub', 'vCeil', 'vFloor', 'vQuota'].forEach(id => {
+    SL.bind('#' + id, v => {
+      const k = keyOf[id] || id;
+      if (k === 'eD' || k === 'eS') { T[k] = v; recalibrateCE(); }
+      else T[k] = v;
+      dirty = true;
+    }, fmtS[id]);
+  });
+  function recalibrateCE() { T.levD = 1; T.levS = 1; }
+  SL.bind('#good', v => { T.good = D.good = v; dirty = true; });
+  SL.bind('#tSur', v => { T.sur = D.sur = v; dirty = true; });
+  SL.bind('#tEl', v => { T.el = D.el = v; dirty = true; });
+  SL.bind('#tBase', v => { T.base = D.base = v; dirty = true; });
+  function setRange(id, v) { const el = $('#' + id); el.value = v; el.dispatchEvent(new Event('input')); }
+  function segPick(seg, attr, val) { $$(seg + ' button').forEach(b => b.classList.toggle('on', b.dataset[attr] === val)); }
+
+  $('#formSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; setForm(b.dataset.f); });
+  function setForm(m) {
+    T.mode = D.mode = m; segPick('#formSeg', 'f', m);
+    $('#linCtl').hidden = m !== 'lin'; $('#ceCtl').hidden = m !== 'ce';
+    T.levD = D.levD = 1; T.levS = D.levS = 1; T.elP = D.elP = null; dirty = true;
+  }
+  $('#polSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; setPol(b.dataset.p); });
+  function setPol(p) {
+    T.pol = D.pol = p; segPick('#polSeg', 'p', p);
+    $$('.polval').forEach(el => el.hidden = el.dataset.for !== p); dirty = true;
+  }
+  $('#taxOnSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; T.taxOn = D.taxOn = b.dataset.t; segPick('#taxOnSeg', 't', b.dataset.t); dirty = true; });
+  $('#clearShift').onclick = () => { ['inc', 'pref', 'buyers', 'expct', 'cost', 'tech', 'sellers'].forEach(k => setRange(k, 0)); };
+
+  function applyPreset(name) {
+    const set = (o) => Object.entries(o).forEach(([k, v]) => setRange(k, v));
+    const clearShifts = () => set({ inc: 0, pref: 0, buyers: 0, expct: 0, cost: 0, tech: 0, sellers: 0 });
+    const linDefault = () => { if (T.mode !== 'lin') setForm('lin'); set({ aD: 180, bD: 1.6, aS: 40, bS: 1.2 }); };
+    T.elP = null;
+    switch (name) {
+      case 'reset': linDefault(); clearShifts(); $('#good').value = 'normal'; $('#good').dispatchEvent(new Event('change')); setPol('none'); set({ vTax: 28, vSub: 20, vCeil: 88, vFloor: 116, vQuota: 40 }); SL.toast('Default tomato market restored: P* = KES 100/kg, Q* = 50 t/day.'); break;
+      case 'drought': set({ tech: -4 }); SL.toast('Drought: supply shifts left by 12 t/day at every price. Price rises, quantity falls.', 'warn'); break;
+      case 'fuel': set({ cost: 25 }); SL.toast('Fuel and transport costs up KES 25/kg: supply shifts up by the cost increase.', 'warn'); break;
+      case 'festive': set({ pref: 3, buyers: 15 }); SL.toast('Festive season: more buyers and stronger preferences shift demand right.'); break;
+      case 'tax': setPol('tax'); set({ vTax: 28 }); break;
+      case 'ceil': setPol('ceil'); set({ vCeil: 88 }); break;
+      case 'floor': setPol('floor'); set({ vFloor: 116 }); break;
+      case 'quota': setPol('quota'); set({ vQuota: 30 }); break;
+      case 'inelastic': linDefault(); clearShifts(); set({ bD: 3.2, aD: 260, vTax: 28 }); setPol('tax'); SL.toast('Steep (inelastic) demand: buyers carry most of the tax and the DWL triangle is thin.'); break;
+      case 'elastic': linDefault(); clearShifts(); set({ bD: 0.5, aD: 125, vTax: 28 }); setPol('tax'); SL.toast('Flat (elastic) demand: sellers carry most of the tax and quantity falls a lot.'); break;
+    }
+    dirty = true;
+  }
+  $$('[data-preset]').forEach(b => b.addEventListener('click', () => applyPreset(b.dataset.preset)));
+
+  /* ---------------- drawing ---------------- */
+  const cvC = $('#cvC');
+  const stC = SL.canvas(cvC, () => { dirty = true; });
+  let geo = {};
+  function layout() {
+    const { w, h } = stC; const mob = w < 520;
+    const pl = mob ? 44 : 60, pr = mob ? 10 : 18, pt = mob ? 78 : 52, pb = mob ? 40 : 46;
+    geo = { pl, pr, pt, pb, pw: w - pl - pr, ph: h - pt - pb, mob };
+    geo.X = q => pl + q / QMAX * geo.pw; geo.Y = p => pt + geo.ph - p / PMAX * geo.ph;
+    geo.iX = x => (x - pl) / geo.pw * QMAX; geo.iY = y => (pt + geo.ph - y) / geo.ph * PMAX;
+  }
+  let M = null; // current model
+  let pulse = 0, hover = null, drag = null;
+
+  function curvePts(fn, pFrom, pTo, n = 140) {
+    // sample in price; drop the zero-quantity part and insert the exact axis intercept
+    const a = [], pos = q => q > 1e-9; let prev = null;
+    for (let i = 0; i <= n; i++) {
+      const P = pFrom + (pTo - pFrom) * i / n, q = fn(P);
+      if (prev && pos(prev.q) !== pos(q)) { let lo = prev.P, hi = P; for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (pos(fn(m)) === pos(prev.q)) lo = m; else hi = m; } a.push([0, (lo + hi) / 2]); }
+      if (pos(q)) a.push([q, P]); prev = { q, P };
+    }
+    return a;
+  }
+  function strokePts(ctx, pts, col, w, dash, glow) {
+    ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = w; ctx.setLineDash(dash || []); ctx.lineJoin = 'round';
+    if (glow) { ctx.shadowColor = col; ctx.shadowBlur = 12; }
+    ctx.beginPath(); let started = false;
+    pts.forEach(([q, P]) => { if (q < 0) return; const x = geo.X(q), y = geo.Y(P); if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y); });
+    ctx.stroke(); ctx.restore();
+  }
+  function fillPoly(ctx, pts, col) { if (pts.length < 3) return; ctx.fillStyle = col; ctx.beginPath(); pts.forEach(([q, P], i) => { const x = geo.X(q), y = geo.Y(P); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); ctx.fill(); }
+  function hatch(ctx, x, y, w, h, col) {
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.strokeStyle = col; ctx.lineWidth = 1;
+    for (let k = -h; k < w; k += 7) { ctx.beginPath(); ctx.moveTo(x + k, y + h); ctx.lineTo(x + k + h, y); ctx.stroke(); }
+    ctx.restore();
+  }
+  function label(ctx, text, x, y, col, align = 'left', bg = true) {
+    ctx.save(); ctx.font = '600 11.5px JetBrains Mono, monospace'; ctx.textAlign = align; ctx.textBaseline = 'middle';
+    const w = ctx.measureText(text).width + 10; let bx = align === 'left' ? x - 5 : align === 'right' ? x - w + 5 : x - w / 2;
+    bx = SL.clamp(bx, 2, stC.w - w - 2); const tx = align === 'left' ? bx + 5 : align === 'right' ? bx + w - 5 : bx + w / 2;
+    if (bg) { ctx.fillStyle = 'rgba(5,9,19,.82)'; ctx.strokeStyle = col; ctx.globalAlpha = 1; ctx.beginPath(); ctx.roundRect(bx, y - 10, w, 20, 6); ctx.fill(); ctx.globalAlpha = .55; ctx.stroke(); ctx.globalAlpha = 1; }
+    ctx.fillStyle = col; ctx.fillText(text, tx, y + .5); ctx.restore();
+  }
+  function handlePositions() {
+    const f = M.f, hs = {};
+    // demand pivot handle: below equilibrium at 35 % of P*
+    const pdh = Math.max(4, M.Peq * 0.35), qdh = f.Qd(pdh);
+    if (qdh > 0 && qdh < QMAX) hs.dSlope = { q: qdh, P: pdh };
+    const psh = Math.min(PMAX * 0.9, M.Peq + (PMAX - M.Peq) * 0.45), qsh = f.Qs(psh);
+    if (qsh > 0 && qsh < QMAX) hs.sSlope = { q: qsh, P: psh };
+    if (D.el) hs.el = { q: M.qE, P: M.pE };
+    return hs;
+  }
+
+  function draw() {
+    const { ctx, w, h } = stC; if (!M) return;
+    layout(); const { pl, pt, pw, ph, X, Y } = geo; const f = M.f;
+    ctx.clearRect(0, 0, w, h);
+    const bg = ctx.createLinearGradient(0, 0, 0, h); bg.addColorStop(0, '#081024'); bg.addColorStop(1, '#050913'); ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+    // grid
+    ctx.font = '11px JetBrains Mono, monospace'; ctx.lineWidth = 1;
+    for (let q = 0; q <= QMAX; q += 10) { const x = X(q); ctx.strokeStyle = q % 20 ? 'rgba(255,255,255,.025)' : COL.grid; ctx.beginPath(); ctx.moveTo(x, pt); ctx.lineTo(x, pt + ph); ctx.stroke(); if (q % 20 === 0 && !(geo.mob && q % 40)) { ctx.fillStyle = COL.dim; ctx.textAlign = 'center'; ctx.fillText(q, x, pt + ph + 15); } }
+    for (let p = 0; p <= PMAX; p += 20) { const y = Y(p); ctx.strokeStyle = p % 40 ? 'rgba(255,255,255,.025)' : COL.grid; ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(pl + pw, y); ctx.stroke(); if (p % 40 === 0) { ctx.fillStyle = COL.dim; ctx.textAlign = 'right'; ctx.fillText(p, pl - 7, y + 4); } }
+    ctx.fillStyle = COL.txt; ctx.textAlign = 'right'; ctx.fillText('Quantity Q (tonnes/day)', pl + pw, pt + ph + 33);
+    ctx.save(); ctx.translate(13, pt + ph / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText('Price P (KES/kg)', 0, 0); ctx.restore();
+    ctx.strokeStyle = '#2a3a5c'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(pl, pt - 6); ctx.lineTo(pl, pt + ph); ctx.lineTo(pl + pw + 4, pt + ph); ctx.stroke();
+
+    ctx.save(); ctx.beginPath(); ctx.rect(pl, pt - 4, pw + 2, ph + 4); ctx.clip();
+    const Q = M.Q, Qe = M.Qeq, n = 90;
+    // --- elasticity: total revenue rectangle (under everything else)
+    if (D.el && M.qE > 0) {
+      ctx.fillStyle = COL.tr; ctx.fillRect(X(0), Y(M.pE), X(M.qE) - X(0), Y(0) - Y(M.pE));
+      hatch(ctx, X(0), Y(M.pE), X(M.qE) - X(0), Y(0) - Y(M.pE), 'rgba(250,204,21,.18)');
+      ctx.strokeStyle = 'rgba(250,204,21,.7)'; ctx.setLineDash([5, 4]); ctx.strokeRect(X(0), Y(M.pE), X(M.qE) - X(0), Y(0) - Y(M.pE)); ctx.setLineDash([]);
+    }
+    // --- surplus areas
+    if (D.sur) {
+      const cs = [[0, M.Pb]]; for (let i = 0; i <= n; i++) { const q = Q * i / n; cs.push([q, Math.max(M.Pb, f.Pd(q))]); } cs.push([Q, M.Pb]);
+      fillPoly(ctx, cs, COL.cs);
+      const ps = [[0, M.Prec]]; for (let i = 0; i <= n; i++) { const q = Q * i / n; ps.push([q, Math.min(M.Prec, f.Ps(q))]); } ps.push([Q, M.Prec]);
+      fillPoly(ctx, ps, COL.ps);
+      if (M.pol === 'tax' && M.binding) { ctx.fillStyle = COL.gov; ctx.fillRect(X(0), Y(M.Pb), X(Q) - X(0), Y(M.Prec) - Y(M.Pb)); }
+      if (M.pol === 'quota' && M.binding) { ctx.fillStyle = COL.gov; ctx.fillRect(X(0), Y(M.Pb), X(Q) - X(0), Y(M.Prec) - Y(M.Pb)); hatch(ctx, X(0), Y(M.Pb), X(Q) - X(0), Y(M.Prec) - Y(M.Pb), 'rgba(167,139,250,.35)'); }
+      if (M.pol === 'sub' && M.binding) { const x0 = X(0), y0 = Y(M.Prec), ww = X(Q) - x0, hh = Y(M.Pb) - y0; hatch(ctx, x0, y0, ww, hh, 'rgba(244,114,182,.45)'); ctx.strokeStyle = 'rgba(244,114,182,.9)'; ctx.setLineDash([6, 4]); ctx.strokeRect(x0, y0, ww, hh); ctx.setLineDash([]); }
+      if (M.binding && Math.abs(Q - Qe) > 0.05) {
+        const a = Math.min(Q, Qe), b = Math.max(Q, Qe), dw = [];
+        for (let i = 0; i <= n; i++) { const q = a + (b - a) * i / n; dw.push([q, f.Pd(q)]); }
+        for (let i = n; i >= 0; i--) { const q = a + (b - a) * i / n; dw.push([q, f.Ps(q)]); }
+        fillPoly(ctx, dw, COL.dwl);
+      }
+    }
+    // --- original curves (ghost)
+    const shifted = ['inc', 'pref', 'buyers', 'expct', 'cost', 'tech', 'sellers'].some(k => Math.abs(D[k]) > 1e-3);
+    if (D.base && shifted) {
+      const g = fns(D, true);
+      strokePts(ctx, curvePts(g.Qd, 0.5, PMAX * 1.05), 'rgba(96,165,250,.45)', 1.6, [6, 5]);
+      strokePts(ctx, curvePts(g.Qs, 0, PMAX * 1.05), 'rgba(251,146,60,.45)', 1.6, [6, 5]);
+      const P0 = rootDec(P => g.Qd(P) - g.Qs(P), 0, PCAP), Q0 = g.Qd(P0);
+      ctx.fillStyle = 'rgba(230,236,247,.45)'; ctx.beginPath(); ctx.arc(X(Q0), Y(P0), 4.5, 0, 7); ctx.fill();
+      if (Math.hypot(X(Qe) - X(Q0), Y(M.Peq) - Y(P0)) > 18) SL.arrow(ctx, X(Q0), Y(P0), X(Qe) + (X(Q0) - X(Qe)) * 0.12, Y(M.Peq) + (Y(P0) - Y(M.Peq)) * 0.12, 'rgba(230,236,247,.55)', 1.5, 8);
+      if (!M.binding) label(ctx, 'E₀', X(Q0) - 10, Y(P0) - 14, 'rgba(230,236,247,.7)', 'right', false);
+    }
+    // --- elastic / inelastic segments (linear)
+    if (D.el && D.mode === 'lin' && M.Pmid > 0) {
+      strokePts(ctx, curvePts(f.Qd, M.Pmid, PMAX * 1.05, 40), 'rgba(244,114,182,.45)', 9, null);
+      strokePts(ctx, curvePts(f.Qd, 0.01, M.Pmid, 40), 'rgba(45,212,191,.40)', 9, null);
+    }
+    // --- curves
+    strokePts(ctx, curvePts(f.Qd, 0.5, PMAX * 1.05), COL.D, hover === 'D' || (drag && drag.what === 'D') ? 4 : 3, null, true);
+    strokePts(ctx, curvePts(f.Qs, 0, PMAX * 1.05), COL.S, hover === 'S' || (drag && drag.what === 'S') ? 4 : 3, null, true);
+    // tax/subsidy wedge curves
+    if (M.pol === 'tax' && D.tax > 0) {
+      if (D.taxOn === 'sellers') strokePts(ctx, curvePts(P => f.Qs(P - D.tax), 0, PMAX * 1.05), 'rgba(251,146,60,.9)', 2, [7, 5]);
+      else strokePts(ctx, curvePts(P => f.Qd(P + D.tax), 0.5, PMAX * 1.05), 'rgba(96,165,250,.9)', 2, [7, 5]);
+    }
+    if (M.pol === 'sub' && D.sub > 0) strokePts(ctx, curvePts(P => f.Qs(P + D.sub), 0, PMAX * 1.05), 'rgba(244,114,182,.9)', 2, [7, 5]);
+    ctx.restore();
+
+    // curve labels
+    const dl = (() => { const P = Math.min(PMAX * 0.93, f.Pd(2) || PMAX * .9); const q = f.Qd(P); return [q, P]; })();
+    label(ctx, 'D', X(dl[0]) + 12, Y(dl[1]), COL.D, 'left');
+    const sP = Math.min(PMAX * 0.95, f.Ps(Math.min(QMAX * 0.95, f.Qs(PMAX * 0.95)))); const sQ = f.Qs(sP);
+    if (sQ > 0) label(ctx, 'S', Math.min(X(sQ) + 12, pl + pw - 14), Y(sP) + 2, COL.S, 'left');
+    if (M.pol === 'tax' && D.tax > 0) { const p = PMAX * 0.82; if (D.taxOn === 'sellers') { const q = f.Qs(p - D.tax); if (q > 0 && q < QMAX) label(ctx, 'S + tax', X(q) - 10, Y(p), COL.S, 'right'); } else { const q = f.Qd(PMAX * 0.45 + D.tax); if (q > 0 && q < QMAX) label(ctx, 'D − tax', X(q) + 8, Y(PMAX * 0.45), COL.D, 'left'); } }
+    if (M.pol === 'sub' && D.sub > 0) { const p = PMAX * 0.82, q = f.Qs(p + D.sub); if (q > 0 && q < QMAX) label(ctx, 'S − subsidy', X(q) + 8, Y(p), '#f472b6', 'left'); }
+
+    // --- policy lines
+    const lineH = (P, col, txt) => { const y = Y(P); ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = hover === 'pol' || (drag && drag.what === 'pol') ? 3 : 2; ctx.setLineDash([10, 5]); ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(pl + pw, y); ctx.stroke(); ctx.restore(); label(ctx, txt, pl + pw - 6, y - 13, col, 'right'); };
+    if (M.pol === 'ceil') lineH(D.ceil, '#f87171', 'Ceiling ' + F(D.ceil) + (M.binding ? '' : ' (not binding)'));
+    if (M.pol === 'floor') lineH(D.floor, '#34d399', 'Floor ' + F(D.floor) + (M.binding ? '' : ' (not binding)'));
+    if (M.pol === 'quota') { const x = X(D.quota); ctx.save(); ctx.strokeStyle = '#a78bfa'; ctx.lineWidth = hover === 'pol' || (drag && drag.what === 'pol') ? 3 : 2; ctx.setLineDash([10, 5]); ctx.beginPath(); ctx.moveTo(x, pt); ctx.lineTo(x, pt + ph); ctx.stroke(); ctx.restore(); label(ctx, 'Quota ' + F(D.quota, 1) + ' t' + (M.binding ? '' : ' (not binding)'), x + 8, pt + 12, '#a78bfa', 'left'); }
+    const bracket = (q1, q2, P, col, txt) => { const y = Y(P) + 16; SL.arrow(ctx, X(q1), y, X(q2), y, col, 2, 7); SL.arrow(ctx, X(q2), y, X(q1), y, col, 2, 7); label(ctx, txt, (X(q1) + X(q2)) / 2, y + 16, col, 'center'); };
+    if (M.short > 0.05) bracket(M.Q, M.Q + M.short, D.ceil, '#f87171', 'Shortage ' + F(M.short, 1) + ' t');
+    if (M.surp > 0.05) bracket(M.Q, M.Q + M.surp, D.floor, '#34d399', 'Surplus ' + F(M.surp, 1) + ' t');
+
+    // --- equilibrium & outcome points
+    const dot = (q, P, col, r) => { ctx.save(); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 14; ctx.beginPath(); ctx.arc(X(q), Y(P), r, 0, 7); ctx.fill(); ctx.restore(); };
+    const guide = (q, P, col) => { ctx.save(); ctx.strokeStyle = col; ctx.setLineDash([3, 4]); ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(pl, Y(P)); ctx.lineTo(X(q), Y(P)); ctx.lineTo(X(q), pt + ph); ctx.stroke(); ctx.restore(); };
+    if (M.binding) {
+      guide(M.Q, M.Pb, 'rgba(96,165,250,.7)'); guide(M.Q, M.Prec, 'rgba(251,146,60,.7)');
+      ctx.save(); ctx.globalAlpha = .55; dot(Qe, M.Peq, '#e6ecf7', 4); ctx.restore();
+      label(ctx, 'E', X(Qe) + 9, Y(M.Peq) - 11, 'rgba(230,236,247,.75)', 'left', false);
+      dot(M.Q, M.Pb, COL.D, 5.5); dot(M.Q, M.Prec, COL.S, 5.5);
+      const pbTxt = (M.pol === 'ceil' || M.pol === 'floor') ? 'Price ' + F(M.Pb, 1) : 'Buyers pay ' + F(M.Pb, 1);
+      label(ctx, pbTxt, pl + 6, Y(M.Pb) - (M.Pb >= M.Prec ? 12 : -12), COL.D, 'left');
+      if (Math.abs(M.Pb - M.Prec) > 0.5) label(ctx, 'Sellers get ' + F(M.Prec, 1), pl + 6, Y(M.Prec) + (M.Pb >= M.Prec ? 12 : -12), COL.S, 'left');
+    } else {
+      guide(Qe, M.Peq, 'rgba(250,204,21,.6)');
+      const r = 6 + Math.sin(pulse * 3) * 1.2;
+      ctx.save(); ctx.strokeStyle = 'rgba(250,204,21,.35)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(X(Qe), Y(M.Peq), r + 6 + (pulse * 8 % 8), 0, 7); ctx.globalAlpha = 1 - (pulse * 8 % 8) / 8; ctx.stroke(); ctx.restore();
+      dot(Qe, M.Peq, COL.acc, r);
+      label(ctx, 'E  (' + F(Qe, 1) + ' t, KES ' + F(M.Peq, 1) + ')', X(Qe) + 12, Y(M.Peq) - 16, COL.acc, 'left');
+    }
+    // --- elasticity point + inset
+    if (D.el && M.qE > 0) {
+      dot(M.qE, M.pE, COL.acc, 7);
+      ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(X(M.qE), Y(M.pE), 7, 0, 7); ctx.stroke(); ctx.restore();
+      const e = M.EdP, cls = Math.abs(Math.abs(e) - 1) < 0.03 ? 'unit elastic' : Math.abs(e) > 1 ? 'elastic' : 'inelastic';
+      label(ctx, 'Ed = ' + (isFinite(e) ? F(e, 2) : '−∞') + ' (' + cls + ')', X(M.qE) + 12, Y(M.pE) + 16, COL.acc, 'left');
+      label(ctx, 'TR = ' + F(M.TR, 0), X(M.qE / 2), Y(M.pE / 2), COL.acc, 'center');
+      if (D.mode === 'lin' && M.Pmid > 0 && M.Pmid < PMAX) { ctx.save(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(X(M.Qmid), Y(M.Pmid), 3.5, 0, 7); ctx.fill(); ctx.restore(); if (!geo.mob && Math.hypot(X(M.Qmid) - X(M.qE), Y(M.Pmid) - Y(M.pE)) > 40) label(ctx, 'midpoint |Ed| = 1', X(M.Qmid) + 10, Y(M.Pmid) - 2, '#e6ecf7', 'left', false); }
+      drawTRInset(ctx);
+    }
+    // --- handles
+    const hs = handlePositions();
+    Object.entries(hs).forEach(([k, p]) => {
+      if (k === 'el') return;
+      const hot = hover === k || (drag && drag.what === k);
+      ctx.save(); ctx.fillStyle = '#fff'; ctx.strokeStyle = k === 'dSlope' ? COL.D : COL.S; ctx.lineWidth = 3; ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = hot ? 16 : 6;
+      ctx.beginPath(); ctx.arc(X(p.q), Y(p.P), hot ? 8 : 6.5, 0, 7); ctx.fill(); ctx.stroke(); ctx.restore();
+    });
+    // cursor guide
+    if (hoverPt && !drag) { ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.setLineDash([2, 4]); ctx.beginPath(); ctx.moveTo(pl, hoverPt.y); ctx.lineTo(pl + pw, hoverPt.y); ctx.stroke(); ctx.restore(); }
+  }
+  function drawTRInset(ctx) {
+    const f = M.f; const bw = geo.mob ? 132 : 180, bh = geo.mob ? 82 : 104;
+    const bx = geo.pl + geo.pw - bw - 6, by = geo.pt + 6 + (M.pol === 'quota' ? 24 : 0);
+    ctx.save(); ctx.fillStyle = 'rgba(5,9,19,.88)'; ctx.strokeStyle = '#2a3a5c'; ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 8); ctx.fill(); ctx.stroke();
+    ctx.font = '600 10px JetBrains Mono, monospace'; ctx.fillStyle = COL.acc; ctx.textAlign = 'left'; ctx.fillText('Total revenue vs Q', bx + 8, by + 14);
+    const qmax = Math.min(QMAX, f.Qd(0.5)); const pts = []; let trMax = 1;
+    for (let i = 0; i <= 80; i++) { const P = 0.5 + (Math.min(PCAP, PMAX * 1.3) - 0.5) * i / 80; const q = f.Qd(P); if (q <= qmax) { pts.push([q, P * q]); trMax = Math.max(trMax, P * q); } }
+    const ix = q => bx + 8 + q / qmax * (bw - 16), iy = v => by + bh - 10 - v / trMax * (bh - 30);
+    ctx.strokeStyle = COL.acc; ctx.lineWidth = 1.8; ctx.beginPath(); pts.sort((a, b) => a[0] - b[0]).forEach(([q, v], i) => i ? ctx.lineTo(ix(q), iy(v)) : ctx.moveTo(ix(q), iy(v))); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ix(Math.min(M.qE, qmax)), iy(M.TR), 3.5, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  /* ---------------- HUD / stats ---------------- */
+  function setText(id, t) { const el = document.getElementById(id); if (el && el.textContent !== t) el.textContent = t; }
+  function updateStats() {
+    setText('hP', F(M.Peq, 1)); setText('hQ', F(M.Qeq, 1));
+    const hp = $('#hPol');
+    if (M.binding) {
+      hp.style.display = '';
+      const txt = { tax: `Tax ${F(D.tax)}: Q = ${F(M.Q, 1)} t`, sub: `Subsidy ${F(D.sub)}: Q = ${F(M.Q, 1)} t`, ceil: `Ceiling: shortage ${F(M.short, 1)} t`, floor: `Floor: surplus ${F(M.surp, 1)} t`, quota: `Quota: Pb = ${F(M.Pb, 1)}` }[M.pol];
+      hp.innerHTML = txt.replace(/([\d.,]+ t|Pb = [\d.,]+)$/, '<b>$1</b>');
+    } else hp.style.display = 'none';
+    setText('sCS', F(M.CS, 0)); setText('sPS', F(M.PS, 0));
+    if (M.pol === 'sub') { setText('kGov', 'Subsidy cost'); setText('sGov', F(-M.gov, 0)); }
+    else if (M.pol === 'quota') { setText('kGov', 'Quota rent'); setText('sGov', F(M.rent, 0)); }
+    else { setText('kGov', 'Gov. revenue'); setText('sGov', F(M.gov, 0)); }
+    setText('sDWL', F(M.DWL, 0)); $('#sDWL').classList.toggle('neg', M.DWL > 0.5);
+    setText('sTS', F(M.TS, 0)); setText('subTS', 'max ' + F(M.TS0, 0) + ' at Q*');
+    if (M.share != null) { setText('kInc', M.pol === 'sub' ? "Buyers' gain share" : "Buyers' share"); setText('sInc', F(M.share * 100, 1) + ' %'); setText('subInc', M.pol === 'sub' ? 'of the subsidy' : 'sellers ' + F((1 - M.share) * 100, 1) + ' %'); }
+    else if (M.pol === 'ceil' || M.pol === 'floor') { setText('kInc', M.pol === 'ceil' ? 'Shortage' : 'Unsold surplus'); setText('sInc', F(M.pol === 'ceil' ? M.short : M.surp, 1) + ' t'); setText('subInc', M.binding ? 'per day' : 'control not binding'); }
+    else { setText('kInc', "Buyers' share"); setText('sInc', '—'); setText('subInc', 'add a tax to see incidence'); }
+    const e = D.el ? M.EdP : M.Ed;
+    setText('sEd', isFinite(e) ? F(e, 2) : '−∞'); setText('subEd', D.el ? 'at the yellow point' : 'at equilibrium');
+    setText('sEs', isFinite(M.Es) ? F(M.Es, 2) : '∞');
+    const hint = {
+      none: 'No intervention: the market clears at the equilibrium.',
+      tax: M.binding ? `Wedge of KES ${F(D.tax)}: buyers pay ${F(M.Pb, 1)}, sellers keep ${F(M.Prec, 1)}. Revenue ${F(M.gov, 0)}, DWL ${F(M.DWL, 0)} (KES '000/day).` : 'Set a tax above zero.',
+      sub: M.binding ? `Buyers pay ${F(M.Pb, 1)}, sellers receive ${F(M.Prec, 1)}. Output rises to ${F(M.Q, 1)} t at a cost of ${F(-M.gov, 0)}.` : 'Set a subsidy above zero.',
+      ceil: M.binding ? `Binding: sellers offer only ${F(M.Q, 1)} t but buyers want ${F(M.Q + M.short, 1)} t. Drag the red line.` : `Not binding: the ceiling is above P* = ${F(M.Peq, 1)}. Drag the red line below it.`,
+      floor: M.binding ? `Binding: buyers take ${F(M.Q, 1)} t; ${F(M.surp, 1)} t is left unsold. Drag the green line.` : `Not binding: the floor is below P* = ${F(M.Peq, 1)}. Drag the green line above it.`,
+      quota: M.binding ? `Only ${F(D.quota, 1)} t may be sold. Licence holders earn a rent of KES ${F(M.Pb - M.Prec, 1)} per kg.` : `Not binding: the quota exceeds Q* = ${F(M.Qeq, 1)} t. Drag the purple line left.`,
+    }[M.pol];
+    setText('polHint', hint);
+  }
+
+  /* ---------------- pointer interaction ---------------- */
+  let hoverPt = null; const tipC = $('#tipC');
+  function distToCurve(fn, x, y, inverse) {
+    let best = 1e9;
+    for (let i = 0; i <= 120; i++) { const P = 0.5 + (PMAX * 1.05) * i / 120; const q = fn(P); if (q <= 0 || q > QMAX * 1.05) continue; const d = Math.hypot(geo.X(q) - x, geo.Y(P) - y); if (d < best) best = d; }
+    return best;
+  }
+  function hitTest(x, y) {
+    if (!M) return null; const hs = handlePositions();
+    for (const [k, p] of Object.entries(hs)) if (Math.hypot(geo.X(p.q) - x, geo.Y(p.P) - y) < 16) return k;
+    if (M.pol === 'ceil' && Math.abs(geo.Y(D.ceil) - y) < 9) return 'pol';
+    if (M.pol === 'floor' && Math.abs(geo.Y(D.floor) - y) < 9) return 'pol';
+    if (M.pol === 'quota' && Math.abs(geo.X(D.quota) - x) < 9) return 'pol';
+    const dd = distToCurve(M.f.Qd, x, y), ds = distToCurve(M.f.Qs, x, y);
+    if (Math.min(dd, ds) < 13) return dd <= ds ? 'D' : 'S';
+    return null;
+  }
+  function syncSliders() {
+    const map = { aD: 'aD', bD: 'bD', aS: 'aS', bS: 'bS', eD: 'eD', eS: 'eS', ceil: 'vCeil', floor: 'vFloor', quota: 'vQuota' };
+    Object.entries(map).forEach(([k, id]) => { const el = $('#' + id); const v = SL.clamp(T[k], +el.min, +el.max); el.value = v; const o = el.closest('.ctl').querySelector('output'); if (o) o.textContent = fmtS[id] ? fmtS[id](+(+v).toFixed(2)) : v; el.style.setProperty('--p', ((v - el.min) / (el.max - el.min) * 100) + '%'); });
+  }
+  function setBoth(k, v) { T[k] = D[k] = v; }
+  cvC.addEventListener('pointerdown', e => {
+    const p = SL.ptr(e, cvC); const k = hitTest(p.x, p.y); if (!k) return;
+    e.preventDefault(); cvC.setPointerCapture(e.pointerId); userTouched = true;
+    const f = M.f; const q = geo.iX(p.x), P = geo.iY(p.y);
+    drag = { what: k, pivot: { q: M.Qeq, P: M.Peq } };
+    if (k === 'D') drag.offq = q - f.Qd(P);
+    if (k === 'S') drag.offq = q - f.Qs(P);
+  });
+  cvC.addEventListener('pointermove', e => {
+    const p = SL.ptr(e, cvC); layout();
+    if (!drag) {
+      const k = hitTest(p.x, p.y); if (k !== hover) { hover = k; dirty = true; }
+      cvC.style.cursor = k ? (k === 'pol' ? (M.pol === 'quota' ? 'ew-resize' : 'ns-resize') : 'grab') : 'crosshair';
+      const P = geo.iY(p.y);
+      if (P >= 0 && P <= PMAX && p.x >= geo.pl && p.x <= geo.pl + geo.pw && M) {
+        hoverPt = p; const qd = M.f.Qd(P), qs = M.f.Qs(P), ex = qd - qs;
+        tipC.innerHTML = `P = <b>${F(P, 1)}</b> KES/kg<br>Qd = ${F(qd, 1)} t · Qs = ${F(qs, 1)} t<br>${Math.abs(ex) < 0.3 ? 'market clears' : ex > 0 ? 'shortage ' + F(ex, 1) + ' t' : 'surplus ' + F(-ex, 1) + ' t'}`;
+        tipC.style.display = 'block'; const tw = tipC.offsetWidth;
+        tipC.style.left = Math.min(p.x + 14, stC.w - tw - 6) + 'px'; tipC.style.top = Math.max(4, p.y - 64) + 'px'; dirty = true;
+      } else { hoverPt = null; tipC.style.display = 'none'; }
+      return;
+    }
+    e.preventDefault(); tipC.style.display = 'none';
+    const f = M.f; let q = geo.iX(p.x), P = SL.clamp(geo.iY(p.y), 1, PMAX * 1.1);
+    const S = T;
+    if (drag.what === 'D') {
+      const qc = q - drag.offq;
+      if (S.mode === 'lin') { setBoth('aD', SL.clamp(P + S.bD * (qc - f.hD) / f.mD, 20, 600)); }
+      else { const base = f.mD * 50 * Math.pow(100 / P, S.eD); setBoth('levD', SL.clamp((qc - f.hD) / base, 0.15, 5)); }
+    } else if (drag.what === 'S') {
+      const qc = q - drag.offq;
+      if (S.mode === 'lin') { setBoth('aS', SL.clamp(P - f.c - S.bS * (qc - f.hS) / f.mS, -150, 200)); }
+      else if (P - f.c > 0.5) { const base = f.mS * 50 * Math.pow((P - f.c) / 100, S.eS); setBoth('levS', SL.clamp((qc - f.hS) / base, 0.15, 5)); }
+    } else if (drag.what === 'dSlope') {
+      const pv = drag.pivot; if (pv.P - P > 2 && q - pv.q > 1) {
+        if (S.mode === 'lin') { const bEff = SL.clamp((pv.P - P) / (q - pv.q), 0.3 / f.mD, 8 / f.mD); setBoth('bD', SL.clamp(bEff * f.mD, 0.3, 8)); setBoth('aD', pv.P + T.bD * (pv.q - f.hD) / f.mD); }
+        else { const e = SL.clamp(-Math.log(Math.max(1e-3, q - f.hD) / Math.max(1e-3, pv.q - f.hD)) / Math.log(P / pv.P), 0.2, 3); setBoth('eD', e); setBoth('levD', (pv.q - f.hD) / (f.mD * 50 * Math.pow(100 / pv.P, e))); }
+      }
+    } else if (drag.what === 'sSlope') {
+      const pv = drag.pivot; if (P - pv.P > 2 && q - pv.q > 1) {
+        if (S.mode === 'lin') { const bEff = (P - pv.P) / (q - pv.q); setBoth('bS', SL.clamp(bEff * f.mS, 0.3, 8)); setBoth('aS', pv.P - f.c - T.bS * (pv.q - f.hS) / f.mS); }
+        else if (pv.P - f.c > 1 && P - f.c > 1) { const e = SL.clamp(Math.log(Math.max(1e-3, q - f.hS) / Math.max(1e-3, pv.q - f.hS)) / Math.log((P - f.c) / (pv.P - f.c)), 0.2, 3); setBoth('eS', e); setBoth('levS', (pv.q - f.hS) / (f.mS * 50 * Math.pow((pv.P - f.c) / 100, e))); }
+      }
+    } else if (drag.what === 'el') {
+      setBoth('elP', SL.clamp(P, 0.5, f.Pd(0.3)));
+    } else if (drag.what === 'pol') {
+      if (M.pol === 'ceil') setBoth('ceil', Math.round(SL.clamp(P, 10, 230)));
+      if (M.pol === 'floor') setBoth('floor', Math.round(SL.clamp(P, 10, 230)));
+      if (M.pol === 'quota') setBoth('quota', Math.round(SL.clamp(q, 1, 115) * 2) / 2);
+    }
+    syncSliders(); dirty = true;
+  });
+  const endDrag = () => { if (drag) { drag = null; dirty = true; } };
+  cvC.addEventListener('pointerup', endDrag); cvC.addEventListener('pointercancel', endDrag);
+  cvC.addEventListener('pointerleave', () => { hover = null; hoverPt = null; tipC.style.display = 'none'; dirty = true; });
+  cvC.style.touchAction = 'none';
+
+  /* ---------------- loop ---------------- */
+  let lastSig = '';
+  const loopC = SL.loop((dt) => {
+    pulse += dt;
+    let moving = false;
+    NUM.forEach(k => { const d = T[k] - D[k]; if (Math.abs(d) > 1e-4 * (Math.abs(T[k]) + 1)) { D[k] += d * Math.min(1, dt * 9); moving = true; } else D[k] = T[k]; });
+    D.elP = T.elP;
+    const sig = NUM.map(k => D[k].toFixed(4)).join() + D.mode + D.good + D.pol + D.taxOn + D.elP;
+    if (sig !== lastSig || dirty) { if (sig !== lastSig) { M = compute(D); updateStats(); checkCurveChallenges(); } lastSig = sig; }
+    draw(); dirty = false;
+  });
+
+  /* =====================================================================
+     CHALLENGES
+     ===================================================================== */
+  const CH = [
+    { id: 'c1', t: 'Flip the incidence', d: 'Make buyers carry at least 75 % of a KES 28 per kg tax. (Hint: what kind of demand curve lets sellers pass the tax on?)', ok: () => M.pol === 'tax' && Math.abs(D.tax - 28) < 0.5 && M.share >= 0.75, msg: () => `Buyers now pay ${F(M.share * 100, 1)} % of the tax: demand is less elastic than supply.` },
+    { id: 'c2', t: 'A 20-tonne shortage', d: 'With the default curves, set a price ceiling that creates a shortage of 20 t/day (±0.5 t).', ok: () => M.pol === 'ceil' && Math.abs(M.short - 20) <= 0.5 && isDefaultCurves(), msg: () => `Ceiling at KES ${F(D.ceil)} gives a shortage of ${F(M.short, 1)} t.` },
+    { id: 'c3', t: 'Revenue maximiser', d: 'Switch on "Elasticity & total revenue" and drag the yellow point to the price where sellers\' total revenue is greatest (|Ed| within 0.03 of 1, linear demand).', ok: () => D.el && D.mode === 'lin' && Math.abs(Math.abs(M.EdP) - 1) < 0.03, msg: () => `Unit elastic at KES ${F(M.pE, 1)}: TR = ${F(M.TR, 0)} is the maximum.` },
+    { id: 'c4', t: 'Equivalent quota', d: 'With the default curves, find the quota that makes buyers pay the same price as the KES 28 tax (KES 116 ± 0.5).', ok: () => M.pol === 'quota' && M.binding && Math.abs(M.Pb - 116) <= 0.5 && isDefaultCurves(), msg: () => `A ${F(D.quota, 1)} t quota mimics the tax: the rent of ${F(M.rent, 0)} replaces tax revenue.` },
+    { id: 'c5', t: 'Drought and a price freeze', d: 'Apply a drought (technology ≤ −3) and freeze the price at the old equilibrium of KES 100 with a ceiling (98–102). How big is the shortage?', ok: () => D.tech <= -3 && M.pol === 'ceil' && D.ceil >= 98 && D.ceil <= 102 && M.short > 0, msg: () => `The freeze leaves a shortage of ${F(M.short, 1)} t/day.` },
+    { id: 'c6', t: 'Efficient taxation', d: 'Raise more than 1,000 (KES \'000/day) with a KES 28 tax while keeping deadweight loss below 60. Reshape the curves to do it.', ok: () => M.pol === 'tax' && Math.abs(D.tax - 28) < 0.5 && M.gov > 1000 && M.DWL < 60, msg: () => `Revenue ${F(M.gov, 0)} with DWL only ${F(M.DWL, 0)}: steep curves mean little change in quantity.` },
+    { id: 'g1', t: 'Market game: convergence', d: 'In the live market, run until the daily average price is within 3 % of the equilibrium mid-price for two days in a row.', ok: null },
+    { id: 'g2', t: 'Market game: savvy stall owner', d: 'As the stall owner, earn at least KES 4,000 profit in a single day.', ok: null },
+    { id: 'g3', t: 'Market game: rationing', d: 'As regulator, impose a price cap that leaves at least 5 willing buyers unserved in a day.', ok: null },
+    { id: 'g4', t: 'Market game: supply shock', d: 'Trigger a drought and wait until the daily average price is at least 15 % above the pre-drought equilibrium.', ok: null },
+  ];
+  const done = new Set();
+  function isDefaultCurves() { return D.mode === 'lin' && Math.abs(D.aD - 180) < .6 && Math.abs(D.bD - 1.6) < .03 && Math.abs(D.aS - 40) < .6 && Math.abs(D.bS - 1.2) < .03 && ['inc', 'pref', 'buyers', 'expct', 'cost', 'tech', 'sellers'].every(k => Math.abs(D[k]) < 1e-3); }
+  function renderChall() {
+    $('#challList').innerHTML = CH.map(c => `<li class="${done.has(c.id) ? 'done' : ''}" data-id="${c.id}"><span class="led ${done.has(c.id) ? 'on' : ''}"></span><div><b>${c.t}</b><span class="muted small">${c.d}</span></div></li>`).join('');
+  }
+  function complete(id, msg) {
+    if (done.has(id)) return; done.add(id); renderChall();
+    const c = CH.find(x => x.id === id); SL.toast(`<b>Challenge complete: ${c.t}</b><br>${msg}`, 'ok', 5200);
+  }
+  function checkCurveChallenges() { if (!userTouched || !M) return; CH.forEach(c => { if (c.ok && !done.has(c.id)) { try { if (c.ok()) complete(c.id, c.msg()); } catch (e) {} } }); }
+  renderChall();
+  // only start checking after the user interacts (so defaults do not trigger anything)
+  document.addEventListener('input', () => { userTouched = true; }, { capture: true });
+
+  /* =====================================================================
+     (b) LIVE MARKET GAME: continuous double auction with adaptive traders
+     ===================================================================== */
+  let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const G = {};
+  const NB = 20, NS = 20, NF = 6;
+  function newMarket() {
+    seed = 7;
+    G.buyers = []; G.sellers = [];
+    for (let i = 0; i < NB + NF; i++) {
+      const festiveOnly = i >= NB;
+      const v = festiveOnly ? 5600 - (i - NB) * 420 : 7200 - i * 274 + (rnd() - .5) * 120;
+      G.buyers.push({ id: i, v: Math.round(v / 10) * 10, mu: 0.04 + rnd() * 0.22, festiveOnly, active: false, x: 0, y: 0, tx: 0, ty: 0, st: 'gone', hue: Math.floor(rnd() * 6), last: null, lastT: -9 });
+    }
+    for (let j = 0; j < NS; j++) G.sellers.push({ id: j, c: Math.round((1800 + j * 274 + (rnd() - .5) * 120) / 10) * 10, mu: 0.04 + rnd() * 0.22, units: 1, max: 1, droughtShut: j % 3 === 1, student: false, last: null, lastT: -9, pal: j % 5 });
+    G.student = { id: 'you', c: 3500, mu: 0, units: 3, max: 3, student: true, droughtShut: false, last: null, lastT: -9, pal: 9 };
+    G.day = 1; G.tick = 0; G.idle = 0; G.book = { bid: null, ask: null }; G.trades = []; G.today = []; G.events = [];
+    G.scn = { drought: false, fuel: false, festive: false }; G.rev = 0; G.profitT = 0; G.profit = 0; G.soldT = 0;
+    G.dayAvgs = []; G.eff = null; G.phase = 'open'; G.phaseT = 0; G.banner = null; G.fx = []; G.unmet = 0; G.unsold = 0; G.preDroughtMid = null;
+    G.clock = 0;
+    startDay(true); computeEq();
+  }
+  G.role = 'observer'; G.pol = 'none'; G.polV = 3800; G.ask = 5200; G.speed = 14; G.running = true;
+
+  const tax = () => G.pol === 'tax' ? G.polV : 0;
+  const cap = () => G.pol === 'cap' ? G.polV : Infinity;
+  const flo = () => G.pol === 'floor' ? G.polV : 0;
+  function vEff(b) { return b.v * (G.scn.festive ? 1.25 : 1); }
+  function cTrue(s) { if (s.student) return s.c + (G.scn.fuel ? 700 : 0); return s.c * (G.scn.drought ? 1.15 : 1) + (G.scn.fuel ? 700 : 0); }
+  function cEff(s) { return cTrue(s) + tax(); }
+  function sellersList() { const a = G.sellers.filter(s => !(G.scn.drought && s.droughtShut)); if (G.role === 'seller') a.unshift(G.student); return a; }
+  function buyersList() { return G.buyers.filter(b => !b.festiveOnly || G.scn.festive); }
+  function bPrice(b) { let p = vEff(b) * (1 - b.mu); p = Math.min(p, cap()); return p; }
+  function sPrice(s) { if (s.student) return G.ask; let p = cEff(s) * (1 + s.mu); p = Math.max(p, flo()); return p; }
+  function canBuy(b) { return b.active && vEff(b) >= flo() && Math.min(vEff(b), cap()) > 0; }
+  function canSell(s) { return s.units > 0 && (s.student ? G.ask <= cap() : cEff(s) <= cap()); }
+  function setBP(b, p) { b.mu = SL.clamp(1 - p / vEff(b), 0, 0.95); }
+  function setSP(s, p) { if (s.student) return; s.mu = SL.clamp(p / cEff(s) - 1, 0, 3); }
+  const R = () => 0.005 + rnd() * 0.05, BETA = 0.35;
+  const toward = (cur, tgt) => cur + BETA * (tgt - cur);
+
+  function computeEq() {
+    const vs = buyersList().map(vEff).sort((a, b) => b - a);
+    const cs = []; sellersList().forEach(s => { for (let k = 0; k < s.max; k++) cs.push(cEff(s)); }); cs.sort((a, b) => a - b);
+    let q = 0; while (q < vs.length && q < cs.length && vs[q] >= cs[q]) q++;
+    let lo, hi;
+    if (q === 0) { lo = hi = (vs[0] + cs[0]) / 2; }
+    else { lo = Math.max(cs[q - 1], q < vs.length ? vs[q] : -Infinity); hi = Math.min(vs[q - 1], q < cs.length ? cs[q] : Infinity); if (lo > hi) { const m = (lo + hi) / 2; lo = hi = m; } }
+    // max surplus with TRUE costs (tax is a transfer, not a cost)
+    const ct = []; sellersList().forEach(s => { for (let k = 0; k < s.max; k++) ct.push(cTrue(s)); }); ct.sort((a, b) => a - b);
+    let maxS = 0; for (let i = 0; i < Math.min(vs.length, ct.length); i++) { if (vs[i] >= ct[i]) maxS += vs[i] - ct[i]; else break; }
+    G.eq = { q, lo, hi, mid: (lo + hi) / 2, vs, cs, maxS };
+    setText('gEq', 'KES ' + F(Math.round(G.eq.mid / 10) * 10)); setText('gQs', String(q));
+  }
+
+  function startDay(first) {
+    G.tick = 0; G.idle = 0; G.book = { bid: null, ask: null }; G.today = []; G.phase = 'open'; G.profitT = 0; G.soldT = 0; G.surplusT = 0; G.clock = 0;
+    const bl = buyersList();
+    G.buyers.forEach(b => { b.active = bl.includes(b); b.st = b.active ? 'enter' : 'gone'; b.carry = false; });
+    G.sellers.forEach(s => { s.units = (G.scn.drought && s.droughtShut) ? 0 : s.max; s.last = null; });
+    G.student.units = G.student.max; G.student.last = null;
+    placeBuyersEntering();
+    setText('gDay', String(G.day)); setText('gTr', '0'); setText('gAvg', '—');
+    updateSellerPanel();
+  }
+
+  function shout() {
+    const bs = G.buyers.filter(canBuy), ss = sellersList().filter(canSell);
+    if (!bs.length || !ss.length) return 'none';
+    const maxB = Math.max(...bs.map(b => Math.min(vEff(b), cap()))), minS = Math.min(...ss.map(s => s.student ? G.ask : Math.max(cEff(s), flo())));
+    if (maxB < minS) return 'none';
+    const pool = bs.length + ss.length; const k = Math.floor(rnd() * pool);
+    if (k < bs.length) {
+      const b = bs[k], p = bPrice(b); b.last = p; b.lastT = G.clock;
+      if (G.book.ask && p >= G.book.ask.p) return trade(b, G.book.ask.s, G.book.ask.p, 'bid');
+      if (!G.book.bid || p > G.book.bid.p) G.book.bid = { p, b };
+      // bid not accepted: buyers priced at or below it raise
+      bs.forEach(o => { const op = bPrice(o); if (op <= p) setBP(o, toward(op, p * (1 + R()))); });
+    } else {
+      const s = ss[k - bs.length], p = sPrice(s); s.last = p; s.lastT = G.clock;
+      if (G.book.bid && p <= G.book.bid.p) return trade(G.book.bid.b, s, G.book.bid.p, 'ask');
+      if (!G.book.ask || p < G.book.ask.p) G.book.ask = { p, s };
+      ss.forEach(o => { if (o.student) return; const op = sPrice(o); if (op >= p) setSP(o, toward(op, p * (1 - R()))); });
+    }
+    return 'shout';
+  }
+  function trade(b, s, p, by) {
+    b.active = false; s.units--; G.book = { bid: null, ask: null }; G.idle = 0;
+    const tr = { p, day: G.day, lo: G.eq.lo, hi: G.eq.hi, cap: G.pol === 'cap' ? G.polV : null, floor: G.pol === 'floor' ? G.polV : null, n: G.trades.length };
+    G.trades.push(tr); G.today.push(p);
+    G.rev += tax(); G.surplusT += vEff(b) - cTrue(s);
+    if (s.student) { const pr = p - cTrue(s) - tax(); G.profitT += pr; G.profit += pr; G.soldT++; updateSellerPanel(); }
+    // ZIP learning after an accepted shout at price p
+    G.buyers.filter(o => o.active || o === b).forEach(o => { const op = bPrice(o); if (op >= p) setBP(o, toward(op, p * (1 - R()))); else if (by === 'ask' && o.active) setBP(o, toward(op, p * (1 + R()))); });
+    sellersList().forEach(o => { if (o.student) return; const op = sPrice(o); if (op <= p) setSP(o, toward(op, p * (1 + R()))); else if (by === 'bid' && o.units > 0) setSP(o, toward(op, p * (1 - R()))); });
+    // visuals
+    b.st = 'toStall'; b.stall = s; b.carry = false;
+    const avg = G.today.reduce((a, c) => a + c, 0) / G.today.length;
+    setText('gTr', String(G.today.length)); setText('gAvg', 'KES ' + F(Math.round(avg / 10) * 10));
+    if (s.pos) G.fx.push({ x: s.pos.x + s.pos.w / 2, y: s.pos.y - 6, t: 0, txt: 'KES ' + F(Math.round(p / 10) * 10), col: s.student ? '#facc15' : '#86efac' });
+    return 'trade';
+  }
+  function endDay() {
+    G.phase = 'closing'; G.phaseT = 0;
+    const n = G.today.length, avg = n ? G.today.reduce((a, c) => a + c, 0) / n : null;
+    G.dayAvgs.push({ day: G.day, avg, n, lo: G.eq.lo, hi: G.eq.hi, start: G.trades.length - n, end: G.trades.length });
+    G.eff = G.eq.maxS > 0 ? G.surplusT / G.eq.maxS : null;
+    const ref = G.pol === 'cap' ? G.polV : (avg || G.eq.mid);
+    G.unmet = G.buyers.filter(b => b.active && vEff(b) >= ref).length;
+    const refS = G.pol === 'floor' ? G.polV : (avg || G.eq.mid);
+    G.unsold = sellersList().reduce((a, s) => a + (s.units > 0 && cEff(s) <= refS ? s.units : 0), 0);
+    setText('gEff', G.eff == null ? '—' : F(G.eff * 100, 0) + ' %'); setText('gUnmet', String(G.unmet)); setText('gUnsold', String(G.unsold));
+    G.banner = { t: 0, txt: `Day ${G.day} closed`, sub: n ? `${n} crates · average KES ${F(Math.round(avg / 10) * 10)} · efficiency ${G.eff == null ? '—' : F(G.eff * 100, 0) + ' %'}` : 'No trades today' };
+    // game challenges
+    const L = G.dayAvgs.length;
+    if (L >= 2) { const a = G.dayAvgs[L - 1], b = G.dayAvgs[L - 2]; const near = d => d.avg && Math.abs(d.avg - (d.lo + d.hi) / 2) / ((d.lo + d.hi) / 2) <= 0.03; if (near(a) && near(b)) complete('g1', `Days ${b.day} and ${a.day} averaged within 3 % of the equilibrium: no one knew the curves, yet the market found the price.`); }
+    if (G.role === 'seller' && G.profitT >= 4000) complete('g2', `You earned KES ${F(G.profitT)} today by pricing above most rivals while still finding buyers.`);
+    if (G.role === 'regulator' && G.pol === 'cap' && G.unmet >= 5) complete('g3', `${G.unmet} buyers willing to pay the cap went home without tomatoes: a shortage.`);
+    if (G.scn.drought && G.preDroughtMid && avg && avg >= G.preDroughtMid * 1.15) complete('g4', `Average price KES ${F(Math.round(avg / 10) * 10)} is ${F((avg / G.preDroughtMid - 1) * 100, 0)} % above the pre-drought equilibrium.`);
+  }
+  function stepSim() {
+    if (G.phase !== 'open') return;
+    G.tick++; G.clock++;
+    const r = shout();
+    if (r !== 'trade') G.idle++;
+    if (r === 'none' || G.idle > 160 || G.tick > 900) endDay();
+  }
+
+  /* events */
+  function event(kind) {
+    const was = G.eq ? G.eq.mid : null;
+    if (kind === 'drought') { if (!G.scn.drought) G.preDroughtMid = G.eq.mid; G.scn.drought = true; }
+    if (kind === 'fuel') G.scn.fuel = true;
+    if (kind === 'festive') G.scn.festive = true;
+    if (kind === 'normal') { G.scn = { drought: false, fuel: false, festive: false }; G.preDroughtMid = null; }
+    // closed stalls lose stock immediately; festive buyers join tomorrow
+    if (G.scn.drought) G.sellers.forEach(s => { if (s.droughtShut) s.units = 0; });
+    const bl = buyersList();
+    G.buyers.forEach(b => {
+      if (!bl.includes(b) && b.active) { b.active = false; if (b.st !== 'gone') b.st = 'leaving'; }
+      else if (bl.includes(b) && b.festiveOnly && !b.active && b.st === 'gone' && G.phase === 'open') { b.active = true; b.x = 20 + rnd() * (stG.w - 40); b.y = stG.h + 20; b.st = 'enter'; newWander(b); }
+    });
+    computeEq();
+    G.events.push({ n: G.trades.length, kind });
+    const notes = { drought: 'Drought: a third of the farms have no harvest and the rest face 15 % higher costs.', fuel: 'Fuel price rise: transport adds KES 700 to the cost of every crate.', festive: 'Festive season: buyers value tomatoes 25 % more and six extra buyers arrive.', normal: 'Normal season.' };
+    const act = Object.entries(G.scn).filter(([k, v]) => v).map(([k]) => ({ drought: 'drought', fuel: 'fuel price rise', festive: 'festive season' }[k]));
+    setText('gEvNote', act.length ? 'Active: ' + act.join(', ') + '.' : 'Normal season.');
+    SL.toast(`${notes[kind]}<br>New competitive equilibrium ≈ <b>KES ${F(Math.round(G.eq.mid / 10) * 10)}</b>${was ? ` (was ${F(Math.round(was / 10) * 10)})` : ''}, ${G.eq.q} crates/day.`, kind === 'normal' ? 'ok' : 'warn', 5200);
+  }
+  $$('[data-ev]').forEach(b => b.addEventListener('click', () => event(b.dataset.ev)));
+
+  /* role & policy controls */
+  $('#roleSeg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return; G.role = b.dataset.r; segPick('#roleSeg', 'r', G.role);
+    $$('.role-panel').forEach(p => p.hidden = p.dataset.role !== G.role);
+    if (G.role !== 'regulator') { G.pol = 'none'; $('#gPol').value = 'none'; }
+    if (G.role === 'regulator') { G.pol = $('#gPol').value; }
+    layoutStalls(); computeEq(); G.profitT = 0; G.soldT = 0; updateSellerPanel();
+  });
+  SL.bind('#gAsk', v => { G.ask = v; }, v => 'KES ' + F(v));
+  SL.bind('#gSpeed', v => { G.speed = v; }, v => v + '/s');
+  SL.bind('#gPolV', v => { G.polV = v; if (G.buyers) computeEq(); }, v => 'KES ' + F(v));
+  SL.bind('#gPol', v => {
+    G.pol = v; const r = $('#gPolV'); const ctl = $('#gPolCtl');
+    ctl.style.display = v === 'none' ? 'none' : '';
+    if (v === 'tax') { r.min = 0; r.max = 2500; r.value = 800; } else if (v === 'cap') { r.min = 1500; r.max = 7000; r.value = 3800; } else if (v === 'floor') { r.min = 1500; r.max = 7000; r.value = 5300; }
+    r.dispatchEvent(new Event('input'));
+  });
+  $('#gPlay').onclick = () => { G.running = !G.running; $('#gPlay').innerHTML = G.running ? '<i data-lucide="pause"></i> Pause' : '<i data-lucide="play"></i> Resume'; SL.refreshIcons($('#gPlay')); };
+  $('#gReset').onclick = () => { newMarket(); layoutStalls(); SL.toast('A fresh market: traders start with random price expectations.'); };
+  function updateSellerPanel() { setText('gSold', `${G.soldT || 0} / 3`); setText('gProfT', 'KES ' + F(G.profitT || 0)); setText('gProf', 'KES ' + F(G.profit || 0)); setText('gRev', 'KES ' + F(G.rev || 0)); }
+
+  /* ---------------- market scene ---------------- */
+  const cvG = $('#cvG'); let stallBottom = 200;
+  const stG = SL.canvas(cvG, () => layoutStalls());
+  function layoutStalls() {
+    if (!G.sellers) return;
+    const { w, h } = stG; if (w < 60) return; const list = sellersList(); const n = list.length;
+    const cols = w > 760 ? 7 : w > 560 ? 6 : 5; const rows = Math.ceil(n / cols);
+    const top = 62, gx = w < 520 ? 6 : 12, sw = (w - 24 - gx * (cols - 1)) / cols, sh = w < 520 ? 50 : 58, gy = w < 520 ? 22 : 26;
+    // closed drought stalls still drawn (shuttered)
+    list.forEach((s, i) => { const c = i % cols, r = Math.floor(i / cols); s.pos = { x: 12 + c * (sw + gx), y: top + r * (sh + gy) + 14, w: sw, h: sh }; });
+    G.sellers.forEach(s => { if (!list.includes(s)) { /* drought-shut: keep slot via layout of all sellers */ } });
+    // place shut stalls too, so the closed shutters are visible
+    const all = (G.role === 'seller' ? [G.student] : []).concat(G.sellers);
+    all.forEach((s, i) => { const c = i % cols, r = Math.floor(i / cols); s.pos = { x: 12 + c * (sw + gx), y: top + r * (sh + gy) + 14, w: sw, h: sh }; });
+    stallBottom = top + Math.ceil(all.length / cols) * (sh + gy) + 14;
+    G.crowd = { y0: stallBottom + 14, y1: h - 58 };
+    G.buyers.forEach(b => { if (b.st !== 'gone' && (b.x < 0 || b.x > w || b.y < stallBottom - 10)) { b.x = 20 + rnd() * (w - 40); b.y = h + 10 + rnd() * 30; b.st = 'enter'; newWander(b); } else if (b.st === 'wander' && (b.tx > w || b.ty > h)) newWander(b); });
+  }
+  function placeBuyersEntering() {
+    const { w, h } = stG;
+    G.buyers.forEach((b, i) => { if (!b.active) return; b.x = 20 + rnd() * (w - 40); b.y = h + 10 + rnd() * 30; newWander(b); b.st = 'enter'; });
+  }
+  function newWander(b) { const { w } = stG; const c = G.crowd || { y0: 300, y1: 420 }; b.tx = 18 + rnd() * (w - 36); b.ty = c.y0 + 10 + rnd() * Math.max(10, c.y1 - c.y0 - 10); }
+  const AWN = [['#ef4444', '#fde68a'], ['#22c55e', '#f0fdf4'], ['#3b82f6', '#e0f2fe'], ['#f97316', '#fff7ed'], ['#a855f7', '#f5f3ff']];
+  function drawStall(ctx, s) {
+    const p = s.pos; if (!p) return; const shut = G.scn.drought && s.droughtShut;
+    const { x, y, w, h } = p; const awnH = 13;
+    // posts
+    ctx.fillStyle = '#5b4632'; ctx.fillRect(x + 3, y, 3, h); ctx.fillRect(x + w - 6, y, 3, h);
+    // awning (scalloped stripes)
+    const pal = s.student ? ['#facc15', '#422006'] : AWN[s.pal % AWN.length];
+    const stripes = Math.max(4, Math.round(w / 12)); const sw = w / stripes;
+    for (let i = 0; i < stripes; i++) { ctx.fillStyle = shut ? (i % 2 ? '#334155' : '#475569') : pal[i % 2]; ctx.beginPath(); ctx.moveTo(x + i * sw, y - awnH); ctx.lineTo(x + (i + 1) * sw, y - awnH); ctx.lineTo(x + (i + 1) * sw, y); ctx.arc(x + (i + .5) * sw, y, sw / 2, 0, Math.PI); ctx.closePath(); ctx.fill(); }
+    // table
+    const ty = y + h * 0.55; ctx.fillStyle = shut ? '#1f2937' : '#7c5a3a'; ctx.fillRect(x + 1, ty, w - 2, h * 0.45); ctx.fillStyle = shut ? '#111827' : '#5b4128'; ctx.fillRect(x + 1, ty, w - 2, 4);
+    if (shut) { ctx.fillStyle = '#374151'; ctx.fillRect(x + 4, y + 4, w - 8, h * 0.5); ctx.strokeStyle = '#4b5563'; for (let yy = y + 8; yy < y + h * 0.55; yy += 5) { ctx.beginPath(); ctx.moveTo(x + 4, yy); ctx.lineTo(x + w - 4, yy); ctx.stroke(); } ctx.fillStyle = '#f87171'; ctx.font = '700 9px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText('CLOSED', x + w / 2, ty + 12); return; }
+    // crates with tomatoes
+    const cw = Math.min(20, (w - 10) / Math.max(1, s.max) - 3);
+    for (let k = 0; k < s.units; k++) {
+      const cx = x + 6 + k * (cw + 3), cy = ty - 11;
+      ctx.fillStyle = '#a16207'; ctx.fillRect(cx, cy, cw, 11); ctx.strokeStyle = '#713f12'; ctx.strokeRect(cx + .5, cy + .5, cw - 1, 10);
+      ctx.fillStyle = '#ef4444'; for (let t = 0; t < 3; t++) { ctx.beginPath(); ctx.arc(cx + 4 + t * (cw - 8) / 2, cy - 1, 3.2, 0, 7); ctx.fill(); }
+      ctx.fillStyle = '#16a34a'; ctx.fillRect(cx + cw / 2 - 1, cy - 5, 2, 2);
+    }
+    // seller figure
+    const fx = x + w - 14, fy = ty - 4;
+    ctx.fillStyle = s.student ? '#facc15' : ['#92400e', '#78350f', '#a16207', '#7c2d12', '#854d0e'][s.pal % 5]; ctx.beginPath(); ctx.arc(fx, fy - 16, 4.5, 0, 7); ctx.fill();
+    ctx.fillStyle = s.student ? '#f59e0b' : ['#2563eb', '#db2777', '#059669', '#7c3aed', '#ea580c'][s.pal % 5]; ctx.beginPath(); ctx.roundRect(fx - 5, fy - 11, 10, 11, 3); ctx.fill();
+    // price tag
+    const showP = s.student ? G.ask : (s.units > 0 && s.last && G.clock - s.lastT < 60 ? s.last : null);
+    if (showP) {
+      const txt = F(Math.round(showP / 10) * 10); ctx.font = '600 9.5px JetBrains Mono, monospace'; const tw = ctx.measureText(txt).width + 8;
+      ctx.fillStyle = s.student ? '#facc15' : '#f8fafc'; ctx.beginPath(); ctx.roundRect(x + 4, y + 2, tw, 13, 3); ctx.fill();
+      ctx.fillStyle = '#0f172a'; ctx.textAlign = 'left'; ctx.fillText(txt, x + 8, y + 12);
+    }
+    if (s.student) { ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]); ctx.strokeRect(x - 2, y - awnH - 3, w + 4, h + awnH + 5); ctx.setLineDash([]); ctx.lineWidth = 1; ctx.fillStyle = '#facc15'; ctx.font = '700 9px JetBrains Mono, monospace'; ctx.textAlign = 'right'; ctx.fillText('YOU', x + w - 2, y + h + 11); }
+    if (s.units === 0 && !shut) { ctx.fillStyle = 'rgba(148,163,184,.8)'; ctx.font = '600 8.5px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText('SOLD OUT', x + 6, ty - 3); }
+  }
+  const SKIN = ['#8d5524', '#6b4423', '#a0673a', '#5c3a1e', '#7a4b2a', '#94603a'], CLOTH = ['#0ea5e9', '#e11d48', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+  function drawBuyer(ctx, b) {
+    const k = stG.w > 600 ? 1.45 : 1.15; ctx.save(); ctx.translate(b.x, b.y); ctx.scale(k, k); ctx.translate(-b.x, -b.y);
+    const x = b.x, y = b.y, bob = Math.sin((b.x + b.y) * 0.25) * 1.2;
+    ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(x, y + 9, 6, 2.2, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = CLOTH[b.hue]; ctx.beginPath(); ctx.roundRect(x - 5, y - 4 + bob, 10, 13, 4); ctx.fill();
+    ctx.fillStyle = SKIN[b.hue]; ctx.beginPath(); ctx.arc(x, y - 8 + bob, 4.5, 0, 7); ctx.fill();
+    if (b.carry) { ctx.fillStyle = '#a16207'; ctx.fillRect(x - 7, y - 1 + bob, 14, 7); ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(x - 3, y - 2 + bob, 2.4, 0, 7); ctx.arc(x + 3, y - 2 + bob, 2.4, 0, 7); ctx.fill(); }
+    if (b.active && b.last && G.clock - b.lastT < 14) {
+      const txt = F(Math.round(b.last / 10) * 10); ctx.font = '600 9px JetBrains Mono, monospace'; const tw = ctx.measureText(txt).width + 8;
+      ctx.fillStyle = 'rgba(96,165,250,.95)'; ctx.beginPath(); ctx.roundRect(x - tw / 2, y - 28, tw, 13, 4); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(x - 3, y - 15); ctx.lineTo(x + 3, y - 15); ctx.lineTo(x, y - 12); ctx.fill();
+      ctx.fillStyle = '#04111f'; ctx.textAlign = 'center'; ctx.fillText(txt, x, y - 18.5);
+    }
+    ctx.restore();
+  }
+  function moveBuyers(dt) {
+    const sp = 70 * Math.sqrt(G.speed / 10) * dt;
+    G.buyers.forEach(b => {
+      if (b.st === 'gone') return;
+      let tx = b.tx, ty = b.ty;
+      if (b.st === 'toStall' && b.stall && b.stall.pos) { tx = b.stall.pos.x + b.stall.pos.w * 0.4; ty = b.stall.pos.y + b.stall.pos.h + 10; }
+      if (b.st === 'leaving') { ty = stG.h + 30; }
+      const dx = tx - b.x, dy = ty - b.y, d = Math.hypot(dx, dy), v = (b.st === 'wander' ? 0.35 : 1.6) * sp * 1.4;
+      if (d < Math.max(2, v)) {
+        b.x = tx; b.y = ty;
+        if (b.st === 'enter' || b.st === 'wander') { b.st = 'wander'; newWander(b); }
+        else if (b.st === 'toStall') { b.st = 'leaving'; b.carry = true; }
+        else if (b.st === 'leaving') b.st = 'gone';
+      } else { b.x += dx / d * v; b.y += dy / d * v; }
+    });
+  }
+  function drawScene(dt) {
+    const { ctx, w, h } = stG; if (w < 60 || !G.sellers[0].pos || G.sellers[0].pos.w <= 0) { layoutStalls(); if (w < 60) return; }
+    // floor
+    const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#1a1410'); g.addColorStop(.45, '#14110d'); g.addColorStop(1, '#0c0a08'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    // floor tiles / dust texture
+    ctx.strokeStyle = 'rgba(255,255,255,.025)'; for (let x = 0; x < w; x += 46) { ctx.beginPath(); ctx.moveTo(x, stallBottom); ctx.lineTo(x - 60, h); ctx.stroke(); }
+    // roof: corrugated iron
+    const rg = ctx.createLinearGradient(0, 0, 0, 40); rg.addColorStop(0, '#475569'); rg.addColorStop(1, '#1e293b'); ctx.fillStyle = rg; ctx.fillRect(0, 0, w, 40);
+    ctx.strokeStyle = 'rgba(15,23,42,.6)'; for (let x = 0; x < w; x += 9) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 40); ctx.stroke(); }
+    ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 40, w, 4);
+    // light rays
+    ctx.save(); ctx.globalAlpha = .06; ctx.fillStyle = '#fde68a'; for (let i = 0; i < 4; i++) { const x = w * (0.15 + i * 0.25); ctx.beginPath(); ctx.moveTo(x - 20, 44); ctx.lineTo(x + 20, 44); ctx.lineTo(x + 90, h); ctx.lineTo(x + 10, h); ctx.fill(); } ctx.restore();
+    // sign
+    const sTxt = 'SOKO · FRESH PRODUCE'; ctx.font = '700 13px Space Grotesk, Inter, sans-serif'; const sw = ctx.measureText(sTxt).width + 30;
+    ctx.fillStyle = '#065f46'; ctx.beginPath(); ctx.roundRect(w / 2 - sw / 2, 8, sw, 24, 5); ctx.fill(); ctx.strokeStyle = '#facc15'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.lineWidth = 1;
+    ctx.fillStyle = '#fef9c3'; ctx.textAlign = 'center'; ctx.fillText(sTxt, w / 2, 25);
+    // clock (market hours 06:00 to 14:00)
+    const frac = SL.clamp(G.tick / 260, 0, 1), mins = 6 * 60 + frac * 8 * 60; const hh = Math.floor(mins / 60), mm = Math.floor(mins % 60 / 10) * 10;
+    ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'right'; ctx.fillStyle = '#fde68a';
+    if (w > 480) ctx.fillText(`Day ${G.day} · ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`, w - 12, 25);
+    // event badges
+    let bx = 12; ctx.textAlign = 'left'; ctx.font = '600 10px JetBrains Mono, monospace';
+    [['drought', 'DROUGHT', '#f59e0b'], ['fuel', 'FUEL +700', '#f87171'], ['festive', 'FESTIVE', '#34d399']].forEach(([k, t, c]) => { if (!G.scn[k]) return; const tw = ctx.measureText(t).width + 10; ctx.fillStyle = 'rgba(5,9,19,.8)'; ctx.beginPath(); ctx.roundRect(bx, 12, tw, 17, 4); ctx.fill(); ctx.fillStyle = c; ctx.fillText(t, bx + 5, 24.5); bx += tw + 5; });
+    // stalls
+    const all = (G.role === 'seller' ? [G.student] : []).concat(G.sellers);
+    all.forEach(s => drawStall(ctx, s));
+    // policy banner
+    if (G.pol !== 'none') { const t = { cap: 'PRICE CAP KES ' + F(G.polV), floor: 'MINIMUM PRICE KES ' + F(G.polV), tax: 'TAX KES ' + F(G.polV) + ' / CRATE' }[G.pol]; ctx.font = '700 10px JetBrains Mono, monospace'; const tw = ctx.measureText(t).width + 12; ctx.fillStyle = 'rgba(127,29,29,.9)'; ctx.beginPath(); ctx.roundRect(w - tw - 12, stallBottom - 6, tw, 17, 4); ctx.fill(); ctx.fillStyle = '#fecaca'; ctx.textAlign = 'left'; ctx.fillText(t, w - tw - 6, stallBottom + 6); }
+    // buyers, back to front
+    G.buyers.filter(b => b.st !== 'gone').sort((a, b) => a.y - b.y).forEach(b => drawBuyer(ctx, b));
+    // floating prices
+    G.fx = G.fx.filter(f => (f.t += dt) < 1.6);
+    G.fx.forEach(f => { ctx.globalAlpha = 1 - f.t / 1.6; ctx.font = '700 12px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillStyle = f.col; ctx.fillText(f.txt, f.x, f.y - f.t * 22); ctx.globalAlpha = 1; });
+    // order book strip
+    ctx.font = '600 10.5px JetBrains Mono, monospace'; ctx.textAlign = 'left';
+    const bid = G.book.bid ? F(Math.round(G.book.bid.p / 10) * 10) : '—', ask = G.book.ask ? F(Math.round(G.book.ask.p / 10) * 10) : '—';
+    const ob = `Best bid ${bid}  ·  Best ask ${ask}`; const ow = ctx.measureText(ob).width + 14;
+    ctx.fillStyle = 'rgba(5,9,19,.8)'; ctx.beginPath(); ctx.roundRect(w - ow - 10, h - 30, ow, 20, 5); ctx.fill();
+    if (w > 600) { ctx.fillStyle = '#93c5fd'; ctx.fillText(ob, w - ow - 3, h - 16.5); }
+    // banner
+    if (G.banner) {
+      G.banner.t += dt; const a = Math.min(1, G.banner.t * 3, (2.2 - G.banner.t) * 3);
+      if (a > 0) { ctx.globalAlpha = a; ctx.fillStyle = 'rgba(5,9,19,.88)'; const bw = Math.min(w - 30, 420); ctx.beginPath(); ctx.roundRect(w / 2 - bw / 2, h / 2 - 34, bw, 62, 10); ctx.fill(); ctx.strokeStyle = '#facc15'; ctx.stroke(); ctx.fillStyle = '#facc15'; ctx.textAlign = 'center'; ctx.font = '700 16px Space Grotesk, Inter, sans-serif'; ctx.fillText(G.banner.txt, w / 2, h / 2 - 10); ctx.fillStyle = '#cbd5e1'; ctx.font = '500 11px JetBrains Mono, monospace'; ctx.fillText(G.banner.sub, w / 2, h / 2 + 12); ctx.globalAlpha = 1; }
+    }
+  }
+
+  /* ---------------- price chart ---------------- */
+  const cvP = $('#cvP'); const stP = SL.canvas(cvP);
+  function drawPrice() {
+    const { ctx, w, h } = stP; ctx.clearRect(0, 0, w, h); ctx.fillStyle = '#050913'; ctx.fillRect(0, 0, w, h);
+    const pl = 52, pr = 12, pt = 26, pb = 26; const pw = w - pl - pr, ph = h - pt - pb;
+    const N = w < 520 ? 70 : 140; const all = G.trades; const start = Math.max(0, all.length - N); const tr = all.slice(start);
+    let ymin = 1500, ymax = 8000;
+    const X = i => pl + (i - start) / Math.max(1, N - 1) * pw, Y = p => pt + ph - (p - ymin) / (ymax - ymin) * ph;
+    ctx.font = '10.5px JetBrains Mono, monospace';
+    for (let p = 2000; p <= 8000; p += 1000) { const y = Y(p); ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(pl + pw, y); ctx.stroke(); ctx.fillStyle = COL.dim; ctx.textAlign = 'right'; ctx.fillText(F(p), pl - 6, y + 3.5); }
+    ctx.fillStyle = COL.txt; ctx.textAlign = 'left'; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.fillText('Trade prices, KES per crate', pl, 16);
+    // equilibrium band per trade (+ current band projected forward)
+    const bandPts = tr.map(t => [t.n, t.lo, t.hi]); bandPts.push([all.length, G.eq.lo, G.eq.hi]);
+    ctx.fillStyle = 'rgba(52,211,153,.28)';
+    for (let k = 0; k < bandPts.length; k++) { const [n, lo, hi] = bandPts[k]; const x0 = X(n), x1 = k + 1 < bandPts.length ? X(bandPts[k + 1][0]) : X(n) + 8; const y0 = Y(hi + 60), y1 = Y(lo - 60); ctx.fillRect(x0, y0, Math.max(1, x1 - x0), y1 - y0); }
+    // policy lines
+    tr.forEach((t, k) => { const lv = t.cap || t.floor; if (lv) { ctx.fillStyle = '#f87171'; ctx.fillRect(X(t.n), Y(lv) - 1, Math.max(1.5, pw / N), 2); } });
+    if (G.pol === 'cap' || G.pol === 'floor') { ctx.strokeStyle = '#f87171'; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.moveTo(X(all.length), Y(G.polV)); ctx.lineTo(pl + pw, Y(G.polV)); ctx.stroke(); ctx.setLineDash([]); }
+    // day separators
+    G.dayAvgs.forEach(d => { if (d.end <= start) return; const x = X(d.end - 0.5); ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.moveTo(x, pt); ctx.lineTo(x, pt + ph); ctx.stroke(); });
+    // events
+    G.events.forEach(ev => { if (ev.n < start) return; const x = X(ev.n - 0.5); ctx.strokeStyle = '#f59e0b'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x, pt); ctx.lineTo(x, pt + ph); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = '#f59e0b'; ctx.font = '600 9.5px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText({ drought: 'drought', fuel: 'fuel', festive: 'festive', normal: 'normal' }[ev.kind], x + 3, pt + 10); });
+    // daily averages
+    ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2.2;
+    G.dayAvgs.concat(G.today.length ? [{ start: all.length - G.today.length, end: all.length, avg: G.today.reduce((a, c) => a + c, 0) / G.today.length }] : []).forEach(d => { if (!d.avg || d.end <= start) return; ctx.beginPath(); ctx.moveTo(X(Math.max(start, d.start)), Y(d.avg)); ctx.lineTo(X(d.end - 1), Y(d.avg)); ctx.stroke(); });
+    ctx.lineWidth = 1;
+    // trade dots
+    tr.forEach((t, k) => { ctx.fillStyle = k === tr.length - 1 ? '#fff' : '#facc15'; ctx.beginPath(); ctx.arc(X(t.n), Y(t.p), k === tr.length - 1 ? 3.6 : 2.6, 0, 7); ctx.fill(); });
+    if (!tr.length) { ctx.fillStyle = COL.dim; ctx.textAlign = 'center'; ctx.fillText('Waiting for the first trade…', pl + pw / 2, pt + ph / 2); }
+    ctx.fillStyle = COL.dim; ctx.textAlign = 'right'; ctx.font = '10px JetBrains Mono, monospace'; ctx.fillText('trade number →', pl + pw, h - 8);
+  }
+  /* ---------------- mini induced S&D ---------------- */
+  const cvMini = $('#cvMini'); const stM = SL.canvas(cvMini);
+  function drawMini() {
+    const { ctx, w, h } = stM; ctx.clearRect(0, 0, w, h); if (!G.eq) return;
+    const pl = 40, pr = 8, pt = 10, pb = 20, pw = w - pl - pr, ph = h - pt - pb;
+    const nmax = 28, ymin = 1000, ymax = 9500; const X = n => pl + n / nmax * pw, Y = p => pt + ph - (SL.clamp(p, ymin, ymax) - ymin) / (ymax - ymin) * ph;
+    ctx.font = '9.5px JetBrains Mono, monospace'; ctx.fillStyle = COL.dim; ctx.textAlign = 'right';
+    [2000, 4000, 6000, 8000].forEach(p => { ctx.fillText(p / 1000 + 'k', pl - 5, Y(p) + 3); ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.beginPath(); ctx.moveTo(pl, Y(p)); ctx.lineTo(pl + pw, Y(p)); ctx.stroke(); });
+    ctx.textAlign = 'center'; [0, 10, 20].forEach(n => ctx.fillText(n, X(n), h - 6));
+    const step = (arr, col) => { ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); arr.forEach((p, i) => { if (i === 0) ctx.moveTo(X(0), Y(p)); else ctx.lineTo(X(i), Y(p)); ctx.lineTo(X(i + 1), Y(p)); }); ctx.stroke(); };
+    step(G.eq.vs, COL.D); step(G.eq.cs, COL.S);
+    ctx.fillStyle = 'rgba(52,211,153,.25)'; ctx.fillRect(pl, Y(G.eq.hi), pw, Math.max(2, Y(G.eq.lo) - Y(G.eq.hi)));
+    if (G.today.length) { const a = G.today.reduce((x, y) => x + y, 0) / G.today.length; ctx.strokeStyle = '#22d3ee'; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(pl, Y(a)); ctx.lineTo(pl + pw, Y(a)); ctx.stroke(); ctx.setLineDash([]); }
+    if (G.pol === 'cap' || G.pol === 'floor') { ctx.strokeStyle = '#f87171'; ctx.beginPath(); ctx.moveTo(pl, Y(G.polV)); ctx.lineTo(pl + pw, Y(G.polV)); ctx.stroke(); }
+    ctx.fillStyle = COL.D; ctx.textAlign = 'left'; ctx.fillText('demand (values)', pl + 4, pt + 8); ctx.fillStyle = COL.S; ctx.fillText('supply (costs)', pl + 4, pt + 20);
+  }
+  /* tooltip on market */
+  const tipG = $('#tipG');
+  cvG.addEventListener('pointermove', e => {
+    const p = SL.ptr(e, cvG); let html = null;
+    const all = (G.role === 'seller' ? [G.student] : []).concat(G.sellers);
+    for (const s of all) { const q = s.pos; if (q && p.x >= q.x && p.x <= q.x + q.w && p.y >= q.y - 14 && p.y <= q.y + q.h) { const shut = G.scn.drought && s.droughtShut; html = s.student ? `<b>Your stall</b><br>cost KES ${F(cTrue(s))}${tax() ? ' + tax ' + F(tax()) : ''}<br>asking KES ${F(G.ask)} · ${s.units} crates left` : shut ? `<b>Farm ${s.id + 1}</b><br>no harvest (drought)` : `<b>Farm stall ${s.id + 1}</b><br>cost KES ${F(Math.round(cTrue(s)))}${tax() ? ' + tax ' + F(tax()) : ''}<br>asking ${F(Math.round(sPrice(s) / 10) * 10)} · ${s.units ? 'has a crate' : 'sold out'}`; break; } }
+    if (!html) for (const b of G.buyers) { if (b.st === 'gone') continue; if (Math.hypot(b.x - p.x, b.y - 4 - p.y) < 11) { html = `<b>Buyer</b> (${b.festiveOnly ? 'festive visitor' : 'trader/household'})<br>willing to pay up to KES ${F(Math.round(vEff(b) / 10) * 10)}<br>${b.active ? 'bidding about ' + F(Math.round(bPrice(b) / 10) * 10) : 'has bought'}`; break; } }
+    if (html) { tipG.innerHTML = html; tipG.style.display = 'block'; tipG.style.left = Math.min(p.x + 12, stG.w - tipG.offsetWidth - 6) + 'px'; tipG.style.top = Math.max(4, p.y - 60) + 'px'; } else tipG.style.display = 'none';
+  });
+  cvG.addEventListener('pointerleave', () => tipG.style.display = 'none');
+
+  let acc = 0;
+  const loopG = SL.loop(dt => {
+    if (G.running) {
+      if (G.phase === 'open') { acc += dt * G.speed; let k = 0; while (acc >= 1 && k < 30) { acc -= 1; stepSim(); k++; } }
+      else if (G.phase === 'closing') { G.phaseT += dt; if (G.phaseT > 2.3) { G.day++; startDay(); G.banner = null; } }
+      moveBuyers(dt);
+    }
+    drawScene(G.running ? dt : 0); drawPrice(); drawMini();
+  });
+
+  /* ---------------- mode switching & visibility ---------------- */
+  let mode = 'curves';
+  function setMode(m) {
+    mode = m; segPick('#modeSeg', 'mode', m);
+    $('#labCurves').hidden = m !== 'curves'; $('#labGame').hidden = m !== 'game';
+    $('#modeNote').textContent = m === 'curves' ? 'Drag the curves, rotate them with the white handles, or use the shifters. Add a tax, subsidy, price control or quota and watch the surplus areas change.' : 'A Nairobi fresh produce market. Buyers and farmers post bids and asks; a trade happens whenever a bid meets an ask. Run your own stall or regulate the market.';
+    runLoops();
+  }
+  function runLoops() {
+    const vis = !document.hidden;
+    if (vis && mode === 'curves') loopC.start(); else loopC.stop();
+    if (vis && mode === 'game') { if (!G.buyers) { newMarket(); } layoutStalls(); loopG.start(); } else loopG.stop();
+  }
+  $('#modeSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.mode); });
+  document.addEventListener('visibilitychange', runLoops);
+  setPol('none'); $('#gPolCtl').style.display = 'none';
+  newMarket();
+  setMode(location.hash === '#game' ? 'game' : 'curves');
+
+  /* ---------------- quiz ---------------- */
+  SL.quiz('#quiz', [
+    { q: 'Demand is $P = 180 - 1.6Q$ and supply is $P = 40 + 1.2Q$. What is the equilibrium quantity?', options: ['40 t', '50 t', '56.25 t', '62.5 t'], answer: 1, why: '$180 - 1.6Q = 40 + 1.2Q$ gives $2.8Q = 140$, so $Q^* = 50$ and $P^* = 100$.' },
+    { q: 'A rise in household income shifts demand for an inferior good…', options: ['right, raising price and quantity', 'left, lowering price and quantity', 'along the curve, lowering quantity demanded', 'not at all, since only price moves demand'], answer: 1, why: 'Inferior goods are bought less as income rises, so the demand curve shifts left and both $P^*$ and $Q^*$ fall.' },
+    { q: 'A tomato tax of KES 28/kg raises buyers\' price from 100 to 116. What share of the tax do buyers bear?', options: ['16 %', '42.9 %', '57.1 %', '100 % because buyers pay it at the till'], answer: 2, why: 'Buyers bear $(116-100)/28 = 0.571$. Incidence depends on elasticities, not on who hands the money to the tax authority.' },
+    { q: 'Using the midpoint method, price rises from KES 100 to 116 and quantity demanded falls from 50 to 40. The arc elasticity is about…', options: ['−0.67', '−1.25', '−1.50', '−2.00'], answer: 2, why: '$\\%\\Delta Q = -10/45 = -22.2\\%$, $\\%\\Delta P = 16/108 = 14.8\\%$; ratio ≈ −1.50.' },
+    { q: 'On the lower (inelastic) half of a linear demand curve, a seller who raises the price will see total revenue…', options: ['rise', 'fall', 'stay the same', 'become negative'], answer: 0, why: 'When $|\\varepsilon_d| < 1$ the percentage fall in quantity is smaller than the percentage rise in price, so $P\\times Q$ increases. Revenue peaks at the unit-elastic midpoint.' },
+    { q: 'A binding price ceiling below the equilibrium price causes…', options: ['a surplus and a fall in quantity traded', 'a shortage and a fall in quantity traded', 'a shortage and a rise in quantity traded', 'no change if demand is elastic'], answer: 1, why: 'At the capped price buyers want more but sellers offer less; trade is limited to $Q_s(P_c)$, creating a shortage and a deadweight loss.' },
+    { q: 'For a given tax, the deadweight loss is smallest when…', options: ['both demand and supply are very elastic', 'both demand and supply are very inelastic', 'the tax is levied on buyers rather than sellers', 'the government spends the revenue wisely'], answer: 1, why: 'DWL ≈ ½·t·ΔQ. With inelastic curves the quantity barely changes, so the triangle is thin. That is why goods with inelastic demand are popular tax bases.' },
+    { q: 'A quota that cuts quantity to the same level as a tax produces the same prices. What is different?', options: ['The deadweight loss is larger', 'Buyers pay less', 'The wedge goes to licence holders as quota rent, not to the government', 'Nothing at all'], answer: 2, why: 'The price wedge is identical, so CS, PS and DWL match; the rectangle that was tax revenue becomes rent for whoever holds the quota licences.' },
+    { q: 'In the live double auction, nobody knows the supply and demand curves. Why do prices still approach the equilibrium?', options: ['A central auctioneer computes it', 'Traders with unmatched offers keep improving them, and no one trades at a loss, so only the intramarginal units trade', 'Prices are randomly drawn around the equilibrium', 'Sellers collude to set the price'], answer: 1, why: 'Competition among buyers (raising bids) and sellers (cutting asks), constrained by values and costs, squeezes trades into the band where demand and supply cross: Smith\'s classic result.' },
+    { q: 'Which is an example of market failure where a tax could increase total surplus?', options: ['A tax on tomatoes in a competitive market', 'A tax on emissions from a factory polluting a river', 'A tax on bread with inelastic demand', 'A tax on imported phones'], answer: 1, why: 'Pollution is a negative externality: the private supply curve ignores external costs, so output is too high. A corrective (Pigouvian) tax moves output towards the socially efficient level.' },
+  ]);
+
+  // expose for automated tests
+  window.__market = { compute: S => compute(Object.assign({}, DEF, S)), T, D, G, get M() { return M; }, applyPreset, setMode, event, stepSim, startDay, endDay, computeEq };
+})();
+</script>
+</body>
+</html>
