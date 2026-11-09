@@ -1,0 +1,908 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Matrix Transformations · Pentarch SimLab</title>
+<meta name="description" content="Drag basis vectors and watch 2×2 and 3×3 matrices bend space: determinants as areas and volumes, eigenvectors, composition, homogeneous coordinates for robots and graphics, and Gaussian elimination step by step.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  #stage{height:620px;touch-action:none}
+  @media (max-width:980px){#stage{height:540px}}
+  @media (max-width:520px){#stage{height:460px}}
+  .modebar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-top:22px}
+  .modebar .seg button{display:inline-flex;align-items:center;gap:6px}
+  .modebar .seg svg{width:15px;height:15px}
+  .lab{padding-top:12px}
+  [data-for]{display:none}
+  .mgrid{display:grid;gap:6px;padding:6px 10px;border-left:2px solid var(--muted);border-right:2px solid var(--muted);border-radius:8px;margin:6px 0 10px}
+  .mgrid input{text-align:center;font:600 .9rem var(--mono);padding:7px 4px}
+  .mgrid.c2{grid-template-columns:repeat(2,1fr)} .mgrid.c3{grid-template-columns:repeat(3,1fr)} .mgrid.c4{grid-template-columns:repeat(3,1fr) 12px 1fr}
+  .mgrid .bar{border-left:1px dashed var(--line2);height:100%}
+  .mrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .mrow .lbl{font:700 1rem var(--display);color:var(--accent);width:24px}
+  .tex-box{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-top:8px;overflow-x:auto;font-size:.92rem}
+  .tex-box .lbl{font:600 .66rem var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);display:block;margin-bottom:2px}
+  .hud .readout{white-space:nowrap}
+  .legend{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:4px;font:500 .72rem var(--mono);color:var(--muted);background:rgba(5,9,19,.7);border:1px solid var(--line);border-radius:8px;padding:6px 9px;pointer-events:none}
+  .legend:empty{display:none}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .legend span::before{content:"";width:14px;height:3px;border-radius:2px;background:var(--c)}
+  @media (max-width:520px){.legend{display:none}.hud .readout{font-size:.7rem;padding:4px 7px}}
+  .prose table.data{display:block;overflow-x:auto;max-width:100%}
+  .prose .katex-display{overflow-x:auto;overflow-y:hidden;padding:2px 0}
+  .chal{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px dashed var(--line)}
+  .chal .led{margin-top:7px;flex:none}
+  .chal b{display:block}
+  .seg.full{display:flex} .seg.full button{flex:1;text-align:center}
+  .presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+  .presets .btn{padding:5px 9px;font-size:.76rem}
+  .steplist{list-style:none;margin:8px 0 0;padding:0;max-height:300px;overflow:auto}
+  .steplist li{padding:7px 8px;border-radius:8px;border:1px solid transparent;font-size:.82rem;color:var(--muted);display:flex;gap:10px;align-items:center;justify-content:space-between;cursor:pointer}
+  .steplist li.cur{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent);color:var(--text)}
+  .steplist li.future{opacity:.35}
+  .steplist .op{font:600 .8rem var(--mono)}
+  .fm{display:inline-grid;gap:0 8px;font:500 .72rem var(--mono);padding:2px 7px;border-left:1.5px solid var(--muted);border-right:1.5px solid var(--muted);border-radius:4px}
+  .fm span{text-align:right}
+  .fm .aug{border-left:1px dashed var(--line2);padding-left:6px}
+  .verdict{margin-top:10px;padding:10px 12px;border-radius:10px;font-size:.86rem;border:1px solid var(--line)}
+  .verdict.ok{border-color:color-mix(in srgb,var(--ok) 50%,transparent);background:rgba(34,197,94,.08)}
+  .verdict.bad{border-color:color-mix(in srgb,var(--bad) 50%,transparent);background:rgba(239,68,68,.08)}
+  .verdict.warn{border-color:color-mix(in srgb,var(--warn) 50%,transparent);background:rgba(245,158,11,.08)}
+</style>
+</head>
+<body data-page="matrices">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <div class="modebar">
+    <div class="seg" id="modes" aria-label="Lab mode">
+      <button data-m="m2" class="on"><i data-lucide="square"></i>2D transform</button>
+      <button data-m="comp"><i data-lucide="layers"></i>Composition</button>
+      <button data-m="m3"><i data-lucide="box"></i>3D</button>
+      <button data-m="homo"><i data-lucide="bot"></i>Homogeneous</button>
+      <button data-m="sys"><i data-lucide="sigma"></i>Linear systems</button>
+    </div>
+    <span class="small dim" id="modeHint"></span>
+  </div>
+
+  <section class="lab wide-controls">
+    <div class="stage" id="stage">
+      <canvas id="cv"></canvas>
+      <div class="hud" id="hud"></div>
+      <div class="legend" id="legend"></div>
+    </div>
+    <aside>
+      <!-- 2D -->
+      <div class="panel" data-for="m2">
+        <h3><i data-lucide="grid-3x3"></i> Matrix A</h3>
+        <div class="mgrid c2" id="m2in"></div>
+        <div class="presets" id="m2pre"></div>
+        <div class="ctl"><label for="rotTh">Build a rotation by θ</label><output></output><input type="range" id="rotTh" min="-180" max="180" step="1" value="0"></div>
+        <div class="btn-row" style="margin:6px 0"><button class="btn primary sm" id="anim2"><i data-lucide="play"></i> Animate from I</button><button class="btn sm" id="inv2"><i data-lucide="undo-2"></i> Use A⁻¹</button></div>
+        <div class="seg full" id="shape2" style="margin:6px 0"><button data-v="house" class="on">House</button><button data-v="F">Letter F</button><button data-v="arrow">Arrow</button><button data-v="circle">Circle</button></div>
+        <label class="toggle"><span>Snap dragged vectors to 0.5</span><input type="checkbox" id="snap"></label>
+        <label class="toggle"><span>Show eigenvector lines</span><input type="checkbox" id="showEig" checked></label>
+        <label class="toggle"><span>Show test vector v and Av</span><input type="checkbox" id="showV" checked></label>
+      </div>
+      <!-- COMPOSE -->
+      <div class="panel" data-for="comp">
+        <h3><i data-lucide="layers"></i> Two transformations</h3>
+        <div class="mrow"><span class="lbl">A</span><select id="preA" style="flex:1"></select></div>
+        <div class="mgrid c2" id="cAin"></div>
+        <div class="mrow"><span class="lbl">B</span><select id="preB" style="flex:1"></select></div>
+        <div class="mgrid c2" id="cBin"></div>
+        <div class="btn-row"><button class="btn primary sm" id="animC"><i data-lucide="play"></i> Animate both orders</button></div>
+        <div class="tex-box"><span class="lbl">Products</span><div id="texAB"></div><div id="texBA" style="margin-top:4px"></div></div>
+      </div>
+      <!-- 3D -->
+      <div class="panel" data-for="m3">
+        <h3><i data-lucide="box"></i> 3×3 matrix</h3>
+        <div class="mgrid c3" id="m3in"></div>
+        <div class="presets" id="m3pre"></div>
+        <div class="btn-row" style="margin:6px 0"><button class="btn primary sm" id="anim3"><i data-lucide="play"></i> Animate from I</button></div>
+        <label class="toggle"><span>Auto-rotate view</span><input type="checkbox" id="auto3" checked></label>
+        <label class="toggle"><span>Show eigenvector lines</span><input type="checkbox" id="eig3" checked></label>
+      </div>
+      <!-- HOMOGENEOUS -->
+      <div class="panel" data-for="homo">
+        <h3><i data-lucide="bot"></i> Homogeneous coordinates</h3>
+        <div class="seg full" id="hsub" style="margin-bottom:8px"><button data-v="rigid" class="on">Rigid motion</button><button data-v="arm">Robot arm</button></div>
+        <div id="hRigid">
+          <div class="ctl"><label for="hTh">Rotation θ</label><output></output><input type="range" id="hTh" min="-180" max="180" step="1" value="35"></div>
+          <div class="ctl"><label for="hTx">Translation t<sub>x</sub></label><output></output><input type="range" id="hTx" min="-4" max="4" step="0.1" value="2.5"></div>
+          <div class="ctl"><label for="hTy">Translation t<sub>y</sub></label><output></output><input type="range" id="hTy" min="-3" max="3" step="0.1" value="0.8"></div>
+          <div class="ctl"><label for="hS">Uniform scale s</label><output></output><input type="range" id="hS" min="0.3" max="2" step="0.05" value="1"></div>
+          <div class="seg full" id="hOrder" style="margin:6px 0"><button data-v="TR" class="on">Rotate, then translate (T·R)</button><button data-v="RT">Translate, then rotate (R·T)</button></div>
+        </div>
+        <div id="hArm" style="display:none">
+          <div class="ctl"><label for="aT1">Joint 1 angle θ₁</label><output></output><input type="range" id="aT1" min="-180" max="180" step="1" value="40"></div>
+          <div class="ctl"><label for="aT2">Joint 2 angle θ₂</label><output></output><input type="range" id="aT2" min="-170" max="170" step="1" value="-60"></div>
+          <div class="ctl"><label for="aL1">Link 1 length L₁</label><output></output><input type="range" id="aL1" min="0.5" max="3" step="0.1" value="2"></div>
+          <div class="ctl"><label for="aL2">Link 2 length L₂</label><output></output><input type="range" id="aL2" min="0.5" max="3" step="0.1" value="1.5"></div>
+          <p class="small dim" style="margin:4px 0 0">Drag the gripper on the stage to solve the inverse kinematics.</p>
+        </div>
+        <div class="tex-box"><span class="lbl" id="hTexLbl">Composite matrix</span><div id="hTex"></div></div>
+      </div>
+      <!-- SYSTEMS -->
+      <div class="panel" data-for="sys">
+        <h3><i data-lucide="sigma"></i> Augmented matrix [A | b]</h3>
+        <div class="seg full" id="sysN" style="margin-bottom:8px"><button data-v="2" class="on">2 × 2</button><button data-v="3">3 × 3</button></div>
+        <select id="sysPre" style="margin-bottom:6px" aria-label="Example systems"></select>
+        <div class="mgrid c4" id="sysIn"></div>
+        <div class="btn-row"><button class="btn primary sm" id="sysStep"><i data-lucide="step-forward"></i> Next step</button><button class="btn sm" id="sysAll"><i data-lucide="fast-forward"></i> Solve all</button><button class="btn sm" id="sysReset"><i data-lucide="rotate-ccw"></i> Reset</button></div>
+        <ol class="steplist" id="steps"></ol>
+        <div class="verdict" id="verdict"></div>
+      </div>
+
+      <div class="panel">
+        <h3><i data-lucide="gauge"></i> Live results</h3>
+        <div class="stats" id="stats"></div>
+        <div class="tex-box" id="invBox"><span class="lbl" id="invLbl">Inverse</span><div id="invTex"></div></div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+      <button><i data-lucide="globe-2"></i> Real-world</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. A matrix is a transformation</h3>
+      <p>A $2\times2$ matrix sends every vector $\mathbf v=(x,y)$ to $A\mathbf v$. Because the map is <b>linear</b> ($A(\alpha\mathbf u+\beta\mathbf v)=\alpha A\mathbf u+\beta A\mathbf v$) it is completely fixed by where it sends the two basis vectors. Those images are the <b>columns</b>:</p>
+      <div class="eq">$$A=\begin{bmatrix}a&b\\c&d\end{bmatrix},\qquad A\hat{\imath}=\begin{bmatrix}a\\c\end{bmatrix},\qquad A\hat{\jmath}=\begin{bmatrix}b\\d\end{bmatrix},\qquad A\begin{bmatrix}x\\y\end{bmatrix}=x\begin{bmatrix}a\\c\end{bmatrix}+y\begin{bmatrix}b\\d\end{bmatrix}$$</div>
+      <p>That is why dragging the green and pink arrows in the lab edits the matrix directly. Grid lines stay straight, parallel and evenly spaced, and the origin stays fixed.</p>
+      <table class="data">
+        <thead><tr><th>Transformation</th><th>Matrix</th><th>det</th></tr></thead>
+        <tbody>
+          <tr><td>Rotation by θ</td><td>$\begin{bmatrix}\cos\theta&-\sin\theta\\\sin\theta&\cos\theta\end{bmatrix}$</td><td>1</td></tr>
+          <tr><td>Scaling</td><td>$\begin{bmatrix}s_x&0\\0&s_y\end{bmatrix}$</td><td>$s_xs_y$</td></tr>
+          <tr><td>Shear (horizontal)</td><td>$\begin{bmatrix}1&k\\0&1\end{bmatrix}$</td><td>1</td></tr>
+          <tr><td>Reflection in the x-axis</td><td>$\begin{bmatrix}1&0\\0&-1\end{bmatrix}$</td><td>−1</td></tr>
+          <tr><td>Projection onto the x-axis</td><td>$\begin{bmatrix}1&0\\0&0\end{bmatrix}$</td><td>0</td></tr>
+        </tbody>
+      </table>
+
+      <h3>2. The determinant: signed area (or volume) scale factor</h3>
+      <div class="eq">$$\det A=ad-bc$$</div>
+      <p>The unit square (area 1) is mapped to a parallelogram of area $|\det A|$, and every other region is scaled by the same factor. A negative determinant means orientation has flipped (the letter F appears mirrored). $\det A=0$ means space is squashed onto a line or a point, so information is lost and $A$ has no inverse. In 3D, $\det$ is the signed volume of the image of the unit cube, and $\det(AB)=\det A\,\det B$.</p>
+
+      <h3>3. Inverse</h3>
+      <div class="eq">$$A^{-1}=\frac{1}{ad-bc}\begin{bmatrix}d&-b\\-c&a\end{bmatrix},\qquad AA^{-1}=A^{-1}A=I$$</div>
+      <p>$A^{-1}$ undoes the transformation. It exists exactly when $\det A\ne 0$.</p>
+
+      <h3>4. Eigenvectors and eigenvalues</h3>
+      <p>An eigenvector is a non-zero vector whose direction is unchanged: $A\mathbf v=\lambda\mathbf v$. It stays on its own span and is only stretched by the eigenvalue $\lambda$ (flipped if $\lambda<0$). Eigenvalues solve the <b>characteristic equation</b></p>
+      <div class="eq">$$\det(A-\lambda I)=\lambda^2-(\operatorname{tr}A)\lambda+\det A=0,\qquad \lambda=\frac{\operatorname{tr}A}{2}\pm\sqrt{\frac{(\operatorname{tr}A)^2}{4}-\det A}$$</div>
+      <ul>
+        <li>Discriminant $>0$: two real eigenvalues and two eigen-directions (dashed lines in the lab).</li>
+        <li>Discriminant $=0$: a repeated eigenvalue, with either every direction (a pure scaling) or only one direction (a shear).</li>
+        <li>Discriminant $<0$: a complex pair $\alpha\pm\beta i$. No real direction is preserved: the map rotates by $\arg\lambda$ and scales by $|\lambda|$.</li>
+      </ul>
+      <p>Useful checks: $\lambda_1+\lambda_2=\operatorname{tr}A$ and $\lambda_1\lambda_2=\det A$.</p>
+
+      <h3>5. Composition: order matters</h3>
+      <p>Applying $B$ first and then $A$ is the single matrix $AB$ (read right to left, like function composition $A(B\mathbf v)$). In general $AB\neq BA$. Rotations about the same origin commute with each other; a rotation and a shear do not.</p>
+
+      <h3>6. Homogeneous coordinates</h3>
+      <p>Translation $\mathbf v\mapsto\mathbf v+\mathbf t$ is not linear (it moves the origin), so no $2\times2$ matrix can do it. The trick is to write a 2D point as $(x,y,1)$ and use $3\times3$ matrices:</p>
+      <div class="eq">$$\begin{bmatrix}x'\\y'\\1\end{bmatrix}=\underbrace{\begin{bmatrix}1&0&t_x\\0&1&t_y\\0&0&1\end{bmatrix}}_{T}\underbrace{\begin{bmatrix}\cos\theta&-\sin\theta&0\\\sin\theta&\cos\theta&0\\0&0&1\end{bmatrix}}_{R}\begin{bmatrix}x\\y\\1\end{bmatrix}$$</div>
+      <p>Now rotations, scalings and translations are all matrix products and can be chained. This is exactly how computer graphics pipelines and robot forward kinematics work: each robot joint contributes one transform, and the gripper pose is the product $T_{02}=T_{01}\,T_{12}$.</p>
+
+      <h3>7. Linear systems and Gaussian elimination</h3>
+      <p>The system $A\mathbf x=\mathbf b$ is solved by row operations on the augmented matrix $[A\,|\,\mathbf b]$. Each operation (swap two rows, scale a row by a non-zero number, add a multiple of one row to another) leaves the solution set unchanged. Forward elimination produces row-echelon form; back substitution finishes the job.</p>
+      <p>Geometrically each equation is a line (2D) or a plane (3D), and the solution is their common intersection. A unique solution needs $\operatorname{rank}A=n$ ($\det A\neq0$). If $\operatorname{rank}A&lt;\operatorname{rank}[A\,|\,\mathbf b]$ the system is inconsistent (parallel lines). If both ranks are equal but less than $n$ there are infinitely many solutions.</p>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Example 1: where does a vector go?</h3>
+      <div class="worked">
+        <p>$A=\begin{bmatrix}1.5&1\\0.5&1.5\end{bmatrix}$ and $\mathbf v=(-1,\,1.5)$: the lab's starting matrix and test vector.</p>
+        <p>$A\mathbf v=-1\begin{bmatrix}1.5\\0.5\end{bmatrix}+1.5\begin{bmatrix}1\\1.5\end{bmatrix}=\begin{bmatrix}-1.5+1.5\\-0.5+2.25\end{bmatrix}=\begin{bmatrix}0\\1.75\end{bmatrix}$</p>
+        <p>$\det A=1.5(1.5)-1(0.5)=1.75$: every area grows by 75 %.</p>
+      </div>
+      <h3>Example 2: eigenvalues of a symmetric matrix</h3>
+      <div class="worked">
+        <p>$A=\begin{bmatrix}2&1\\1&2\end{bmatrix}$: $\operatorname{tr}A=4$, $\det A=3$, so $\lambda^2-4\lambda+3=(\lambda-3)(\lambda-1)=0$.</p>
+        <p>$\lambda_1=3$: $(A-3I)\mathbf v=0\Rightarrow -v_1+v_2=0$, so $\mathbf v_1=(1,1)$. $\lambda_2=1$: $v_1+v_2=0$, so $\mathbf v_2=(1,-1)$.</p>
+        <p>Check: $3+1=4=\operatorname{tr}A$ and $3\times1=3=\det A$. The eigenvectors are perpendicular, as for every symmetric matrix.</p>
+      </div>
+      <h3>Example 3: a rotation has complex eigenvalues</h3>
+      <div class="worked">
+        <p>Rotation by 90°: $A=\begin{bmatrix}0&-1\\1&0\end{bmatrix}$, $\operatorname{tr}=0$, $\det=1$, so $\lambda^2+1=0$ and $\lambda=\pm i$. $|\lambda|=1$ (no stretching) and $\arg\lambda=90°$ (the rotation angle). No real vector keeps its direction.</p>
+      </div>
+      <h3>Example 4: AB versus BA</h3>
+      <div class="worked">
+        <p>$A=\begin{bmatrix}0&-1\\1&0\end{bmatrix}$ (rotate 90°), $B=\begin{bmatrix}1&1\\0&1\end{bmatrix}$ (shear).</p>
+        <p>$AB=\begin{bmatrix}0&-1\\1&1\end{bmatrix}$ (shear first, then rotate) but $BA=\begin{bmatrix}1&-1\\1&0\end{bmatrix}$ (rotate first, then shear). Different matrices, different pictures, yet $\det AB=\det BA=1$.</p>
+      </div>
+      <h3>Example 5: homogeneous transform</h3>
+      <div class="worked">
+        <p>Rotate the point $(1,0)$ by 90° and then translate by $(3,1)$:</p>
+        <div class="eq">$$TR=\begin{bmatrix}0&-1&3\\1&0&1\\0&0&1\end{bmatrix},\qquad TR\begin{bmatrix}1\\0\\1\end{bmatrix}=\begin{bmatrix}3\\2\\1\end{bmatrix}$$</div>
+        <p>Translating first gives $RT\,(1,0,1)^{\mathsf T}=R\,(4,1,1)^{\mathsf T}=(-1,4,1)^{\mathsf T}$: a different place.</p>
+      </div>
+      <h3>Example 6: Gaussian elimination</h3>
+      <div class="worked">
+        <p>Solve $2x+y=5,\ x-y=1$.</p>
+        <ol>
+          <li>$R_2\to R_2-\tfrac12R_1$: $\left[\begin{smallmatrix}2&1&|&5\\0&-1.5&|&-1.5\end{smallmatrix}\right]$ (forward elimination complete).</li>
+          <li>$R_2\to -\tfrac23R_2$: $y=1$.</li>
+          <li>$R_1\to R_1-R_2$, then $R_1\to\tfrac12R_1$: $x=2$.</li>
+        </ol>
+        <p>Solution $(x,y)=(2,1)$: the point where the two lines cross. Load the first 2 × 2 example in the lab and press <i>Next step</i>.</p>
+      </div>
+      <h3>Example 7: a market problem</h3>
+      <div class="worked">
+        <p>At a Nairobi market, 2 mangoes, 3 avocados and 1 banana cost KES 190; 1 mango, 2 avocados and 3 bananas cost KES 140; 3 mangoes, 1 avocado and 2 bananas cost KES 150. With unknown prices $(m,a,b)$:</p>
+        <div class="eq">$$\begin{bmatrix}2&3&1\\1&2&3\\3&1&2\end{bmatrix}\begin{bmatrix}m\\a\\b\end{bmatrix}=\begin{bmatrix}190\\140\\150\end{bmatrix}\ \Rightarrow\ (m,a,b)=(30,\,40,\,10)\ \text{KES}$$</div>
+        <p>$\det A=2(4-3)-3(2-9)+1(1-6)=2+21-5=18\neq0$, so the answer is unique. Load "Market prices" in the 3 × 3 examples to see every row operation.</p>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Challenges (checked automatically)</h3>
+      <div id="chalList"></div>
+      <h3>Guided experiments</h3>
+      <ol class="steps">
+        <li><b>Determinant through zero.</b> In 2D mode drag ĵ slowly across the line through î. Watch the unit-square area shrink to 0 and the colour change as orientation flips.</li>
+        <li><b>Repeated eigenvalue.</b> Load the shear preset. Only one dashed eigen-line remains: the shear is <i>defective</i>.</li>
+        <li><b>Circle to ellipse.</b> Choose the Circle shape with a symmetric matrix. The ellipse's axes line up with the eigenvectors; their half-lengths are $|\lambda_1|$ and $|\lambda_2|$.</li>
+        <li><b>Rotation commutes with rotation.</b> In Composition set A and B to two different rotations. The two panels end in the same place.</li>
+        <li><b>Flat volume.</b> In 3D load the projection preset: the cube collapses into a flat square and det = 0.</li>
+        <li><b>Inconsistent planes.</b> Load the 3 × 3 "No solution" example and step through. A row reduces to $[0\ 0\ 0\,|\,c\neq0]$, which reads $0=c$.</li>
+      </ol>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+
+    <div class="tabpanel prose">
+      <h3>Where matrices do the work</h3>
+      <div class="grid2">
+        <div class="callout"><i data-lucide="gamepad-2"></i><div><b>Computer graphics.</b> Every vertex in a game is multiplied by model, view and projection matrices (4 × 4, homogeneous) millions of times per frame on the GPU.</div></div>
+        <div class="callout"><i data-lucide="bot"></i><div><b>Robotics.</b> Forward kinematics chains one homogeneous transform per joint (Denavit–Hartenberg convention). See the Robot Arm Kinematics lab.</div></div>
+        <div class="callout"><i data-lucide="building-2"></i><div><b>Structural engineering.</b> Finite-element models of bridges and towers solve $K\mathbf u=\mathbf f$ with stiffness matrices of millions of rows.</div></div>
+        <div class="callout"><i data-lucide="search"></i><div><b>Search and data.</b> PageRank is the dominant eigenvector of a link matrix; principal component analysis uses the eigenvectors of a covariance matrix.</div></div>
+        <div class="callout"><i data-lucide="activity"></i><div><b>Stability.</b> A system $\dot{\mathbf x}=A\mathbf x$ is stable when every eigenvalue of $A$ has negative real part: used in control, power grids and ecology.</div></div>
+        <div class="callout"><i data-lucide="map"></i><div><b>Mapping and GIS.</b> Converting GPS coordinates to a flat map uses affine (homogeneous) transforms; fitting control points uses least squares, a linear system.</div></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+  const fmt = SL.fmt, TAU = Math.PI * 2, D2R = Math.PI / 180;
+  const C = { i: '#34d399', j: '#f472b6', k: '#60a5fa', v: '#facc15', eig: '#c084fc', pos: '96,165,250', neg: '251,146,60' };
+
+  /* ===================== LINEAR ALGEBRA ===================== */
+  const mul2 = (A, B) => [[A[0][0] * B[0][0] + A[0][1] * B[1][0], A[0][0] * B[0][1] + A[0][1] * B[1][1]], [A[1][0] * B[0][0] + A[1][1] * B[1][0], A[1][0] * B[0][1] + A[1][1] * B[1][1]]];
+  const ap2 = (A, v) => [A[0][0] * v[0] + A[0][1] * v[1], A[1][0] * v[0] + A[1][1] * v[1]];
+  const det2 = A => A[0][0] * A[1][1] - A[0][1] * A[1][0];
+  const inv2 = A => { const d = det2(A); if (Math.abs(d) < 1e-12) return null; return [[A[1][1] / d, -A[0][1] / d], [-A[1][0] / d, A[0][0] / d]]; };
+  function eig2(A) {
+    const a = A[0][0], b = A[0][1], c = A[1][0], d = A[1][1];
+    const tr = a + d, dt = a * d - b * c, disc = tr * tr / 4 - dt, sc = 1 + Math.abs(tr) ** 2 + Math.abs(dt);
+    const vecFor = l => { let v; if (Math.abs(b) > 1e-9 || Math.abs(l - a) > 1e-9) v = Math.abs(b) >= Math.abs(c) ? [b, l - a] : [l - d, c]; else v = [l - d, c]; const n = Math.hypot(v[0], v[1]); return n < 1e-12 ? null : [v[0] / n, v[1] / n]; };
+    if (disc > 1e-10 * sc) { const s = Math.sqrt(disc); const l1 = tr / 2 + s, l2 = tr / 2 - s; return { type: 'real', vals: [l1, l2], vecs: [vecFor(l1), vecFor(l2)] }; }
+    if (disc < -1e-10 * sc) { const re = tr / 2, im = Math.sqrt(-disc); return { type: 'complex', re, im, mod: Math.hypot(re, im), arg: Math.atan2(im, re) }; }
+    const l = tr / 2;
+    if (Math.abs(b) < 1e-9 && Math.abs(c) < 1e-9 && Math.abs(a - d) < 1e-9) return { type: 'scalar', vals: [l, l], vecs: [] };
+    const v = Math.abs(b) > 1e-9 ? [b, l - a] : [l - d, c]; const n = Math.hypot(...v);
+    return { type: 'defective', vals: [l, l], vecs: [[v[0] / n, v[1] / n]] };
+  }
+  const mul3 = (A, B) => A.map((r, i) => [0, 1, 2].map(j => r[0] * B[0][j] + r[1] * B[1][j] + r[2] * B[2][j]));
+  const ap3 = (A, v) => A.map(r => r[0] * v[0] + r[1] * v[1] + r[2] * v[2]);
+  const det3 = A => A[0][0] * (A[1][1] * A[2][2] - A[1][2] * A[2][1]) - A[0][1] * (A[1][0] * A[2][2] - A[1][2] * A[2][0]) + A[0][2] * (A[1][0] * A[2][1] - A[1][1] * A[2][0]);
+  function inv3(A) {
+    const d = det3(A); if (Math.abs(d) < 1e-12) return null;
+    const m = (r1, r2, c1, c2) => A[r1][c1] * A[r2][c2] - A[r1][c2] * A[r2][c1];
+    return [[m(1, 2, 1, 2) / d, -m(0, 2, 1, 2) / d, m(0, 1, 1, 2) / d], [-m(1, 2, 0, 2) / d, m(0, 2, 0, 2) / d, -m(0, 1, 0, 2) / d], [m(1, 2, 0, 1) / d, -m(0, 2, 0, 1) / d, m(0, 1, 0, 1) / d]];
+  }
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const norm = v => Math.hypot(...v);
+  function eig3(A) {
+    const tr = A[0][0] + A[1][1] + A[2][2];
+    const c2 = (A[0][0] * A[1][1] - A[0][1] * A[1][0]) + (A[0][0] * A[2][2] - A[0][2] * A[2][0]) + (A[1][1] * A[2][2] - A[1][2] * A[2][1]);
+    const dt = det3(A);
+    const p = l => ((l - tr) * l + c2) * l - dt; // λ³ − tr λ² + c2 λ − det
+    const R = 1 + Math.max(Math.abs(tr), Math.abs(c2), Math.abs(dt));
+    // one real root by bisection (p(−R) < 0 < p(R))
+    let lo = -R, hi = R; for (let i = 0; i < 200; i++) { const m = (lo + hi) / 2; if (p(m) > 0) hi = m; else lo = m; }
+    let r1 = (lo + hi) / 2;
+    // Newton polish
+    for (let i = 0; i < 5; i++) { const dp = (3 * r1 - 2 * tr) * r1 + c2; if (Math.abs(dp) > 1e-12) r1 -= p(r1) / dp; }
+    // deflate: λ² + (r1 − tr)λ + (c2 + r1(r1 − tr))
+    const B = r1 - tr, Cc = c2 + r1 * (r1 - tr); const disc = B * B / 4 - Cc;
+    const vals = []; let complex = null;
+    if (disc >= -1e-10 * (1 + B * B)) { const s = Math.sqrt(Math.max(0, disc)); vals.push(r1, -B / 2 + s, -B / 2 - s); }
+    else { vals.push(r1); complex = { re: -B / 2, im: Math.sqrt(-disc) }; }
+    const vecs = vals.map(l => {
+      const M = A.map((r, i) => r.map((v, j) => v - (i === j ? l : 0)));
+      const cands = [cross(M[0], M[1]), cross(M[0], M[2]), cross(M[1], M[2])];
+      let best = cands[0]; cands.forEach(c => { if (norm(c) > norm(best)) best = c; });
+      const n = norm(best); const scale = 1 + Math.max(...A.flat().map(Math.abs));
+      if (n < 1e-6 * scale * scale) return null; // repeated root / degenerate: skip direction
+      return best.map(x => x / n);
+    });
+    return { vals, complex, vecs, tr, c2, det: dt };
+  }
+  window.MAT = { mul2, det2, inv2, eig2, mul3, det3, inv3, eig3 };
+
+  /* ===================== FORMATTING ===================== */
+  const nf = v => { if (!isFinite(v)) return '—'; if (Math.abs(v) < 5e-10) return '0'; const r = Math.round(v * 1000) / 1000; return String(+r.toFixed(3)).replace('-', '−'); };
+  const texN = v => nf(v).replace('−', '-');
+  const bmat = A => '\\begin{bmatrix}' + A.map(r => r.map(texN).join('&')).join('\\\\') + '\\end{bmatrix}';
+
+  /* ===================== STATE ===================== */
+  const S = {
+    mode: 'm2', M: [[1.5, 1], [0.5, 1.5]], t: 1, anim: 0, shape: 'house', v: [-1, 1.5],
+    A: [[0, -1], [1, 0]], B: [[1, 1], [0, 1]], ct: 2, animC: 0,
+    M3: [[1.3, 0.5, 0], [0, 1, 0.4], [0.2, 0, 0.8]], t3: 1, anim3: 0, yaw: -0.65, pitch: 0.42, auto: true,
+    hsub: 'rigid', h: { th: 35, tx: 2.5, ty: 0.8, s: 1, order: 'TR' }, arm: { t1: 40, t2: -60, L1: 2, L2: 1.5 }, armTrail: [],
+    sysN: 2, Ab: null, steps: [], k: 0, dirty: true
+  };
+
+  /* ===================== CANVAS ===================== */
+  const cv = $('#cv'); const st = SL.canvas(cv, () => S.dirty = true); const ctx = st.ctx;
+  let HUD = [], STATS = [], LEG = [];
+  function poly(pts, fill, stroke, w, dash) {
+    ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
+    if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+    if (stroke) { ctx.save(); ctx.strokeStyle = stroke; ctx.lineWidth = w || 1.5; if (dash) ctx.setLineDash(dash); ctx.stroke(); ctx.restore(); }
+  }
+  function tag(t, x, y, col, align) {
+    ctx.save(); ctx.font = '600 11.5px JetBrains Mono, monospace'; ctx.textAlign = align || 'left';
+    const w = ctx.measureText(t).width + 10; let lx = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x - 5; const nx = SL.clamp(lx, 4, st.w - w - 4); x += nx - lx; lx = nx;
+    const ny = SL.clamp(y, 18, st.h - 6); ctx.fillStyle = 'rgba(5,9,19,.84)'; ctx.fillRect(lx, ny - 13, w, 18); ctx.fillStyle = col; ctx.fillText(t, x, ny); ctx.restore();
+  }
+  function view2(r, range) {
+    r = r || { x: 0, y: 0, w: st.w, h: st.h };
+    const u = Math.min(r.w, r.h) / (2 * (range || 4.2));
+    const ox = r.x + r.w / 2, oy = r.y + r.h / 2;
+    return { r, u, P: p => [ox + p[0] * u, oy - p[1] * u], I: (px, py) => [(px - ox) / u, (oy - py) / u], ox, oy };
+  }
+  function bgGrid(V, alpha) {
+    const { r, u } = V; ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+    ctx.strokeStyle = `rgba(255,255,255,${alpha || .05})`; ctx.lineWidth = 1; ctx.beginPath();
+    const nx = Math.ceil(r.w / 2 / u) + 1, ny = Math.ceil(r.h / 2 / u) + 1;
+    for (let k = -nx; k <= nx; k++) { const x = Math.round(V.ox + k * u) + .5; ctx.moveTo(x, r.y); ctx.lineTo(x, r.y + r.h); }
+    for (let k = -ny; k <= ny; k++) { const y = Math.round(V.oy - k * u) + .5; ctx.moveTo(r.x, y); ctx.lineTo(r.x + r.w, y); }
+    ctx.stroke(); ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.beginPath(); ctx.moveTo(r.x, V.oy + .5); ctx.lineTo(r.x + r.w, V.oy + .5); ctx.moveTo(V.ox + .5, r.y); ctx.lineTo(V.ox + .5, r.y + r.h); ctx.stroke();
+    ctx.restore();
+  }
+  function tGrid(V, M, col, n) {
+    const { r } = V; n = n || 12; ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+    for (let k = -n; k <= n; k++) {
+      const a = V.P(ap2(M, [k, -n])), b = V.P(ap2(M, [k, n])), c = V.P(ap2(M, [-n, k])), d = V.P(ap2(M, [n, k]));
+      ctx.strokeStyle = k === 0 ? `rgba(${col},.75)` : `rgba(${col},.22)`; ctx.lineWidth = k === 0 ? 1.6 : 1;
+      ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...b); ctx.moveTo(...c); ctx.lineTo(...d); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  const SHAPES = {
+    house: [[[1.2, 0], [2.8, 0], [2.8, 1.3], [2.0, 2.2], [1.2, 1.3]], [[1.75, 0], [2.15, 0], [2.15, 0.7], [1.75, 0.7]], [[2.3, 0.75], [2.6, 0.75], [2.6, 1.05], [2.3, 1.05]]],
+    F: [[[1.3, 0], [1.75, 0], [1.75, 0.85], [2.45, 0.85], [2.45, 1.25], [1.75, 1.25], [1.75, 1.75], [2.7, 1.75], [2.7, 2.15], [1.3, 2.15]]],
+    arrow: [[[1.1, 0.75], [2.2, 0.75], [2.2, 0.35], [3.0, 1.0], [2.2, 1.65], [2.2, 1.25], [1.1, 1.25]]],
+    circle: [Array.from({ length: 72 }, (_, i) => [Math.cos(i * TAU / 72), Math.sin(i * TAU / 72)])]
+  };
+  function drawShape(V, M, fill, stroke, w, dash) {
+    const sh = SHAPES[S.shape];
+    sh.forEach((pg, i) => poly(pg.map(p => V.P(ap2(M, p))), i === 0 ? fill : (fill ? 'rgba(5,9,19,.55)' : null), stroke, w, dash));
+  }
+  function arrowW(V, from, to, col, w, lbl) {
+    const a = V.P(from), b = V.P(to);
+    ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 10; SL.arrow(ctx, a[0], a[1], b[0], b[1], col, w || 3, 12); ctx.restore();
+    if (lbl) tag(lbl, b[0] + 8, b[1] - 8, col);
+  }
+  function handle(p, col) { ctx.save(); ctx.fillStyle = 'rgba(5,9,19,.9)'; ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(p[0], p[1], 8, 0, TAU); ctx.fill(); ctx.stroke(); ctx.restore(); }
+
+  /* ===================== MATRIX INPUT GRIDS ===================== */
+  function makeInputs(el, rows, cols, get, set, aug) {
+    el.innerHTML = '';
+    for (let i = 0; i < rows; i++) for (let j = 0; j < cols; j++) {
+      if (aug && j === cols - 1) el.insertAdjacentHTML('beforeend', '<span class="bar"></span>');
+      const inp = document.createElement('input'); inp.type = 'number'; inp.step = '0.1'; inp.value = nf(get(i, j)).replace('−', '-'); inp.dataset.i = i; inp.dataset.j = j;
+      inp.setAttribute('aria-label', `row ${i + 1} column ${j + 1}`);
+      inp.addEventListener('input', () => { const v = parseFloat(inp.value); if (isFinite(v)) set(i, j, v); });
+      el.appendChild(inp);
+    }
+  }
+  function refreshInputs(el, get) { el.querySelectorAll('input').forEach(inp => { if (document.activeElement === inp) return; inp.value = nf(get(+inp.dataset.i, +inp.dataset.j)).replace('−', '-'); }); }
+
+  /* ===================== 2D MODE ===================== */
+  const PRE2 = [
+    ['Identity', [[1, 0], [0, 1]]], ['Rotate 30°', 'rot30'], ['Rotate 90°', [[0, -1], [1, 0]]], ['Scale 2, ½', [[2, 0], [0, 0.5]]],
+    ['Shear', [[1, 1], [0, 1]]], ['Reflect x-axis', [[1, 0], [0, -1]]], ['Reflect y = x', [[0, 1], [1, 0]]], ['Project onto x', [[1, 0], [0, 0]]],
+    ['Project onto y = x', [[0.5, 0.5], [0.5, 0.5]]], ['Symmetric', [[2, 1], [1, 2]]], ['Spiral', [[0.9, -0.6], [0.6, 0.9]]], ['Singular', [[1, 2], [0.5, 1]]]
+  ];
+  const rot = th => [[Math.cos(th), -Math.sin(th)], [Math.sin(th), Math.cos(th)]];
+  $('#m2pre').innerHTML = PRE2.map((p, i) => `<button class="btn sm" data-i="${i}">${p[0]}</button>`).join('');
+  $('#m2pre').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const p = PRE2[+b.dataset.i][1]; setM2(p === 'rot30' ? rot(30 * D2R) : p, true); });
+  makeInputs($('#m2in'), 2, 2, (i, j) => S.M[i][j], (i, j, v) => { S.M[i][j] = v; S.t = 1; m2Changed(false); });
+  function setM2(M, animate) { S.M = M.map(r => r.map(v => Math.abs(v) < 1e-12 ? 0 : v)); if (animate) { S.t = 0; S.anim = 1; } else S.t = 1; m2Changed(true); }
+  function m2Changed(syncInputs) { if (syncInputs !== false) refreshInputs($('#m2in'), (i, j) => S.M[i][j]); S.dirty = true; panelTex(); }
+  SL.bind('#rotTh', v => { if (S._init) setM2(rot(v * D2R), false); }, v => v + '°');
+  $('#anim2').onclick = () => { S.t = 0; S.anim = 1; };
+  $('#inv2').onclick = () => { const I = inv2(S.M); if (!I) { SL.toast('This matrix is singular (det = 0), so it has no inverse.', 'bad'); return; } setM2(I, true); SL.toast('Now showing A⁻¹. Apply it after A and you are back where you started.', 'ok'); };
+  $$('#shape2 button').forEach(b => b.onclick = () => { S.shape = b.dataset.v; $$('#shape2 button').forEach(x => x.classList.toggle('on', x === b)); S.dirty = true; });
+  ['#snap', '#showEig', '#showV'].forEach(s => $(s).onchange = () => S.dirty = true);
+  const ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  const Mt2 = () => { const e = ease(S.t); return [[1 + (S.M[0][0] - 1) * e, S.M[0][1] * e], [S.M[1][0] * e, 1 + (S.M[1][1] - 1) * e]]; };
+  function drawM2() {
+    const V = view2(null, st.w < 600 ? 3.3 : 4.2); S.V2 = V; const M = Mt2();
+    bgGrid(V); tGrid(V, M, C.pos);
+    const d = det2(M);
+    // unit square
+    const sq = [[0, 0], [1, 0], [1, 1], [0, 1]].map(p => V.P(ap2(M, p)));
+    const col = d >= 0 ? C.pos : C.neg;
+    poly(sq, `rgba(${col},.22)`, `rgba(${col},.85)`, 1.5);
+    const cen = V.P(ap2(M, [.5, .5])); if (Math.abs(d) > 0.05) { ctx.save(); ctx.font = '700 13px JetBrains Mono, monospace'; ctx.fillStyle = `rgb(${col})`; ctx.textAlign = 'center'; ctx.fillText('det ' + nf(d), cen[0], cen[1] + 4); ctx.restore(); }
+    // shape: original ghost + transformed
+    drawShape(V, [[1, 0], [0, 1]], null, 'rgba(255,255,255,.18)', 1.2, [4, 4]);
+    drawShape(V, M, 'rgba(250,204,21,.16)', '#facc15', 2);
+    // eigenvectors
+    const E = eig2(S.t >= 1 ? S.M : M);
+    if ($('#showEig').checked && E.vecs) {
+      E.vecs.forEach((v, k) => {
+        if (!v) return; const L = 20; const a = V.P([-v[0] * L, -v[1] * L]), b = V.P([v[0] * L, v[1] * L]);
+        ctx.save(); ctx.strokeStyle = 'rgba(192,132,252,.75)'; ctx.lineWidth = 1.6; ctx.setLineDash([8, 6]); ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...b); ctx.stroke(); ctx.restore();
+        const lam = E.vals[k]; const tip = V.P([v[0] * lam, v[1] * lam]);
+        ctx.save(); ctx.fillStyle = C.eig; ctx.beginPath(); ctx.arc(...V.P(v), 3, 0, TAU); ctx.fill(); ctx.restore();
+        if (S.t >= 1) { ctx.save(); ctx.shadowColor = C.eig; ctx.shadowBlur = 8; SL.arrow(ctx, V.ox, V.oy, tip[0], tip[1], C.eig, 2.2, 9); ctx.restore(); }
+        const sgn = (v[0] < 0 || (Math.abs(v[0]) < 1e-9 && v[1] < 0)) ? -1 : 1; const lp = V.P([v[0] * 3.1 * sgn * (k ? -1 : 1), v[1] * 3.1 * sgn * (k ? -1 : 1)]);
+        tag('λ' + (k + 1) + ' = ' + nf(lam), lp[0] + 6, lp[1] - 6, '#d8b4fe');
+      });
+    }
+    // test vector
+    if ($('#showV').checked) {
+      const v = S.v, Av = ap2(M, v);
+      arrowW(V, [0, 0], v, 'rgba(250,204,21,.45)', 2);
+      arrowW(V, [0, 0], Av, C.v, 2.6, 'Av'); handle(V.P(v), C.v); tag('v', V.P(v)[0] + 10, V.P(v)[1] + 18, '#fde68a');
+    }
+    // basis vectors with handles
+    arrowW(V, [0, 0], [M[0][0], M[1][0]], C.i, 3.2, 'î → (' + nf(M[0][0]) + ', ' + nf(M[1][0]) + ')');
+    arrowW(V, [0, 0], [M[0][1], M[1][1]], C.j, 3.2, 'ĵ → (' + nf(M[0][1]) + ', ' + nf(M[1][1]) + ')');
+    handle(V.P([M[0][0], M[1][0]]), C.i); handle(V.P([M[0][1], M[1][1]]), C.j);
+    const dd = det2(S.M), tr = S.M[0][0] + S.M[1][1];
+    const eigTxt = E.type === 'complex' ? `${nf(E.re)} ± ${nf(E.im)}i` : E.type === 'scalar' ? nf(E.vals[0]) + ' (every direction)' : E.type === 'defective' ? nf(E.vals[0]) + ' (repeated)' : nf(E.vals[0]) + ', ' + nf(E.vals[1]);
+    HUD = [`det <b>${nf(dd)}</b>`, `tr <b>${nf(tr)}</b>`, `λ <b>${eigTxt}</b>`];
+    const Av = ap2(S.M, S.v); const ang = Math.abs(Math.atan2(S.v[0] * Av[1] - S.v[1] * Av[0], S.v[0] * Av[0] + S.v[1] * Av[1])) / D2R;
+    STATS = [['det A (area ×)', nf(dd)], ['Orientation', Math.abs(dd) < 1e-9 ? 'collapsed' : dd > 0 ? 'preserved' : 'flipped'], ['trace', nf(tr)], ['rank', Math.abs(dd) > 1e-9 ? 2 : (S.M.flat().some(x => Math.abs(x) > 1e-9) ? 1 : 0)],
+      ['Eigenvalues', E.type === 'complex' ? `${nf(E.re)} ± ${nf(E.im)}i` : nf(E.vals[0]) + ', ' + nf(E.vals[1])], [E.type === 'complex' ? '|λ|, arg λ' : 'angle(v, Av)', E.type === 'complex' ? nf(E.mod) + ', ' + nf(E.arg / D2R) + '°' : nf(ang) + '°']];
+    LEG = [['î column 1', C.i], ['ĵ column 2', C.j], ['eigen-lines', C.eig], ['v → Av', C.v]];
+    S.m2State = { det: dd, E, ang };
+  }
+
+  /* ===================== COMPOSITION ===================== */
+  const PREC = [['Rotate 90°', [[0, -1], [1, 0]]], ['Rotate 45°', 'r45'], ['Shear x', [[1, 1], [0, 1]]], ['Shear y', [[1, 0], [1, 1]]], ['Scale x × 2', [[2, 0], [0, 1]]], ['Uniform × 1.5', [[1.5, 0], [0, 1.5]]], ['Reflect x-axis', [[1, 0], [0, -1]]], ['Reflect y = x', [[0, 1], [1, 0]]], ['Project onto x', [[1, 0], [0, 0]]], ['Custom', null]];
+  ['#preA', '#preB'].forEach((sel, k) => {
+    const el = $(sel); el.innerHTML = PREC.map((p, i) => `<option value="${i}">${p[0]}</option>`).join(''); el.value = k ? 2 : 0;
+    el.onchange = () => { const p = PREC[+el.value][1]; if (!p) return; const M = p === 'r45' ? rot(45 * D2R) : p.map(r => r.slice()); if (k) S.B = M; else S.A = M; refreshInputs(k ? $('#cBin') : $('#cAin'), (i, j) => (k ? S.B : S.A)[i][j]); S.ct = 0; S.animC = 1; compTex(); };
+  });
+  makeInputs($('#cAin'), 2, 2, (i, j) => S.A[i][j], (i, j, v) => { S.A[i][j] = v; $('#preA').value = PREC.length - 1; S.ct = 2; compTex(); S.dirty = true; });
+  makeInputs($('#cBin'), 2, 2, (i, j) => S.B[i][j], (i, j, v) => { S.B[i][j] = v; $('#preB').value = PREC.length - 1; S.ct = 2; compTex(); S.dirty = true; });
+  $('#animC').onclick = () => { S.ct = 0; S.animC = 1; };
+  const lerpM = (A, t) => { const e = ease(SL.clamp(t, 0, 1)); return [[1 + (A[0][0] - 1) * e, A[0][1] * e], [A[1][0] * e, 1 + (A[1][1] - 1) * e]]; };
+  function compTex() {
+    const AB = mul2(S.A, S.B), BA = mul2(S.B, S.A);
+    SL.tex($('#texAB'), 'AB=' + bmat(AB) + '\\ \\ \\text{(B first)}');
+    SL.tex($('#texBA'), 'BA=' + bmat(BA) + '\\ \\ \\text{(A first)}');
+    S.dirty = true;
+  }
+  function drawComp() {
+    const w = st.w, h = st.h; const narrow = w < 640;
+    const R1 = narrow ? { x: 0, y: 0, w, h: h / 2 } : { x: 0, y: 0, w: w / 2, h }, R2 = narrow ? { x: 0, y: h / 2, w, h: h / 2 } : { x: w / 2, y: 0, w: w / 2, h };
+    const AB = mul2(S.A, S.B), BA = mul2(S.B, S.A);
+    const same = AB.flat().every((v, i) => Math.abs(v - BA.flat()[i]) < 1e-9);
+    [[R1, S.B, S.A, 'B first, then A  =  AB', AB, 'B'], [R2, S.A, S.B, 'A first, then B  =  BA', BA, 'A']].forEach(([R, F, G, title, P, fname]) => {
+      const V = view2({ x: R.x, y: R.y + 30, w: R.w, h: R.h - 30 }, 3.6);
+      ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.strokeRect(R.x + .5, R.y + .5, R.w - 1, R.h - 1); ctx.restore();
+      bgGrid(V, .04);
+      const t1 = SL.clamp(S.ct, 0, 1), t2 = SL.clamp(S.ct - 1, 0, 1);
+      const cur = mul2(lerpM(G, t2), lerpM(F, t1));
+      tGrid(V, cur, C.pos, 8);
+      drawShape(V, [[1, 0], [0, 1]], null, 'rgba(255,255,255,.2)', 1.2, [4, 4]);
+      if (S.ct > 1) drawShape(V, F, null, 'rgba(192,132,252,.6)', 1.4, [6, 4]);
+      drawShape(V, cur, 'rgba(250,204,21,.18)', '#facc15', 2.2);
+      arrowW(V, [0, 0], [cur[0][0], cur[1][0]], C.i, 2.6); arrowW(V, [0, 0], [cur[0][1], cur[1][1]], C.j, 2.6);
+      ctx.save(); ctx.font = '600 12px JetBrains Mono, monospace'; ctx.fillStyle = '#e6ecf7'; ctx.textAlign = 'center'; ctx.fillText(title, R.x + R.w / 2, R.y + R.h - 12); ctx.restore();
+      const stage = S.ct < 1 ? `applying ${fname}` : S.ct < 2 ? `applying ${fname === 'B' ? 'A' : 'B'}` : 'done';
+      tag(stage, R.x + R.w / 2, R.y + R.h - 34, '#93a1bd', 'center');
+    });
+    HUD = [same ? 'AB <b>=</b> BA: these commute' : 'AB <b>≠</b> BA', `det A·det B <b>${nf(det2(S.A) * det2(S.B))}</b>`];
+    STATS = [['det A', nf(det2(S.A))], ['det B', nf(det2(S.B))], ['det AB', nf(det2(AB))], ['det BA', nf(det2(BA))], ['Commute?', same ? '<span style="color:var(--ok)">yes</span>' : '<span style="color:var(--bad)">no</span>']];
+    LEG = [['after first step', C.eig], ['final shape', '#facc15']];
+    S.cState = { same };
+  }
+
+  /* ===================== 3D MODE ===================== */
+  const PRE3 = [
+    ['Identity', [[1, 0, 0], [0, 1, 0], [0, 0, 1]]], ['Rotate z 45°', 'rz'], ['Rotate x 30°', 'rx'], ['Scale (1.5, 1, 0.5)', [[1.5, 0, 0], [0, 1, 0], [0, 0, 0.5]]],
+    ['Shear', [[1, 0.6, 0], [0, 1, 0], [0, 0, 1]]], ['Reflect z → −z', [[1, 0, 0], [0, 1, 0], [0, 0, -1]]], ['Project to xy', [[1, 0, 0], [0, 1, 0], [0, 0, 0]]],
+    ['Cycle axes', [[0, 0, 1], [1, 0, 0], [0, 1, 0]]], ['Symmetric', [[2, 1, 0], [1, 2, 0], [0, 0, 1]]], ['Singular', [[1, 2, 3], [0, 1, 1], [1, 3, 4]]]
+  ];
+  $('#m3pre').innerHTML = PRE3.map((p, i) => `<button class="btn sm" data-i="${i}">${p[0]}</button>`).join('');
+  $('#m3pre').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; let p = PRE3[+b.dataset.i][1]; const c = Math.cos, s = Math.sin;
+    if (p === 'rz') p = [[c(Math.PI / 4), -s(Math.PI / 4), 0], [s(Math.PI / 4), c(Math.PI / 4), 0], [0, 0, 1]];
+    if (p === 'rx') p = [[1, 0, 0], [0, c(Math.PI / 6), -s(Math.PI / 6)], [0, s(Math.PI / 6), c(Math.PI / 6)]];
+    S.M3 = p.map(r => r.map(v => Math.abs(v) < 1e-12 ? 0 : v)); refreshInputs($('#m3in'), (i, j) => S.M3[i][j]); S.t3 = 0; S.anim3 = 1; panelTex(); });
+  makeInputs($('#m3in'), 3, 3, (i, j) => S.M3[i][j], (i, j, v) => { S.M3[i][j] = v; S.t3 = 1; panelTex(); S.dirty = true; });
+  $('#anim3').onclick = () => { S.t3 = 0; S.anim3 = 1; };
+  $('#auto3').onchange = e => S.auto = e.target.checked; $('#eig3').onchange = () => S.dirty = true;
+  function cam(V3) {
+    const cyw = Math.cos(S.yaw), syw = Math.sin(S.yaw), cp = Math.cos(S.pitch), sp = Math.sin(S.pitch);
+    return p => { const x1 = p[0] * cyw - p[1] * syw, y1 = p[0] * syw + p[1] * cyw; const dep = y1 * cp + p[2] * sp, z2 = -y1 * sp + p[2] * cp; const f = 9 / (9 + dep); return [V3.ox + x1 * V3.u * f, V3.oy - z2 * V3.u * f, dep]; };
+  }
+  const lerp3 = (M, t) => { const e = ease(t); return M.map((r, i) => r.map((v, j) => (i === j ? 1 : 0) + (v - (i === j ? 1 : 0)) * e)); };
+  function line3(P, a, b, col, w, dash) { const A = P(a), B = P(b); ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = w || 1; if (dash) ctx.setLineDash(dash); ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]); ctx.stroke(); ctx.restore(); }
+  function arrow3(P, a, b, col, w, lbl) { const A = P(a), B = P(b); ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 8; SL.arrow(ctx, A[0], A[1], B[0], B[1], col, w || 2.6, 10); ctx.restore(); if (lbl) tag(lbl, B[0] + 6, B[1] - 6, col); }
+  function floor3(P, n) { ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.lineWidth = 1; for (let k = -n; k <= n; k++) { const a = P([k, -n, 0]), b = P([k, n, 0]), c = P([-n, k, 0]), d = P([n, k, 0]); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.moveTo(c[0], c[1]); ctx.lineTo(d[0], d[1]); ctx.stroke(); } ctx.restore();
+    line3(P, [-n, 0, 0], [n, 0, 0], 'rgba(255,255,255,.22)'); line3(P, [0, -n, 0], [0, n, 0], 'rgba(255,255,255,.22)'); line3(P, [0, 0, -n * .7], [0, 0, n * .7], 'rgba(255,255,255,.22)'); }
+  const CUBE_V = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]];
+  const CUBE_F = [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4], [2, 3, 7, 6], [1, 2, 6, 5], [0, 3, 7, 4]];
+  const FACE_COL = ['96,165,250', '96,165,250', '52,211,153', '52,211,153', '244,114,182', '244,114,182'];
+  function drawM3(dt) {
+    if (S.auto && !drag) S.yaw += dt * 0.18;
+    const V = { ox: st.w / 2, oy: st.h / 2 + 50, u: Math.min(st.w, st.h) / 4.6 };
+    const P = cam(V); S.P3 = P;
+    floor3(P, 2);
+    const M = lerp3(S.M3, S.t3);
+    // original cube (wire)
+    const E12 = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
+    E12.forEach(([a, b]) => line3(P, CUBE_V[a], CUBE_V[b], 'rgba(255,255,255,.22)', 1, [4, 4]));
+    // transformed faces sorted by depth
+    const TV = CUBE_V.map(v => ap3(M, v)); const PV = TV.map(P);
+    const d = det3(M); const faces = CUBE_F.map((f, i) => ({ f, i, z: f.reduce((s, k) => s + PV[k][2], 0) / 4 })).sort((a, b) => b.z - a.z);
+    faces.forEach(({ f, i }) => poly(f.map(k => PV[k]), `rgba(${FACE_COL[i]},${d >= 0 ? .16 : .1})`, `rgba(${d >= 0 ? FACE_COL[i] : '251,146,60'},.85)`, 1.4));
+    // eigen lines
+    const E = eig3(S.t3 >= 1 ? S.M3 : M);
+    if ($('#eig3').checked) E.vecs.forEach((v, k) => { if (!v) return; line3(P, v.map(x => -x * 3.5), v.map(x => x * 3.5), 'rgba(192,132,252,.75)', 1.5, [7, 5]); const lp = P(v.map(x => x * 3.3)); tag('λ = ' + nf(E.vals[k]), lp[0] + 4, lp[1], '#d8b4fe'); });
+    arrow3(P, [0, 0, 0], [M[0][0], M[1][0], M[2][0]], C.i, 3, 'î'); arrow3(P, [0, 0, 0], [M[0][1], M[1][1], M[2][1]], C.j, 3, 'ĵ'); arrow3(P, [0, 0, 0], [M[0][2], M[1][2], M[2][2]], C.k, 3, 'k̂');
+    const D = det3(S.M3), tr = S.M3[0][0] + S.M3[1][1] + S.M3[2][2];
+    const ev = E.vals.map(nf).join(', ') + (E.complex ? `, ${nf(E.complex.re)} ± ${nf(E.complex.im)}i` : '');
+    HUD = [`det = volume <b>${nf(D)}</b>`, `tr <b>${nf(tr)}</b>`, `λ <b>${ev}</b>`];
+    const rank = rank3(S.M3);
+    STATS = [['det (volume ×)', nf(D)], ['Orientation', Math.abs(D) < 1e-9 ? 'flattened' : D > 0 ? 'right-handed' : 'mirrored'], ['trace', nf(tr)], ['rank', rank], ['Eigenvalues', ev]];
+    LEG = [['î', C.i], ['ĵ', C.j], ['k̂', C.k], ['eigen-lines', C.eig]];
+    S.m3State = { det: D };
+  }
+  function rank3(A) { const M = A.map(r => r.slice()); let r = 0; for (let c = 0; c < 3 && r < 3; c++) { let p = r; for (let i = r; i < 3; i++) if (Math.abs(M[i][c]) > Math.abs(M[p][c])) p = i; if (Math.abs(M[p][c]) < 1e-9) continue; [M[r], M[p]] = [M[p], M[r]]; for (let i = r + 1; i < 3; i++) { const f = M[i][c] / M[r][c]; for (let j = 0; j < 3; j++) M[i][j] -= f * M[r][j]; } r++; } return r; }
+
+  /* ===================== HOMOGENEOUS ===================== */
+  const H = {
+    T: (tx, ty) => [[1, 0, tx], [0, 1, ty], [0, 0, 1]],
+    R: th => [[Math.cos(th), -Math.sin(th), 0], [Math.sin(th), Math.cos(th), 0], [0, 0, 1]],
+    Sc: s => [[s, 0, 0], [0, s, 0], [0, 0, 1]]
+  };
+  const hp = (M, p) => { const r = ap3(M, [p[0], p[1], 1]); return [r[0] / r[2], r[1] / r[2]]; };
+  $$('#hsub button').forEach(b => b.onclick = () => { S.hsub = b.dataset.v; $$('#hsub button').forEach(x => x.classList.toggle('on', x === b)); $('#hRigid').style.display = S.hsub === 'rigid' ? '' : 'none'; $('#hArm').style.display = S.hsub === 'arm' ? '' : 'none'; panelTex(); S.dirty = true; });
+  $$('#hOrder button').forEach(b => b.onclick = () => { S.h.order = b.dataset.v; $$('#hOrder button').forEach(x => x.classList.toggle('on', x === b)); S.hAnim = 0.001; panelTex(); });
+  SL.bind('#hTh', v => { S.h.th = v; panelTex(); S.dirty = true; }, v => v + '°');
+  SL.bind('#hTx', v => { S.h.tx = v; panelTex(); S.dirty = true; }, v => v.toFixed(1));
+  SL.bind('#hTy', v => { S.h.ty = v; panelTex(); S.dirty = true; }, v => v.toFixed(1));
+  SL.bind('#hS', v => { S.h.s = v; panelTex(); S.dirty = true; }, v => v.toFixed(2));
+  SL.bind('#aT1', v => { S.arm.t1 = v; panelTex(); S.dirty = true; }, v => v + '°');
+  SL.bind('#aT2', v => { S.arm.t2 = v; panelTex(); S.dirty = true; }, v => v + '°');
+  SL.bind('#aL1', v => { S.arm.L1 = v; panelTex(); S.dirty = true; }, v => v.toFixed(1));
+  SL.bind('#aL2', v => { S.arm.L2 = v; panelTex(); S.dirty = true; }, v => v.toFixed(1));
+  function hMatrix() { const { th, tx, ty, s, order } = S.h; const R = mul3(H.R(th * D2R), H.Sc(s)), T = H.T(tx, ty); return order === 'TR' ? mul3(T, R) : mul3(R, T); }
+  function armMats() { const { t1, t2, L1, L2 } = S.arm; const T01 = H.R(t1 * D2R); const T1e = mul3(T01, H.T(L1, 0)); const T12 = mul3(H.T(L1, 0), H.R(t2 * D2R)); const T02 = mul3(T01, T12); const T0e = mul3(T02, H.T(L2, 0)); return { T01, T12, T02, T1e, T0e }; }
+  const TARGET = [-1.2, 2.2];
+  function frameAxes(V, M, len, lbl) { const o = hp(M, [0, 0]), x = hp(M, [len, 0]), y = hp(M, [0, len]); const O = V.P(o); SL.arrow(ctx, O[0], O[1], ...V.P(x), '#ef4444', 2, 7); SL.arrow(ctx, O[0], O[1], ...V.P(y), '#22c55e', 2, 7); if (lbl) tag(lbl, O[0] - 6, O[1] + 20, '#93a1bd', 'right'); }
+  function drawHomo(dt) {
+    const V = view2(null, st.w < 600 ? 3.6 : 4.4); S.VH = V; bgGrid(V);
+    if (S.hsub === 'rigid') {
+      const { th, tx, ty, s, order } = S.h;
+      if (S.hAnim) S.hAnim = Math.min(2, S.hAnim + dt * 0.9);
+      const k = S.hAnim ? S.hAnim : 2; // 0..1 first op, 1..2 second
+      const e1 = ease(SL.clamp(k, 0, 1)), e2 = ease(SL.clamp(k - 1, 0, 1));
+      const Rp = mul3(H.R(th * D2R * (order === 'TR' ? e1 : e2)), H.Sc(1 + (s - 1) * (order === 'TR' ? e1 : e2)));
+      const Tp = H.T(tx * (order === 'TR' ? e2 : e1), ty * (order === 'TR' ? e2 : e1));
+      const Mcur = order === 'TR' ? mul3(Tp, Rp) : mul3(Rp, Tp);
+      const sh = SHAPES.F.map(pg => pg.map(p => [p[0] - 1.3, p[1]]));
+      // original
+      sh.forEach(pg => poly(pg.map(p => V.P(p)), null, 'rgba(255,255,255,.25)', 1.2, [4, 4]));
+      frameAxes(V, H.T(0, 0), 0.8, 'world');
+      // intermediate (after first op)
+      const first = order === 'TR' ? mul3(H.R(th * D2R), H.Sc(s)) : H.T(tx, ty);
+      if (k >= 1) sh.forEach(pg => poly(pg.map(p => V.P(hp(first, p))), null, 'rgba(192,132,252,.55)', 1.4, [6, 4]));
+      // rotation arc about origin
+      if (Math.abs(th) > 1) { ctx.save(); ctx.strokeStyle = 'rgba(250,204,21,.4)'; ctx.setLineDash([3, 4]); ctx.beginPath(); const r = order === 'TR' ? 0.6 : Math.hypot(tx, ty); const a0 = order === 'TR' ? 0 : Math.atan2(ty, tx); ctx.arc(V.ox, V.oy, r * V.u, -a0, -(a0 + th * D2R), th > 0); ctx.stroke(); ctx.restore(); }
+      sh.forEach(pg => poly(pg.map(p => V.P(hp(Mcur, p))), 'rgba(250,204,21,.18)', '#facc15', 2.2));
+      frameAxes(V, Mcur, 0.8, 'body');
+      const Mfin = hMatrix(); const p0 = hp(Mfin, [0, 0]);
+      HUD = [order === 'TR' ? 'T·R: rotate about origin, then move' : 'R·T: move, then rotate about origin', `body origin → (<b>${nf(p0[0])}, ${nf(p0[1])}</b>)`];
+      STATS = [['Translation', nf(tx) + ', ' + nf(ty)], ['θ', th + '°'], ['det (2×2 block)', nf(s * s)], ['Origin maps to', `(${nf(p0[0])}, ${nf(p0[1])})`]];
+      LEG = [['original', 'rgba(255,255,255,.5)'], ['after 1st step', C.eig], ['final', '#facc15'], ['x-axis', '#ef4444'], ['y-axis', '#22c55e']];
+    } else {
+      const { T01, T02, T0e } = armMats();
+      const base = V.P([0, 0]), j1 = V.P(hp(T02, [0, 0])), ee = V.P(hp(T0e, [0, 0]));
+      // workspace annulus
+      const { L1, L2 } = S.arm; ctx.save(); ctx.fillStyle = 'rgba(96,165,250,.05)'; ctx.beginPath(); ctx.arc(base[0], base[1], (L1 + L2) * V.u, 0, TAU); ctx.arc(base[0], base[1], Math.abs(L1 - L2) * V.u, 0, TAU, true); ctx.fill('evenodd'); ctx.strokeStyle = 'rgba(96,165,250,.25)'; ctx.setLineDash([5, 5]); ctx.stroke(); ctx.restore();
+      // target
+      const tp = V.P(TARGET); ctx.save(); ctx.strokeStyle = '#f472b6'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(tp[0], tp[1], 10, 0, TAU); ctx.moveTo(tp[0] - 15, tp[1]); ctx.lineTo(tp[0] + 15, tp[1]); ctx.moveTo(tp[0], tp[1] - 15); ctx.lineTo(tp[0], tp[1] + 15); ctx.stroke(); ctx.restore(); tag('target (−1.2, 2.2)', tp[0] + 14, tp[1] - 12, '#f9a8d4');
+      // trail
+      const eW = hp(T0e, [0, 0]); S.armTrail.push(eW); if (S.armTrail.length > 220) S.armTrail.shift();
+      ctx.save(); ctx.strokeStyle = 'rgba(250,204,21,.35)'; ctx.beginPath(); S.armTrail.forEach((p, i) => { const q = V.P(p); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }); ctx.stroke(); ctx.restore();
+      // links
+      const link = (a, b, wdt) => { ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#334155'; ctx.lineWidth = wdt + 4; ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...b); ctx.stroke(); const g = ctx.createLinearGradient(a[0], a[1], b[0], b[1]); g.addColorStop(0, '#94a3b8'); g.addColorStop(1, '#cbd5e1'); ctx.strokeStyle = g; ctx.lineWidth = wdt; ctx.stroke(); ctx.restore(); };
+      ctx.save(); ctx.fillStyle = '#1e293b'; ctx.fillRect(base[0] - 26, base[1], 52, 14); ctx.restore();
+      link(base, j1, 16); link(j1, ee, 12);
+      [base, j1].forEach(p => { ctx.save(); ctx.fillStyle = '#0f172a'; ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p[0], p[1], 9, 0, TAU); ctx.fill(); ctx.stroke(); ctx.restore(); });
+      // gripper
+      const ang = Math.atan2(-(ee[1] - j1[1]), ee[0] - j1[0]);
+      ctx.save(); ctx.translate(ee[0], ee[1]); ctx.rotate(-ang); ctx.strokeStyle = '#facc15'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(0, 9); ctx.moveTo(0, -9); ctx.lineTo(12, -9); ctx.moveTo(0, 9); ctx.lineTo(12, 9); ctx.stroke(); ctx.restore();
+      frameAxes(V, T01, 0.6, 'frame 0/1'); frameAxes(V, T02, 0.55, 'frame 2'); frameAxes(V, T0e, 0.5, '');
+      HUD = [`gripper (<b>${nf(eW[0])}, ${nf(eW[1])}</b>)`, `reach <b>${nf(Math.hypot(...eW))}</b>`];
+      const dT = Math.hypot(eW[0] - TARGET[0], eW[1] - TARGET[1]);
+      STATS = [['Gripper x', nf(eW[0])], ['Gripper y', nf(eW[1])], ['Gripper angle', nf(S.arm.t1 + S.arm.t2) + '°'], ['Distance to target', nf(dT)]];
+      LEG = [['x-axis of frame', '#ef4444'], ['y-axis of frame', '#22c55e'], ['workspace', '#60a5fa']];
+      S.armState = { dT };
+    }
+  }
+  function ik(x, y) {
+    const { L1, L2 } = S.arm; let r = Math.hypot(x, y); r = SL.clamp(r, Math.abs(L1 - L2) + 1e-6, L1 + L2 - 1e-6);
+    const a = Math.atan2(y, x); x = r * Math.cos(a); y = r * Math.sin(a);
+    const c2 = SL.clamp((r * r - L1 * L1 - L2 * L2) / (2 * L1 * L2), -1, 1);
+    const sgn = S.arm.t2 >= 0 ? 1 : -1; const t2 = sgn * Math.acos(c2);
+    const t1 = Math.atan2(y, x) - Math.atan2(L2 * Math.sin(t2), L1 + L2 * Math.cos(t2));
+    const d1 = ((t1 / D2R + 540) % 360) - 180, d2 = t2 / D2R;
+    $('#aT1').value = Math.round(d1); $('#aT2').value = Math.round(d2); S.arm.t1 = d1; S.arm.t2 = d2;
+    ['#aT1', '#aT2'].forEach(s => { const el = $(s); el.closest('.ctl').querySelector('output').textContent = Math.round(+el.value) + '°'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    S.arm.t1 = d1; S.arm.t2 = d2; panelTex();
+  }
+
+  /* ===================== LINEAR SYSTEMS (exact fractions) ===================== */
+  const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) [a, b] = [b, a % b]; return a || 1; };
+  class Fr {
+    constructor(n, d = 1) { if (d < 0) { n = -n; d = -d; } const g = gcd(n, d); this.n = n / g; this.d = d / g; }
+    static of(x) { if (x instanceof Fr) return x; let d = 1; while (Math.abs(x * d - Math.round(x * d)) > 1e-9 && d < 1e6) d *= 10; return new Fr(Math.round(x * d), d); }
+    add(o) { return new Fr(this.n * o.d + o.n * this.d, this.d * o.d); } sub(o) { return new Fr(this.n * o.d - o.n * this.d, this.d * o.d); }
+    mul(o) { return new Fr(this.n * o.n, this.d * o.d); } div(o) { return new Fr(this.n * o.d, this.d * o.n); }
+    get z() { return this.n === 0; } get v() { return this.n / this.d; }
+    toString() { return (this.n < 0 ? '−' : '') + Math.abs(this.n) + (this.d !== 1 ? '/' + this.d : ''); }
+  }
+  const SYS = {
+    2: [['Unique: 2x + y = 5, x − y = 1', [[2, 1, 5], [1, -1, 1]]], ['No solution (parallel)', [[1, 2, 4], [2, 4, 3]]], ['Infinitely many (same line)', [[1, 2, 4], [2, 4, 8]]], ['Needs a row swap', [[0, 2, 4], [3, 1, 5]]]],
+    3: [['Unique (classic example)', [[2, 1, -1, 8], [-3, -1, 2, -11], [-2, 1, 2, -3]]], ['Market prices (KES)', [[2, 3, 1, 190], [1, 2, 3, 140], [3, 1, 2, 150]]], ['No solution', [[1, 1, 1, 3], [1, -1, 2, 2], [2, 0, 3, 7]]], ['Infinitely many (a line)', [[1, 1, 1, 3], [1, -1, 2, 2], [2, 0, 3, 5]]]]
+  };
+  function eliminate(Ab) {
+    const n = Ab.length, m = Ab[0].length; let M = Ab.map(r => r.map(x => Fr.of(x)));
+    const snap = () => M.map(r => r.slice());
+    const steps = [{ op: 'Start', note: 'Augmented matrix [A | b]', M: snap(), phase: 0 }];
+    const pivots = []; let r = 0;
+    for (let c = 0; c < m - 1 && r < n; c++) {
+      let p = -1; for (let i = r; i < n; i++) if (!M[i][c].z) { p = i; break; }
+      if (p < 0) continue;
+      if (p !== r) { [M[r], M[p]] = [M[p], M[r]]; steps.push({ op: `R${r + 1} ↔ R${p + 1}`, note: 'swap to get a non-zero pivot', M: snap(), phase: 1 }); }
+      for (let i = r + 1; i < n; i++) { if (M[i][c].z) continue; const f = M[i][c].div(M[r][c]); M[i] = M[i].map((x, j) => x.sub(f.mul(M[r][j]))); steps.push({ op: `R${i + 1} → R${i + 1} ${f.n < 0 ? '+' : '−'} ${fs(f)}R${r + 1}`, note: 'eliminate below the pivot', M: snap(), phase: 1 }); }
+      pivots.push([r, c]); r++;
+    }
+    // back substitution (Gauss–Jordan)
+    for (let k = pivots.length - 1; k >= 0; k--) {
+      const [pr, pc] = pivots[k]; const pv = M[pr][pc];
+      if (!(pv.n === 1 && pv.d === 1)) { const inv = new Fr(pv.d, pv.n); M[pr] = M[pr].map(x => x.mul(inv)); steps.push({ op: `R${pr + 1} → ${fs(inv, true)}R${pr + 1}`, note: 'scale the pivot to 1', M: snap(), phase: 2 }); }
+      for (let i = pr - 1; i >= 0; i--) { if (M[i][pc].z) continue; const f = M[i][pc]; M[i] = M[i].map((x, j) => x.sub(f.mul(M[pr][j]))); steps.push({ op: `R${i + 1} → R${i + 1} ${f.n < 0 ? '+' : '−'} ${fs(f)}R${pr + 1}`, note: 'eliminate above the pivot', M: snap(), phase: 2 }); }
+    }
+    // classify
+    const rankA = pivots.filter(([, c]) => c < m - 1).length;
+    const bad = M.some(row => row.slice(0, m - 1).every(x => x.z) && !row[m - 1].z);
+    let kind, sol = null;
+    if (bad) kind = 'none'; else if (rankA === m - 1) { kind = 'unique'; sol = Array.from({ length: m - 1 }, (_, j) => { const pr = pivots.find(p => p[1] === j)[0]; return M[pr][m - 1]; }); } else kind = 'inf';
+    return { steps, kind, sol, rankA, rankAb: rankA + (bad ? 1 : 0), R: M, pivots };
+  }
+  function fs(f, sign) { const a = new Fr(Math.abs(f.n), f.d); const s = a.toString(); if (sign) return (f.n < 0 ? '−' : '') + (a.d === 1 && a.n === 1 ? '' : (a.d === 1 ? s : '(' + s + ')')); return a.d === 1 && a.n === 1 ? '' : (a.d === 1 ? s : '(' + s + ')'); }
+  function fmHTML(M) { const m = M[0].length; return `<span class="fm" style="grid-template-columns:repeat(${m - 1},auto) auto">` + M.map(r => r.map((x, j) => `<span class="${j === m - 1 ? 'aug' : ''}">${x.toString()}</span>`).join('')).join('') + '</span>'; }
+  function loadSys(n, i) {
+    S.sysN = n; $$('#sysN button').forEach(b => b.classList.toggle('on', +b.dataset.v === n));
+    $('#sysPre').innerHTML = SYS[n].map((p, k) => `<option value="${k}">${p[0]}</option>`).join('') + '<option value="custom">Custom (edit the entries)</option>';
+    $('#sysPre').value = i; S.Ab = SYS[n][i][1].map(r => r.slice());
+    const el = $('#sysIn'); el.className = 'mgrid ' + (n === 2 ? '' : 'c4'); el.style.gridTemplateColumns = n === 2 ? 'repeat(2,1fr) 12px 1fr' : '';
+    makeInputs(el, n, n + 1, (r, c) => S.Ab[r][c], (r, c, v) => { S.Ab[r][c] = v; $('#sysPre').value = 'custom'; runSys(); }, true);
+    runSys();
+  }
+  function runSys() { const res = eliminate(S.Ab); S.sys = res; S.k = 0; renderSteps(); S.dirty = true; }
+  function renderSteps() {
+    const res = S.sys; const ol = $('#steps');
+    ol.innerHTML = res.steps.map((s, i) => `<li class="${i === S.k ? 'cur' : i > S.k ? 'future' : ''}" data-k="${i}"><span><span class="op">${s.op}</span><br><span class="small dim">${s.note}</span></span>${fmHTML(s.M)}</li>`).join('');
+    const cur = ol.children[S.k]; if (cur) { const top = cur.offsetTop - ol.offsetTop; if (top < ol.scrollTop || top > ol.scrollTop + ol.clientHeight - 60) ol.scrollTop = top - 40; }
+    const v = $('#verdict'); const done = S.k === res.steps.length - 1;
+    const names = S.sysN === 2 ? ['x', 'y'] : ['x', 'y', 'z'];
+    if (!done) { v.className = 'verdict'; v.innerHTML = `Step ${S.k} of ${res.steps.length - 1}. ${S.k === 0 ? 'Press Next step to begin.' : 'Each row operation keeps the same solution set: the intersection does not move.'}`; }
+    else if (res.kind === 'unique') { v.className = 'verdict ok'; v.innerHTML = `<b>Unique solution</b> (rank A = ${res.rankA}): ` + res.sol.map((x, i) => `${names[i]} = ${x.toString()}`).join(', '); }
+    else if (res.kind === 'none') { v.className = 'verdict bad'; v.innerHTML = `<b>No solution.</b> A row reads 0 = non-zero. rank A = ${res.rankA} &lt; rank [A|b] = ${res.rankAb}.`; }
+    else { v.className = 'verdict warn'; v.innerHTML = `<b>Infinitely many solutions.</b> rank A = rank [A|b] = ${res.rankA} &lt; ${S.sysN}: ${S.sysN - res.rankA} free variable${S.sysN - res.rankA > 1 ? 's' : ''}.`; }
+  }
+  $('#steps').addEventListener('click', e => { const li = e.target.closest('li'); if (!li) return; S.k = +li.dataset.k; renderSteps(); S.dirty = true; });
+  $$('#sysN button').forEach(b => b.onclick = () => loadSys(+b.dataset.v, 0));
+  $('#sysPre').onchange = e => { if (e.target.value !== 'custom') loadSys(S.sysN, +e.target.value); };
+  $('#sysStep').onclick = () => { if (S.k < S.sys.steps.length - 1) { S.k++; renderSteps(); S.dirty = true; if (S.k === S.sys.steps.length - 1) S.sysFinished = true; } };
+  $('#sysAll').onclick = () => { S.k = S.sys.steps.length - 1; S.sysFinished = true; renderSteps(); S.dirty = true; };
+  $('#sysReset').onclick = () => { S.k = 0; renderSteps(); S.dirty = true; };
+  const ROWC = ['#60a5fa', '#f472b6', '#34d399'];
+  function drawSys() {
+    const res = S.sys; const M = res.steps[S.k].M.map(r => r.map(x => x.v)); const n = S.sysN;
+    if (n === 2) {
+      const sol = res.kind === 'unique' ? res.sol.map(x => x.v) : null;
+      const range = sol ? Math.max(4.5, Math.abs(sol[0]) + 2, Math.abs(sol[1]) + 2) : 5;
+      const V = view2(null, st.w < 600 ? range * 0.8 : range); bgGrid(V);
+      ctx.save(); ctx.font = '10px JetBrains Mono, monospace'; ctx.fillStyle = '#5f6d8a'; const stp = range > 8 ? 2 : 1; for (let k = -12; k <= 12; k += stp) { if (!k) continue; const p = V.P([k, 0]); if (p[0] > 10 && p[0] < st.w - 10) ctx.fillText(k, p[0] + 2, V.oy + 12); const q = V.P([0, k]); if (q[1] > 50 && q[1] < st.h - 10) ctx.fillText(k, V.ox + 4, q[1] - 2); } ctx.restore();
+      M.forEach((row, i) => {
+        const [a, b, c] = row; const L = 40; let p1, p2;
+        if (Math.abs(a) < 1e-12 && Math.abs(b) < 1e-12) { tag(`R${i + 1}: 0 = ${nf(c)}` + (Math.abs(c) > 1e-12 ? '  (impossible)' : '  (always true)'), 20, st.h - 20 - i * 24, ROWC[i]); return; }
+        if (Math.abs(b) > 1e-12) { p1 = [-L, (c + a * L) / b]; p2 = [L, (c - a * L) / b]; } else { p1 = [c / a, -L]; p2 = [c / a, L]; }
+        ctx.save(); ctx.strokeStyle = ROWC[i]; ctx.lineWidth = 2.4; ctx.shadowColor = ROWC[i]; ctx.shadowBlur = 10; ctx.beginPath(); ctx.moveTo(...V.P(p1)); ctx.lineTo(...V.P(p2)); ctx.stroke(); ctx.restore();
+        // label near the left edge of the view
+        const xl = V.I(st.w * (i ? 0.2 : 0.72), 0)[0]; const yl = Math.abs(b) > 1e-12 ? (c - a * xl) / b : 0; const lp = Math.abs(b) > 1e-12 ? V.P([xl, yl]) : V.P([c / a, (i ? -2 : 2)]);
+        tag(`R${i + 1}: ${lin([a, b], ['x', 'y'])} = ${nf(c)}`, lp[0] + 8, lp[1] - 10, ROWC[i]);
+      });
+      if (sol) { const p = V.P(sol); ctx.save(); ctx.fillStyle = '#facc15'; ctx.shadowColor = '#facc15'; ctx.shadowBlur = 16; ctx.beginPath(); ctx.arc(p[0], p[1], 6.5, 0, TAU); ctx.fill(); ctx.restore(); tag(`(${nf(sol[0])}, ${nf(sol[1])})`, p[0] + 12, p[1] + 22, '#fde68a'); }
+    } else {
+      if (S.auto3sys !== false && !drag) S.yaw += 0.003;
+      const V = { ox: st.w / 2, oy: st.h / 2 + 24, u: Math.min(st.w, st.h) / 19 }; const P = cam(V); S.P3 = P;
+      const sol = res.kind === 'unique' ? res.sol.map(x => x.v) : null;
+      // drawing coordinates q = p / sc keep large solutions inside the box
+      const L = 4.5; const big = sol ? Math.max(...sol.map(Math.abs)) : 0; const sc = big > 4 ? big / 3.5 : 1;
+      floor3(P, 4);
+      const corners = []; for (const x of [-L, L]) for (const y of [-L, L]) for (const z of [-L, L]) corners.push([x, y, z]);
+      const edges = []; for (let i = 0; i < 8; i++) for (let j = i + 1; j < 8; j++) { const d = corners[i].reduce((s, v, k) => s + (v !== corners[j][k] ? 1 : 0), 0); if (d === 1) edges.push([corners[i], corners[j]]); }
+      const polys = [];
+      M.forEach((row, i) => {
+        const nn = row.slice(0, 3); const dd = row[3] / sc;
+        if (nn.every(v => Math.abs(v) < 1e-12)) { tag(`R${i + 1}: 0 = ${nf(row[3])}` + (Math.abs(row[3]) > 1e-12 ? '  (impossible)' : '  (always true)'), 20, st.h - 20 - i * 24, ROWC[i]); return; }
+        const pts = [];
+        edges.forEach(([a, b]) => { const sa = dot(nn, a) - dd, sb = dot(nn, b) - dd; if (sa * sb < 0 || Math.abs(sa) < 1e-12) { const t = Math.abs(sa) < 1e-12 ? 0 : sa / (sa - sb); pts.push(a.map((v, k) => v + (b[k] - v) * t)); } });
+        if (pts.length < 3) return;
+        const c = pts.reduce((s, p) => s.map((v, k) => v + p[k] / pts.length), [0, 0, 0]);
+        const nU = nn.map(v => v / norm(nn)); let u = cross(nU, Math.abs(nU[0]) < .9 ? [1, 0, 0] : [0, 1, 0]); u = u.map(v => v / norm(u)); const w = cross(nU, u);
+        const angOf = p => Math.atan2(dot(sub(p, c), w), dot(sub(p, c), u));
+        pts.sort((p, q) => angOf(p) - angOf(q));
+        const pp = pts.map(P); polys.push({ pp, z: pp.reduce((s, p) => s + p[2], 0) / pp.length, i });
+      });
+      polys.sort((a, b) => b.z - a.z).forEach(({ pp, i }) => { const rgb = ['96,165,250', '244,114,182', '52,211,153'][i]; poly(pp, `rgba(${rgb},.17)`, `rgba(${rgb},.85)`, 1.4); });
+      if (sol) { const p = P(sol.map(v => v / sc)); ctx.save(); ctx.fillStyle = '#facc15'; ctx.shadowColor = '#facc15'; ctx.shadowBlur = 18; ctx.beginPath(); ctx.arc(p[0], p[1], 7, 0, TAU); ctx.fill(); ctx.restore(); tag(`(${sol.map(nf).join(', ')})`, p[0] + 12, p[1] - 12, '#fde68a'); }
+      if (sc !== 1) tag(`axes scaled ×${nf(sc)}`, 14, st.h - 14, '#93a1bd');
+    }
+    const res2 = S.sys;
+    HUD = [`step <b>${S.k}/${res2.steps.length - 1}</b>`, `rank A <b>${res2.rankA}</b>`, `rank [A|b] <b>${res2.rankAb}</b>`];
+    const A = S.Ab.map(r => r.slice(0, n)); const dA = n === 2 ? det2(A) : det3(A);
+    STATS = [['det A', nf(dA)], ['rank A', res2.rankA], ['rank [A|b]', res2.rankAb], ['Solutions', res2.kind === 'unique' ? 'one' : res2.kind === 'none' ? 'none' : '∞']];
+    LEG = (n === 2 ? [['row 1', ROWC[0]], ['row 2', ROWC[1]]] : [['plane 1', ROWC[0]], ['plane 2', ROWC[1]], ['plane 3', ROWC[2]]]).concat([['solution', '#facc15']]);
+  }
+  function lin(cs, vs) { let out = ''; cs.forEach((c, i) => { if (Math.abs(c) < 1e-12) return; const a = Math.abs(c); const t = (Math.abs(a - 1) < 1e-12 ? '' : nf(a)) + vs[i]; out += out ? (c < 0 ? ' − ' : ' + ') + t : (c < 0 ? '−' : '') + t; }); return out || '0'; }
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+
+  /* ===================== PANEL TEX (inverse / composite) ===================== */
+  function panelTex() {
+    const box = $('#invBox'); box.style.display = '';
+    if (S.mode === 'm2') { const I = inv2(S.M); $('#invLbl').textContent = 'Inverse A⁻¹'; SL.tex($('#invTex'), I ? 'A^{-1}=' + bmat(I) : '\\text{det}\\,A=0:\\ \\text{singular, no inverse}'); box.classList.toggle('bad', !I); }
+    else if (S.mode === 'm3') { const I = inv3(S.M3); $('#invLbl').textContent = 'Inverse A⁻¹'; SL.tex($('#invTex'), I ? 'A^{-1}=' + bmat(I) : '\\text{det}\\,A=0:\\ \\text{singular, no inverse}'); }
+    else if (S.mode === 'homo') {
+      box.style.display = 'none';
+      if (S.hsub === 'rigid') { $('#hTexLbl').textContent = S.h.order === 'TR' ? 'M = T(t)·R(θ)·S(s)' : 'M = R(θ)·S(s)·T(t)'; SL.tex($('#hTex'), 'M=' + bmat(hMatrix())); }
+      else { const { T01, T12, T0e } = armMats(); $('#hTexLbl').textContent = 'Forward kinematics'; SL.tex($('#hTex'), 'T_{01}=' + bmat(T01) + '\\\\[4pt] T_{12}=' + bmat(T12) + '\\\\[4pt] T_{0e}=T_{01}T_{12}T(L_2)=' + bmat(T0e), true); }
+    }
+    else box.style.display = 'none';
+  }
+
+  /* ===================== POINTER ===================== */
+  let drag = null;
+  cv.addEventListener('pointerdown', e => {
+    const p = SL.ptr(e, cv);
+    if (S.mode === 'm2' && S.V2) {
+      const V = S.V2, M = S.M; S.t = 1;
+      const hi = V.P([M[0][0], M[1][0]]), hj = V.P([M[0][1], M[1][1]]), hv = V.P(S.v);
+      const d = q => Math.hypot(p.x - q[0], p.y - q[1]);
+      const cands = [['i', d(hi)], ['j', d(hj)], ['v', $('#showV').checked ? d(hv) : 1e9]].sort((a, b) => a[1] - b[1]);
+      if (cands[0][1] < 24) drag = { k: cands[0][0] };
+    } else if (S.mode === 'm3' || (S.mode === 'sys' && S.sysN === 3)) drag = { k: 'orbit', x: p.x, y: p.y, yaw: S.yaw, pitch: S.pitch };
+    else if (S.mode === 'homo' && S.hsub === 'arm' && S.VH) drag = { k: 'ik' };
+    if (drag) { cv.setPointerCapture(e.pointerId); moveDrag(p); }
+  });
+  function moveDrag(p) {
+    if (!drag) return;
+    if (drag.k === 'orbit') { S.yaw = drag.yaw + (p.x - drag.x) * 0.01; S.pitch = SL.clamp(drag.pitch + (p.y - drag.y) * 0.01, -1.4, 1.4); S.dirty = true; return; }
+    if (drag.k === 'ik') { const w = S.VH.I(p.x, p.y); ik(w[0], w[1]); S.dirty = true; return; }
+    const V = S.V2; let w = V.I(p.x, p.y); const q = $('#snap').checked ? 0.5 : 0.05; w = w.map(v => Math.round(v / q) * q);
+    if (drag.k === 'i') { S.M[0][0] = w[0]; S.M[1][0] = w[1]; m2Changed(); }
+    if (drag.k === 'j') { S.M[0][1] = w[0]; S.M[1][1] = w[1]; m2Changed(); }
+    if (drag.k === 'v') { S.v = w; S.dirty = true; }
+  }
+  cv.addEventListener('pointermove', e => {
+    const p = SL.ptr(e, cv);
+    if (drag) { moveDrag(p); return; }
+    if (S.mode === 'm2' && S.V2) { const V = S.V2, M = S.M; const near = [V.P([M[0][0], M[1][0]]), V.P([M[0][1], M[1][1]]), V.P(S.v)].some(q => Math.hypot(p.x - q[0], p.y - q[1]) < 24); cv.style.cursor = near ? 'grab' : 'default'; }
+    else cv.style.cursor = (S.mode === 'm3' || (S.mode === 'sys' && S.sysN === 3)) ? 'grab' : (S.mode === 'homo' && S.hsub === 'arm') ? 'crosshair' : 'default';
+  });
+  const endDrag = () => { drag = null; };
+  cv.addEventListener('pointerup', endDrag); cv.addEventListener('pointercancel', endDrag);
+
+  /* ===================== MODES ===================== */
+  const HINTS = { m2: 'Drag the green î and pink ĵ arrow tips, or the yellow test vector v.', comp: 'Left: B then A (the product AB). Right: A then B (BA).', m3: 'Drag to orbit. The shaded box is the image of the unit cube.', homo: '3×3 matrices move 2D points with rotation and translation together.', sys: 'Step through the row operations; the lines or planes keep the same intersection.' };
+  function setMode(m) {
+    S.mode = m; $$('#modes button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+    $$('[data-for]').forEach(el => el.style.display = el.dataset.for === m ? 'block' : 'none');
+    $('#modeHint').textContent = HINTS[m];
+    if (m === 'sys' && !S.sys) loadSys(2, 0);
+    if (m === 'comp') compTex();
+    panelTex(); S.dirty = true;
+  }
+  $$('#modes button').forEach(b => b.onclick = () => setMode(b.dataset.m));
+
+  /* ===================== CHALLENGES ===================== */
+  const CH = [
+    { id: 'flip', t: 'Mirror, not rotate', d: 'In 2D mode, drag î and ĵ to make a reflection: det = −1 and both columns still unit length and perpendicular.', test: () => S.mode === 'm2' && S.t >= 1 && Math.abs(det2(S.M) + 1) < 0.03 && Math.abs(Math.hypot(S.M[0][0], S.M[1][0]) - 1) < 0.03 && Math.abs(Math.hypot(S.M[0][1], S.M[1][1]) - 1) < 0.03 && !S.lastPreset2 },
+    { id: 'flat', t: 'Squash the plane', d: 'Make det = 0 without making the matrix all zeros (rank 1). Everything should land on a single line.', test: () => S.mode === 'm2' && S.t >= 1 && Math.abs(det2(S.M)) < 0.02 && S.M.flat().some(x => Math.abs(x) > 0.2) },
+    { id: 'eig', t: 'Eigen-hunter', d: 'Load the Symmetric preset and drag the yellow vector v until Av points in the same or opposite direction (within 1°). Find both directions.', test: () => S.mode === 'm2' && eqM(S.M, [[2, 1], [1, 2]]) && S.m2State && (() => { const a = S.m2State.ang; const n = Math.hypot(...S.v); if (n < 0.3) return false; const hit = a < 1 || a > 179; if (hit) { const dir = Math.abs(S.v[0] - S.v[1]) < Math.abs(S.v[0] + S.v[1]) ? 'a' : 'b'; S.eigFound = S.eigFound || new Set(); S.eigFound.add(dir); } return S.eigFound && S.eigFound.size === 2; })() },
+    { id: 'comm', t: 'Find a commuting pair', d: 'In Composition mode choose two different matrices A ≠ B, neither a multiple of I, with AB = BA.', test: () => S.mode === 'comp' && S.cState && S.cState.same && !eqM(S.A, S.B) && !isScalar(S.A) && !isScalar(S.B) },
+    { id: 'vol', t: 'Volume six', d: 'In 3D mode edit the matrix so that the unit cube becomes a box of volume exactly 6.', test: () => S.mode === 'm3' && Math.abs(det3(S.M3) - 6) < 0.02 },
+    { id: 'arm', t: 'Pick it up', d: 'In Homogeneous → Robot arm, move the gripper onto the pink target at (−1.2, 2.2) to within 0.03 units.', test: () => S.mode === 'homo' && S.hsub === 'arm' && S.armState && S.armState.dT < 0.03 },
+    { id: 'market', t: 'Price detective', d: 'Load the 3 × 3 "Market prices" system and work through the row operations to the final answer.', test: () => S.mode === 'sys' && S.sysN === 3 && $('#sysPre').value === '1' && S.sys && S.k === S.sys.steps.length - 1 && S.k > 3 },
+  ];
+  const eqM = (A, B) => A.flat().every((v, i) => Math.abs(v - B.flat()[i]) < 1e-9);
+  const isScalar = A => Math.abs(A[0][1]) < 1e-9 && Math.abs(A[1][0]) < 1e-9 && Math.abs(A[0][0] - A[1][1]) < 1e-9;
+  const done = new Set();
+  $('#chalList').innerHTML = CH.map(c => `<div class="chal" id="ch-${c.id}"><span class="led"></span><div><b>${c.t}</b><span class="muted small">${c.d}</span></div></div>`).join('');
+  function checkChallenges() { for (const c of CH) { if (done.has(c.id)) continue; let ok = false; try { ok = c.test(); } catch (e) {} if (ok) { done.add(c.id); $('#ch-' + c.id + ' .led').classList.add('on'); SL.toast(`Challenge complete: <b>${c.t}</b> (${done.size}/${CH.length})`, 'ok'); } } }
+  // a reflection loaded from a preset button does not count as "by dragging"
+  $('#m2pre').addEventListener('click', () => { S.lastPreset2 = true; });
+  cv.addEventListener('pointerdown', () => { S.lastPreset2 = false; });
+  $('#m2in').addEventListener('input', () => { S.lastPreset2 = false; });
+
+  /* ===================== QUIZ ===================== */
+  SL.quiz('#quiz', [
+    { q: 'The columns of a 2×2 matrix are…', options: ['its eigenvectors', 'the images of î and ĵ', 'the rows written sideways', 'always perpendicular'], answer: 1, why: 'A·(1,0) is the first column and A·(0,1) the second, which is why dragging î and ĵ edits the columns.' },
+    { q: 'det A = −2. What happens to the unit square?', options: ['It shrinks to half its area', 'Its area doubles and its orientation flips', 'It rotates by 180°', 'It collapses onto a line'], answer: 1, why: '|det| = 2 is the area factor; the negative sign means orientation is reversed (a mirror image).' },
+    { q: 'Which matrix has no real eigenvectors?', options: ['[[2,0],[0,3]]', '[[1,1],[0,1]]', '[[0,−1],[1,0]]', '[[1,0],[0,0]]'], answer: 2, why: 'A 90° rotation has λ = ±i: no real direction is left unchanged.' },
+    { q: 'If A has eigenvalues 3 and −1, then det A and trace A are…', options: ['det −3, trace 2', 'det 2, trace −3', 'det 3, trace 4', 'det −3, trace −2'], answer: 0, why: 'det = λ₁λ₂ = −3 and tr = λ₁ + λ₂ = 2.' },
+    { q: 'You want to apply B first and then A to a vector v. Which single matrix does this?', options: ['BA', 'AB', 'A + B', 'BᵀAᵀ'], answer: 1, why: 'A(Bv) = (AB)v: the matrix nearest the vector acts first.' },
+    { q: 'Why do graphics and robotics use 3×3 matrices for 2D motion?', options: ['To store colour', 'Translation is not linear in 2D, but becomes a matrix product in homogeneous coordinates', 'To make the determinant positive', '3×3 matrices are faster'], answer: 1, why: 'Appending a 1 to every point lets translation sit in the last column, so rotations and translations chain by multiplication.' },
+    { q: 'A 3×3 matrix with det A = 0…', options: ['is a rotation', 'flattens space into a plane, line or point and has no inverse', 'always has three real eigenvalues', 'preserves volume'], answer: 1, why: 'Zero volume scale factor means the image of the cube is flat, so information is lost and A⁻¹ does not exist.' },
+    { q: 'During elimination you reach the row [0 0 | 5]. The system has…', options: ['a unique solution', 'no solution', 'infinitely many solutions', 'x = 5'], answer: 1, why: 'The row says 0x + 0y = 5, which is impossible: the lines are parallel.' },
+    { q: 'Which row operation can change the solution of a linear system?', options: ['Swapping two rows', 'Multiplying a row by 3', 'Adding 2× row 1 to row 2', 'Multiplying a row by 0'], answer: 3, why: 'Multiplying by 0 destroys an equation. The three elementary operations (with non-zero scale factors) are reversible and keep the solution set.' },
+  ]);
+
+  /* ===================== LOOP ===================== */
+  const loop = SL.loop(dt => {
+    let anim = false;
+    if (S.anim) { S.t = Math.min(1, S.t + dt / 1.4); if (S.t >= 1) S.anim = 0; anim = true; }
+    if (S.animC) { S.ct = Math.min(2, S.ct + dt / 1.1); if (S.ct >= 2) S.animC = 0; anim = true; }
+    if (S.anim3) { S.t3 = Math.min(1, S.t3 + dt / 1.6); if (S.t3 >= 1) S.anim3 = 0; anim = true; }
+    if (S.hAnim && S.hAnim < 2) anim = true;
+    const live = S.mode === 'm3' || (S.mode === 'sys' && S.sysN === 3) || (S.mode === 'homo' && S.hsub === 'arm');
+    if (!(S.dirty || anim || live)) return;
+    S.dirty = false;
+    const { w, h } = st; ctx.clearRect(0, 0, w, h);
+    const bg = ctx.createRadialGradient(w * .7, 0, 10, w * .7, 0, w); bg.addColorStop(0, 'rgba(96,165,250,.06)'); bg.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+    if (S.mode === 'm2') drawM2(); else if (S.mode === 'comp') drawComp(); else if (S.mode === 'm3') drawM3(dt); else if (S.mode === 'homo') drawHomo(dt); else drawSys();
+    const hh = HUD.map(x => `<span class="readout">${x}</span>`).join(''); if (hh !== loop._h) { $('#hud').innerHTML = hh; loop._h = hh; }
+    const sh = STATS.map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join(''); if (sh !== loop._s) { $('#stats').innerHTML = sh; loop._s = sh; }
+    const lg = LEG.map(([k, c]) => `<span style="--c:${c}">${k}</span>`).join(''); if (lg !== loop._l) { $('#legend').innerHTML = lg; loop._l = lg; }
+    checkChallenges();
+  });
+  document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
+  function init() { S._init = true; m2Changed(true); compTex(); setMode('m2'); loop.start(); }
+  if (window.katex) init(); else { let n = 0; const t = setInterval(() => { if (window.katex || ++n > 30) { clearInterval(t); init(); } }, 100); }
+  window.MAT.state = S; window.MAT.setMode = m => setMode(m); window.MAT.loadSys = loadSys; window.MAT.eliminate = eliminate;
+})();
+</script>
+</body>
+</html>

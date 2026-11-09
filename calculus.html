@@ -1,0 +1,1554 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calculus Visualizer · Pentarch SimLab</title>
+<meta name="description" content="Interactive calculus lab: derivatives as tangent slopes, Riemann sums and the Fundamental Theorem, epsilon-delta limits, Taylor series and optimisation, with a symbolic differentiator.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  #stage{height:620px;touch-action:none}
+  #stage canvas{cursor:crosshair}
+  @media (max-width:980px){#stage{height:520px}}
+  @media (max-width:520px){#stage{height:470px}}
+  .modebar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-top:22px}
+  .modebar .seg button{display:inline-flex;align-items:center;gap:6px}
+  .modebar .seg svg{width:15px;height:15px}
+  .lab{padding-top:12px}
+  .fx-row{display:flex;gap:8px;align-items:center}
+  .fx-row .pre{font:600 .95rem var(--mono);color:var(--accent);white-space:nowrap}
+  .fx-row input{font-family:var(--mono)}
+  .fx-err{color:var(--bad);font-size:.8rem;min-height:1.2em;margin-top:4px}
+  .fx-help{font-size:.76rem;color:var(--dim);margin-top:2px;line-height:1.45}
+  .symb{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:10px;overflow-x:auto;font-size:.92rem}
+  .symb .lbl{font:600 .66rem var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);display:block;margin-bottom:4px}
+  .symb .katex{font-size:1em!important}
+  [data-for]{display:none}
+  .hud .readout{white-space:nowrap}
+  .hud .readout i{font-style:normal;color:var(--muted)}
+  table.data.mini td,table.data.mini th{padding:5px 6px;font-size:.78rem}
+  .ok-t{color:var(--ok)} .bad-t{color:var(--bad)} .warn-t{color:var(--warn)}
+  .ledrow{display:flex;align-items:center;gap:8px;font-size:.86rem;color:var(--muted);margin-top:8px}
+  .chal{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px dashed var(--line)}
+  .chal .led{margin-top:7px;flex:none}
+  .chal b{display:block}
+  .legend{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:4px;font:500 .72rem var(--mono);color:var(--muted);background:rgba(5,9,19,.7);border:1px solid var(--line);border-radius:8px;padding:6px 9px;pointer-events:none}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .legend span::before{content:"";width:14px;height:3px;border-radius:2px;background:var(--c)}
+  @media (max-width:520px){.legend{display:none}.hud .readout{font-size:.7rem;padding:4px 7px}}
+  .stage-toolbar .btn{padding:6px 8px}
+  .prose table.data{display:block;overflow-x:auto;max-width:100%}
+  .prose .katex-display{overflow-x:auto;overflow-y:hidden;padding:2px 0}
+</style>
+</head>
+<body data-page="calculus">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <div class="modebar">
+    <div class="seg" id="modes" role="tablist" aria-label="Lab mode">
+      <button data-m="deriv" class="on"><i data-lucide="trending-up"></i>Derivative</button>
+      <button data-m="integ"><i data-lucide="bar-chart-3"></i>Integral</button>
+      <button data-m="limit"><i data-lucide="crosshair"></i>Limits</button>
+      <button data-m="taylor"><i data-lucide="waves"></i>Taylor series</button>
+      <button data-m="optim"><i data-lucide="mountain"></i>Optimisation</button>
+    </div>
+    <span class="small dim" id="modeHint">Drag the yellow point along the curve. Drag empty space to pan; scroll or use the buttons to zoom.</span>
+  </div>
+
+  <section class="lab wide-controls">
+    <div class="stage" id="stage">
+      <canvas id="cv"></canvas>
+      <div class="hud" id="hud"></div>
+      <div class="legend" id="legend"></div>
+      <div class="stage-toolbar">
+        <button class="btn sm" id="zIn" title="Zoom in" aria-label="Zoom in"><i data-lucide="zoom-in"></i></button>
+        <button class="btn sm" id="zOut" title="Zoom out" aria-label="Zoom out"><i data-lucide="zoom-out"></i></button>
+        <button class="btn sm" id="zFit" title="Reset view" aria-label="Reset view"><i data-lucide="maximize"></i></button>
+      </div>
+    </div>
+    <aside>
+      <div class="panel" id="fnPanel">
+        <h3><i data-lucide="function-square"></i> Function</h3>
+        <div class="fx-row"><span class="pre">f(x) =</span><input type="text" id="fx" value="x^3 - 3x" spellcheck="false" autocomplete="off" aria-label="f(x)"></div>
+        <div class="fx-err" id="fxErr"></div>
+        <select id="preset" aria-label="Preset functions" style="margin-top:2px"></select>
+        <div class="fx-help">Use <code>+ − * / ^ ( )</code>, <code>sin cos tan exp ln log sqrt abs</code>, <code>pi</code>, <code>e</code>, <code>x</code>. Implicit products work: <code>2x</code>, <code>3sin(x)</code>, <code>(x+1)(x−1)</code>.</div>
+        <div class="symb" id="symF"><span class="lbl">Simplified</span><span id="texF"></span></div>
+      </div>
+
+      <!-- Derivative -->
+      <div class="panel" data-for="deriv">
+        <h3><i data-lucide="trending-up"></i> Slope at a point</h3>
+        <div class="ctl"><label for="x0">Point x₀</label><output></output><input type="range" id="x0" min="-5" max="5" step="0.01" value="1.6"></div>
+        <div class="ctl"><label for="hlog">Step h (secant)</label><output></output><input type="range" id="hlog" min="-3" max="0.4" step="0.01" value="-0.1"></div>
+        <div class="btn-row"><button class="btn primary sm" id="animH"><i data-lucide="play"></i> Animate h → 0</button>
+          <label class="toggle" style="flex:1"><span>Show f′(x) graph</span><input type="checkbox" id="showD" checked></label></div>
+        <div class="symb"><span class="lbl">Symbolic derivative</span><span id="texD"></span></div>
+        <div class="symb"><span class="lbl">Second derivative</span><span id="texD2"></span></div>
+      </div>
+
+      <!-- Integral -->
+      <div class="panel" data-for="integ">
+        <h3><i data-lucide="bar-chart-3"></i> Riemann sum</h3>
+        <div class="seg" id="method" style="margin-bottom:8px">
+          <button data-v="left">Left</button><button data-v="right">Right</button><button data-v="mid" class="on">Midpoint</button><button data-v="trap">Trapezoid</button><button data-v="simp">Simpson</button>
+        </div>
+        <div class="ctl"><label for="nRect">Subintervals n</label><output></output><input type="range" id="nRect" min="1" max="200" step="1" value="8"></div>
+        <div class="ctl"><label for="ia">Lower limit a</label><output></output><input type="range" id="ia" min="-6" max="6" step="0.01" value="-1.5"></div>
+        <div class="ctl"><label for="ib">Upper limit b</label><output></output><input type="range" id="ib" min="-6" max="6" step="0.01" value="2"></div>
+        <div class="btn-row"><button class="btn primary sm" id="animN"><i data-lucide="play"></i> Sweep n = 1 → 100</button>
+          <label class="toggle" style="flex:1"><span>Show F(x)</span><input type="checkbox" id="showF" checked></label></div>
+        <p class="small dim" id="simpNote" style="margin:8px 0 0"></p>
+      </div>
+
+      <!-- Limits -->
+      <div class="panel" data-for="limit">
+        <h3><i data-lucide="crosshair"></i> Limit as x → c</h3>
+        <select id="limPreset" aria-label="Limit examples" style="margin-bottom:6px"></select>
+        <div class="ctl"><label for="lc">Point c</label><output></output><input type="range" id="lc" min="-4" max="4" step="0.01" value="0"></div>
+        <div class="ctl"><label for="leps">Tolerance ε</label><output></output><input type="range" id="leps" min="-3" max="0" step="0.01" value="-0.7"></div>
+        <div class="ctl"><label for="ldel">Your δ</label><output></output><input type="range" id="ldel" min="-3.5" max="0.5" step="0.005" value="-0.3"></div>
+        <div class="ctl"><label for="lzoom">Zoom</label><output></output><input type="range" id="lzoom" min="0" max="4" step="0.01" value="0"></div>
+        <div class="btn-row"><button class="btn primary sm" id="findDelta"><i data-lucide="search"></i> Largest δ that works</button><button class="btn sm" id="animZoom"><i data-lucide="zoom-in"></i> Zoom in</button></div>
+        <div class="ledrow"><span class="led" id="ledDelta"></span><span id="deltaMsg">…</span></div>
+        <table class="data mini" style="margin-top:10px"><thead><tr><th>h</th><th>f(c − h)</th><th>f(c + h)</th></tr></thead><tbody id="limTable"></tbody></table>
+      </div>
+
+      <!-- Taylor -->
+      <div class="panel" data-for="taylor">
+        <h3><i data-lucide="waves"></i> Taylor polynomial</h3>
+        <select id="tayPreset" aria-label="Taylor examples" style="margin-bottom:6px"></select>
+        <div class="ctl"><label for="ta">Centre a</label><output></output><input type="range" id="ta" min="-4" max="4" step="0.01" value="0"></div>
+        <div class="ctl"><label for="tn">Order n</label><output></output><input type="range" id="tn" min="0" max="20" step="1" value="3"></div>
+        <div class="btn-row"><button class="btn primary sm" id="animT"><i data-lucide="play"></i> Build up n = 0 → 20</button></div>
+        <div class="symb"><span class="lbl">Pₙ(x)</span><span id="texP"></span></div>
+        <p class="small" id="rocNote" style="margin:10px 0 0"></p>
+      </div>
+
+      <!-- Optimisation -->
+      <div class="panel" data-for="optim">
+        <h3><i data-lucide="mountain"></i> Extrema</h3>
+        <div class="seg" id="optSub" style="margin-bottom:8px"><button data-v="fn" class="on">Any function</button><button data-v="can">Design a 330 ml can</button></div>
+        <div id="optFnBox">
+          <label class="toggle"><span>Show inflection points</span><input type="checkbox" id="showInfl" checked></label>
+          <table class="data mini"><thead><tr><th>x</th><th>f(x)</th><th>f″(x)</th><th>Type</th></tr></thead><tbody id="critTable"></tbody></table>
+        </div>
+        <div id="optCanBox" style="display:none">
+          <div class="ctl"><label for="cV">Volume V</label><output></output><input type="range" id="cV" min="100" max="1000" step="10" value="330"></div>
+          <div class="ctl"><label for="cR">Radius r</label><output></output><input type="range" id="cR" min="1.5" max="8" step="0.005" value="5.6"></div>
+          <div class="ctl"><label for="cK">End cost ÷ side cost (k)</label><output></output><input type="range" id="cK" min="1" max="3" step="0.05" value="1"></div>
+          <div class="btn-row"><button class="btn primary sm" id="canOpt"><i data-lucide="target"></i> Go to optimum</button></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3><i data-lucide="gauge"></i> Live results</h3>
+        <div class="stats" id="stats"></div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+      <button><i data-lucide="code"></i> How the engine works</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. The derivative: slope of a tangent</h3>
+      <p>The average rate of change of $f$ between $x_0$ and $x_0+h$ is the slope of the <b>secant</b> line through those two points. The derivative is what that slope approaches as the second point slides into the first:</p>
+      <div class="eq">$$f'(x_0)=\lim_{h\to 0}\frac{f(x_0+h)-f(x_0)}{h}$$</div>
+      <p>In the lab the orange secant uses the current $h$. Press <i>Animate h → 0</i> and watch it rotate into the yellow tangent. If the left and right versions of the limit disagree (try <code>abs(x)</code> at $x_0=0$) the function has a corner and is not differentiable there.</p>
+      <div class="grid2">
+        <div class="eq">$$\begin{gathered}\tfrac{d}{dx}x^n=nx^{n-1}\\ \tfrac{d}{dx}e^x=e^x\\ \tfrac{d}{dx}\ln x=\tfrac1x\end{gathered}$$</div>
+        <div class="eq">$$\begin{gathered}\tfrac{d}{dx}\sin x=\cos x\\ \tfrac{d}{dx}\cos x=-\sin x\\ \tfrac{d}{dx}\tan x=\tfrac{1}{\cos^2 x}\end{gathered}$$</div>
+      </div>
+      <p>Combination rules: product $(uv)'=u'v+uv'$, quotient $\left(\tfrac uv\right)'=\tfrac{u'v-uv'}{v^2}$ and chain $\tfrac{d}{dx}f(g(x))=f'(g(x))\,g'(x)$. The symbolic panel applies exactly these rules.</p>
+
+      <h3>2. The integral: limit of Riemann sums</h3>
+      <p>Split $[a,b]$ into $n$ strips of width $\Delta x=(b-a)/n$ and add up $f(x_i^*)\,\Delta x$. As $n\to\infty$ every sensible choice of sample point $x_i^*$ gives the same number, the definite integral:</p>
+      <div class="eq">$$\int_a^b f(x)\,dx=\lim_{n\to\infty}\sum_{i=1}^{n} f(x_i^*)\,\Delta x$$</div>
+      <table class="data">
+        <thead><tr><th>Rule</th><th>Formula</th><th>Error for smooth f</th></tr></thead>
+        <tbody>
+          <tr><td>Left / right</td><td>$\Delta x\sum f(x_{i-1})$ or $\Delta x\sum f(x_i)$</td><td>$O(\Delta x)$</td></tr>
+          <tr><td>Midpoint</td><td>$\Delta x\sum f\!\left(\tfrac{x_{i-1}+x_i}{2}\right)$</td><td>$O(\Delta x^2)$</td></tr>
+          <tr><td>Trapezoid</td><td>$\tfrac{\Delta x}{2}\left[f_0+2f_1+\dots+2f_{n-1}+f_n\right]$</td><td>$O(\Delta x^2)$</td></tr>
+          <tr><td>Simpson ($n$ even)</td><td>$\tfrac{\Delta x}{3}\left[f_0+4f_1+2f_2+\dots+4f_{n-1}+f_n\right]$</td><td>$O(\Delta x^4)$</td></tr>
+        </tbody>
+      </table>
+      <p>Area below the axis counts as negative (red strips in the lab).</p>
+      <h4>Fundamental Theorem of Calculus</h4>
+      <p>Define the accumulation function $F(x)=\int_a^x f(t)\,dt$. The lower graph in Integral mode plots it. The theorem says $F$ is an antiderivative of $f$, so integrals can be computed from any antiderivative $G$:</p>
+      <div class="eq">$$\begin{gathered}F'(x)=f(x)\\ \int_a^b f(x)\,dx=G(b)-G(a)\end{gathered}$$</div>
+      <p>Look at the picture: where $f>0$ the curve $F$ rises, where $f<0$ it falls, and where $f$ crosses zero $F$ has a turning point.</p>
+
+      <h3>3. Limits and the ε–δ definition</h3>
+      <div class="eq">$$\lim_{x\to c}f(x)=L \iff \forall\varepsilon>0\ \exists\delta>0:\ 0<|x-c|<\delta \Rightarrow |f(x)-L|<\varepsilon$$</div>
+      <p>Read it as a game. Your opponent chooses a tolerance band of half-height $\varepsilon$ around $L$. You must find a window of half-width $\delta$ around $c$ such that the whole graph inside the window (ignoring $x=c$ itself) stays inside the band. If you can always win, the limit is $L$. The value $f(c)$ itself plays no part: $\frac{\sin x}{x}$ is undefined at $0$ but its limit is $1$.</p>
+      <p>A limit fails to exist when the one-sided limits differ ($\tfrac{|x|}{x}$ at $0$), when the function blows up ($\tfrac1{x^2}$), or when it oscillates without settling ($\sin\tfrac1x$).</p>
+
+      <h3>4. Taylor series</h3>
+      <p>Near a point $a$, a smooth function is approximated by the polynomial that matches its value and first $n$ derivatives:</p>
+      <div class="eq">$$P_n(x)=\sum_{k=0}^{n}\frac{f^{(k)}(a)}{k!}(x-a)^k,\qquad R_n(x)=\frac{f^{(n+1)}(\xi)}{(n+1)!}(x-a)^{n+1}$$</div>
+      <p>for some $\xi$ between $a$ and $x$ (Lagrange remainder). The series converges only inside the <b>radius of convergence</b> $R$, which equals the distance from $a$ to the nearest singularity of $f$ in the complex plane.</p>
+      <table class="data">
+        <thead><tr><th>Function</th><th>Series about 0</th><th>Radius</th></tr></thead>
+        <tbody>
+          <tr><td>$e^x$</td><td>$1+x+\tfrac{x^2}{2!}+\tfrac{x^3}{3!}+\cdots$</td><td>$\infty$</td></tr>
+          <tr><td>$\sin x$</td><td>$x-\tfrac{x^3}{3!}+\tfrac{x^5}{5!}-\cdots$</td><td>$\infty$</td></tr>
+          <tr><td>$\cos x$</td><td>$1-\tfrac{x^2}{2!}+\tfrac{x^4}{4!}-\cdots$</td><td>$\infty$</td></tr>
+          <tr><td>$\ln(1+x)$</td><td>$x-\tfrac{x^2}{2}+\tfrac{x^3}{3}-\cdots$</td><td>$1$ (singular at $x=-1$)</td></tr>
+          <tr><td>$\tfrac{1}{1-x}$</td><td>$1+x+x^2+x^3+\cdots$</td><td>$1$ (pole at $x=1$)</td></tr>
+          <tr><td>$\tfrac{1}{1+x^2}$</td><td>$1-x^2+x^4-\cdots$</td><td>$1$ (poles at $\pm i$, invisible on the real line)</td></tr>
+        </tbody>
+      </table>
+
+      <h3>5. Optimisation</h3>
+      <p>Interior maxima and minima of a differentiable function occur at <b>critical points</b>, where $f'(x)=0$ (or where $f'$ does not exist).</p>
+      <ul>
+        <li><b>First-derivative test:</b> if $f'$ changes from $+$ to $-$ the point is a local maximum; from $-$ to $+$ a local minimum; no sign change means neither.</li>
+        <li><b>Second-derivative test:</b> $f''(c)<0$ gives a maximum, $f''(c)>0$ a minimum, and $f''(c)=0$ is inconclusive (think $x^3$ and $x^4$ at 0).</li>
+        <li><b>Inflection points</b> are where $f''$ changes sign and the curve switches between concave up and concave down.</li>
+      </ul>
+      <div class="callout"><i data-lucide="info"></i><div>The lab locates critical points numerically: it samples the exact (symbolic) derivative across the visible window, finds sign changes, and refines each one by bisection to about 12 significant figures.</div></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Example 1: a derivative from the definition</h3>
+      <div class="worked">
+        <p>Let $f(x)=x^3-3x$ (the default function) and find $f'(2)$.</p>
+        <p><b>Secant with $h=0.1$:</b> $f(2.1)=9.261-6.3=2.961$, $f(2)=8-6=2$, slope $=\tfrac{2.961-2}{0.1}=9.61$.</p>
+        <p><b>Secant with $h=0.01$:</b> $f(2.01)=8.120601-6.03=2.090601$, slope $=9.0601$.</p>
+        <p><b>Exact:</b> $f'(x)=3x^2-3$, so $f'(2)=9$. The secant slope is $9+6h+h^2$, which tends to 9.</p>
+        <p class="muted">In the lab: set $x_0=2$ and move the h slider to 0.1 and 0.01; the HUD shows these secant slopes.</p>
+      </div>
+      <h3>Example 2: Riemann sums for $\int_0^2 x^2\,dx$ with $n=4$</h3>
+      <div class="worked">
+        <p>$\Delta x=0.5$, grid $0, 0.5, 1, 1.5, 2$ with $f$ values $0, 0.25, 1, 2.25, 4$.</p>
+        <ul>
+          <li>Left: $0.5(0+0.25+1+2.25)=1.75$</li>
+          <li>Right: $0.5(0.25+1+2.25+4)=3.75$</li>
+          <li>Midpoint: $0.5(0.0625+0.5625+1.5625+3.0625)=2.625$</li>
+          <li>Trapezoid: $\tfrac{1.75+3.75}{2}=2.75$</li>
+          <li>Simpson: $\tfrac{0.5}{3}(0+4(0.25)+2(1)+4(2.25)+4)=\tfrac{0.5}{3}(16)=2.6667$</li>
+        </ul>
+        <p>Exact: $\left[\tfrac{x^3}{3}\right]_0^2=\tfrac83\approx 2.6667$. Simpson is exact for any cubic. Midpoint error $-0.0417$ is half the trapezoid error $+0.0833$ with the opposite sign, which is why Simpson $=\tfrac{2M+T}{3}$ works so well.</p>
+        <p class="muted">In the lab: enter <code>x^2</code>, set a = 0, b = 2, n = 4 and switch between methods.</p>
+      </div>
+      <h3>Example 3: a limit with ε and δ</h3>
+      <div class="worked">
+        <p>Show $\lim_{x\to 0}\tfrac{\sin x}{x}=1$ with $\varepsilon=0.01$.</p>
+        <p>From the Taylor series, $\tfrac{\sin x}{x}=1-\tfrac{x^2}{6}+\tfrac{x^4}{120}-\cdots$, so $\left|\tfrac{\sin x}{x}-1\right|<\tfrac{x^2}{6}$ for $x\neq 0$.</p>
+        <p>We need $\tfrac{x^2}{6}<0.01$, i.e. $|x|<\sqrt{0.06}=0.2449$. So $\delta=0.2449$ works (the lab's <i>Largest δ</i> search returns about 0.245).</p>
+      </div>
+      <h3>Example 4: estimating $e^{0.5}$ with Taylor polynomials</h3>
+      <div class="worked">
+        <p>About $a=0$: $P_3(0.5)=1+0.5+\tfrac{0.25}{2}+\tfrac{0.125}{6}=1.645833$. True value $e^{0.5}=1.648721$, error $0.00289$.</p>
+        <p>Lagrange bound: $|R_3|\le \tfrac{e^{0.5}}{4!}(0.5)^4=0.0043$. The actual error is below the bound, as it must be.</p>
+        <p>With $n=6$: $P_6(0.5)=1.6487196$, error $2.3\times10^{-6}$.</p>
+      </div>
+      <h3>Example 5: the cheapest 330 ml can</h3>
+      <div class="worked">
+        <p>A closed cylinder of radius $r$ and height $h$ holds $V=\pi r^2h=330\ \text{cm}^3$, so $h=\tfrac{V}{\pi r^2}$. Material area:</p>
+        <div class="eq">$$A(r)=2\pi r^2+2\pi r h=2\pi r^2+\frac{2V}{r}$$</div>
+        <p>$A'(r)=4\pi r-\tfrac{2V}{r^2}=0\Rightarrow r^3=\tfrac{V}{2\pi}=52.52$, so $r=3.745$ cm and $h=\tfrac{330}{\pi(3.745)^2}=7.49$ cm $=2r$.</p>
+        <p>$A''(r)=4\pi+\tfrac{4V}{r^3}>0$, so this is a minimum: $A=264.4\ \text{cm}^2$.</p>
+        <p>Real drinks cans are taller and thinner (about 6.6 cm across). One reason: the ends are made of thicker, more expensive metal. If the ends cost $k$ times as much per cm², $C(r)=2\pi k r^2+\tfrac{2V}{r}$ is minimised at $r^3=\tfrac{V}{2\pi k}$, giving $h=2kr$. Try $k=2$ in the lab.</p>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Challenges (checked automatically)</h3>
+      <div id="chalList"></div>
+      <h3>Guided experiments</h3>
+      <ol class="steps">
+        <li><b>Corners.</b> Enter <code>abs(x)</code>, put $x_0$ at 0 and shrink $h$. The secant slope stays at $+1$ for positive $h$. The derivative does not exist at 0, and the symbolic $f'$ ($\tfrac{x}{|x|}$) is undefined there.</li>
+        <li><b>Accumulation.</b> In Integral mode with <code>sin(x)</code> and $a=0$, watch $F(x)$: it is $1-\cos x$. Where is $F$ largest? (At $x=\pi$, where $f$ changes sign.)</li>
+        <li><b>Convergence rates.</b> Choose <code>exp(x)</code> on $[0,1]$. Double $n$ from 10 to 20 and note the error for each method: left/right halve, midpoint/trapezoid quarter, Simpson drops by a factor of about 16.</li>
+        <li><b>Invisible singularities.</b> In Taylor mode pick $\tfrac{1}{1+x^2}$. It is perfectly smooth on the real line, yet the series about 0 diverges for $|x|>1$. Move the centre to $a=1$ and the radius grows to $\sqrt2$.</li>
+        <li><b>Inconclusive test.</b> In Optimisation mode enter <code>x^4</code> and then <code>x^3</code>. Both have $f'(0)=0$ and $f''(0)=0$; only the first-derivative test can tell them apart.</li>
+      </ol>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+
+    <div class="tabpanel prose">
+      <h3>A tiny computer algebra system</h3>
+      <p>The function box is not passed to JavaScript's <code>eval</code>. A tokenizer splits the text into numbers, names and operators, and a recursive-descent parser builds an expression tree using this grammar (lowest precedence first):</p>
+      <div class="eq no-math" style="font-family:var(--mono);font-size:.85rem;white-space:pre">expr   := term (("+" | "−") term)*
+term   := unary (("*" | "/") unary | implicit-product)*
+unary  := "−" unary | power
+power  := atom ("^" unary)?          (right-associative: 2^3^2 = 2^9)
+atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
+      <p>So $-x^2$ means $-(x^2)$ and $\sin(x)^2$ means $(\sin x)^2$. The tree is compiled into a closure for fast plotting. A real-valued power is used, so <code>x^(1/3)</code> works for negative $x$.</p>
+      <h4>Symbolic differentiation</h4>
+      <p>The derivative is built recursively on the tree with the sum, product, quotient, power and chain rules, then simplified by "smart constructors" that fold constants and remove $0$ and $1$ terms ($u+0\to u$, $1\cdot u\to u$, $u^1\to u$, $x\cdot x^n\to x^{n+1}$). If the result is a polynomial it is put into standard form, so $\frac{d}{dx}(x^2+1)(x-3)$ is shown as $3x^2-6x+1$.</p>
+      <h4>Taylor coefficients by automatic differentiation</h4>
+      <p>Taylor mode does not differentiate symbolically 20 times (the expressions would explode). Instead every node of the tree is evaluated as a truncated power series about $a$, using exact recurrences such as $w=e^u\Rightarrow w_k=\tfrac1k\sum_{j=1}^{k} j\,u_j\,w_{k-j}$. This gives all coefficients $f^{(k)}(a)/k!$ to machine precision in one pass.</p>
+    </div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+  const fmt = SL.fmt;
+  const sig = (v, d) => +v.toPrecision(d);
+
+  /* =====================================================================
+     1. EXPRESSION ENGINE: tokenizer, parser, compiler, symbolic d/dx
+     ===================================================================== */
+  const NAMES = ['sqrt', 'sin', 'cos', 'tan', 'exp', 'abs', 'log', 'ln', 'pi', 'x', 'e'];
+  const FN = { sin: Math.sin, cos: Math.cos, tan: Math.tan, exp: Math.exp, ln: Math.log, log: Math.log10, sqrt: Math.sqrt, abs: Math.abs };
+
+  function tokenize(src) {
+    const s = String(src).replace(/[−–]/g, '-').replace(/[×·]/g, '*').replace(/÷/g, '/').replace(/π/g, 'pi').replace(/\*\*/g, '^').toLowerCase();
+    const t = []; let i = 0;
+    while (i < s.length) {
+      const c = s[i];
+      if (/\s/.test(c)) { i++; continue; }
+      if (/[0-9.]/.test(c)) {
+        const m = s.slice(i).match(/^(\d+\.?\d*|\.\d+)/);
+        if (!m) throw new Error('Bad number near "' + s.slice(i, i + 4) + '"');
+        t.push({ k: 'num', v: parseFloat(m[0]) }); i += m[0].length; continue;
+      }
+      if (/[a-z]/.test(c)) {
+        const w = s.slice(i).match(/^[a-z]+/)[0]; let j = 0;
+        while (j < w.length) {
+          const name = NAMES.find(n => w.startsWith(n, j));
+          if (!name) throw new Error('Unknown name "' + w.slice(j) + '"');
+          t.push(FN[name] ? { k: 'fn', v: name } : { k: 'id', v: name }); j += name.length;
+        }
+        i += w.length; continue;
+      }
+      if ('+-*/^()'.includes(c)) { t.push({ k: 'op', v: c }); i++; continue; }
+      throw new Error('Unexpected character "' + c + '"');
+    }
+    if (!t.length) throw new Error('Type a function of x');
+    return t;
+  }
+
+  function parse(src) {
+    const toks = tokenize(src); let i = 0;
+    const peek = () => toks[i], next = () => toks[i++];
+    const isOp = (t, v) => t && t.k === 'op' && t.v === v;
+    const startsAtom = t => t && (t.k === 'num' || t.k === 'id' || t.k === 'fn' || isOp(t, '('));
+    function expr() { let a = term(); while (isOp(peek(), '+') || isOp(peek(), '-')) { const o = next().v; a = [o, a, term()]; } return a; }
+    function term() {
+      let a = unary();
+      for (;;) {
+        const t = peek();
+        if (isOp(t, '*') || isOp(t, '/')) { next(); a = [t.v, a, unary()]; }
+        else if (startsAtom(t)) a = ['*', a, power()];
+        else break;
+      }
+      return a;
+    }
+    function unary() { if (isOp(peek(), '-')) { next(); return ['neg', unary()]; } if (isOp(peek(), '+')) { next(); return unary(); } return power(); }
+    function power() { const b = atom(); if (isOp(peek(), '^')) { next(); return ['^', b, unary()]; } return b; }
+    function atom() {
+      const t = next();
+      if (!t) throw new Error('Expression ends too early');
+      if (t.k === 'num') return ['n', t.v];
+      if (t.k === 'id') return t.v === 'x' ? ['x'] : ['c', t.v];
+      if (t.k === 'fn') {
+        if (isOp(peek(), '(')) { next(); const a = expr(); if (!isOp(next(), ')')) throw new Error('Missing ")" after ' + t.v + '('); return ['f', t.v, a]; }
+        if (!peek()) throw new Error(t.v + ' needs an argument');
+        return ['f', t.v, power()];
+      }
+      if (isOp(t, '(')) { const a = expr(); if (!isOp(next(), ')')) throw new Error('Missing closing bracket ")"'); return a; }
+      throw new Error('Unexpected "' + t.v + '"');
+    }
+    const r = expr();
+    if (i < toks.length) throw new Error('Unexpected "' + toks[i].v + '"');
+    return r;
+  }
+
+  function realPow(a, b) {
+    if (a >= 0 || Number.isInteger(b)) return Math.pow(a, b);
+    for (const q of [3, 5, 7, 9, 11]) { const p = b * q; if (Math.abs(p - Math.round(p)) < 1e-9) { const r = Math.pow(-a, b); return Math.round(p) % 2 ? -r : r; } }
+    return NaN;
+  }
+  function compile(n) {
+    switch (n[0]) {
+      case 'n': { const v = n[1]; return () => v; }
+      case 'x': return x => x;
+      case 'c': { const v = n[1] === 'pi' ? Math.PI : Math.E; return () => v; }
+      case 'neg': { const a = compile(n[1]); return x => -a(x); }
+      case 'f': { const g = FN[n[1]], a = compile(n[2]); return x => g(a(x)); }
+    }
+    const a = compile(n[1]), b = compile(n[2]);
+    switch (n[0]) {
+      case '+': return x => a(x) + b(x);
+      case '-': return x => a(x) - b(x);
+      case '*': return x => a(x) * b(x);
+      case '/': return x => a(x) / b(x);
+      case '^': return x => realPow(a(x), b(x));
+    }
+  }
+  const hasX = n => n[0] === 'x' || (n[0] !== 'n' && n[0] !== 'c' && n.slice(1).some(c => Array.isArray(c) && hasX(c)));
+  const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const num = v => ['n', v];
+  const isN = (n, v) => n[0] === 'n' && (v === undefined || Math.abs(n[1] - v) < 1e-15);
+
+  // Smart constructors (simplify as they build)
+  function add(a, b) {
+    if (isN(a, 0)) return b; if (isN(b, 0)) return a;
+    if (isN(a) && isN(b)) return num(a[1] + b[1]);
+    if (b[0] === 'neg') return sub(a, b[1]);
+    if (isN(b) && b[1] < 0) return sub(a, num(-b[1]));
+    if (b[0] === '*' && isN(b[1]) && b[1][1] < 0) return sub(a, mul(num(-b[1][1]), b[2]));
+    if (a[0] === 'neg') return sub(b, a[1]);
+    if (isN(a) && !isN(b)) return add(b, a);
+    { const [c1, r1] = coef(a), [c2, r2] = coef(b); if (r1 && r2 && eq(r1, r2)) return mul(num(c1 + c2), r1); }
+    return ['+', a, b];
+  }
+  function sub(a, b) {
+    if (isN(b, 0)) return a; if (isN(a, 0)) return neg(b);
+    if (isN(a) && isN(b)) return num(a[1] - b[1]);
+    if (b[0] === 'neg') return add(a, b[1]);
+    if (isN(b) && b[1] < 0) return add(a, num(-b[1]));
+    if (b[0] === '*' && isN(b[1]) && b[1][1] < 0) return add(a, mul(num(-b[1][1]), b[2]));
+    { const [c1, r1] = coef(a), [c2, r2] = coef(b); if (r1 && r2 && eq(r1, r2)) return mul(num(c1 - c2), r1); }
+    return ['-', a, b];
+  }
+  function neg(a) {
+    if (isN(a)) return num(-a[1]);
+    if (a[0] === 'neg') return a[1];
+    if (a[0] === '*' && isN(a[1])) return mul(num(-a[1][1]), a[2]);
+    if (a[0] === '-') return sub(a[2], a[1]);
+    return ['neg', a];
+  }
+  function mul(a, b) {
+    if (isN(a, 0) || isN(b, 0)) return num(0);
+    if (isN(a, 1)) return b; if (isN(b, 1)) return a;
+    if (isN(a) && isN(b)) return num(a[1] * b[1]);
+    if (isN(b)) return mul(b, a);
+    if (isN(a, -1)) return neg(b);
+    if (!isN(a) && a[0] === '*' && isN(a[1])) return mul(a[1], mul(a[2], b));
+    if (!isN(a) && rank(b) < rank(a)) return mul(b, a);
+    if (!isN(a) && rank(a) === 3 && rank(b) === 3 && b[0] !== '*' && JSON.stringify(b) < JSON.stringify(a)) return mul(b, a);
+    if (a[0] === 'neg') return neg(mul(a[1], b));
+    if (b[0] === 'neg') return neg(mul(a, b[1]));
+    if (isN(a) && b[0] === '*' && isN(b[1])) return mul(num(a[1] * b[1][1]), b[2]);
+    if (!isN(a) && b[0] === '*' && isN(b[1])) return mul(b[1], mul(a, b[2]));
+    if (a[0] === '/' && isN(a[1], 1)) return div(b, a[2]);
+    if (b[0] === '/' && isN(b[1], 1)) return div(a, b[2]);
+    if (b[0] === '/') return div(mul(a, b[1]), b[2]);
+    if (a[0] === '/') return div(mul(a[1], b), a[2]);
+    if (eq(a, b)) return pow(a, num(2));
+    if (b[0] === '^' && eq(a, b[1])) return pow(a, add(b[2], num(1)));
+    if (a[0] === '^' && eq(a[1], b)) return pow(b, add(a[2], num(1)));
+    if (a[0] === '^' && b[0] === '^' && eq(a[1], b[1])) return pow(a[1], add(a[2], b[2]));
+    return ['*', a, b];
+  }
+  function rank(n) { if (n[0] === 'n') return 0; if (n[0] === 'c') return 1; if (n[0] === 'x' || (n[0] === '^' && n[1][0] === 'x' && n[2][0] === 'n')) return 2; return 3; }
+  const coef = n => n[0] === 'n' ? [n[1], null] : (n[0] === '*' && isN(n[1])) ? [n[1][1], n[2]] : [1, n];
+  function div(a, b) {
+    if (isN(b, 1)) return a; if (isN(a, 0)) return num(0);
+    if (isN(a) && isN(b) && b[1] !== 0) return num(a[1] / b[1]);
+    if (eq(a, b)) return num(1);
+    if (a[0] === 'neg') return neg(div(a[1], b));
+    if (b[0] === 'neg') return neg(div(a, b[1]));
+    if (a[0] === '/') return div(a[1], mul(a[2], b));
+    { const [c1, r1] = coef(a), [c2, r2] = coef(b);
+      if (r1 && r2 && c1 !== 1 && c2 !== 1 && c2 !== 0) { const q = c1 / c2;
+        if (Number.isInteger(q)) return mul(num(q), div(r1, r2));
+        if (Number.isInteger(1 / q)) return div(r1, mul(num(1 / q), r2)); } }
+    if (isN(b) && b[1] !== 0) { const r = 1 / b[1]; if (Math.abs(r * 1e6 - Math.round(r * 1e6)) < 1e-6) return mul(num(r), a); }
+    if (a[0] === '*' && isN(a[1]) && isN(b) && b[1] !== 0) return mul(num(a[1][1] / b[1]), a[2]);
+    return ['/', a, b];
+  }
+  function pow(a, b) {
+    if (isN(b, 0)) return num(1); if (isN(b, 1)) return a; if (isN(a, 1)) return num(1);
+    if (isN(a) && isN(b)) { const v = realPow(a[1], b[1]); if (Number.isFinite(v) && Math.abs(v - Math.round(v)) < 1e-12) return num(Math.round(v)); }
+    if (a[0] === '^' && isN(a[2]) && isN(b) && Number.isInteger(b[1])) return pow(a[1], num(a[2][1] * b[1]));
+    if (a[0] === 'f' && a[1] === 'sqrt' && isN(b, 2)) return a[2];
+    return ['^', a, b];
+  }
+  const fn = (f, u) => ['f', f, u];
+
+  function simplify(n) {
+    switch (n[0]) {
+      case 'n': case 'x': case 'c': return n;
+      case 'neg': return neg(simplify(n[1]));
+      case 'f': return fn(n[1], simplify(n[2]));
+      case '+': return add(simplify(n[1]), simplify(n[2]));
+      case '-': return sub(simplify(n[1]), simplify(n[2]));
+      case '*': return mul(simplify(n[1]), simplify(n[2]));
+      case '/': return div(simplify(n[1]), simplify(n[2]));
+      case '^': return pow(simplify(n[1]), simplify(n[2]));
+    }
+  }
+
+  function D(n) {
+    switch (n[0]) {
+      case 'n': case 'c': return num(0);
+      case 'x': return num(1);
+      case '+': return add(D(n[1]), D(n[2]));
+      case '-': return sub(D(n[1]), D(n[2]));
+      case 'neg': return neg(D(n[1]));
+      case '*': { const u = n[1], v = n[2]; return add(mul(D(u), v), mul(u, D(v))); }
+      case '/': { const u = n[1], v = n[2]; if (!hasX(v)) return div(D(u), v); return div(sub(mul(D(u), v), mul(u, D(v))), pow(v, num(2))); }
+      case '^': {
+        const u = n[1], v = n[2];
+        if (!hasX(v)) return mul(mul(v, pow(u, sub(v, num(1)))), D(u));
+        if (!hasX(u)) return (u[0] === 'c' && u[1] === 'e') ? mul(n, D(v)) : mul(mul(n, fn('ln', u)), D(v));
+        return mul(n, add(mul(D(v), fn('ln', u)), div(mul(v, D(u)), u)));
+      }
+      case 'f': {
+        const u = n[2], du = D(u); let g;
+        switch (n[1]) {
+          case 'sin': g = fn('cos', u); break;
+          case 'cos': g = neg(fn('sin', u)); break;
+          case 'tan': g = div(num(1), pow(fn('cos', u), num(2))); break;
+          case 'exp': g = fn('exp', u); break;
+          case 'ln': g = div(num(1), u); break;
+          case 'log': g = div(num(1), mul(u, fn('ln', num(10)))); break;
+          case 'sqrt': g = div(num(1), mul(num(2), fn('sqrt', u))); break;
+          case 'abs': g = div(u, fn('abs', u)); break;
+        }
+        return mul(g, du);
+      }
+    }
+  }
+  const diff = n => simplify(D(simplify(n)));
+
+  // Polynomial normal form (coefficients low→high) or null
+  function toPoly(n) {
+    const P = (a, b) => { const r = new Array(Math.max(a.length, b.length)).fill(0); a.forEach((v, i) => r[i] += v); b.forEach((v, i) => r[i] += v); return r; };
+    const M = (a, b) => { const r = new Array(a.length + b.length - 1).fill(0); a.forEach((u, i) => b.forEach((v, j) => r[i + j] += u * v)); return r; };
+    switch (n[0]) {
+      case 'n': return [n[1]];
+      case 'x': return [0, 1];
+      case 'c': case 'f': return null;
+      case 'neg': { const a = toPoly(n[1]); return a && a.map(v => -v); }
+      case '+': case '-': case '*': {
+        const a = toPoly(n[1]), b = toPoly(n[2]); if (!a || !b) return null;
+        if (n[0] === '+') return P(a, b);
+        if (n[0] === '-') return P(a, b.map(v => -v));
+        const r = M(a, b); return r.length > 41 ? null : r;
+      }
+      case '/': { const a = toPoly(n[1]), b = toPoly(n[2]); if (!a || !b || b.some((v, i) => i > 0 && v !== 0) || b[0] === 0) return null; return a.map(v => v / b[0]); }
+      case '^': {
+        const a = toPoly(n[1]); const e = n[2];
+        if (!a || e[0] !== 'n' || !Number.isInteger(e[1]) || e[1] < 0 || (a.length - 1) * e[1] > 40) return null;
+        let r = [1]; for (let k = 0; k < e[1]; k++) r = M(r, a);
+        return r;
+      }
+    }
+    return null;
+  }
+
+  // ---- LaTeX printing
+  function cfrac(v, maxQ) {
+    // continued-fraction rational approximation
+    maxQ = maxQ || 1e7;
+    let h1 = 1, h0 = 0, k1 = 0, k0 = 1, x = Math.abs(v);
+    for (let i = 0; i < 25; i++) {
+      const a = Math.floor(x); const h2 = a * h1 + h0, k2 = a * k1 + k0;
+      if (k2 > maxQ) break;
+      h0 = h1; h1 = h2; k0 = k1; k1 = k2;
+      if (Math.abs(Math.abs(v) - h1 / k1) < 1e-12 * Math.max(1, Math.abs(v))) return [Math.sign(v) * h1, k1];
+      x = 1 / (x - a); if (!isFinite(x)) break;
+    }
+    return null;
+  }
+  function numTex(v) {
+    if (Number.isInteger(v)) return String(v);
+    if (Math.abs(v * 1000 - Math.round(v * 1000)) < 1e-9 && !cfrac(v, 9)) return String(+v.toFixed(3));
+    const f = cfrac(v, 1e7);
+    if (f && f[1] <= 3628800) return (f[0] < 0 ? '-' : '') + '\\frac{' + Math.abs(f[0]) + '}{' + f[1] + '}';
+    return String(+v.toPrecision(6));
+  }
+  const FT = { sin: '\\sin', cos: '\\cos', tan: '\\tan', ln: '\\ln', log: '\\log_{10}' };
+  function tex(n, p) {
+    p = p || 0; let s, q;
+    switch (n[0]) {
+      case 'n': s = numTex(n[1]); q = n[1] < 0 ? 1.5 : (s.startsWith('\\frac') ? 3 : 5); break;
+      case 'x': s = 'x'; q = 5; break;
+      case 'c': s = n[1] === 'pi' ? '\\pi' : 'e'; q = 5; break;
+      case '+': s = tex(n[1], 1) + '+' + tex(n[2], 1); q = 1; break;
+      case '-': s = tex(n[1], 1) + '-' + tex(n[2], 1.01); q = 1; break;
+      case 'neg': s = '-' + tex(n[1], 2); q = 1.5; break;
+      case '*': {
+        const [, a, b] = n;
+        if (a[0] === 'n' && a[1] < 0) { s = '-' + (a[1] === -1 ? tex(b, 2.01) : tex(['*', num(-a[1]), b], 2)); q = 1.5; break; }
+        if (a[0] === 'n' && rank(b) === 2) { const fr = cfrac(a[1], 1000); if (fr && fr[1] > 1) { s = '\\frac{' + (fr[0] === 1 ? '' : fr[0]) + tex(b, 0) + '}{' + fr[1] + '}'; q = 3; break; } }
+        const L = tex(a, 2), R = tex(b, b[0] === '*' ? 2 : 2.01);
+        const needDot = /^[\d.]/.test(R) || /^\\frac/.test(R) || (b[0] === 'n') || (/[\d}]$/.test(L) && /^[\d]/.test(R));
+        const tight = a[0] === 'n' && !/^\\frac/.test(L) && /^([a-z]|\\(?!frac|cdot))/i.test(R);
+        s = L + (needDot ? ' \\cdot ' : tight ? '' : '\\,') + R; q = 2; break;
+      }
+      case '/': s = '\\frac{' + tex(n[1], 0) + '}{' + tex(n[2], 0) + '}'; q = 3; break;
+      case '^': {
+        const [, a, b] = n;
+        if (a[0] === 'f' && FT[a[1]]) { s = FT[a[1]] + '^{' + tex(b, 0) + '}\\left(' + tex(a[2], 0) + '\\right)'; q = 4; break; }
+        s = tex(a, 4.01) + '^{' + tex(b, 0) + '}'; q = 4; break;
+      }
+      case 'f': {
+        const a = n[2];
+        if (n[1] === 'sqrt') { s = '\\sqrt{' + tex(a, 0) + '}'; q = 5; }
+        else if (n[1] === 'abs') { s = '\\left|' + tex(a, 0) + '\\right|'; q = 5; }
+        else if (n[1] === 'exp') { s = 'e^{' + tex(a, 0) + '}'; q = 4; }
+        else { s = FT[n[1]] + '\\left(' + tex(a, 0) + '\\right)'; q = 5; }
+        break;
+      }
+    }
+    return q < p ? '\\left(' + s + '\\right)' : s;
+  }
+  function polyTex(c, v) {
+    // c: coefficients low→high; v: variable text
+    v = v || 'x'; const terms = [];
+    for (let k = c.length - 1; k >= 0; k--) {
+      let a = c[k]; if (Math.abs(a) < 1e-12) continue;
+      if (Math.abs(a - Math.round(a)) < 1e-10) a = Math.round(a);
+      const sg = a < 0 ? '-' : '+'; const m = Math.abs(a);
+      const mt = numTex(m);
+      const vp = k === 0 ? '' : (k === 1 ? v : v + '^{' + k + '}');
+      terms.push([sg, k === 0 ? mt : (m === 1 ? vp : mt + vp)]);
+    }
+    if (!terms.length) return '0';
+    return terms.map((t, i) => (i === 0 ? (t[0] === '-' ? '-' : '') : ' ' + t[0] + ' ') + t[1]).join('');
+  }
+  function exprTex(n) { const p = toPoly(n); return p ? polyTex(p) : tex(n); }
+
+  /* ---------- Taylor coefficients by power-series arithmetic (AD) ---------- */
+  function series(node, a, N) {
+    const Z = () => new Float64Array(N + 1);
+    const cst = v => { const r = Z(); r[0] = v; return r; };
+    const smul = (u, v) => { const r = Z(); for (let k = 0; k <= N; k++) { let s = 0; for (let j = 0; j <= k; j++) s += u[j] * v[k - j]; r[k] = s; } return r; };
+    const sdiv = (u, v) => { const w = Z(); for (let k = 0; k <= N; k++) { let s = u[k]; for (let j = 1; j <= k; j++) s -= v[j] * w[k - j]; w[k] = s / v[0]; } return w; };
+    const sexp = u => { const w = Z(); w[0] = Math.exp(u[0]); for (let k = 1; k <= N; k++) { let s = 0; for (let j = 1; j <= k; j++) s += j * u[j] * w[k - j]; w[k] = s / k; } return w; };
+    const sln = u => { const w = Z(); w[0] = Math.log(u[0]); for (let k = 1; k <= N; k++) { let s = 0; for (let j = 1; j < k; j++) s += j * w[j] * u[k - j]; w[k] = (u[k] - s / k) / u[0]; } return w; };
+    const ssc = u => { const s = Z(), c = Z(); s[0] = Math.sin(u[0]); c[0] = Math.cos(u[0]); for (let k = 1; k <= N; k++) { let a1 = 0, a2 = 0; for (let j = 1; j <= k; j++) { a1 += j * u[j] * c[k - j]; a2 += j * u[j] * s[k - j]; } s[k] = a1 / k; c[k] = -a2 / k; } return [s, c]; };
+    const spow = (u, p) => {
+      if (Number.isInteger(p) && p >= 0 && p <= 64) { let r = cst(1); for (let i = 0; i < p; i++) r = smul(r, u); return r; }
+      if (Number.isInteger(p) && p < 0) return sdiv(cst(1), spow(u, -p));
+      const w = Z(); w[0] = realPow(u[0], p);
+      for (let k = 1; k <= N; k++) { let s = 0; for (let j = 1; j <= k; j++) s += (p * j - (k - j)) * u[j] * w[k - j]; w[k] = s / (k * u[0]); }
+      return w;
+    };
+    const S = n => {
+      switch (n[0]) {
+        case 'n': return cst(n[1]);
+        case 'c': return cst(n[1] === 'pi' ? Math.PI : Math.E);
+        case 'x': { const r = Z(); r[0] = a; if (N >= 1) r[1] = 1; return r; }
+        case 'neg': return S(n[1]).map(v => -v);
+        case '+': { const u = S(n[1]), v = S(n[2]); return u.map((x, i) => x + v[i]); }
+        case '-': { const u = S(n[1]), v = S(n[2]); return u.map((x, i) => x - v[i]); }
+        case '*': return smul(S(n[1]), S(n[2]));
+        case '/': return sdiv(S(n[1]), S(n[2]));
+        case '^': {
+          const u = S(n[1]);
+          if (!hasX(n[2])) return spow(u, compile(n[2])(0));
+          return sexp(smul(S(n[2]), sln(u)));
+        }
+        case 'f': {
+          const u = S(n[2]);
+          switch (n[1]) {
+            case 'sin': return ssc(u)[0];
+            case 'cos': return ssc(u)[1];
+            case 'tan': { const [s, c] = ssc(u); return sdiv(s, c); }
+            case 'exp': return sexp(u);
+            case 'ln': return sln(u);
+            case 'log': return sln(u).map(v => v / Math.LN10);
+            case 'sqrt': return spow(u, 0.5);
+            case 'abs': return u[0] === 0 ? u.map(() => NaN) : u.map(v => v * Math.sign(u[0]));
+          }
+        }
+      }
+    };
+    return S(node);
+  }
+
+  // expose engine for automated testing
+  window.CALC = { tokenize, parse, compile, simplify, diff, toPoly, tex, exprTex, series, realPow, polyTex };
+
+  /* =====================================================================
+     2. NUMERICS
+     ===================================================================== */
+  function adaptSimpson(f, a, b, tol) {
+    const simp = (a, b, fa, fm, fb) => (b - a) / 6 * (fa + 4 * fm + fb);
+    let calls = 0;
+    const rec = (a, b, fa, fm, fb, whole, tol, depth) => {
+      const m = (a + b) / 2, lm = (a + m) / 2, rm = (m + b) / 2;
+      const flm = f(lm), frm = f(rm); calls += 2;
+      const left = simp(a, m, fa, flm, fm), right = simp(m, b, fm, frm, fb);
+      const d = left + right - whole;
+      if (depth <= 0 || calls > 200000 || Math.abs(d) <= 15 * tol) return left + right + d / 15;
+      return rec(a, m, fa, flm, fm, left, tol / 2, depth - 1) + rec(m, b, fm, frm, fb, right, tol / 2, depth - 1);
+    };
+    if (a === b) return 0;
+    const fa = f(a), fb = f(b), fm = f((a + b) / 2);
+    // split into panels for robustness
+    const P = 16; let s = 0; const h = (b - a) / P;
+    for (let i = 0; i < P; i++) {
+      const x0 = a + i * h, x1 = x0 + h, f0 = f(x0), f1 = f(x1), fmid = f(x0 + h / 2);
+      s += rec(x0, x1, f0, fmid, f1, simp(x0, x1, f0, fmid, f1), (tol || 1e-11) / P, 40);
+    }
+    return s;
+  }
+  function riemann(f, a, b, n, m) {
+    if (m === 'simp' && n % 2) n++;
+    const dx = (b - a) / n; let s = 0;
+    if (m === 'left') for (let i = 0; i < n; i++) s += f(a + i * dx);
+    else if (m === 'right') for (let i = 1; i <= n; i++) s += f(a + i * dx);
+    else if (m === 'mid') for (let i = 0; i < n; i++) s += f(a + (i + 0.5) * dx);
+    else if (m === 'trap') { s = (f(a) + f(b)) / 2; for (let i = 1; i < n; i++) s += f(a + i * dx); }
+    else if (m === 'simp') { s = f(a) + f(b); for (let i = 1; i < n; i++) s += (i % 2 ? 4 : 2) * f(a + i * dx); return s * dx / 3; }
+    return s * dx;
+  }
+  const nd = (f, x) => { const h = 1e-5 * (1 + Math.abs(x)); return (f(x + h) - f(x - h)) / (2 * h); };
+
+  function limitInfo(f, c) {
+    const hs = [1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6];
+    const L = hs.map(h => f(c - h)), R = hs.map(h => f(c + h));
+    const conv = arr => { const t = arr.slice(-3); if (!t.every(isFinite)) return null; const spread = Math.max(...t) - Math.min(...t); return spread < 2e-3 * (1 + Math.abs(t[2])) ? t[2] : null; };
+    const big = arr => arr.slice(-3).every(v => Math.abs(v) > 1e4) && Math.abs(arr[5]) > Math.abs(arr[3]);
+    const l0 = conv(L), r0 = conv(R);
+    // use h = 1e-4 for the estimate (smaller h suffers from cancellation error)
+    const l = l0 === null ? null : L[3], r = r0 === null ? null : R[3];
+    let res;
+    if (l !== null && r !== null && Math.abs(l - r) < 2e-3 * (1 + Math.abs(l))) {
+      // symmetric averages cancel the first-order term; their spread sets the trustworthy precision
+      const A = [3, 4, 5].map(i => (L[i] + R[i]) / 2).filter(isFinite);
+      let v = (l + r) / 2;
+      if (A.length === 3) { const sp = Math.max(...A) - Math.min(...A); const step = Math.max(1e-10, Math.pow(10, Math.ceil(Math.log10(sp * 10 + 1e-16)))); v = +(Math.round(A[0] / step) * step).toPrecision(12); }
+      res = { exists: true, L: v, left: l, right: r };
+    } else if (big(L) || big(R)) res = { exists: false, why: 'f(x) grows without bound: no finite limit', left: l, right: r, inf: true };
+    else if (l !== null && r !== null) res = { exists: false, why: 'left limit ≠ right limit', left: l, right: r };
+    else res = { exists: false, why: 'f(x) oscillates and never settles', left: l, right: r };
+    res.table = hs.slice(0, 5).map((h, i) => [h, L[i], R[i]]);
+    return res;
+  }
+  function deltaWorst(f, c, L, d) {
+    let worst = 0;
+    for (let i = 1; i <= 240; i++) {
+      const t = i / 240; const offs = [d * t, d * Math.pow(10, -4 * (1 - t))];
+      for (const o of offs) { if (o >= d) continue; for (const x of [c - o, c + o]) { const v = f(x); const e = isFinite(v) ? Math.abs(v - L) : Infinity; if (e > worst) worst = e; } }
+    }
+    return worst;
+  }
+  function largestDelta(f, c, L, eps) {
+    if (deltaWorst(f, c, L, 4) < eps) return 4;
+    let lo = 0, hi = 4;
+    for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (deltaWorst(f, c, L, m) < eps) lo = m; else hi = m; }
+    return lo;
+  }
+
+  /* =====================================================================
+     3. STATE
+     ===================================================================== */
+  const PRESETS = [
+    ['x^3 - 3x', [-3.2, 3.2, -4, 4]], ['sin(x)', [-7, 7, -2, 2]], ['x^2', [-3, 3, -1.5, 6]], ['exp(x)', [-3, 2.5, -1.5, 8]], ['ln(x)', [-0.6, 6, -3, 2.5]],
+    ['x sin(x)', [-8, 8, -6, 8]], ['1/(1+x^2)', [-4, 4, -0.5, 1.4]], ['sqrt(x)', [-0.5, 6, -0.8, 3]], ['abs(x)', [-3, 3, -1, 3]],
+    ['x^4 - 4x^2 + x', [-2.6, 2.6, -6, 5]], ['exp(-x^2)', [-3, 3, -0.4, 1.3]], ['tan(x)', [-4, 4, -5, 5]], ['(x^2+1)(x-3)', [-2, 4, -12, 6]],
+    ['x^(1/3)', [-3, 3, -2, 2]], ['x^x', [-0.3, 2.5, -0.5, 4]], ['sin(x)/x', [-12, 12, -0.5, 1.3]], ['cos(3x) exp(-x/4)', [-2, 10, -1.8, 1.8]]
+  ];
+  const LIMITS = [
+    ['sin(x)/x', 0, 'sin x / x at 0 (removable)'], ['(x^2-1)/(x-1)', 1, '(x² − 1)/(x − 1) at 1 (hole)'], ['(1-cos(x))/x^2', 0, '(1 − cos x)/x² at 0'],
+    ['x sin(1/x)', 0, 'x sin(1/x) at 0 (squeeze)'], ['abs(x)/x', 0, '|x|/x at 0 (jump, DNE)'], ['sin(1/x)', 0, 'sin(1/x) at 0 (oscillates, DNE)'],
+    ['1/x^2', 0, '1/x² at 0 (infinite)'], ['(exp(x)-1)/x', 0, '(eˣ − 1)/x at 0'], ['x^2', 1.5, 'x² at 1.5 (continuous)']
+  ];
+  const TAYLOR = [
+    ['sin(x)', 0, 'sin x', 'inf'], ['cos(x)', 0, 'cos x', 'inf'], ['exp(x)', 0, 'eˣ', 'inf'],
+    ['ln(1+x)', 0, 'ln(1 + x)', 'ln'], ['1/(1-x)', 0, '1/(1 − x)', 'geo'], ['1/(1+x^2)', 0, '1/(1 + x²)', 'runge'], ['sqrt(x)', 1, '√x about 1', 'sqrt']
+  ];
+  const S = {
+    mode: 'deriv', src: '', ast: null, f: x => NaN, fs: null, dAst: null, d2Ast: null, df: null, d2f: null, err: '',
+    view: { x0: -3, x1: 3, y0: -3, y1: 3 }, x0: 1.6, h: 1.58, animH: 0,
+    a: -1.5, b: 2, n: 8, method: 'mid', animN: 0,
+    c: 0, eps: 0.2, del: 0.5, zoom: 1, animZ: 0, lim: null,
+    ta: 0, tn: 3, tay: null, tayKind: null, animT: 0, probe: null,
+    opt: 'fn', V: 330, r: 5.6, k: 1, animR: null, crit: [], infl: [],
+    dirty: true
+  };
+
+  /* =====================================================================
+     4. CANVAS & DRAWING
+     ===================================================================== */
+  const cv = $('#cv');
+  const st = SL.canvas(cv, () => { S.dirty = true; });
+  const ctx = st.ctx;
+  const COL = { f: '#60a5fa', d: '#f472b6', d2: '#a78bfa', tan: '#facc15', sec: '#fb923c', pos: 'rgba(52,211,153,', negc: 'rgba(248,113,113,', ok: '#22c55e', bad: '#ef4444', grid: 'rgba(255,255,255,.05)', axis: 'rgba(255,255,255,.35)', text: '#93a1bd' };
+
+  function niceStep(raw) { const p = Math.pow(10, Math.floor(Math.log10(raw))); const m = raw / p; return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p; }
+  function mkMap(r, x0, x1, y0, y1) {
+    const X = x => r.x + (x - x0) / (x1 - x0) * r.w, Y = y => r.y + r.h - (y - y0) / (y1 - y0) * r.h;
+    const IX = px => x0 + (px - r.x) / r.w * (x1 - x0), IY = py => y0 + (r.y + r.h - py) / r.h * (y1 - y0);
+    return { r, x0, x1, y0, y1, X, Y, IX, IY };
+  }
+  function grid(m, opts) {
+    opts = opts || {};
+    const { r } = m;
+    ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+    const sx = niceStep((m.x1 - m.x0) / Math.max(3, r.w / 90)), sy = niceStep((m.y1 - m.y0) / Math.max(2, r.h / 60));
+    ctx.lineWidth = 1;
+    for (let pass = 0; pass < 2; pass++) {
+      const fx = pass ? sx : sx / 5, fy = pass ? sy : sy / 5;
+      ctx.strokeStyle = pass ? 'rgba(255,255,255,.075)' : 'rgba(255,255,255,.028)';
+      ctx.beginPath();
+      for (let x = Math.ceil(m.x0 / fx) * fx; x <= m.x1; x += fx) { const p = Math.round(m.X(x)) + .5; ctx.moveTo(p, r.y); ctx.lineTo(p, r.y + r.h); }
+      for (let y = Math.ceil(m.y0 / fy) * fy; y <= m.y1; y += fy) { const p = Math.round(m.Y(y)) + .5; ctx.moveTo(r.x, p); ctx.lineTo(r.x + r.w, p); }
+      ctx.stroke();
+    }
+    // axes
+    ctx.strokeStyle = COL.axis; ctx.beginPath();
+    const ax = SL.clamp(m.Y(0), r.y, r.y + r.h), ay = SL.clamp(m.X(0), r.x, r.x + r.w);
+    if (m.y0 <= 0 && m.y1 >= 0) { ctx.moveTo(r.x, Math.round(ax) + .5); ctx.lineTo(r.x + r.w, Math.round(ax) + .5); }
+    if (m.x0 <= 0 && m.x1 >= 0) { ctx.moveTo(Math.round(ay) + .5, r.y); ctx.lineTo(Math.round(ay) + .5, r.y + r.h); }
+    ctx.stroke();
+    // labels
+    ctx.font = '10.5px JetBrains Mono, monospace'; ctx.fillStyle = '#5f6d8a';
+    const ly = SL.clamp(ax + 13, r.y + 12, r.y + r.h - 4);
+    ctx.textAlign = 'center';
+    const dx = Math.max(0, -Math.floor(Math.log10(sx) - 1e-9)), dy = Math.max(0, -Math.floor(Math.log10(sy) - 1e-9));
+    for (let x = Math.ceil(m.x0 / sx) * sx; x <= m.x1; x += sx) { if (Math.abs(x) < sx / 2) continue; const p = m.X(x); if (p < r.x + 14 || p > r.x + r.w - 14) continue; ctx.fillText((+x.toFixed(dx)).toString(), p, ly); }
+    ctx.textAlign = 'left';
+    const lx = SL.clamp(ay + 5, r.x + 4, r.x + r.w - 40);
+    for (let y = Math.ceil(m.y0 / sy) * sy; y <= m.y1; y += sy) { if (Math.abs(y) < sy / 2) continue; const p = m.Y(y); if (p < r.y + 10 || p > r.y + r.h - 6) continue; ctx.fillText((+y.toFixed(dy)).toString(), lx, p - 3); }
+    if (opts.title) { ctx.font = '600 11px JetBrains Mono, monospace'; ctx.fillStyle = opts.titleColor || COL.text; ctx.textAlign = 'right'; ctx.fillText(opts.title, r.x + r.w - 10, r.y + 17); }
+    ctx.restore();
+  }
+  function curve(m, f, color, w, opts) {
+    opts = opts || {};
+    const { r } = m; ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+    ctx.strokeStyle = color; ctx.lineWidth = w || 2.4; ctx.lineJoin = 'round';
+    if (opts.dash) ctx.setLineDash(opts.dash);
+    if (opts.glow !== false) { ctx.shadowColor = color; ctx.shadowBlur = 10; }
+    ctx.beginPath(); let pen = false, py = 0;
+    const step = 1.25, lim = r.h * 4;
+    const xa = opts.xa !== undefined ? Math.max(opts.xa, m.x0) : m.x0, xb = opts.xb !== undefined ? Math.min(opts.xb, m.x1) : m.x1;
+    const pa = m.X(xa), pb = m.X(xb);
+    for (let px = pa; px <= pb + 0.01; px += step) {
+      const x = m.IX(Math.min(px, pb)); const y = f(x);
+      if (!isFinite(y)) { pen = false; continue; }
+      let Yp = m.Y(y);
+      if (pen && (Math.abs(Yp - py) > r.h * 1.2 && (Yp < r.y || Yp > r.y + r.h || py < r.y || py > r.y + r.h))) pen = false;
+      Yp = SL.clamp(Yp, r.y - lim, r.y + r.h + lim);
+      if (pen) ctx.lineTo(px, Yp); else ctx.moveTo(px, Yp);
+      pen = true; py = Yp;
+    }
+    ctx.stroke(); ctx.restore();
+  }
+  function dot(x, y, col, rad, ring) {
+    ctx.save(); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 14;
+    ctx.beginPath(); ctx.arc(x, y, rad || 5, 0, 7); ctx.fill();
+    if (ring) { ctx.shadowBlur = 0; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.stroke(); }
+    ctx.restore();
+  }
+  function hole(x, y, col) { ctx.save(); ctx.fillStyle = '#050913'; ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 5, 0, 7); ctx.fill(); ctx.stroke(); ctx.restore(); }
+  function label(txt, x, y, col, align, bg) {
+    ctx.save(); ctx.font = '600 11.5px JetBrains Mono, monospace'; ctx.textAlign = align || 'left';
+    if (bg !== false) {
+      const w = ctx.measureText(txt).width + 10; let lx = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x - 5;
+      const nx = SL.clamp(lx, 4, st.w - w - 4); x += nx - lx; lx = nx;
+      ctx.fillStyle = 'rgba(5,9,19,.82)'; ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(lx, y - 13, w, 19, 5) : ctx.rect(lx, y - 13, w, 19); ctx.fill(); ctx.stroke();
+    }
+    ctx.fillStyle = col; ctx.fillText(txt, x, y); ctx.restore();
+  }
+  function lineThrough(m, x, y, slope, col, w, dash) {
+    const { r } = m; ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+    ctx.strokeStyle = col; ctx.lineWidth = w || 2; if (dash) ctx.setLineDash(dash); ctx.shadowColor = col; ctx.shadowBlur = 8;
+    ctx.beginPath(); ctx.moveTo(m.X(m.x0), m.Y(y + slope * (m.x0 - x))); ctx.lineTo(m.X(m.x1), m.Y(y + slope * (m.x1 - x))); ctx.stroke(); ctx.restore();
+  }
+  function frame(r, title) {
+    ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = 1; ctx.strokeRect(r.x + .5, r.y + .5, r.w - 1, r.h - 1);
+    if (title) { ctx.font = '600 10.5px JetBrains Mono, monospace'; ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'left'; ctx.fillText(title, r.x + 10, r.y + 16); }
+    ctx.restore();
+  }
+  // auto y-range for a function over [x0,x1]
+  function autoRange(f, x0, x1, pad) {
+    const v = []; for (let i = 0; i <= 300; i++) { const y = f(x0 + (x1 - x0) * i / 300); if (isFinite(y)) v.push(y); }
+    if (!v.length) return [-1, 1];
+    v.sort((a, b) => a - b); let lo = v[Math.floor(v.length * .03)], hi = v[Math.ceil(v.length * .97) - 1];
+    if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+    const p = (hi - lo) * (pad || .15); return [lo - p, hi + p];
+  }
+  function layout() {
+    const w = st.w, h = st.h;
+    const split = (S.mode === 'deriv' && $('#showD').checked) || (S.mode === 'integ' && $('#showF').checked) || S.mode === 'taylor' || (S.mode === 'optim' && S.opt === 'fn');
+    if (!split) return { top: { x: 0, y: 0, w, h }, bot: null };
+    const th = Math.round(h * (S.mode === 'taylor' ? 0.7 : 0.62));
+    return { top: { x: 0, y: 0, w, h: th }, bot: { x: 0, y: th, w, h: h - th } };
+  }
+  function topMap(r) {
+    const v = S.view; const asp = r.h / r.w;
+    return mkMap(r, v.x0, v.x1, v.y0, v.y1);
+  }
+
+  /* ---------- per-mode renderers ---------- */
+  let HUD = [], STATS = [], LEG = [];
+  function drawDeriv(L) {
+    const m = topMap(L.top), f = S.f;
+    grid(m); frame(L.top);
+    curve(m, f, COL.f, 2.6);
+    const x0 = S.x0, y0 = f(x0), h = S.h;
+    const x1 = x0 + h, y1 = f(x1);
+    const slopeN = nd(f, x0), slopeS = S.df ? S.df(x0) : slopeN;
+    const slope = isFinite(slopeS) ? slopeS : slopeN;
+    const sec = (y1 - y0) / h;
+    if (isFinite(sec)) {
+      lineThrough(m, x0, y0, sec, COL.sec, 1.8, [7, 5]);
+      // rise / run triangle
+      ctx.save(); ctx.strokeStyle = 'rgba(251,146,60,.6)'; ctx.setLineDash([3, 3]); ctx.lineWidth = 1.2; ctx.beginPath();
+      ctx.moveTo(m.X(x0), m.Y(y0)); ctx.lineTo(m.X(x1), m.Y(y0)); ctx.lineTo(m.X(x1), m.Y(y1)); ctx.stroke(); ctx.restore();
+      if (Math.abs(m.X(x1) - m.X(x0)) > 30) label('h = ' + fmt(h, 3), (m.X(x0) + m.X(x1)) / 2, m.Y(y0) + (y1 > y0 ? 18 : -8), COL.sec, 'center');
+      if (isFinite(y1)) dot(m.X(x1), m.Y(y1), COL.sec, 4.5);
+    }
+    if (isFinite(slope) && isFinite(y0)) lineThrough(m, x0, y0, slope, COL.tan, 2.2);
+    if (isFinite(y0)) { dot(m.X(x0), m.Y(y0), '#fff', 7, false); dot(m.X(x0), m.Y(y0), COL.tan, 4.5); }
+    if (isFinite(y0)) label(`f′(${fmt(x0, 2)}) = ${fmt(slope, 3)}`, m.X(x0) + 12, m.Y(y0) - 14, COL.tan);
+    if (L.bot) {
+      const dfun = S.df || (x => nd(f, x));
+      const [lo, hi] = autoRange(dfun, m.x0, m.x1, .2);
+      const yl = Math.min(lo, -0.5), yh = Math.max(hi, 0.5);
+      const mb = mkMap(L.bot, m.x0, m.x1, yl, yh);
+      grid(mb, { title: "f′(x)", titleColor: COL.d }); frame(L.bot, 'DERIVATIVE');
+      curve(mb, dfun, COL.d, 2.2);
+      if (isFinite(slope)) {
+        ctx.save(); ctx.strokeStyle = 'rgba(250,204,21,.4)'; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(m.X(x0), m.Y(y0)); ctx.lineTo(mb.X(x0), mb.Y(slope)); ctx.stroke(); ctx.restore();
+        dot(mb.X(x0), SL.clamp(mb.Y(slope), L.bot.y + 4, L.bot.y + L.bot.h - 4), COL.tan, 5, true);
+      }
+    }
+    HUD = [`x₀ <b>${fmt(x0, 3)}</b>`, `f(x₀) <b>${fmt(y0, 4)}</b>`, `secant <b>${fmt(sec, 4)}</b>`, `f′(x₀) <b>${fmt(slope, 4)}</b>`];
+    const d2 = S.d2f ? S.d2f(x0) : NaN;
+    STATS = [['h', fmt(h, 4)], ['Secant slope', fmt(sec, 5)], ['f′(x₀) symbolic', fmt(slopeS, 6)], ['f′(x₀) numeric', fmt(slopeN, 6)], ['Secant error', fmt(Math.abs(sec - slope), 4)], ['f″(x₀)', fmt(d2, 4)]];
+    LEG = [['f(x)', COL.f], ['secant', COL.sec], ['tangent', COL.tan], ["f′(x)", COL.d]];
+    S.dState = { x0, slope, sec };
+  }
+
+  function drawInteg(L) {
+    const m = topMap(L.top), f = S.f;
+    grid(m); frame(L.top);
+    const a = S.a, b = S.b; let n = S.n; const meth = S.method;
+    if (meth === 'simp' && n % 2) n++;
+    const dx = (b - a) / n;
+    ctx.save(); ctx.beginPath(); ctx.rect(L.top.x, L.top.y, L.top.w, L.top.h); ctx.clip();
+    const y0p = m.Y(0);
+    const strokeA = n > 60 ? 0 : 0.85;
+    const fillPoly = (pts, val) => {
+      ctx.fillStyle = (val >= 0 ? COL.pos : COL.negc) + '.26)'; ctx.strokeStyle = (val >= 0 ? COL.pos : COL.negc) + strokeA + ')';
+      ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.fill(); if (strokeA) ctx.stroke();
+    };
+    const cl = y => SL.clamp(y, -1e4, 1e4);
+    if (meth === 'simp') {
+      for (let i = 0; i < n; i += 2) {
+        const xa = a + i * dx, xm = xa + dx, xb = xa + 2 * dx, fa = f(xa), fm = f(xm), fb = f(xb);
+        if (![fa, fm, fb].every(isFinite)) continue;
+        const pts = [[m.X(xa), y0p]]; const K = 24;
+        for (let k = 0; k <= K; k++) { const t = k / K * 2; const x = xa + t * dx; const y = fa * (t - 1) * (t - 2) / 2 - fm * t * (t - 2) + fb * t * (t - 1) / 2; pts.push([m.X(x), cl(m.Y(y))]); }
+        pts.push([m.X(xb), y0p]); fillPoly(pts, (fa + 4 * fm + fb));
+      }
+    } else {
+      for (let i = 0; i < n; i++) {
+        const xa = a + i * dx, xb = xa + dx;
+        if (meth === 'trap') { const fa = f(xa), fb = f(xb); if (!isFinite(fa) || !isFinite(fb)) continue; fillPoly([[m.X(xa), y0p], [m.X(xa), cl(m.Y(fa))], [m.X(xb), cl(m.Y(fb))], [m.X(xb), y0p]], fa + fb); }
+        else {
+          const xs = meth === 'left' ? xa : meth === 'right' ? xb : (xa + xb) / 2; const v = f(xs); if (!isFinite(v)) continue;
+          fillPoly([[m.X(xa), y0p], [m.X(xa), cl(m.Y(v))], [m.X(xb), cl(m.Y(v))], [m.X(xb), y0p]], v);
+          if (n <= 40) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(m.X(xs), m.Y(v), 2.3, 0, 7); ctx.fill(); }
+        }
+      }
+    }
+    ctx.restore();
+    curve(m, f, COL.f, 2.6);
+    // limit handles
+    for (const [x, t] of [[a, 'a'], [b, 'b']]) {
+      const px = m.X(x);
+      ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(px, L.top.y); ctx.lineTo(px, L.top.y + L.top.h); ctx.stroke(); ctx.restore();
+      const hy = SL.clamp(y0p, L.top.y + 16, L.top.y + L.top.h - 16);
+      ctx.save(); ctx.fillStyle = '#e6ecf7'; ctx.shadowColor = '#60a5fa'; ctx.shadowBlur = 12; ctx.beginPath(); ctx.arc(px, hy, 9, 0, 7); ctx.fill(); ctx.restore();
+      ctx.save(); ctx.fillStyle = '#06101f'; ctx.font = '700 11px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(t, px, hy + 4); ctx.restore();
+    }
+    const approx = riemann(f, a, b, n, meth);
+    const exact = adaptSimpson(f, a, b, 1e-11);
+    const err = approx - exact;
+    if (L.bot) {
+      // accumulation F(x) = ∫_a^x f
+      const N = Math.max(120, Math.round(L.bot.w / 2)); const xs = [], Fs = [];
+      const h = (m.x1 - m.x0) / N;
+      const ia = SL.clamp(Math.round((a - m.x0) / h), 0, N);
+      for (let i = 0; i <= N; i++) xs.push(m.x0 + i * h);
+      Fs[ia] = adaptSimpson(f, a, xs[ia], 1e-9);
+      for (let i = ia + 1; i <= N; i++) { const s = (xs[i] - xs[i - 1]) / 6 * (f(xs[i - 1]) + 4 * f((xs[i - 1] + xs[i]) / 2) + f(xs[i])); Fs[i] = Fs[i - 1] + s; }
+      for (let i = ia - 1; i >= 0; i--) { const s = (xs[i + 1] - xs[i]) / 6 * (f(xs[i]) + 4 * f((xs[i] + xs[i + 1]) / 2) + f(xs[i + 1])); Fs[i] = Fs[i + 1] - s; }
+      // range from the part of the domain where f itself is on screen (keeps F readable)
+      let fin = Fs.filter((F, i) => isFinite(F) && (() => { const y = f(xs[i]); return y >= m.y0 && y <= m.y1; })());
+      if (fin.length < 10) fin = Fs.filter(isFinite);
+      if (isFinite(exact)) fin.push(exact);
+      let lo = Math.min(0, ...fin), hi = Math.max(0, ...fin);
+      if (!fin.length) { lo = -1; hi = 1; } const pad = (hi - lo) * .15 || 1;
+      const mb = mkMap(L.bot, m.x0, m.x1, lo - pad, hi + pad);
+      grid(mb, { title: 'F(x) = ∫ₐˣ f(t) dt', titleColor: COL.d }); frame(L.bot, 'ACCUMULATION');
+      ctx.save(); ctx.beginPath(); ctx.rect(L.bot.x, L.bot.y, L.bot.w, L.bot.h); ctx.clip();
+      ctx.strokeStyle = COL.d; ctx.lineWidth = 2.2; ctx.shadowColor = COL.d; ctx.shadowBlur = 10; ctx.beginPath(); let pen = false;
+      for (let i = 0; i <= N; i++) { if (!isFinite(Fs[i])) { pen = false; continue; } const p = [mb.X(xs[i]), mb.Y(Fs[i])]; pen ? ctx.lineTo(...p) : ctx.moveTo(...p); pen = true; }
+      ctx.stroke(); ctx.restore();
+      if (isFinite(exact)) { dot(mb.X(b), mb.Y(exact), COL.d, 5, true); label('F(b) = ' + fmt(exact, 4), mb.X(b) + (mb.X(b) > L.bot.w - 140 ? -12 : 12), mb.Y(exact) - 10, COL.d, mb.X(b) > L.bot.w - 140 ? 'right' : 'left'); }
+      dot(mb.X(a), mb.Y(0), '#fff', 4);
+    }
+    $('#simpNote').textContent = meth === 'simp' && S.n % 2 ? `Simpson's rule needs an even n, so n = ${n} is used.` : '';
+    const names = { left: 'Left', right: 'Right', mid: 'Midpoint', trap: 'Trapezoid', simp: 'Simpson' };
+    HUD = [`${names[meth]} sum <b>${fmt(approx, 6)}</b>`, `exact <b>${fmt(exact, 6)}</b>`, `n <b>${n}</b>`];
+    STATS = [['Δx', fmt(dx, 4)], ['Approximation', fmt(approx, 6)], ['Accurate ∫', fmt(exact, 8)], ['Error', fmt(err, 3)], ['Relative error', isFinite(err / exact) && exact !== 0 ? fmt(Math.abs(err / exact) * 100, 3) + ' %' : '—'], ['Method order', meth === 'simp' ? 'Δx⁴' : (meth === 'mid' || meth === 'trap') ? 'Δx²' : 'Δx']];
+    LEG = [['f(x)', COL.f], ['area > 0', '#34d399'], ['area < 0', '#f87171'], ['F(x)', COL.d]];
+    S.iState = { approx, exact, err, n, meth };
+  }
+
+  function drawLimit(L) {
+    const f = S.f, c = S.c, li = S.lim; const r = L.top;
+    let Lv = li && li.exists ? li.L : (isFinite(f(c)) ? f(c) : (li && li.left !== null ? li.left : 0));
+    const halfW = 2.2 / S.zoom, halfH = halfW * r.h / r.w * 1.0;
+    const m = mkMap(r, c - halfW, c + halfW, Lv - halfH, Lv + halfH);
+    grid(m); frame(r);
+    const eps = S.eps, del = S.del;
+    let worst = NaN, ok = false;
+    if (li && li.exists) {
+      // epsilon band
+      ctx.save(); ctx.fillStyle = 'rgba(96,165,250,.10)'; ctx.fillRect(r.x, m.Y(Lv + eps), r.w, m.Y(Lv - eps) - m.Y(Lv + eps));
+      ctx.strokeStyle = 'rgba(96,165,250,.6)'; ctx.setLineDash([6, 4]); ctx.beginPath(); ctx.moveTo(r.x, m.Y(Lv + eps)); ctx.lineTo(r.x + r.w, m.Y(Lv + eps)); ctx.moveTo(r.x, m.Y(Lv - eps)); ctx.lineTo(r.x + r.w, m.Y(Lv - eps)); ctx.stroke(); ctx.restore();
+      worst = deltaWorst(f, c, Lv, del); ok = worst < eps;
+      ctx.save(); ctx.fillStyle = ok ? 'rgba(34,197,94,.09)' : 'rgba(239,68,68,.09)'; ctx.fillRect(m.X(c - del), r.y, m.X(c + del) - m.X(c - del), r.h);
+      ctx.strokeStyle = ok ? 'rgba(34,197,94,.7)' : 'rgba(239,68,68,.7)'; ctx.setLineDash([6, 4]); ctx.beginPath(); ctx.moveTo(m.X(c - del), r.y); ctx.lineTo(m.X(c - del), r.y + r.h); ctx.moveTo(m.X(c + del), r.y); ctx.lineTo(m.X(c + del), r.y + r.h); ctx.stroke(); ctx.restore();
+      const yl = m.Y(Lv + eps) - 6; label('L + ε', r.x + 10, SL.clamp(yl, r.y + 52, r.y + r.h - 10), '#93c5fd');
+      label('L − ε', r.x + 10, SL.clamp(m.Y(Lv - eps) + 16, r.y + 52, r.y + r.h - 10), '#93c5fd');
+      const dx = m.X(c + del); if (dx < r.x + r.w - 60) label('c + δ', dx + 6, r.y + r.h - 40, ok ? '#86efac' : '#fca5a5');
+    }
+    curve(m, f, COL.f, 2.6);
+    // highlight curve inside delta window
+    if (li && li.exists) {
+      const xa = c - del, xb = c + del;
+      ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip(); ctx.lineWidth = 3.4;
+      const pa = Math.max(m.X(xa), r.x), pb = Math.min(m.X(xb), r.x + r.w); let prev = null;
+      for (let px = pa; px <= pb; px += 1) {
+        const x = m.IX(px); const y = f(x); if (!isFinite(y)) { prev = null; continue; }
+        const inside = Math.abs(y - Lv) < eps; const p = [px, SL.clamp(m.Y(y), -5e3, 5e3)];
+        if (prev) { ctx.strokeStyle = inside ? COL.ok : COL.bad; ctx.beginPath(); ctx.moveTo(...prev); ctx.lineTo(...p); ctx.stroke(); }
+        prev = p;
+      }
+      ctx.restore();
+    }
+    // point at c
+    const fc = f(c);
+    if (li && li.exists) { hole(m.X(c), m.Y(Lv), '#fff'); }
+    if (isFinite(fc) && !(li && li.exists && Math.abs(fc - Lv) < 1e-9)) dot(m.X(c), m.Y(fc), '#facc15', 5);
+    if (isFinite(fc) && li && li.exists && Math.abs(fc - Lv) < 1e-9) dot(m.X(c), m.Y(fc), '#facc15', 4.5);
+    if (li && li.exists) label('L = ' + fmt(Lv, 6), m.X(c) + 10, m.Y(Lv) - 12, '#fff');
+    // LED / message
+    const led = $('#ledDelta'), msg = $('#deltaMsg');
+    if (li && li.exists) { led.className = 'led ' + (ok ? 'on' : 'bad'); msg.innerHTML = ok ? `δ = ${fmt(del, 4)} works: every x in the window gives |f(x) − L| &lt; ε.` : `δ = ${fmt(del, 4)} is too wide: |f(x) − L| reaches ${fmt(worst, 3)} &gt; ε.`; }
+    else { led.className = 'led warn'; msg.textContent = 'No limit: ' + (li ? li.why : 'f is undefined near c') + '.'; }
+    HUD = [`c <b>${fmt(c, 3)}</b>`, li && li.exists ? `L <b>${fmt(Lv, 6)}</b>` : `limit <b>DNE</b>`, `ε <b>${fmt(eps, 4)}</b>`, `δ <b>${fmt(del, 4)}</b>`, `zoom <b>×${fmt(S.zoom, 1)}</b>`];
+    STATS = [['Left limit', li && li.left !== null ? fmt(li.left, 6) : '—'], ['Right limit', li && li.right !== null ? fmt(li.right, 6) : '—'], ['f(c)', isFinite(fc) ? fmt(fc, 6) : 'undefined'], ['Worst |f − L| in δ', isFinite(worst) ? fmt(worst, 4) : '—'], ['ε', fmt(eps, 4)], ['δ', fmt(del, 4)]];
+    LEG = [['f(x)', COL.f], ['inside ε band', COL.ok], ['outside band', COL.bad]];
+    S.lState = { ok, worst, exists: li && li.exists };
+  }
+
+  function evalTaylor(c, a, x, n) { let s = 0; for (let k = n; k >= 0; k--) s = s * (x - a) + c[k]; return s; }
+  function rocInfo() {
+    const kind = S.tayKind, a = S.ta;
+    if (kind === 'inf') return { R: Infinity, txt: 'Radius of convergence: <b>∞</b>. The series converges for every x; more terms always help.' };
+    if (kind === 'ln') return { R: Math.abs(1 + a), txt: `Radius <b>R = |1 + a| = ${fmt(Math.abs(1 + a), 3)}</b>: the distance from a to the singularity at x = −1.` };
+    if (kind === 'geo') return { R: Math.abs(1 - a), txt: `Radius <b>R = |1 − a| = ${fmt(Math.abs(1 - a), 3)}</b>: the distance from a to the pole at x = 1. Outside it the polynomials diverge wildly.` };
+    if (kind === 'runge') return { R: Math.hypot(a, 1), txt: `Radius <b>R = √(a² + 1) = ${fmt(Math.hypot(a, 1), 3)}</b>: distance from a to the complex poles ±i. The function is smooth on the real line, yet the series still fails beyond R.` };
+    if (kind === 'sqrt') return { R: Math.abs(a), txt: `Radius <b>R = |a| = ${fmt(Math.abs(a), 3)}</b>: the branch point of √x is at 0.` };
+    // estimate by root test
+    const c = series(S.fs, a, 40); let mx = 0;
+    for (let k = 20; k <= 40; k++) { const v = Math.abs(c[k]); if (v > 0 && isFinite(v)) mx = Math.max(mx, Math.pow(v, 1 / k)); }
+    if (!isFinite(mx) || c.some(v => !isFinite(v))) return { R: NaN, txt: 'f is not analytic at this centre (a derivative is undefined), so no Taylor series exists here.' };
+    if (mx < 0.05) return { R: Infinity, txt: 'Estimated radius (root test on 40 coefficients): <b>very large</b>; the series appears to converge everywhere.' };
+    return { R: 1 / mx, txt: `Estimated radius (root test on 40 coefficients): <b>R ≈ ${fmt(1 / mx, 3)}</b>.` };
+  }
+  function drawTaylor(L) {
+    const m = topMap(L.top), f = S.f, a = S.ta, n = S.tn;
+    const c = S.tay; const P = x => evalTaylor(c, a, x, n);
+    grid(m); frame(L.top);
+    const roc = S.roc;
+    const r = L.top;
+    if (roc && isFinite(roc.R)) {
+      ctx.save(); ctx.fillStyle = 'rgba(167,139,250,.06)'; ctx.fillRect(m.X(a - roc.R), r.y, m.X(a + roc.R) - m.X(a - roc.R), r.h);
+      ctx.strokeStyle = 'rgba(167,139,250,.7)'; ctx.setLineDash([5, 5]); ctx.beginPath();
+      for (const x of [a - roc.R, a + roc.R]) { ctx.moveTo(m.X(x), r.y); ctx.lineTo(m.X(x), r.y + r.h); } ctx.stroke(); ctx.restore();
+      const xr = m.X(a + roc.R); if (xr > r.x && xr < r.x + r.w - 40) label('a + R', xr + 6, r.y + r.h - 14, '#c4b5fd');
+      const xl = m.X(a - roc.R); if (xl > r.x + 40 && xl < r.x + r.w) label('a − R', xl - 6, r.y + r.h - 14, '#c4b5fd', 'right');
+    }
+    // error band between f and P
+    ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip(); ctx.fillStyle = 'rgba(244,114,182,.11)';
+    let seg = [];
+    const flush = () => { if (seg.length > 1) { ctx.beginPath(); seg.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); for (let i = seg.length - 1; i >= 0; i--) ctx.lineTo(seg[i][0], seg[i][2]); ctx.closePath(); ctx.fill(); } seg = []; };
+    for (let px = r.x; px <= r.x + r.w; px += 2) { const x = m.IX(px), y = f(x), p = P(x); if (!isFinite(y) || !isFinite(p)) { flush(); continue; } seg.push([px, SL.clamp(m.Y(y), -3e3, 3e3), SL.clamp(m.Y(p), -3e3, 3e3)]); }
+    flush(); ctx.restore();
+    curve(m, f, COL.f, 2.6);
+    curve(m, P, COL.d, 2.4);
+    const fa = f(a);
+    if (isFinite(fa)) { dot(m.X(a), m.Y(fa), '#fff', 7); dot(m.X(a), m.Y(fa), COL.d, 4.5); }
+    // probe
+    let px = S.probe; if (px === null || px < m.x0 || px > m.x1) px = a + (m.x1 - m.x0) * 0.28;
+    const fy = f(px), py = P(px);
+    ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(m.X(px), r.y); ctx.lineTo(m.X(px), r.y + r.h); ctx.stroke(); ctx.restore();
+    if (isFinite(fy)) dot(m.X(px), m.Y(fy), COL.f, 4); if (isFinite(py) && Math.abs(m.Y(py)) < 1e5) dot(m.X(px), m.Y(py), COL.d, 4);
+    // bottom: log10 |error|
+    if (L.bot) {
+      const mb = mkMap(L.bot, m.x0, m.x1, -16, 3);
+      grid(mb, { title: 'log₁₀ |f(x) − Pₙ(x)|', titleColor: COL.d }); frame(L.bot, 'ERROR');
+      ctx.save(); ctx.fillStyle = 'rgba(34,197,94,.07)'; ctx.fillRect(L.bot.x, mb.Y(-3), L.bot.w, mb.Y(-16) - mb.Y(-3)); ctx.restore();
+      curve(mb, x => { const e = Math.abs(f(x) - P(x)); return e === 0 ? -16 : Math.max(-16, Math.log10(e)); }, COL.d, 1.8, { glow: false });
+      ctx.save(); ctx.font = '10px JetBrains Mono, monospace'; ctx.fillStyle = 'rgba(134,239,172,.8)'; ctx.fillText('error < 0.001', L.bot.x + 10, mb.Y(-3) + 14); ctx.restore();
+    }
+    const errP = Math.abs(fy - py);
+    HUD = [`a <b>${fmt(a, 3)}</b>`, `n <b>${n}</b>`, `x <b>${fmt(px, 3)}</b>`, `f(x) <b>${fmt(fy, 5)}</b>`, `Pₙ(x) <b>${fmt(py, 5)}</b>`];
+    const fact = k => { let r = 1; for (let i = 2; i <= k; i++) r *= i; return r; };
+    STATS = [['|f − Pₙ| at x', fmt(errP, 3)], ['Radius R', roc ? (isFinite(roc.R) ? fmt(roc.R, 3) : (isNaN(roc.R) ? '—' : '∞')) : '—'], ['f⁽ⁿ⁾(a)', fmt(c[n] * fact(n), 4)], ['cₙ = f⁽ⁿ⁾(a)/n!', fmt(c[n], 4)]];
+    LEG = [['f(x)', COL.f], ['Pₙ(x)', COL.d], ['convergence', '#a78bfa']];
+    S.tState = { px, errP };
+  }
+
+  function findRoots(g, x0, x1, N) {
+    const out = []; let px = x0, pv = g(x0);
+    for (let i = 1; i <= N; i++) {
+      const x = x0 + (x1 - x0) * i / N, v = g(x);
+      if (isFinite(pv) && isFinite(v) && (pv === 0 || pv * v < 0)) {
+        let lo = px, hi = x, flo = pv;
+        if (pv === 0) { out.push(px); } else {
+          for (let k = 0; k < 60; k++) { const mm = (lo + hi) / 2, fm = g(mm); if (!isFinite(fm)) break; if (flo * fm <= 0) hi = mm; else { lo = mm; flo = fm; } }
+          out.push((lo + hi) / 2);
+        }
+      } else if (isFinite(pv) && isFinite(v) && Math.sign(pv) !== Math.sign(v)) { /* zero touch handled above */ }
+      else if (isFinite(pv) && !isFinite(v) && i < N) {
+        // derivative undefined at a sample: check sign change across it
+        const v2 = g(x + (x1 - x0) / N); if (isFinite(v2) && pv * v2 < 0) out.push(x);
+      }
+      px = x; pv = v;
+    }
+    return out.filter((x, i, arr) => i === 0 || Math.abs(x - arr[i - 1]) > 1e-7 * (x1 - x0));
+  }
+  function analyse() {
+    const v = S.view, f = S.f, d1 = S.df || (x => nd(f, x)), d2 = S.d2f || (x => nd(d1, x));
+    const crit = [];
+    findRoots(d1, v.x0, v.x1, 1200).forEach(x => {
+      const y = f(x); if (!isFinite(y)) return;
+      const e = (v.x1 - v.x0) * 2e-4; const l = d1(x - e), r = d1(x + e); const dd = d2(x);
+      // reject jumps of f (e.g. tan asymptotes)
+      if (Math.abs(f(x - e) - f(x + e)) > (v.y1 - v.y0) * 0.2) return;
+      let type = 'neither (saddle)';
+      if (l > 0 && r < 0) type = 'local max'; else if (l < 0 && r > 0) type = 'local min';
+      const corner = !isFinite(d1(x)) || Math.abs(d1(x)) > 1e-3 * (1 + Math.abs(l) + Math.abs(r));
+      crit.push({ x, y, dd, type, corner });
+    });
+    const infl = [];
+    findRoots(d2, v.x0, v.x1, 1200).forEach(x => { const y = f(x); const e = (v.x1 - v.x0) * 1e-3; if (isFinite(y) && d2(x - e) * d2(x + e) < 0 && Math.abs(f(x - e) - f(x + e)) < (v.y1 - v.y0) * 0.2) infl.push({ x, y }); });
+    S.crit = crit; S.infl = infl;
+    const tb = $('#critTable');
+    tb.innerHTML = crit.length ? crit.slice(0, 8).map(p => `<tr><td class="num">${fmt(p.x, 4)}</td><td class="num">${fmt(p.y, 4)}</td><td class="num">${isFinite(p.dd) ? fmt(p.dd, 3) : 'undef.'}</td><td class="${p.type === 'local max' ? 'warn-t' : p.type === 'local min' ? 'ok-t' : ''}">${p.type}${p.corner ? ' (corner)' : ''}</td></tr>`).join('') : '<tr><td colspan="4" class="dim">No critical points in view.</td></tr>';
+  }
+  function drawOptimFn(L) {
+    const m = topMap(L.top), f = S.f, r = L.top;
+    grid(m); frame(r);
+    const d1 = S.df || (x => nd(f, x)), d2 = S.d2f || (x => nd(d1, x));
+    // monotonic strip
+    ctx.save(); for (let px = r.x; px < r.x + r.w; px += 3) { const v = d1(m.IX(px + 1.5)); if (!isFinite(v)) continue; ctx.fillStyle = v > 0 ? 'rgba(34,197,94,.55)' : 'rgba(239,68,68,.55)'; ctx.fillRect(px, r.y + r.h - 6, 3, 6); } ctx.restore();
+    curve(m, f, COL.f, 2.6);
+    if ($('#showInfl').checked) S.infl.forEach(p => { dot(m.X(p.x), m.Y(p.y), COL.d2, 4.5); });
+    S.crit.forEach(p => {
+      const col = p.type === 'local max' ? '#f59e0b' : p.type === 'local min' ? '#22c55e' : '#a78bfa';
+      if (!p.corner) { ctx.save(); ctx.strokeStyle = col; ctx.globalAlpha = .6; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(m.X(p.x) - 40, m.Y(p.y)); ctx.lineTo(m.X(p.x) + 40, m.Y(p.y)); ctx.stroke(); ctx.restore(); }
+      dot(m.X(p.x), m.Y(p.y), col, 6, true);
+      const up = p.type === 'local max';
+      label(`${p.type === 'local max' ? 'max' : p.type === 'local min' ? 'min' : 'f′ = 0'} (${fmt(p.x, 3)}, ${fmt(p.y, 3)})`, m.X(p.x), m.Y(p.y) + (up ? -14 : 24), col, 'center');
+    });
+    if (L.bot) {
+      const [lo, hi] = autoRange(d1, m.x0, m.x1, .2);
+      const mb = mkMap(L.bot, m.x0, m.x1, Math.min(lo, -.5), Math.max(hi, .5));
+      grid(mb, { title: "f′ (solid), f″ (dashed)", titleColor: COL.d }); frame(L.bot, 'DERIVATIVE TESTS');
+      curve(mb, d2, COL.d2, 1.6, { dash: [6, 4], glow: false });
+      curve(mb, d1, COL.d, 2.2);
+      S.crit.forEach(p => dot(mb.X(p.x), mb.Y(0), p.type === 'local max' ? '#f59e0b' : p.type === 'local min' ? '#22c55e' : '#a78bfa', 4.5));
+    }
+    const maxs = S.crit.filter(p => p.type === 'local max').length, mins = S.crit.filter(p => p.type === 'local min').length;
+    HUD = [`critical points <b>${S.crit.length}</b>`, `maxima <b>${maxs}</b>`, `minima <b>${mins}</b>`, `inflections <b>${S.infl.length}</b>`];
+    let gmax = -Infinity, gmin = Infinity;
+    for (let i = 0; i <= 600; i++) { const y = f(m.x0 + (m.x1 - m.x0) * i / 600); if (isFinite(y)) { gmax = Math.max(gmax, y); gmin = Math.min(gmin, y); } }
+    STATS = [['Local maxima', maxs], ['Local minima', mins], ['Inflection pts', S.infl.length], ['Max in view', fmt(gmax, 4)], ['Min in view', fmt(gmin, 4)]];
+    LEG = [['f(x)', COL.f], ["f′(x)", COL.d], ["f″(x)", COL.d2], ['max', '#f59e0b'], ['min', '#22c55e']];
+  }
+
+  function canModel() {
+    const V = S.V, k = S.k, r = S.r; const h = V / (Math.PI * r * r);
+    const A = 2 * Math.PI * r * r + 2 * V / r, C = 2 * Math.PI * k * r * r + 2 * V / r;
+    const ro = Math.cbrt(V / (2 * Math.PI * k)), ho = V / (Math.PI * ro * ro), Co = 2 * Math.PI * k * ro * ro + 2 * V / ro, Ao = 2 * Math.PI * ro * ro + 2 * V / ro;
+    return { V, k, r, h, A, C, ro, ho, Co, Ao };
+  }
+  function drawCan() {
+    const w = st.w, h = st.h; const M = canModel();
+    const narrow = w < 640; const T = Math.max(44, (document.getElementById('hud').offsetHeight || 30) + 16);
+    const R1 = narrow ? { x: 0, y: T, w, h: (h - T) * 0.46 } : { x: 0, y: T, w: w * 0.42, h: h - T };
+    const R2 = narrow ? { x: 0, y: T + (h - T) * 0.46, w, h: (h - T) * 0.54 } : { x: w * 0.42, y: T, w: w * 0.58, h: h - T };
+    frame(R1, 'YOUR CAN (to scale)'); frame(R2, (M.k === 1 ? 'SURFACE AREA A (cm²)' : 'MATERIAL COST C') + ' vs RADIUS r (cm)');
+    // scale so the current can fills the panel; ghost outline shows the optimum at the same scale
+    const s = Math.min((R1.h - 110) / Math.max(M.h, M.ho), (R1.w - 190) / (2 * Math.max(M.r, M.ro)), 40);
+    const cx = R1.x + R1.w / 2 - 30, rw = M.r * s, hh = M.h * s, ry = rw * 0.28;
+    const baseY = R1.y + R1.h / 2 + hh / 2 + 4, topY = baseY - hh;
+    ctx.save(); ctx.beginPath(); ctx.rect(R1.x, R1.y, R1.w, R1.h); ctx.clip();
+    { // ghost optimum
+      const orw = M.ro * s, ohh = M.ho * s, ory = orw * 0.28, oTop = baseY - ohh;
+      ctx.strokeStyle = 'rgba(34,197,94,.55)'; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.3; ctx.beginPath();
+      ctx.ellipse(cx, oTop, orw, ory, 0, 0, 7); ctx.moveTo(cx - orw, oTop); ctx.lineTo(cx - orw, baseY); ctx.ellipse(cx, baseY, orw, ory, 0, Math.PI, 0, true); ctx.lineTo(cx + orw, oTop); ctx.stroke(); ctx.setLineDash([]);
+      ctx.font = '600 10.5px JetBrains Mono, monospace'; ctx.fillStyle = 'rgba(134,239,172,.9)'; ctx.textAlign = 'center'; ctx.fillText('optimum', cx, Math.min(oTop, topY) - Math.max(ory, ry) - 22);
+    }
+    const g = ctx.createLinearGradient(cx - rw, 0, cx + rw, 0);
+    g.addColorStop(0, '#1e3a8a'); g.addColorStop(.35, '#60a5fa'); g.addColorStop(.55, '#dbeafe'); g.addColorStop(.75, '#3b82f6'); g.addColorStop(1, '#1e3a8a');
+    ctx.globalAlpha = .93; ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(cx - rw, topY); ctx.lineTo(cx - rw, baseY); ctx.ellipse(cx, baseY, rw, ry, 0, Math.PI, 0, true); ctx.lineTo(cx + rw, topY); ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+    // label band
+    ctx.fillStyle = 'rgba(6,16,31,.55)'; ctx.fillRect(cx - rw, topY + hh * 0.3, rw * 2, hh * 0.4);
+    ctx.fillStyle = '#e6ecf7'; ctx.font = `700 ${Math.max(10, Math.min(18, rw / 3, hh * 0.25))}px Space Grotesk, sans-serif`; ctx.textAlign = 'center'; ctx.fillText(`${M.V} ml`, cx, (topY + ry + baseY) / 2 + 5);
+    const tg = ctx.createLinearGradient(cx - rw, 0, cx + rw, 0); tg.addColorStop(0, '#94a3b8'); tg.addColorStop(.5, '#f1f5f9'); tg.addColorStop(1, '#94a3b8');
+    ctx.fillStyle = tg; ctx.beginPath(); ctx.ellipse(cx, topY, rw, ry, 0, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(15,23,42,.5)'; ctx.stroke();
+    ctx.fillStyle = 'rgba(15,23,42,.35)'; ctx.beginPath(); ctx.ellipse(cx + rw * .25, topY, rw * .22, ry * .3, 0, 0, 7); ctx.fill();
+    // 5 cm scale bar
+    ctx.strokeStyle = '#93a1bd'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(R1.x + 16, R1.y + R1.h - 16); ctx.lineTo(R1.x + 16 + 5 * s, R1.y + R1.h - 16); ctx.stroke();
+    ctx.fillStyle = '#93a1bd'; ctx.font = '10.5px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText('5 cm', R1.x + 16, R1.y + R1.h - 22);
+    // dimension lines
+    ctx.strokeStyle = '#facc15'; ctx.fillStyle = '#facc15'; ctx.lineWidth = 1.2; ctx.font = '600 11px JetBrains Mono, monospace';
+    SL.arrow(ctx, cx + rw + 18, baseY, cx + rw + 18, topY, '#facc15', 1.2, 6); SL.arrow(ctx, cx + rw + 18, topY, cx + rw + 18, baseY, '#facc15', 1.2, 6);
+    ctx.textAlign = 'left'; ctx.fillText('h = ' + fmt(M.h, 2), cx + rw + 24, (topY + baseY) / 2 + 4);
+    SL.arrow(ctx, cx, topY, cx + rw, topY, '#f472b6', 1.4, 6); ctx.fillStyle = '#f472b6'; ctx.textAlign = 'center'; ctx.fillText('r = ' + fmt(M.r, 2), cx + rw / 2, topY - ry - 8);
+    ctx.restore();
+    // plot cost vs r
+    const rr = { x: R2.x + 10, y: R2.y + 26, w: R2.w - 20, h: R2.h - 32 };
+    const fC = r => 2 * Math.PI * M.k * r * r + 2 * M.V / r;
+    const fA = r => 2 * Math.PI * r * r + 2 * M.V / r;
+    const ymax = Math.max(fC(1.5), fC(8)) * 1.02, ymin = 0;
+    const ytop = Math.min(ymax, M.Co * 3.2); const m = mkMap(rr, 1, 8.5, -0.07 * ytop, ytop);
+    grid(m);
+    if (M.k !== 1) curve(m, fA, 'rgba(96,165,250,.45)', 1.6, { dash: [6, 4], glow: false });
+    curve(m, fC, COL.f, 2.6);
+    // derivative tangent at current r
+    const dC = 4 * Math.PI * M.k * M.r - 2 * M.V / (M.r * M.r);
+    lineThrough(m, M.r, M.C, dC, COL.tan, 1.6, [5, 4]);
+    dot(m.X(M.ro), m.Y(M.Co), '#22c55e', 6, true); label(`optimum r = ${fmt(M.ro, 3)} cm`, m.X(M.ro), m.Y(M.Co) + 26, '#86efac', 'center');
+    dot(m.X(M.r), m.Y(M.C), COL.tan, 7, true);
+    const over = (M.C / M.Co - 1) * 100;
+    HUD = [`r <b>${fmt(M.r, 3)} cm</b>`, `h <b>${fmt(M.h, 3)} cm</b>`, `${M.k === 1 ? 'area' : 'cost'} <b>${fmt(M.C, 1)}</b>`, `dC/dr <b>${fmt(dC, 2)}</b>`];
+    STATS = [['Height h', fmt(M.h, 2) + '<small>cm</small>'], ['Surface area', fmt(M.A, 1) + '<small>cm²</small>'], ['Optimal r*', fmt(M.ro, 3) + '<small>cm</small>'], ['Optimal h*', fmt(M.ho, 3) + '<small>cm</small>'], ['h*/r*', fmt(M.ho / M.ro, 2)], ['Above min cost', fmt(over, 2) + '<small>%</small>']];
+    LEG = [[M.k === 1 ? 'A(r)' : 'cost C(r)', COL.f], ['tangent', COL.tan], ['optimum', '#22c55e']];
+    S.cState = { over };
+    S.canMap = m;
+  }
+
+  function render() {
+    const { w, h } = st; ctx.clearRect(0, 0, w, h);
+    const bg = ctx.createRadialGradient(w * .7, 0, 10, w * .7, 0, w); bg.addColorStop(0, 'rgba(96,165,250,.06)'); bg.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+    if (S.err) { ctx.fillStyle = '#93a1bd'; ctx.font = '14px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('Fix the expression to plot it.', w / 2, h / 2); HUD = []; STATS = []; LEG = []; }
+    else {
+      const L = layout(); S.L = L;
+      if (S.mode === 'deriv') drawDeriv(L);
+      else if (S.mode === 'integ') drawInteg(L);
+      else if (S.mode === 'limit') drawLimit(L);
+      else if (S.mode === 'taylor') drawTaylor(L);
+      else if (S.mode === 'optim') S.opt === 'can' ? drawCan() : drawOptimFn(L);
+    }
+    const hh = HUD.map(x => `<span class="readout">${x}</span>`).join('');
+    if (hh !== render._h) { $('#hud').innerHTML = hh; render._h = hh; }
+    const sh = STATS.map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+    if (sh !== render._s) { $('#stats').innerHTML = sh; render._s = sh; }
+    const lg = LEG.map(([k, c]) => `<span style="--c:${c}">${k}</span>`).join('');
+    if (lg !== render._l) { $('#legend').innerHTML = lg; render._l = lg; }
+    checkChallenges();
+  }
+
+  /* =====================================================================
+     5. FUNCTION INPUT
+     ===================================================================== */
+  function setFunction(src, range, keepView) {
+    S.src = src; $('#fx').value = src;
+    try {
+      const ast = parse(src); const fs = simplify(ast);
+      S.ast = ast; S.fs = fs; S.f = compile(ast); S.err = '';
+      try { S.dAst = diff(ast); S.df = compile(S.dAst); S.d2Ast = diff(S.dAst); S.d2f = compile(S.d2Ast); } catch (e) { S.dAst = S.d2Ast = null; S.df = S.d2f = null; }
+      $('#fxErr').textContent = '';
+      SL.tex($('#texF'), 'f(x)=' + exprTex(fs), false);
+      SL.tex($('#texD'), S.dAst ? "f'(x)=" + exprTex(S.dAst) : '\\text{—}', false);
+      const d2t = S.d2Ast ? exprTex(S.d2Ast) : '';
+      SL.tex($('#texD2'), S.d2Ast ? (d2t.length > 260 ? "f''(x)\\ \\text{(long expression; evaluated numerically below)}" : "f''(x)=" + d2t) : '\\text{—}', false);
+    } catch (e) { S.err = e.message; $('#fxErr').textContent = e.message; S.f = () => NaN; }
+    if (!S.err && !keepView) fitView(range);
+    afterFunctionChange();
+    S.dirty = true;
+  }
+  function fitView(range) {
+    const xr = range || [-5, 5];
+    if (xr.length === 4) { S.view = { x0: xr[0], x1: xr[1], y0: xr[2], y1: xr[3] }; return; }
+    const [lo, hi] = autoRange(S.f, xr[0], xr[1], .18);
+    S.view = { x0: xr[0], x1: xr[1], y0: Math.min(lo, -0.6), y1: Math.max(hi, 0.6) };
+    // keep a sensible aspect for steep functions
+    const yspan = S.view.y1 - S.view.y0; if (yspan > 60) { S.view.y0 = Math.max(S.view.y0, -30); S.view.y1 = Math.min(S.view.y1, 30); }
+  }
+  function afterFunctionChange() {
+    if (S.err) return;
+    if (S.mode === 'limit') S.lim = limitInfo(S.f, S.c), updLimitTable();
+    if (S.mode === 'taylor') recomputeTaylor();
+    if (S.mode === 'optim') analyse();
+    syncSliderRanges();
+  }
+  function syncSliderRanges() {
+    const v = S.view; const span = v.x1 - v.x0;
+    const stp = Math.pow(10, Math.floor(Math.log10(span / 400)));
+    for (const id of ['x0', 'ia', 'ib', 'ta']) { const el = $('#' + id); el.min = (Math.ceil(v.x0 / stp) * stp).toFixed(6); el.max = (Math.floor(v.x1 / stp) * stp).toFixed(6); el.step = stp; }
+    $('#x0').value = S.x0 = SL.clamp(S.x0, v.x0, v.x1);
+    $('#ia').value = S.a = SL.clamp(S.a, v.x0, v.x1); $('#ib').value = S.b = SL.clamp(S.b, v.x0, v.x1);
+    $('#ta').value = S.ta = SL.clamp(S.ta, v.x0, v.x1);
+    ['#x0', '#ia', '#ib', '#ta'].forEach(s => { const el = $(s); el.dispatchEvent(new Event('input', { bubbles: true })); });
+  }
+
+  const presetSel = $('#preset');
+  presetSel.innerHTML = '<option value="">Preset functions…</option>' + PRESETS.map((p, i) => `<option value="${i}">f(x) = ${p[0]}</option>`).join('');
+  presetSel.onchange = () => { const p = PRESETS[+presetSel.value]; if (p) { setFunction(p[0], p[1]); } presetSel.value = ''; };
+  let fxT = 0;
+  $('#fx').addEventListener('input', () => { clearTimeout(fxT); fxT = setTimeout(() => setFunction($('#fx').value, null, true), 250); });
+  $('#fx').addEventListener('change', () => { setFunction($('#fx').value, null, true); });
+
+  /* =====================================================================
+     6. CONTROLS
+     ===================================================================== */
+  const HINTS = {
+    deriv: 'Drag the yellow point along the curve. Drag empty space to pan; scroll or use the buttons to zoom.',
+    integ: 'Drag the a and b handles. Area above the axis is green, below is red.',
+    limit: 'Pick a tolerance ε, then find a δ that keeps the graph inside the band.',
+    taylor: 'Drag the centre a along the curve; move the pointer to probe the error.',
+    optim: 'Critical points are found from f′(x) = 0 and classified with the derivative tests.'
+  };
+  function setMode(m) {
+    S.mode = m;
+    $$('#modes button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+    $$('[data-for]').forEach(el => el.style.display = el.dataset.for === m ? 'block' : 'none');
+    $('#modeHint').textContent = HINTS[m];
+    const canMode = m === 'optim' && S.opt === 'can';
+    $('#fnPanel').style.display = canMode ? 'none' : '';
+    $('.stage-toolbar').style.display = (m === 'limit' || canMode) ? 'none' : '';
+    if (m === 'limit' && !S.limitInit) { S.limitInit = true; loadLimit(0); }
+    if (m === 'taylor' && !S.taylorInit) { S.taylorInit = true; loadTaylor(0); }
+    afterFunctionChange();
+    S.dirty = true;
+  }
+  $$('#modes button').forEach(b => b.onclick = () => setMode(b.dataset.m));
+
+  // derivative controls
+  SL.bind('#x0', v => { S.x0 = v; S.dirty = true; }, v => fmt(v, 3));
+  SL.bind('#hlog', v => { S.h = sig(Math.pow(10, v), 3); S.dirty = true; }, v => fmt(sig(Math.pow(10, v), 3), 4));
+  $('#showD').onchange = () => S.dirty = true;
+  $('#animH').onclick = () => { S.animH = 1; $('#hlog').value = 0.3; };
+  // integral controls
+  $$('#method button').forEach(b => b.onclick = () => { S.method = b.dataset.v; $$('#method button').forEach(x => x.classList.toggle('on', x === b)); S.dirty = true; });
+  SL.bind('#nRect', v => { S.n = v; S.dirty = true; });
+  SL.bind('#ia', v => { S.a = v; S.dirty = true; }, v => fmt(v, 3));
+  SL.bind('#ib', v => { S.b = v; S.dirty = true; }, v => fmt(v, 3));
+  $('#showF').onchange = () => S.dirty = true;
+  $('#animN').onclick = () => { S.animN = 1; S.animNt = 0; };
+  // limits
+  const limSel = $('#limPreset');
+  limSel.innerHTML = LIMITS.map((l, i) => `<option value="${i}">${l[2]}</option>`).join('');
+  function loadLimit(i) { const l = LIMITS[i]; S.c = l[1]; $('#lc').value = l[1]; $('#lc').dispatchEvent(new Event('input')); setFunction(l[0], [l[1] - 3, l[1] + 3]); S.zoom = 1; $('#lzoom').value = 0; $('#lzoom').dispatchEvent(new Event('input')); }
+  limSel.onchange = () => loadLimit(+limSel.value);
+  function updLimitTable() {
+    const li = S.lim; if (!li) return;
+    $('#limTable').innerHTML = li.table.map(([h, l, r]) => `<tr><td class="num">${h}</td><td class="num">${fmt(l, 6)}</td><td class="num">${fmt(r, 6)}</td></tr>`).join('');
+  }
+  SL.bind('#lc', v => { S.c = v; if (!S.err) { S.lim = limitInfo(S.f, v); updLimitTable(); } S.dirty = true; }, v => fmt(v, 3));
+  SL.bind('#leps', v => { S.eps = sig(Math.pow(10, v), 2); S.dirty = true; }, v => fmt(sig(Math.pow(10, v), 2), 4));
+  SL.bind('#ldel', v => { if (S.delExact) { S.del = S.delExact; S.delExact = 0; } else S.del = sig(Math.pow(10, v), 3); S.dirty = true; }, v => fmt(S.del, 4));
+  SL.bind('#lzoom', v => { S.zoom = Math.pow(10, v); S.dirty = true; }, v => '×' + fmt(Math.pow(10, v), 1));
+  $('#findDelta').onclick = () => {
+    const li = S.lim; if (!li || !li.exists) { SL.toast('This limit does not exist, so no δ can work for small ε.', 'warn'); return; }
+    const d = largestDelta(S.f, S.c, li.L, S.eps);
+    const v = Math.log10(Math.max(d * 0.999, 3.2e-4)); S.delExact = +(Math.floor(d * 0.999 * 1e4) / 1e4).toFixed(4) || d * 0.999; $('#ldel').value = SL.clamp(v, -3.5, 0.5); $('#ldel').dispatchEvent(new Event('input'));
+    SL.toast(`Largest δ for ε = ${fmt(S.eps, 4)}: <b>${fmt(d, 5)}</b>`, 'ok');
+  };
+  $('#animZoom').onclick = () => { S.animZ = 1; };
+  // taylor
+  const taySel = $('#tayPreset');
+  taySel.innerHTML = TAYLOR.map((t, i) => `<option value="${i}">${t[2]}</option>`).join('') + '<option value="custom">Use f(x) from the box above</option>';
+  function loadTaylor(i) {
+    if (i === 'custom') { S.tayKind = null; recomputeTaylor(); S.dirty = true; return; }
+    const t = TAYLOR[i]; S.tayKind = t[3]; S.ta = t[1];
+    setFunction(t[0], t[0] === '1/(1-x)' ? [-2.5, 2.5] : t[0] === 'ln(1+x)' ? [-1.5, 4] : t[0] === 'sqrt(x)' ? [-0.5, 4.5] : t[0] === '1/(1+x^2)' ? [-3, 3] : [-8, 8]);
+    if (t[0] === '1/(1-x)' || t[0] === 'ln(1+x)' || t[0] === '1/(1+x^2)' || t[0] === 'sqrt(x)') { S.view.y0 = -3; S.view.y1 = 4; }
+    if (t[0] === 'exp(x)') { S.view = { x0: -6, x1: 4, y0: -4, y1: 20 }; }
+    if (t[0] === 'sin(x)' || t[0] === 'cos(x)') { S.view.y0 = -2.5; S.view.y1 = 2.5; }
+    syncSliderRanges(); $('#ta').value = S.ta; $('#ta').dispatchEvent(new Event('input'));
+  }
+  taySel.onchange = () => loadTaylor(taySel.value === 'custom' ? 'custom' : +taySel.value);
+  function recomputeTaylor() {
+    if (S.err || !S.fs) return;
+    // if function text changed away from preset, treat as custom
+    if (S.tayKind) { const t = TAYLOR.find(t => t[3] === S.tayKind); if (!t || t[0] !== S.src) S.tayKind = null; }
+    S.tay = series(S.fs, S.ta, 20);
+    S.roc = rocInfo();
+    $('#rocNote').innerHTML = S.roc.txt;
+    // P_n tex
+    const c = S.tay, a = S.ta, n = S.tn; const terms = [];
+    const v = Math.abs(a) < 1e-9 ? 'x' : `(x ${a < 0 ? '+' : '-'} ${numTex(+Math.abs(a).toFixed(3))})`;
+    for (let k = 0; k <= n; k++) {
+      let co = c[k]; if (!isFinite(co)) { terms.length = 0; break; } if (Math.abs(co) < 1e-12) continue;
+      terms.push([k, co]);
+    }
+    let shown = terms; let mid = false; if (terms.length > 6) { shown = terms.slice(0, 4).concat([terms[terms.length - 1]]); mid = true; }
+    let s = '';
+    shown.forEach(([k, co], i) => {
+      const sg = co < 0 ? '-' : (i ? '+' : ''); const m = Math.abs(co);
+      const mt = Math.abs(m - 1) < 1e-12 && k ? '' : numTex(m);
+      const vp = k === 0 ? '' : k === 1 ? v : (v.length > 1 ? v + '^{' + k + '}' : 'x^{' + k + '}');
+      if (mid && i === shown.length - 1) s += ' + \\cdots ';
+      s += (i ? ' ' : '') + sg + ' ' + mt + vp;
+    });
+    if (!terms.length) s = isFinite(c[0]) ? '0' : '\\text{not defined at } a';
+    SL.tex($('#texP'), 'P_{' + n + '}(x)=' + s, false);
+  }
+  SL.bind('#ta', v => { S.ta = v; if (S.mode === 'taylor') recomputeTaylor(); S.dirty = true; }, v => fmt(v, 3));
+  SL.bind('#tn', v => { S.tn = v; if (S.mode === 'taylor') recomputeTaylor(); S.dirty = true; });
+  $('#animT').onclick = () => { S.animT = 1; S.animTt = 0; };
+  // optimisation
+  $$('#optSub button').forEach(b => b.onclick = () => {
+    S.opt = b.dataset.v; $$('#optSub button').forEach(x => x.classList.toggle('on', x === b));
+    $('#optFnBox').style.display = S.opt === 'fn' ? '' : 'none'; $('#optCanBox').style.display = S.opt === 'can' ? '' : 'none';
+    setMode('optim');
+  });
+  $('#showInfl').onchange = () => S.dirty = true;
+  SL.bind('#cV', v => { S.V = v; S.dirty = true; }, v => v + ' ml');
+  SL.bind('#cR', v => { S.r = v; S.dirty = true; }, v => fmt(v, 2) + ' cm');
+  SL.bind('#cK', v => { S.k = v; S.dirty = true; }, v => '×' + fmt(v, 2));
+  $('#canOpt').onclick = () => { S.animR = canModel().ro; };
+
+  // zoom buttons
+  function zoomAt(fx, fy, k) { const v = S.view; const cx = v.x0 + (v.x1 - v.x0) * fx, cy = v.y0 + (v.y1 - v.y0) * fy; S.view = { x0: cx + (v.x0 - cx) * k, x1: cx + (v.x1 - cx) * k, y0: cy + (v.y0 - cy) * k, y1: cy + (v.y1 - cy) * k }; viewChanged(); }
+  function viewChanged() { S.dirty = true; clearTimeout(viewChanged.t); viewChanged.t = setTimeout(() => { syncSliderRanges(); if (S.mode === 'optim') analyse(); S.dirty = true; }, 120); }
+  $('#zIn').onclick = () => zoomAt(.5, .5, 0.7);
+  $('#zOut').onclick = () => zoomAt(.5, .5, 1 / 0.7);
+  $('#zFit').onclick = () => { const p = PRESETS.find(p => p[0] === S.src); fitView(p ? p[1] : null); viewChanged(); };
+
+  /* ---------- pointer interaction ---------- */
+  let drag = null;
+  cv.addEventListener('pointerdown', e => {
+    if (S.err) return;
+    const p = SL.ptr(e, cv); const L = S.L || layout();
+    if (S.mode === 'optim' && S.opt === 'can') { drag = { kind: 'can' }; moveDrag(p); cv.setPointerCapture(e.pointerId); return; }
+    if (S.mode === 'limit') return;
+    const m = topMap(L.top); const inTop = p.y < L.top.y + L.top.h;
+    if (S.mode === 'deriv' && inTop) { const y0 = S.f(S.x0); if (Math.hypot(p.x - m.X(S.x0), p.y - m.Y(y0)) < 22) drag = { kind: 'x0' }; }
+    if (S.mode === 'integ' && inTop) { const da = Math.abs(p.x - m.X(S.a)), db = Math.abs(p.x - m.X(S.b)); if (Math.min(da, db) < 16) drag = { kind: da < db ? 'a' : 'b' }; }
+    if (S.mode === 'taylor' && inTop) { if (Math.abs(p.x - m.X(S.ta)) < 16) drag = { kind: 'ta' }; }
+    if (!drag) drag = { kind: 'pan', sx: p.x, sy: p.y, v: { ...S.view }, inTop, m };
+    cv.setPointerCapture(e.pointerId);
+  });
+  function moveDrag(p) {
+    const L = S.L || layout(); const m = topMap(L.top);
+    if (drag.kind === 'can') { const cm = S.canMap; if (cm) { const r = SL.clamp(cm.IX(p.x), 1.5, 8); $('#cR').value = r; $('#cR').dispatchEvent(new Event('input')); S.animR = null; } return; }
+    if (drag.kind === 'x0') { $('#x0').value = m.IX(p.x); $('#x0').dispatchEvent(new Event('input')); return; }
+    if (drag.kind === 'a' || drag.kind === 'b') { const el = $('#i' + drag.kind); el.value = m.IX(p.x); el.dispatchEvent(new Event('input')); return; }
+    if (drag.kind === 'ta') { $('#ta').value = m.IX(p.x); $('#ta').dispatchEvent(new Event('input')); return; }
+    if (drag.kind === 'pan') {
+      const v = drag.v, r = drag.m.r; const dx = (p.x - drag.sx) / r.w * (v.x1 - v.x0), dy = drag.inTop ? (p.y - drag.sy) / r.h * (v.y1 - v.y0) : 0;
+      S.view = { x0: v.x0 - dx, x1: v.x1 - dx, y0: v.y0 + dy, y1: v.y1 + dy }; viewChanged();
+    }
+  }
+  cv.addEventListener('pointermove', e => {
+    const p = SL.ptr(e, cv);
+    if (drag) { moveDrag(p); return; }
+    if (S.mode === 'taylor' && S.L) { const m = topMap(S.L.top); S.probe = m.IX(p.x); S.dirty = true; }
+    // cursor feedback
+    if (S.mode === 'deriv' && S.L && !S.err) { const m = topMap(S.L.top); cv.style.cursor = Math.hypot(p.x - m.X(S.x0), p.y - m.Y(S.f(S.x0))) < 22 ? 'grab' : 'crosshair'; }
+  });
+  const endDrag = () => { drag = null; };
+  cv.addEventListener('pointerup', endDrag); cv.addEventListener('pointercancel', endDrag);
+  cv.addEventListener('wheel', e => {
+    if (S.err || (S.mode === 'optim' && S.opt === 'can')) return;
+    e.preventDefault();
+    const k = Math.exp(e.deltaY * 0.0015);
+    if (S.mode === 'limit') { const el = $('#lzoom'); el.value = SL.clamp(+el.value - Math.log10(k), 0, 4); el.dispatchEvent(new Event('input')); return; }
+    const p = SL.ptr(e, cv); const L = S.L || layout(); const r = L.top;
+    zoomAt((p.x - r.x) / r.w, p.y < r.y + r.h ? 1 - (p.y - r.y) / r.h : 0.5, k);
+  }, { passive: false });
+
+  /* =====================================================================
+     7. CHALLENGES
+     ===================================================================== */
+  const norm = s => (s || '').replace(/\s+/g, '').toLowerCase();
+  const CH = [
+    { id: 'flat', t: 'Flat tangent', d: 'With f(x) = x³ − 3x in Derivative mode, place x₀ where the tangent is horizontal (|f′(x₀)| < 0.02).', test: () => S.mode === 'deriv' && norm(S.src) === 'x^3-3x' && S.dState && Math.abs(S.dState.slope) < 0.02 },
+    { id: 'half', t: 'Slope of one half', d: 'With f(x) = sin(x), find an x₀ between 0 and 2 where the slope is 0.5 (within 0.01). Which famous angle is it?', test: () => S.mode === 'deriv' && norm(S.src) === 'sin(x)' && S.dState && S.dState.x0 > 0 && S.dState.x0 < 2 && Math.abs(S.dState.slope - 0.5) < 0.01 },
+    { id: 'simp', t: 'Exact with two strips', d: 'In Integral mode with f(x) = x^3 on any interval, find a rule that gives the exact answer (error < 10⁻⁹) using n = 2.', test: () => S.mode === 'integ' && norm(S.src) === 'x^3' && S.iState && S.iState.n === 2 && Math.abs(S.iState.err) < 1e-9 && Math.abs(S.b - S.a) > 0.5 },
+    { id: 'left', t: 'Brute force', d: 'Get the Left-sum error below 0.05 for f(x) = x^2 on [0, 2] (set a = 0 and b = 2 within 0.02). How large must n be?', test: () => S.mode === 'integ' && norm(S.src) === 'x^2' && S.iState && S.iState.meth === 'left' && Math.abs(S.a) < 0.02 && Math.abs(S.b - 2) < 0.02 && Math.abs(S.iState.err) < 0.05 },
+    { id: 'delta', t: 'Win the ε–δ game', d: 'For sin(x)/x at c = 0 with ε = 0.01, choose a δ of at least 0.2 that still works.', test: () => S.mode === 'limit' && norm(S.src) === 'sin(x)/x' && Math.abs(S.c) < 1e-6 && Math.abs(S.eps - 0.01) < 0.0006 && S.del >= 0.2 && S.lState && S.lState.ok },
+    { id: 'taylor', t: 'Reach π', d: 'Approximate sin(x) about a = 0 so that the error at x = π is below 0.001, using the smallest possible order n.', test: () => S.mode === 'taylor' && norm(S.src) === 'sin(x)' && Math.abs(S.ta) < 1e-6 && S.tay && Math.abs(Math.sin(Math.PI) - evalTaylor(S.tay, 0, Math.PI, S.tn)) < 1e-3 && Math.abs(Math.sin(Math.PI) - evalTaylor(S.tay, 0, Math.PI, S.tn - 1)) >= 1e-3 && Math.abs(Math.sin(Math.PI) - evalTaylor(S.tay, 0, Math.PI, S.tn - 2)) >= 1e-3 },
+    { id: 'can', t: 'Cheapest can', d: 'Design a 330 ml can (k = 1) whose surface area is within 0.5 % of the minimum by dragging the radius, not by pressing the optimum button.', test: () => S.mode === 'optim' && S.opt === 'can' && S.V === 330 && S.k === 1 && S.cState && S.cState.over < 0.5 && S.manualR },
+  ];
+  const done = new Set();
+  $('#chalList').innerHTML = CH.map(c => `<div class="chal" id="ch-${c.id}"><span class="led"></span><div><b>${c.t}</b><span class="muted small">${c.d}</span></div></div>`).join('');
+  function checkChallenges() {
+    for (const c of CH) {
+      if (done.has(c.id)) continue;
+      let ok = false; try { ok = c.test(); } catch (e) { ok = false; }
+      if (ok) { done.add(c.id); const el = $('#ch-' + c.id + ' .led'); el.classList.add('on'); SL.toast(`Challenge complete: <b>${c.t}</b> (${done.size}/${CH.length})`, 'ok'); }
+    }
+  }
+  $('#cR').addEventListener('input', e => { if (e.isTrusted || drag) S.manualR = true; });
+
+  /* =====================================================================
+     8. QUIZ
+     ===================================================================== */
+  SL.quiz('#quiz', [
+    { q: 'The secant slope of f(x) = x² between x = 3 and x = 3 + h equals 6 + h. What is f′(3)?', options: ['6 + h', '6', '9', 'It depends on h'], answer: 1, why: 'The derivative is the limit as h → 0 of the secant slope: 6 + h → 6.' },
+    { q: 'Which function is continuous at x = 0 but not differentiable there?', options: ['x²', 'sin x', '|x|', 'eˣ'], answer: 2, why: 'The one-sided slopes of |x| at 0 are −1 and +1, so the derivative limit does not exist (a corner).' },
+    { q: 'For a smooth function, halving Δx reduces the trapezoid-rule error by roughly a factor of…', options: ['2', '4', '8', '16'], answer: 1, why: 'The trapezoid rule is second order, error ∝ Δx². Simpson is fourth order (factor 16).' },
+    { q: 'If F(x) = ∫₀ˣ cos t dt, what is F′(x)?', options: ['sin x', 'cos x', '−sin x', 'cos x − 1'], answer: 1, why: 'Fundamental Theorem of Calculus: the derivative of the accumulation function is the integrand.' },
+    { q: 'In the ε–δ definition of lim f(x) = L as x → c, which quantity is chosen first?', options: ['δ', 'ε', 'c', 'f(c)'], answer: 1, why: 'For every ε > 0 there must exist a δ. The δ is allowed to depend on ε.' },
+    { q: 'What is lim (x² − 4)/(x − 2) as x → 2?', options: ['0', 'Undefined', '4', '2'], answer: 2, why: '(x² − 4)/(x − 2) = x + 2 for x ≠ 2, so the limit is 4 even though the expression is undefined at 2.' },
+    { q: 'The Taylor series of ln(1 + x) about a = 0 converges for…', options: ['all real x', '−1 < x ≤ 1', 'x > −1', '|x| < e'], answer: 1, why: 'The radius is 1 (singularity at x = −1). At x = 1 the alternating harmonic series converges to ln 2; at x = −1 it diverges.' },
+    { q: 'f′(c) = 0 and f″(c) = 0. What can you conclude?', options: ['c is a local maximum', 'c is a local minimum', 'c is an inflection point', 'Nothing yet: the test is inconclusive'], answer: 3, why: 'x⁴ (minimum), −x⁴ (maximum) and x³ (neither) all satisfy these conditions at 0. Use the first-derivative test.' },
+    { q: 'A closed cylinder of fixed volume has minimum surface area when…', options: ['h = r', 'h = 2r', 'h = 3r', 'h = πr'], answer: 1, why: 'A(r) = 2πr² + 2V/r gives r³ = V/(2π), so h = V/(πr²) = 2r: height equals diameter.' },
+  ]);
+
+  /* =====================================================================
+     9. MAIN LOOP
+     ===================================================================== */
+  const loop = SL.loop((dt) => {
+    let anim = false;
+    if (S.animH) { const el = $('#hlog'); const v = +el.value - dt * 0.9; el.value = Math.max(-3, v); el.dispatchEvent(new Event('input')); if (v <= -3) S.animH = 0; anim = true; }
+    if (S.animN) { S.animNt += dt; const n = Math.min(100, Math.round(1 + S.animNt * S.animNt * 12)); const el = $('#nRect'); if (+el.value !== n) { el.value = n; el.dispatchEvent(new Event('input')); } if (n >= 100) S.animN = 0; anim = true; }
+    if (S.animZ) { const el = $('#lzoom'); const v = +el.value + dt * 0.8; el.value = Math.min(4, v); el.dispatchEvent(new Event('input')); if (v >= 3) S.animZ = 0; anim = true; }
+    if (S.animT) { S.animTt += dt; const n = Math.min(20, Math.floor(S.animTt * 2.2)); const el = $('#tn'); if (+el.value !== n) { el.value = n; el.dispatchEvent(new Event('input')); } if (n >= 20) S.animT = 0; anim = true; }
+    if (S.animR !== null && S.animR !== undefined) { const el = $('#cR'); const v = +el.value + (S.animR - el.value) * Math.min(1, dt * 5); el.value = v; el.dispatchEvent(new Event('input')); if (Math.abs(v - S.animR) < 0.002) { el.value = S.animR; el.dispatchEvent(new Event('input')); S.animR = null; } anim = true; }
+    if (S.dirty || anim) { S.dirty = false; render(); }
+  });
+  document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
+
+  function init() {
+    setFunction('x^3 - 3x', PRESETS[0][1]);
+    S.x0 = 1.6; $('#x0').value = 1.6; $('#x0').dispatchEvent(new Event('input'));
+    setMode('deriv');
+    loop.start();
+  }
+  // wait for KaTeX (deferred) so the symbolic panel renders properly
+  if (window.katex) init(); else { let tries = 0; const t = setInterval(() => { if (window.katex || ++tries > 30) { clearInterval(t); init(); } }, 100); }
+  window.CALC.state = S;
+})();
+</script>
+</body>
+</html>
