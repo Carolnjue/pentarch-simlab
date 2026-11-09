@@ -278,12 +278,15 @@
   /** Register a guided tour: steps = [{el:'css selector', title, text, before?:fn}] */
   function tour(steps) {
     _tour = steps.filter(Boolean);
-    const b = document.getElementById('slTourBtn');
-    if (b) { b.hidden = false; b.onclick = () => runTour(); }
+    wireTourBtn();
     const key = 'sl-tour-seen-' + (document.body.dataset.page || '');
     let seen = false; try { seen = !!localStorage.getItem(key); } catch (e) {}
     if (!seen) setTimeout(() => toast(`New to this lab? <a href="#" data-tour style="color:inherit;font-weight:600;text-decoration:underline">Take the 1-minute guided tour</a>`, '', 9000), 1500);
     document.addEventListener('click', e => { if (e.target.closest('[data-tour]')) { e.preventDefault(); runTour(); } });
+  }
+  function wireTourBtn() {
+    const b = document.getElementById('slTourBtn');
+    if (b && _tour && _tour.length) { b.hidden = false; b.onclick = () => runTour(); }
   }
   function runTour(start) {
     if (!_tour || !_tour.length) return;
@@ -311,7 +314,7 @@
         if (r.height > innerHeight * .6) top = Math.min(innerHeight - tip.offsetHeight - 12, Math.max(12, r.top + 20));
         tip.style.cssText = `left:${left}px;top:${top}px;width:${tw}px`;
       };
-      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(place, 420); } place();
+      if (el) { el.scrollIntoView({ behavior: 'instant', block: 'center' }); requestAnimationFrame(() => requestAnimationFrame(place)); setTimeout(place, 250); } place();
     };
     const onScroll = () => { if (ov.isConnected) { const s = _tour[i], el = s.el && document.querySelector(s.el); if (el) { const r = el.getBoundingClientRect(), pad = 8; hole.style.left = r.left - pad + 'px'; hole.style.top = r.top - pad + 'px'; } } };
     window.addEventListener('scroll', onScroll, { passive: true }); window.addEventListener('resize', show);
@@ -330,6 +333,7 @@
     if (m && !document.body.dataset.dept) document.body.dataset.dept = m.dept;
     const h = document.getElementById('sl-header'); if (h) h.outerHTML = header();
     const hero = document.getElementById('sl-hero'); if (hero && m) hero.outerHTML = pageHero(m);
+    wireTourBtn();
     const heroEl = document.querySelector('.page-hero[data-fx]'); if (heroEl) setTimeout(() => heroFx(heroEl), 30);
     const f = document.getElementById('sl-footer');
     if (f && m) f.parentNode.insertBefore(moreLabs(m), f);

@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   .modes{margin:18px 0 0}
   .modes>.tablist button{font-size:.95rem;padding:12px 18px}
@@ -46,6 +46,7 @@
   .banner b{color:var(--accent)}
   .stage .hud{z-index:1}
   .stage-toolbar .btn{padding:7px 9px}
+  @media (max-width:600px){.stage-toolbar .btn{padding:9px 10px;min-height:38px}}
   .stage-toolbar{flex-wrap:wrap;justify-content:flex-end;max-width:calc(100% - 24px)}
   .chal{list-style:none;padding:0;margin:0}
   .chal li{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
@@ -82,7 +83,7 @@
       <div class="lab">
         <div class="stage s-ed" id="stage">
           <canvas id="cv"></canvas>
-          <div class="hud"><span class="readout" id="hudT">t = <b>0</b> gate delays</span><span class="readout" id="hudS"><span class="led on" style="width:8px;height:8px"></span> stable</span><span class="readout" id="hudHover" style="display:none"></span></div>
+          <div class="hud"><span class="readout" id="hudT">t = <b>0</b> gate delays</span><span class="readout" id="hudS"><span class="led on" style="width:8px;height:8px"></span> stable</span><span class="readout" id="hudIO" title="Current inputs and outputs"></span><span class="readout" id="hudHover" style="display:none"></span></div>
           <div class="banner" id="banner"><span id="bannerTxt"></span><button class="btn sm" id="bannerCheck"><i data-lucide="check"></i> Check</button><button class="btn sm ghost" id="bannerExit" title="Leave challenge"><i data-lucide="x"></i></button></div>
           <div class="stage-toolbar">
             <button class="btn sm" id="tbUndo" title="Undo (Ctrl+Z)"><i data-lucide="undo-2"></i></button>
@@ -105,7 +106,7 @@
             <h3><i data-lucide="mouse-pointer-2"></i> Selection</h3>
             <div id="selBody"></div>
           </div>
-          <div class="panel">
+          <div class="panel" id="simPanel">
             <h3><i data-lucide="activity"></i> Simulation</h3>
             <label class="toggle">Slow motion (watch signals propagate) <input type="checkbox" id="slow"></label>
             <div class="ctl" id="slowCtl"><label for="slowRate">Gate delays per second</label><output>4</output><input type="range" id="slowRate" min="1" max="30" step="1" value="4"></div>
@@ -139,7 +140,7 @@
           </div>
         </aside>
       </div>
-      <div class="panel" style="margin-bottom:6px">
+      <div class="panel" id="ttPanel" style="margin-bottom:6px">
         <h3><i data-lucide="table-2"></i> Truth table & Boolean expressions</h3>
         <div class="grid2" style="align-items:start">
           <div><div id="ttMsg" class="small muted" style="margin-bottom:8px"></div><div class="tt-wrap" id="ttWrap"></div></div>
@@ -186,7 +187,7 @@
     <div class="tablist">
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments & challenges</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
       <button><i data-lucide="binary"></i> Number systems</button>
     </div>
@@ -301,7 +302,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
   'use strict';
@@ -491,9 +492,17 @@
     const { w, h } = st; if (w < 50 || !comps.length) return;
     let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
     comps.forEach(c => { const g = geom(c); x0 = Math.min(x0, c.x - 20); y0 = Math.min(y0, c.y - 24); x1 = Math.max(x1, c.x + g.w + 30); y1 = Math.max(y1, c.y + g.h + 24); });
-    const padTop = 50, padB = 56;
-    view.z = SL.clamp(Math.min((w - 40) / (x1 - x0), (h - padTop - padB) / (y1 - y0)), 0.35, 1.6);
-    view.ox = (w - (x1 - x0) * view.z) / 2 - x0 * view.z; view.oy = padTop + (h - padTop - padB - (y1 - y0) * view.z) / 2 - y0 * view.z;
+    const padTop = w < 600 ? 84 : 50, padB = 56;
+    let h2 = h;
+    if (w < 600) {
+      // phones: zoom is limited by width, so size the stage to the circuit instead of leaving empty space below it
+      const zW = SL.clamp((w - 16) / (x1 - x0), 0.3, 1.6);
+      h2 = Math.round(SL.clamp((y1 - y0) * zW + padTop + padB + 16, 300, 560));
+      $('#stage').style.minHeight = '0'; $('#stage').style.height = h2 + 'px';
+      view.z = Math.min(zW, (h2 - padTop - padB) / (y1 - y0));
+    } else { $('#stage').style.minHeight = $('#stage').style.height = ''; view.z = SL.clamp(Math.min((w - 40) / (x1 - x0), (h - padTop - padB) / (y1 - y0)), 0.35, 1.6); }
+    { const h = h2;
+    view.ox = (w - (x1 - x0) * view.z) / 2 - x0 * view.z; view.oy = padTop + (h - padTop - padB - (y1 - y0) * view.z) / 2 - y0 * view.z; }
     fitted = true;
   }
   function zoomAt(f, sx, sy) { const p = toWorld(sx, sy); view.z = SL.clamp(view.z * f, 0.3, 2.5); view.ox = sx - p.x * view.z; view.oy = sy - p.y * view.z; }
@@ -1104,7 +1113,19 @@
   SL.bind('#slowRate', v => { slowRate = v; });
   $('#simReset').onclick = () => { resetSim(); SL.toast('State reset: all outputs re-evaluated from 0.', '', 1800); };
   $('#clearAll').onclick = () => { if (!comps.length) return; pushUndo(); exitChallenge(true); comps = []; wires = []; byId.clear(); sel = null; rebuildIndex(); resetSim(); changed(); renderSel(); };
-  let lastSelRefresh = 0;
+  let lastSelRefresh = 0, lastIO = '';
+  // live input → output summary (e.g. A B Cin = 101 → S Cout = 01)
+  function ioReadout() {
+    const ins = comps.filter(c => c.type === 'SWITCH' || c.type === 'BUTTON').sort((a, b) => natCmp(a.label, b.label));
+    const outs = comps.filter(c => c.type === 'LED').sort((a, b) => natCmp(a.label, b.label));
+    let h = '';
+    if (ins.length && outs.length && ins.length <= 6 && outs.length <= 6) {
+      const lv = c => { const w = (inMap.get(c.id) || [])[0], f = w && byId.get(w.from); return f ? (f.out[w.fp] ? 1 : 0) : 0; };
+      const iv = ins.map(c => (c.type === 'SWITCH' ? c.on : c.pressed) ? 1 : 0).join(''), ov = outs.map(lv).join('');
+      h = `${ins.map(c => c.label).join(' ')} = <b>${iv}</b> → ${outs.map(c => c.label).join(' ')} = <b style="color:#4ade80">${ov}</b>`;
+    }
+    if (h !== lastIO) { lastIO = h; const el = $('#hudIO'); el.innerHTML = h; el.style.display = h ? '' : 'none'; }
+  }
   SL.loop((dt, t) => {
     if (document.hidden) return;
     stepSim(dt);
@@ -1112,6 +1133,7 @@
     const now = performance.now();
     if (now - SIM.evT > 500) { SIM.evRate = SIM.evCount * 1000 / (now - SIM.evT || 1); SIM.evCount = 0; SIM.evT = now; $('#stE').textContent = Math.round(SIM.evRate); }
     $('#hudT').innerHTML = `t = <b>${SL.fmt(SIM.t, 1)}</b> gate delays`;
+    ioReadout();
     $('#hudS').innerHTML = SIM.osc > 0.3 ? '<span class="led bad" style="width:8px;height:8px"></span> oscillating: unstable feedback' : SIM.heap.length ? '<span class="led warn" style="width:8px;height:8px"></span> settling…' : '<span class="led on" style="width:8px;height:8px"></span> stable';
     if (sel && sel.c && DEF[sel.c.type].ev && !isGate(sel.c.type) && now - lastSelRefresh > 300 && !document.activeElement.closest('#selBody')) { lastSelRefresh = now; renderSel(); }
   }).start();
@@ -1146,7 +1168,22 @@
 
   // first load: show the full adder
   build(PRESETS.full);
+  // start with A = 1 and Cin = 1 so live signals and the carry are visible straight away
+  comps.filter(c => c.type === 'SWITCH' && (c.label === 'A' || c.label === 'Cin')).forEach(c => { c.on = 1; setSource(c, 1); });
+  updateRowHighlight();
   setNV(4); $('#kEx').click();
+  // guided tour (registered after SimLab mounts the hero; each target is scrolled into view instantly so the tip lands in the right place)
+  const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
+  tourGo([
+    { el: '#stage', before: () => document.querySelector('#modes .tablist button:nth-child(1)').click(), title: 'The circuit', text: 'A full adder is loaded. Tap the A, B and Cin switches and watch green (logic 1) flow along the wires to S and Cout. Drag empty space to pan.' },
+    { el: '#hudIO', title: 'Inputs and outputs', text: 'This readout sums up the circuit: input bits on the left, output bits on the right. For the adder, Cout S is the binary sum of A + B + Cin.' },
+    { el: '#pGate', title: 'Add parts', text: 'Drag a gate onto the stage (or tap it to drop it in). Then drag from an output pin on the right of a part to an input pin on the left to wire it.' },
+    { el: '#simPanel', title: 'Slow motion', text: 'Turn on slow motion to see each gate switch one delay after its inputs change, and spot glitches and the carry rippling through.' },
+    { el: '#preset', title: 'Presets', text: 'Load a ripple-carry adder, latches, a counter driving a hex display, a traffic-light controller or an unstable ring oscillator.' },
+    { el: '#ttPanel', title: 'Truth table and algebra', text: 'Generated live from your circuit, with the minimal sum-of-products expression for each output. The highlighted row is the current input.' },
+    { el: '#modes > .tablist', title: 'Karnaugh maps', text: 'Switch to the Karnaugh map tab to group 1s and simplify a function by hand.' },
+    { el: '#tabChal', title: 'Challenges', text: 'Build-it challenges are checked automatically against the required truth table.' },
+  ]);
   window.__logic = { view, geom, pinPos, comps: () => comps, wires: () => wires, PRESETS, build, analyse: () => { analyse(); return TT; }, minimise, primes, stepSim, SIM, startChallenge, CH, byId, addComp, addWire, rebuildIndex, resetSim, changed, KM, solveKM, setSource, serialize, load };
 })();
 </script>

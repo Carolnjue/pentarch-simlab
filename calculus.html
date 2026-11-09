@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   #stage{height:620px;touch-action:none}
   #stage canvas{cursor:crosshair}
@@ -43,6 +43,8 @@
   .stage-toolbar .btn{padding:6px 8px}
   .prose table.data{display:block;overflow-x:auto;max-width:100%}
   .prose .katex-display{overflow-x:auto;overflow-y:hidden;padding:2px 0}
+  .meaning{margin:0 0 10px;padding:9px 11px;border-radius:10px;background:color-mix(in srgb,var(--accent) 9%,transparent);border:1px solid color-mix(in srgb,var(--accent) 28%,transparent);font-size:.86rem;line-height:1.5;color:var(--text)}
+  @media (max-width:600px){.stage-toolbar .btn{min-width:40px;min-height:38px}}
 </style>
 </head>
 <body data-page="calculus">
@@ -83,7 +85,7 @@
       </div>
 
       <!-- Derivative -->
-      <div class="panel" data-for="deriv">
+      <div class="panel" data-for="deriv" id="derivPanel">
         <h3><i data-lucide="trending-up"></i> Slope at a point</h3>
         <div class="ctl"><label for="x0">Point x₀</label><output></output><input type="range" id="x0" min="-5" max="5" step="0.01" value="1.6"></div>
         <div class="ctl"><label for="hlog">Step h (secant)</label><output></output><input type="range" id="hlog" min="-3" max="0.4" step="0.01" value="-0.1"></div>
@@ -147,8 +149,9 @@
         </div>
       </div>
 
-      <div class="panel">
+      <div class="panel" id="resPanel">
         <h3><i data-lucide="gauge"></i> Live results</h3>
+        <p class="meaning" id="meaning" aria-live="polite"></p>
         <div class="stats" id="stats"></div>
       </div>
     </aside>
@@ -158,7 +161,7 @@
     <div class="tablist">
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments & challenges</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
       <button><i data-lucide="code"></i> How the engine works</button>
     </div>
@@ -303,7 +306,7 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
   'use strict';
@@ -895,7 +898,7 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
   }
 
   /* ---------- per-mode renderers ---------- */
-  let HUD = [], STATS = [], LEG = [];
+  let HUD = [], STATS = [], LEG = [], CAP = '';
   function drawDeriv(L) {
     const m = topMap(L.top), f = S.f;
     grid(m); frame(L.top);
@@ -930,6 +933,7 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
     }
     HUD = [`x₀ <b>${fmt(x0, 3)}</b>`, `f(x₀) <b>${fmt(y0, 4)}</b>`, `secant <b>${fmt(sec, 4)}</b>`, `f′(x₀) <b>${fmt(slope, 4)}</b>`];
     const d2 = S.d2f ? S.d2f(x0) : NaN;
+    CAP = !isFinite(slope) ? 'f is not differentiable here (or not defined).' : `At x₀ = ${fmt(x0, 3)} the curve is <b>${Math.abs(slope) < 1e-6 ? 'flat' : slope > 0 ? 'rising' : 'falling'}</b>: f′ = ${fmt(slope, 4)} means f changes by about ${fmt(slope, 3)} per unit of x. ${isFinite(d2) && Math.abs(d2) > 1e-9 ? `It is concave ${d2 > 0 ? 'up' : 'down'} (f″ ${d2 > 0 ? '>' : '<'} 0). ` : ''}The secant with h = ${fmt(h, 3)} is off by ${fmt(Math.abs(sec - slope), 3)}; shrink h to close the gap.`;
     STATS = [['h', fmt(h, 4)], ['Secant slope', fmt(sec, 5)], ['f′(x₀) symbolic', fmt(slopeS, 6)], ['f′(x₀) numeric', fmt(slopeN, 6)], ['Secant error', fmt(Math.abs(sec - slope), 4)], ['f″(x₀)', fmt(d2, 4)]];
     LEG = [['f(x)', COL.f], ['secant', COL.sec], ['tangent', COL.tan], ["f′(x)", COL.d]];
     S.dState = { x0, slope, sec };
@@ -1008,6 +1012,7 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
     $('#simpNote').textContent = meth === 'simp' && S.n % 2 ? `Simpson's rule needs an even n, so n = ${n} is used.` : '';
     const names = { left: 'Left', right: 'Right', mid: 'Midpoint', trap: 'Trapezoid', simp: 'Simpson' };
     HUD = [`${names[meth]} sum <b>${fmt(approx, 6)}</b>`, `exact <b>${fmt(exact, 6)}</b>`, `n <b>${n}</b>`];
+    CAP = isFinite(exact) ? `${n} strips of width Δx = ${fmt(dx, 3)} give ${fmt(approx, 5)}, off by ${fmt(Math.abs(err), 3)}. ${meth === 'simp' ? 'Simpson error shrinks like Δx⁴: doubling n cuts it about 16×.' : meth === 'mid' || meth === 'trap' ? 'This error shrinks like Δx²: doubling n cuts it about 4×.' : 'This error shrinks like Δx: doubling n only halves it.'} Area below the axis counts as negative.` : 'The integral is not finite on this interval.';
     STATS = [['Δx', fmt(dx, 4)], ['Approximation', fmt(approx, 6)], ['Accurate ∫', fmt(exact, 8)], ['Error', fmt(err, 3)], ['Relative error', isFinite(err / exact) && exact !== 0 ? fmt(Math.abs(err / exact) * 100, 3) + ' %' : '—'], ['Method order', meth === 'simp' ? 'Δx⁴' : (meth === 'mid' || meth === 'trap') ? 'Δx²' : 'Δx']];
     LEG = [['f(x)', COL.f], ['area > 0', '#34d399'], ['area < 0', '#f87171'], ['F(x)', COL.d]];
     S.iState = { approx, exact, err, n, meth };
@@ -1116,6 +1121,7 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
     const errP = Math.abs(fy - py);
     HUD = [`a <b>${fmt(a, 3)}</b>`, `n <b>${n}</b>`, `x <b>${fmt(px, 3)}</b>`, `f(x) <b>${fmt(fy, 5)}</b>`, `Pₙ(x) <b>${fmt(py, 5)}</b>`];
     const fact = k => { let r = 1; for (let i = 2; i <= k; i++) r *= i; return r; };
+    CAP = `P${String(n).split('').map(d => '₀₁₂₃₄₅₆₇₈₉'[d]).join('')} matches f and its first ${n} derivative${n === 1 ? '' : 's'} at a = ${fmt(a, 3)}. At x = ${fmt(px, 3)} the error is ${fmt(errP, 3)}${roc && isFinite(roc.R) ? `; beyond |x − a| = ${fmt(roc.R, 3)} (the radius of convergence) adding terms makes it worse, not better` : '; move the pointer away from a to see the error grow'}.`;
     STATS = [['|f − Pₙ| at x', fmt(errP, 3)], ['Radius R', roc ? (isFinite(roc.R) ? fmt(roc.R, 3) : (isNaN(roc.R) ? '—' : '∞')) : '—'], ['f⁽ⁿ⁾(a)', fmt(c[n] * fact(n), 4)], ['cₙ = f⁽ⁿ⁾(a)/n!', fmt(c[n], 4)]];
     LEG = [['f(x)', COL.f], ['Pₙ(x)', COL.d], ['convergence', '#a78bfa']];
     S.tState = { px, errP };
@@ -1186,6 +1192,7 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
     HUD = [`critical points <b>${S.crit.length}</b>`, `maxima <b>${maxs}</b>`, `minima <b>${mins}</b>`, `inflections <b>${S.infl.length}</b>`];
     let gmax = -Infinity, gmin = Infinity;
     for (let i = 0; i <= 600; i++) { const y = f(m.x0 + (m.x1 - m.x0) * i / 600); if (isFinite(y)) { gmax = Math.max(gmax, y); gmin = Math.min(gmin, y); } }
+    CAP = S.crit.length ? `f′(x) = 0 at ${S.crit.length} point${S.crit.length > 1 ? 's' : ''} in view. Where f′ changes from + to − the curve peaks (maximum); from − to + it bottoms out (minimum). f″ confirms: negative at a maximum, positive at a minimum.` : 'No critical points in view: f′ never changes sign here, so f is monotonic on this window.';
     STATS = [['Local maxima', maxs], ['Local minima', mins], ['Inflection pts', S.infl.length], ['Max in view', fmt(gmax, 4)], ['Min in view', fmt(gmin, 4)]];
     LEG = [['f(x)', COL.f], ["f′(x)", COL.d], ["f″(x)", COL.d2], ['max', '#f59e0b'], ['min', '#22c55e']];
   }
@@ -1247,6 +1254,7 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
     dot(m.X(M.r), m.Y(M.C), COL.tan, 7, true);
     const over = (M.C / M.Co - 1) * 100;
     HUD = [`r <b>${fmt(M.r, 3)} cm</b>`, `h <b>${fmt(M.h, 3)} cm</b>`, `${M.k === 1 ? 'area' : 'cost'} <b>${fmt(M.C, 1)}</b>`, `dC/dr <b>${fmt(dC, 2)}</b>`];
+    CAP = Math.abs(dC) < 0.05 * Math.abs(M.Co) / M.ro ? `At the optimum dC/dr ≈ 0: a can with h = ${fmt(M.ho / M.ro, 2)} r uses the least ${M.k === 1 ? 'metal' : 'money'} for ${M.V} ml.` : `dC/dr = ${fmt(dC, 2)} is ${dC > 0 ? 'positive, so a <b>smaller</b> radius would be cheaper' : 'negative, so a <b>larger</b> radius would be cheaper'}. This can uses ${fmt(over, 1)}% more than the best design.`;
     STATS = [['Height h', fmt(M.h, 2) + '<small>cm</small>'], ['Surface area', fmt(M.A, 1) + '<small>cm²</small>'], ['Optimal r*', fmt(M.ro, 3) + '<small>cm</small>'], ['Optimal h*', fmt(M.ho, 3) + '<small>cm</small>'], ['h*/r*', fmt(M.ho / M.ro, 2)], ['Above min cost', fmt(over, 2) + '<small>%</small>']];
     LEG = [[M.k === 1 ? 'A(r)' : 'cost C(r)', COL.f], ['tangent', COL.tan], ['optimum', '#22c55e']];
     S.cState = { over };
@@ -1256,7 +1264,7 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
   function render() {
     const { w, h } = st; ctx.clearRect(0, 0, w, h);
     const bg = ctx.createRadialGradient(w * .7, 0, 10, w * .7, 0, w); bg.addColorStop(0, 'rgba(96,165,250,.06)'); bg.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
-    if (S.err) { ctx.fillStyle = '#93a1bd'; ctx.font = '14px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('Fix the expression to plot it.', w / 2, h / 2); HUD = []; STATS = []; LEG = []; }
+    if (S.err) { ctx.fillStyle = '#93a1bd'; ctx.font = '14px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('Fix the expression to plot it.', w / 2, h / 2); HUD = []; STATS = []; LEG = []; CAP = ''; }
     else {
       const L = layout(); S.L = L;
       if (S.mode === 'deriv') drawDeriv(L);
@@ -1269,6 +1277,8 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
     if (hh !== render._h) { $('#hud').innerHTML = hh; render._h = hh; }
     const sh = STATS.map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
     if (sh !== render._s) { $('#stats').innerHTML = sh; render._s = sh; }
+    const cp = S.mode === 'limit' ? '' : CAP;
+    if (cp !== render._c) { const el = $('#meaning'); el.innerHTML = cp; el.style.display = cp ? '' : 'none'; render._c = cp; }
     const lg = LEG.map(([k, c]) => `<span style="--c:${c}">${k}</span>`).join('');
     if (lg !== render._l) { $('#legend').innerHTML = lg; render._l = lg; }
     checkChallenges();
@@ -1547,6 +1557,16 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
   }
   // wait for KaTeX (deferred) so the symbolic panel renders properly
   if (window.katex) init(); else { let tries = 0; const t = setInterval(() => { if (window.katex || ++tries > 30) { clearInterval(t); init(); } }, 100); }
+  // guided tour (registered after SimLab mounts the hero; each target is scrolled into view instantly so the tip lands in the right place)
+  const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
+  tourGo([
+    { el: '#stage', before: () => document.querySelector('#modes [data-m=deriv]').click(), title: 'The graph', text: 'Drag the yellow point along the curve. The orange dashed secant and the yellow tangent show average versus instantaneous slope; the lower plot is f′(x).' },
+    { el: '#fnPanel', title: 'Any function', text: 'Type your own f(x), such as <b>sin(x)/x</b> or <b>x^2 e^(-x)</b>, or pick a preset. The symbolic derivative updates instantly.' },
+    { el: '#derivPanel', title: 'Shrink h', text: 'Press <b>Animate h → 0</b> and watch the secant rotate into the tangent. That limit is the derivative.' },
+    { el: '#resPanel', title: 'What the numbers mean', text: 'The caption explains the current result in words; the tiles compare the secant slope with the exact derivative.' },
+    { el: '#modes', title: 'Five modes', text: 'Switch to Integral (Riemann sums), Limits (the ε–δ game), Taylor series and Optimisation, including designing the cheapest 330 ml can.' },
+    { el: '#tabChal', title: 'Challenges', text: 'Auto-checked tasks in every mode. Each lights up when you meet the target.' },
+  ]);
   window.CALC.state = S;
 })();
 </script>

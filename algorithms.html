@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   .modes{margin:18px 0 0}
   .modes>.tablist button{font-size:.95rem;padding:12px 18px}
@@ -26,6 +26,10 @@
   .pseudo div.on{background:color-mix(in srgb,var(--accent) 16%,transparent);color:#fff;border-left-color:var(--accent)}
   .pseudo .cm{color:var(--dim)}
   .pseudo-title{font:600 .7rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin:10px 0 6px}
+  #algBWrap[hidden]{display:none}
+  .scap{margin:10px 0 0;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid var(--line);font-size:.86rem;line-height:1.45;min-height:2.9em}
+  .scap b{font-family:var(--mono,monospace);font-weight:600}
+  .scap .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:0}
   .legend{display:flex;flex-wrap:wrap;gap:6px}
   .legend .readout{display:inline-flex;align-items:center;gap:6px}
   .sw{display:inline-block;width:10px;height:10px;border-radius:3px}
@@ -64,7 +68,7 @@
     <!-- ===== SORTING ===== -->
     <div class="tabpanel">
       <div class="lab">
-        <div class="stage s-main">
+        <div class="stage s-main" id="sortStage">
           <canvas id="sortCv"></canvas>
           <div class="hud hud-b legend">
             <span class="readout"><i class="sw" style="background:#f59e0b"></i>compare</span>
@@ -85,7 +89,7 @@
               <div class="seg" id="order"><button data-v="random" class="on">Random</button><button data-v="nearly">Nearly sorted</button><button data-v="reversed">Reversed</button><button data-v="few">Few unique</button></div>
             </div>
             <div class="ctl"><label for="speed">Speed</label><output>144 ops/s</output><input type="range" id="speed" min="0" max="100" step="1" value="60"></div>
-            <div class="btn-row" style="margin-top:8px">
+            <div class="btn-row" id="sortBtns" style="margin-top:8px">
               <button class="btn primary" id="sPlay"><i data-lucide="play"></i> Play</button>
               <button class="btn" id="sBack" title="Step back"><i data-lucide="step-back"></i></button>
               <button class="btn" id="sStep" title="Step forward"><i data-lucide="step-forward"></i></button>
@@ -93,15 +97,16 @@
             </div>
             <label class="toggle" style="margin-top:8px">Sonify values (pitch ∝ value) <input type="checkbox" id="sound"></label>
           </div>
-          <div class="panel">
+          <div class="panel" id="sortCounters">
             <h3><i data-lucide="gauge"></i> Live counters <span class="small muted" id="cntName" style="margin-left:auto;font-weight:500"></span></h3>
-            <div class="stats">
+            <div class="stats" id="sortStats">
               <div class="stat"><div class="k">Comparisons</div><div class="v" id="kC">0</div></div>
               <div class="stat"><div class="k">Swaps</div><div class="v" id="kS">0</div></div>
               <div class="stat"><div class="k">Writes</div><div class="v" id="kW">0</div></div>
               <div class="stat"><div class="k">Array accesses</div><div class="v" id="kA">0</div></div>
             </div>
             <p class="small muted" style="margin:10px 0 0">Progress <b id="kP" class="mono">0 / 0</b> primitive operations</p>
+            <p class="scap" id="sCap" aria-live="polite"></p>
           </div>
           <div class="panel">
             <h3><i data-lucide="code"></i> Pseudo-code</h3>
@@ -263,7 +268,7 @@
     <div class="tablist">
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments & challenges</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
       <button><i data-lucide="book-a"></i> Glossary</button>
     </div>
@@ -400,7 +405,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
   'use strict';
@@ -596,7 +601,7 @@
       get(i) { pend++; return a[i]; },
       read(i) { push({ t: 'r', i }, 1); return a[i]; },
       cmp(i, j) { push({ t: 'c', i, j }, 2); return a[i] - a[j]; },
-      cmpv(i, v) { push({ t: 'c', i, j: -1 }, 1); return a[i] - v; },
+      cmpv(i, v) { push({ t: 'c', i, j: -1, v }, 1); return a[i] - v; },
       cmpx(i, j, x, y) { push({ t: 'c', i, j }, 0); return x - y; },
       swap(i, j) { const t = a[i]; a[i] = a[j]; a[j] = t; push({ t: 's', i, j }, 4); },
       set(i, v) { a[i] = v; push({ t: 'w', i, v }, 1); },
@@ -682,6 +687,20 @@
   function updCounters() {
     const p = S.A; $('#kC').textContent = nf(p.c.c); $('#kS').textContent = nf(p.c.s); $('#kW').textContent = nf(p.c.w); $('#kA').textContent = nf(p.c.a);
     $('#kP').textContent = `${nf(p.opi)} / ${nf(p.ops)}`; $('#cntName').textContent = S.B ? 'A: ' + ALGOS[p.key].name : '';
+    caption(p);
+  }
+  // plain-language caption of the operation just performed
+  let lastCap = '';
+  function caption(p) {
+    const e = p.hl, dot = c => `<span class="dot" style="background:${c}"></span>`;
+    let h;
+    if (p.done) h = `${dot(COL.ok)}Sorted. ${ALGOS[p.key].name} used <b>${nf(p.c.c)}</b> comparisons and <b>${nf(p.c.s + p.c.w)}</b> moves for n = ${p.v.length}.`;
+    else if (!e || p.opi === 0) h = `${dot('#60a5fa')}Press <b>Play</b> or <b>Step</b>. Each bar is one value; height = value.`;
+    else if (e.t === 'c') { const a = p.v[e.i]; h = e.j >= 0 ? `${dot(COL.cmp)}Compare A[${e.i}] = <b>${a}</b> with A[${e.j}] = <b>${p.v[e.j]}</b>: ${a < p.v[e.j] ? 'smaller' : a > p.v[e.j] ? 'larger' : 'equal'}.` : `${dot(COL.cmp)}Compare A[${e.i}] = <b>${a}</b> with the ${/quick/i.test(p.key) ? 'pivot' : 'key'} <b>${e.v}</b>: ${a < e.v ? 'smaller' : a > e.v ? 'larger' : 'equal'}.`; }
+    else if (e.t === 's') h = `${dot(COL.swp)}Swap A[${e.i}] and A[${e.j}] (now <b>${p.v[e.i]}</b> and <b>${p.v[e.j]}</b>).`;
+    else if (e.t === 'w') h = `${dot(COL.wr)}Write <b>${e.v}</b> into A[${e.i}].`;
+    else h = `${dot(COL.rd)}Read A[${e.i}] = <b>${p.v[e.i]}</b>.`;
+    if (h !== lastCap) { lastCap = h; $('#sCap').innerHTML = h; }
   }
 
   // sonification
@@ -1284,6 +1303,18 @@
     { q: 'A* uses f(n) = g(n) + h(n). Which condition guarantees it returns an optimal path?', options: ['h is admissible (never overestimates)', 'h is always zero', 'h overestimates by at most 2×', 'the grid has no walls'], answer: 0, why: 'An admissible heuristic never makes the optimal path look worse than a suboptimal one. h = 0 also works but turns A* into Dijkstra; it is a special case of admissible.' },
     { q: 'Why does counting sort show zero comparisons in the lab?', options: ['It only works on sorted data', 'It uses keys as array indices instead of comparing them', 'It hides comparisons in a heap', 'It compares in parallel'], answer: 1, why: 'Counting sort tallies how many times each key occurs and writes them back in order, so the Ω(n log n) comparison bound does not apply.' },
     { q: 'Insertion sort’s running time is Θ(n + I). What is I?', options: ['The number of inversions', 'The number of distinct keys', 'The recursion depth', 'The number of writes to auxiliary memory'], answer: 0, why: 'Each shift in insertion sort removes exactly one inversion (an out-of-order pair).' },
+  ]);
+
+  // guided tour (registered after SimLab mounts the hero; each target is scrolled into view instantly so the tip lands in the right place)
+  const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
+  tourGo([
+    { el: '#sortStage', before: () => $('#modes .tablist button').click(), title: 'The array', text: 'Each bar is one value. Colours show what the algorithm is doing right now: orange compares, red swaps, violet writes, green is in its final place.' },
+    { el: '#algA', title: 'Pick an algorithm', text: 'Choose bubble, insertion, merge, quick, heap, counting or radix sort. The pseudo-code panel follows along line by line.' },
+    { el: '#order', title: 'Shape the input', text: 'Try <b>Nearly sorted</b> with insertion sort, then <b>Reversed</b> with quicksort. Same n, very different work.' },
+    { el: '#sortBtns', title: 'Run it', text: 'Play animates the sort; the step buttons move one primitive operation at a time so you can follow each comparison.' },
+    { el: '#sortCounters', title: 'Count the cost', text: 'Comparisons, swaps and writes are what Big-O counts. The caption at the bottom explains the last operation in plain words.' },
+    { el: '#modes > .tablist', title: 'Four labs in one', text: 'Switch to Searching (linear vs binary), Pathfinding (draw walls and race BFS, Dijkstra and A*) or Big-O to measure growth.' },
+    { el: '#tabChal', title: 'Challenges', text: 'Auto-checked challenges, such as breaking quicksort or fooling greedy search. Each lights up when you meet it.' },
   ]);
 
   // expose for automated checks

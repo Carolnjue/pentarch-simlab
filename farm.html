@@ -9,8 +9,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
+  .fcap{margin:0;padding:9px 12px;border-radius:10px;background:color-mix(in srgb,var(--accent) 9%,transparent);border:1px solid color-mix(in srgb,var(--accent) 28%,transparent);font-size:.88rem;line-height:1.5}
+  @media (max-width:600px){.stage-toolbar .btn{min-width:40px;min-height:38px}}
   .col{display:flex;flex-direction:column;gap:14px;min-width:0}
   .stage.farm{height:540px}
   .chartbox{position:relative;background:#050913;border:1px solid var(--line);border-radius:var(--r);height:220px;overflow:hidden}
@@ -46,7 +48,7 @@
 <main class="container">
   <section class="lab wide-controls">
     <div class="col">
-      <div class="stage farm">
+      <div class="stage farm" id="fStage">
         <canvas id="fCv" aria-label="Farm plot and soil profile"></canvas>
         <div class="hud">
           <span class="readout"><b id="hDate">–</b></span>
@@ -61,11 +63,12 @@
           <button class="btn sm" id="fFinish" aria-label="Finish season"><i data-lucide="fast-forward"></i></button>
         </div>
       </div>
-      <div class="chartrow">
+      <p class="fcap" id="fCap" aria-live="polite"></p>
+      <div class="chartrow" id="fCharts">
         <div class="chartbox"><canvas id="wbCv"></canvas></div>
         <div class="chartbox"><canvas id="etCv"></canvas></div>
       </div>
-      <div class="panel">
+      <div class="panel" id="seasonPanel">
         <h3><i data-lucide="gauge"></i> Season so far</h3>
         <div class="stats" id="statsF">
           <div class="stat"><div class="k">ET₀ today</div><div class="v" id="sEt0">–</div></div>
@@ -82,7 +85,7 @@
       <div class="panel report" id="report" hidden></div>
     </div>
     <aside>
-      <div class="panel">
+      <div class="panel" id="planPanel">
         <h3><i data-lucide="calendar-days"></i> Plan the season</h3>
         <div class="ctl"><label for="crop">Crop</label><span></span><select id="crop"><option value="maize">Maize</option><option value="beans">Beans (dry)</option><option value="tomato">Tomatoes</option><option value="sorghum">Sorghum</option><option value="tea">Tea (established, 6 months)</option></select></div>
         <div class="ctl"><label for="site">Location</label><span></span><select id="site"><option value="machakos">Eastern semi-arid (Machakos-like)</option><option value="highland">Western highlands (Kericho-like)</option></select></div>
@@ -94,7 +97,7 @@
         <div class="ctl"><label for="acres">Plot size</label><output></output><input type="range" id="acres" min="0.25" max="5" step="0.25" value="1"></div>
         <div class="btn-row"><button class="btn sm" id="newWx"><i data-lucide="dices"></i> New weather</button><span class="mini" id="wxInfo" style="align-self:center"></span></div>
       </div>
-      <div class="panel">
+      <div class="panel" id="irrPanel">
         <h3><i data-lucide="droplets"></i> Irrigation</h3>
         <div class="seg full" id="method"><button class="on" data-v="none">Rain-fed</button><button data-v="furrow">Furrow</button><button data-v="sprinkler">Sprinkler</button><button data-v="drip">Drip</button></div>
         <div class="panel-title">Scheduling</div>
@@ -120,7 +123,7 @@
     <div class="tablist">
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
       <button><i data-lucide="sprout"></i> Climate-smart farming</button>
       <button><i data-lucide="table"></i> Crop data</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
@@ -244,7 +247,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
 'use strict';
@@ -490,7 +493,28 @@ function updStats() {
   $('#sStress').textContent = cu.stress;
   $('#sY').innerHTML = pr ? `${SL.fmt(pr.Y, 2)}<small>t/ha</small>` : '–';
   if (pr) { const R = F.report(); const pf = $('#sProfit'); pf.innerHTML = `${SL.fmt(R.profit / 1000, 0)}k<small>KES</small>`; pf.className = 'v ' + (R.profit > 0 ? 'good' : 'bad'); } else $('#sProfit').textContent = '–';
+  farmCaption(r);
   if (r) { $('#hDay').textContent = F.st.day; $('#hDate').textContent = dateStr(cfg.plant + r.d); $('#hStage').textContent = STAGES[r.stage] + (F.st.done ? ' · harvested' : ''); const ks = $('#hKs'); ks.textContent = r.Ks.toFixed(2); ks.style.color = r.Ks > 0.95 ? '' : r.Ks > 0.6 ? '#fbbf24' : '#f87171'; }
+}
+
+// plain-language reading of the root-zone water balance
+let lastFCap = '';
+function farmCaption(r) {
+  let s;
+  const crop = $('#crop').selectedOptions[0].textContent.replace(/ \(.*$/, '').toLowerCase();
+  if (!r) {
+    const TAW = F.taw1 * F.zr(0), Dr = F.st.Dr;
+    s = `Ready to plant ${crop}. The young root zone holds <b>${SL.fmt(Math.max(0, TAW - Dr), 0)} of ${SL.fmt(TAW, 0)} mm</b> of plant-available water. Press <b>Plant &amp; run</b> and watch the blue store in the soil gauge.`;
+  } else if (F.st.done) {
+    const pr = projected();
+    s = `Harvested. The crop got ${pr ? SL.fmt(pr.ratio * 100, 0) : '–'} % of the water it needed (ETa / ETm) with ${F.st.cum.stress} stress days. Change one setting and run again to compare.`;
+  } else {
+    const left = r.TAW - r.Dr;
+    if (r.Dr <= r.RAW) s = `<b style="color:#4ade80">No water stress.</b> The soil still holds ${SL.fmt(left, 0)} mm; the crop uses about ${SL.fmt(r.etc, 1)} mm a day, and stress begins once ${SL.fmt(r.RAW, 0)} mm (RAW) has been used.`;
+    else s = `<b style="color:${r.Ks > 0.6 ? '#fbbf24' : '#f87171'}">Water stress:</b> depletion (${SL.fmt(r.Dr, 0)} mm) is past the readily available ${SL.fmt(r.RAW, 0)} mm, so the crop transpires only ${SL.fmt(r.Ks * 100, 0)} % of its demand (K<sub>s</sub> = ${r.Ks.toFixed(2)}). ${STAGES[r.stage] === 'Mid-season' && cfg.crop !== 'tea' ? 'Stress now, at flowering and grain fill, costs the most yield.' : 'Rain, irrigation or mulch would help.'}`;
+    if (r.P > 0.5) s += ` Today ${SL.fmt(r.P, 0)} mm of rain${r.RO > 0.5 ? `, ${SL.fmt(r.RO, 0)} mm of it running off` : ''}.`;
+  }
+  if (s !== lastFCap) { lastFCap = s; $('#fCap').innerHTML = s; }
 }
 
 /* ---------- drawing ---------- */
@@ -666,6 +690,18 @@ acresReady = true;
 newSeason();
 loop.start();
 document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
+  // guided tour (registered after SimLab mounts the hero; each target is scrolled into view instantly so the tip lands in the right place)
+  const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
+  tourGo([
+    { el: '#fStage', title: 'Your plot', text: 'The crop grows above ground while roots deepen into the soil. The gauge on the right is the root-zone water store, from field capacity (FC) down to wilting point (WP).' },
+    { el: '#planPanel', title: 'Plan the season', text: 'Pick the crop, the location, the planting date and the kind of rainfall year. Planting late in the long rains is a classic way to lose a harvest.' },
+    { el: '#irrPanel', title: 'Water the crop', text: 'Rain-fed, or irrigate by furrow, sprinkler or drip. Drip loses the least water; refilling at RAW avoids stress with the least pumping.' },
+    { el: '#fStage', before: () => { const b = $('#fPlay'); if (!running && F && !F.st.day) b.click(); }, title: 'Plant and run', text: 'The season is now running. Pause, step one day at a time or jump to harvest with the buttons at the bottom right. Leaves yellow and droop when the crop is short of water.' },
+    { el: '#fCap', title: 'What is happening', text: 'This caption reads the soil water balance for you: how much water is left and whether the crop is stressed.' },
+    { el: '#fCharts', title: 'Water balance charts', text: 'Left: depletion against the RAW and TAW thresholds, with rain and irrigation bars. Right: crop water demand versus actual evapotranspiration.' },
+    { el: '#seasonPanel', title: 'Yield and profit', text: 'Running totals, the projected yield and profit in KES. Compare climate-smart options such as mulch, a water pan or a drought-tolerant variety.' },
+    { el: '#tabChal', title: 'Challenges', text: 'Auto-checked tasks, such as profiting in a drought year or saving water with drip.' },
+  ]);
 window.FarmLab = { get F() { return F; }, cfg, makeFarm, CROPS, newSeason };
 })();
 </script>

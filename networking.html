@@ -9,13 +9,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   .modes{margin:18px 0 0}
   .modes>.tablist button{font-size:.95rem;padding:12px 18px}
   .modes>.tabpanel{padding:0}
   .lab>aside,.lab>.stage{min-width:0}
-  .stage.s-net{height:560px}
+  .stage.s-net{height:clamp(560px,calc(100vh - 150px),720px)}
   .stage.s-rt{height:520px}
   .stage.s-tcp{height:500px}
   @media (max-width:600px){.stage.s-net{height:620px}.stage.s-rt{height:560px}.stage.s-tcp{height:440px}}
@@ -23,6 +23,11 @@
   .field{display:flex;flex-direction:column;gap:5px;margin:6px 0 8px}
   .field>label,.field>span.lbl{font-size:.86rem;color:var(--muted)}
   .row{display:flex;gap:8px;align-items:center}.row>*{flex:1}
+  .phases{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap}
+  .phases .ph{font:600 .72rem/1 var(--mono,monospace);padding:4px 7px;border-radius:6px;border:1px solid var(--line2);color:var(--muted);opacity:.75}
+  .phases .ph.cur{color:#0b1020;background:var(--pc);border-color:var(--pc);opacity:1;box-shadow:0 0 12px var(--pc)}
+  .phases .ph.done{color:var(--pc);border-color:var(--pc);opacity:1}
+  .phases .ar{color:var(--muted);font-size:.7rem}
   .steplog{list-style:none;margin:0;padding:0;max-height:300px;overflow:auto;font-size:.82rem}
   .steplog li{display:flex;gap:8px;align-items:flex-start;padding:6px 8px;border-radius:8px;cursor:pointer;color:var(--muted);border:1px solid transparent}
   .steplog li:hover{border-color:var(--line2)}
@@ -77,13 +82,13 @@
     <!-- ===== JOURNEY ===== -->
     <div class="tabpanel">
       <div class="lab">
-        <div class="stage s-net">
+        <div class="stage s-net" id="netStage">
           <canvas id="netCv"></canvas>
-          <div class="hud"><span class="readout" id="netHud">Press <b>Open website</b> to send a request</span></div>
+          <div class="hud" style="flex-direction:column;align-items:flex-start"><span class="readout" id="netHud">Press <b>Open website</b> to send a request</span><span class="readout phases" id="phases" style="display:none" title="Phases of loading a web page"></span></div>
           <div class="stage-toolbar"><button class="btn sm" id="nLink" title="Link tool: drag from one device to another"><i data-lucide="cable"></i> Link tool</button><button class="btn sm" id="nDel" title="Delete selected"><i data-lucide="trash-2"></i></button></div>
         </div>
         <aside>
-          <div class="panel">
+          <div class="panel" id="netSend">
             <h3><i data-lucide="globe"></i> Send a request</h3>
             <div class="field"><label for="client">From</label><select id="client"></select></div>
             <div class="field"><label for="server">Open website</label><select id="server"></select></div>
@@ -96,11 +101,11 @@
               <button class="btn" id="stepB" title="Next packet"><i data-lucide="step-forward"></i> Step</button>
             </div>
           </div>
-          <div class="panel">
+          <div class="panel" id="logPanel">
             <h3><i data-lucide="list-ordered"></i> Packet sequence</h3>
             <ul class="steplog" id="log"><li class="muted">No packets yet.</li></ul>
           </div>
-          <div class="panel">
+          <div class="panel" id="addPanel">
             <h3><i data-lucide="plus"></i> Add devices</h3>
             <div class="addbar" id="addbar"></div>
             <p class="small muted" style="margin:8px 0 0">Drag devices to move them. With the link tool on, drag from one device to another to cable them. Tap a device or link, then the bin, to delete it.</p>
@@ -205,7 +210,7 @@
     <div class="tablist">
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments & challenges</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
       <button><i data-lucide="book-a"></i> Glossary</button>
     </div>
@@ -331,7 +336,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
   'use strict';
@@ -487,7 +492,21 @@
     return { eth, ip, l4: Object.assign({}, st.l4, { sport, dport }), wanSide, natted: wanSide };
   }
 
+  // phase strip: ARP → DNS → TCP → TLS → HTTP, showing where the page load has got to
+  function renderPhases() {
+    const el = $('#phases');
+    if (!J.steps.length) { el.style.display = 'none'; return; }
+    const order = []; J.steps.forEach(s => { if (!order.includes(s.proto)) order.push(s.proto); });
+    const fin = J.cur >= J.steps.length - 1 && !J.anim;
+    el.innerHTML = order.map((p, k) => {
+      const idx = J.steps.map((s, i) => s.proto === p ? i : -1).filter(i => i >= 0);
+      const cls = fin || Math.max(...idx) < J.cur ? 'done' : idx.includes(J.cur) ? 'cur' : '';
+      return (k ? '<span class="ar">›</span>' : '') + `<span class="ph ${cls}" style="--pc:${PC[p]}">${fin || cls === 'done' ? '✓ ' : ''}${p}</span>`;
+    }).join('');
+    el.style.display = '';
+  }
   function renderLog() {
+    renderPhases();
     const ul = $('#log');
     if (!J.steps.length) { ul.innerHTML = '<li class="muted">No packets yet.</li>'; return; }
     ul.innerHTML = J.steps.map((s, i) => `<li data-i="${i}" class="${i === J.cur ? 'cur' : i < J.cur ? 'done' : ''}"><span class="proto" style="background:${PC[s.proto]}">${s.proto}</span><span><b>${esc(s.from.name)} → ${esc(s.to.name)}</b><br>${esc(s.info)}</span></li>`).join('');
@@ -547,7 +566,7 @@
   function stepDone() {
     const i = J.anim.i; J.anim = null;
     if (i >= J.steps.length - 1) {
-      J.auto = false; setGo(); $('#netHud').innerHTML = `Page loaded in <b>${J.steps.length}</b> packets`;
+      J.auto = false; setGo(); $('#netHud').innerHTML = `Page loaded in <b>${J.steps.length}</b> packets`; renderPhases();
       SL.toast(`Page loaded: ${J.steps.length} packets. ARP and DNS answers are now cached.`, 'ok');
       check('journey', true); if (J.cachedRun) check('cached', true); if (J.client && J.client.added) check('newhost', true);
       $('#arpC').checked = true; $('#dnsC').checked = true;
@@ -933,6 +952,19 @@
     { q: 'Segment 5 of a burst is lost. Under Go-Back-N, what does the sender retransmit after the timeout?', options: ['Only segment 5', 'Segment 5 and every segment sent after it', 'Nothing; the receiver repairs it', 'The whole file'], answer: 1, why: 'The Go-Back-N receiver discards out-of-order segments, so the sender goes back to the oldest unacknowledged one and resends from there.' },
     { q: 'In link-state routing, what happens when a link fails?', options: ['Packets are dropped forever', 'Adjacent routers flood new LSAs and every router reruns Dijkstra', 'Only the next packet is rerouted, at random', 'The TTL is reset'], answer: 1, why: 'All routers update the shared map and recompute their shortest-path trees, converging on new routes.' },
     { q: 'What does NAT on a home or campus router rewrite for outgoing traffic?', options: ['The destination MAC only', 'The private source IP and port to a public IP and port', 'The DNS name', 'The HTTP request line'], answer: 1, why: 'The router keeps a translation table mapping (private IP, port) ↔ (public IP, port) so replies reach the right device.' },
+  ]);
+
+  // guided tour (registered after SimLab mounts the hero; each target is scrolled into view instantly so the tip lands in the right place)
+  const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
+  tourGo([
+    { el: '#netStage', before: () => document.querySelector('#modes .tablist button:nth-child(1)').click(), title: 'A small campus network', text: 'Laptops and a phone connect through a switch and Wi-Fi to the campus router, then across the Internet to a DNS resolver and a web server. Drag devices to rearrange them.' },
+    { el: '#netSend', title: 'Open a website', text: 'Choose the client and the site, then press <b>Open website</b> (or <b>Step</b> one packet at a time). Turn the caches on to see which packets disappear.' },
+    { el: '#phases', before: () => { if (!J.steps.length) $('#stepB').click(); }, title: 'Follow the phases', text: 'The first packet is on its way. The strip at the top shows where the page load has got to: ARP finds the gateway, DNS finds the server, TCP and TLS set up the connection, and HTTP fetches the page.' },
+    { el: '#logPanel', title: 'Packet sequence', text: 'Every packet in order, colour-coded by protocol. Tap one to open it in the inspector.' },
+    { el: '#inspector', title: 'Look inside a packet', text: 'See each layer nested inside the next. Step hop by hop and notice that MAC addresses change on every link, while IP addresses change only at NAT.' },
+    { el: '#addPanel', title: 'Build your own network', text: 'Add devices, then use the link tool to cable them. Routing follows whatever topology you build.' },
+    { el: '#modes > .tablist', title: 'More labs', text: 'Explore link-state routing with Dijkstra, TCP reliability with packet loss, and IPv4 subnetting bit by bit.' },
+    { el: '#tabChal', title: 'Challenges', text: 'Auto-checked tasks, such as loading a page with cached answers or reading a NAT-translated header.' },
   ]);
 
   window.__net = { buildScript, headersAt, startJourney, J, nodes: () => nodes, links: () => links, dijkstra, R: () => R, RL: () => RL, RT, recompute, S: () => S, T, subnet };

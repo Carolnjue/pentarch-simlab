@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   .leftcol{min-width:0}
   .kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}
@@ -74,6 +74,9 @@
   .pill{display:inline-block;font:600 .66rem var(--mono);padding:2px 7px;border-radius:99px;background:rgba(34,197,94,.15);color:#86efac;border:1px solid rgba(34,197,94,.4)}
   .pill.bad{background:rgba(239,68,68,.15);color:#fca5a5;border-color:rgba(239,68,68,.4)}
   .seg.full{display:flex;width:100%}.seg.full button{flex:1;text-align:center}
+  .verdict{margin:0 0 12px;padding:10px 13px;border-radius:12px;background:color-mix(in srgb,var(--accent) 8%,transparent);border:1px solid color-mix(in srgb,var(--accent) 26%,transparent);font-size:.88rem;line-height:1.55}
+  .verdict b.g{color:#4ade80}.verdict b.r{color:#f87171}
+  @media (max-width:600px){.bench>.tablist button{min-height:40px}}
 </style>
 </head>
 <body data-page="business-finance">
@@ -84,6 +87,7 @@
   <section class="lab wide-controls">
     <div class="leftcol">
       <div class="kpis" id="kpis"></div>
+      <p class="verdict" id="verdict" aria-live="polite"></p>
       <div class="bench tabs" data-tabs id="bench">
         <div class="tablist">
           <button><i data-lucide="crosshair"></i> Break-even</button>
@@ -201,7 +205,7 @@
     <div class="tablist">
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
       <button><i data-lucide="globe-2"></i> Real world</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
     </div>
@@ -336,7 +340,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
   'use strict';
@@ -707,8 +711,22 @@
       k('First profitable month', be < 0 ? 'not in yr 1' : MON[be], 'after interest & depreciation', be >= 0 && be <= 5 ? 'good' : 'bad') +
       k('Lowest cash', K(R.low), MON[R.lowM], R.low >= 0 ? 'good' : 'bad') + k('Extra capital needed', K(R.need), 'to avoid an overdraft', R.need > 0 ? 'bad' : 'good') +
       k('Year-1 net profit', K(R.is.np), 'net margin ' + F(R.ratios.nm * 100, 1) + ' %', R.is.np >= 0 ? 'good' : 'bad') + k('Loan instalment', K(R.loan.A), (I.lM === 'flat' ? 'flat' : 'reducing') + ', ' + I.lN + ' months');
+    verdict();
     $('#formulaBox').innerHTML = `<div class="eq" style="margin:0 0 8px">$Q_{BE} = \\dfrac{F}{p-v} = \\dfrac{${F(I.F)}}{${F(I.p)} - ${F(I.v)}} = ${isFinite(R.beq) ? F(R.beq, 1) : '\\infty'}$</div><div class="eq" style="margin:0">$A = \\dfrac{Pr}{1-(1+r)^{-n}}$, $r = ${F(I.lR, 1)}\\%/12$</div>`;
     SL.renderMath($('#formulaBox'));
+  }
+
+  // one-paragraph health check that links break-even, profit and cash
+  function verdict() {
+    const opM = (I.p - I.v) * R.expQ - I.F, parts = [];
+    if (!isFinite(R.beq)) parts.push(`<b class="r">Each sale loses money</b>: the price is not above the variable cost, so no volume can break even.`);
+    else if (R.mos >= 0) parts.push(`In an average month you expect to sell ${F(Math.round(R.expQ))}, <b class="g">${F(R.mos * 100, 0)} % above break-even</b>, an operating profit of about KES ${K(opM)} a month.`);
+    else parts.push(`Expected sales of ${F(Math.round(R.expQ))} a month are <b class="r">${F((1 - R.expQ / R.beq) * 100, 0)} % short of break-even</b> (${F(Math.ceil(R.beq))}).`);
+    if (R.is.np < 0 && opM > 0) parts.push(`Loan interest and depreciation of the equipment still turn year 1 into a <b class="r">net loss of KES ${K(-R.is.np)}</b>.`);
+    else parts.push(`Year-1 net profit after interest, depreciation and tax: <b class="${R.is.np >= 0 ? 'g' : 'r'}">KES ${K(R.is.np)}</b>.`);
+    if (R.need > 0) parts.push(`Profit is not cash: start-up spending and slow early months drain the bank to <b class="r">KES ${K(R.low)} in ${MON[R.lowM]}</b>. Add at least KES ${K(R.need)} of capital or loan, spend less up front, or sell less on credit.`);
+    else parts.push(`Cash never goes negative (lowest KES ${K(R.low)} in ${MON[R.lowM]}), so the plan is <b class="g">fully funded</b>.`);
+    $('#verdict').innerHTML = parts.join(' ');
   }
 
   /* ---------------- challenges ---------------- */
@@ -757,6 +775,18 @@
     { q: 'Why is discounted payback longer than simple payback?', options: ['It ignores the initial investment', 'Each future inflow is worth less in present-value terms', 'It includes tax', 'It uses the IRR'], answer: 1, why: 'Discounting shrinks later cash flows, so it takes longer for cumulative PV to recover the outlay.' },
     { q: 'Current assets are KES 300,000 and current liabilities KES 200,000. The current ratio is…', options: ['0.67', '1.5', '100,000', '2.5'], answer: 1, why: 'Current ratio = 300,000 / 200,000 = 1.5: the business holds KES 1.50 of short-term assets per shilling of short-term debt.' },
     { q: 'In the balance sheet, where does this year\'s net profit appear?', options: ['As a current asset', 'As retained profit within equity', 'As a liability', 'It does not appear'], answer: 1, why: 'Profit not paid out to owners is retained and increases equity; that is what keeps assets = liabilities + equity in balance.' },
+  ]);
+
+  // guided tour (registered after SimLab mounts the hero; each target is scrolled into view instantly so the tip lands in the right place)
+  const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
+  tourGo([
+    { el: '#stBE', before: () => document.querySelector('#bench > .tablist button').click(), title: 'Break-even chart', text: 'Where the yellow revenue line crosses the red total-cost line, the business breaks even. Drag the white sales marker to read profit at any monthly volume.' },
+    { el: '#tpl', title: 'Pick a business', text: 'Start from a café, a boda-boda fleet, a salon, a tailoring shop or a mobile app, each with realistic Kenyan prices and costs.' },
+    { el: '#p', title: 'Set price and costs', text: 'Move the price, sales, growth, costs and start-up funding. Every chart, table and statement updates instantly.' },
+    { el: '#kpis', title: 'Key numbers', text: 'Break-even, first profitable month, lowest cash and the extra capital needed. Green is healthy, red needs attention.' },
+    { el: '#verdict', title: 'The health check', text: 'This summary links the three stories: operating profit, net profit after interest and depreciation, and cash in the bank.' },
+    { el: '#bench > .tablist', title: 'Five tools', text: 'Forecast cash month by month, compare loan offers (flat versus reducing rate), value an investment with NPV and IRR, and read the full financial statements.' },
+    { el: '#tabChal', title: 'Challenges', text: 'Auto-checked goals, such as breaking even by June without running out of cash.' },
   ]);
 
   window.__fin = { model, loanSchedule, annuityRate, npv, irr, payback, TPL, I, S, get R() { return R; }, loadTpl, setR };

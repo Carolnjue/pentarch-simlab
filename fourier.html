@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   #stage{height:620px;touch-action:none}
   @media (max-width:980px){#stage{height:540px}}
@@ -78,6 +78,7 @@
         <div class="ctl"><label for="bN">Highest harmonic N</label><output></output><input type="range" id="bN" min="1" max="16" step="1" value="7"></div>
         <div class="ctl"><label for="bSpeed">Animation period</label><output></output><input type="range" id="bSpeed" min="1" max="10" step="0.5" value="4"></div>
         <label class="toggle"><span>Show ideal target wave</span><input type="checkbox" id="bIdeal" checked></label>
+        <label class="toggle" id="bPartsRow"><span>Show each harmonic separately</span><input type="checkbox" id="bParts" checked></label>
         <div class="hhead"><span>n</span><span>Amplitude Aₙ</span><span>Phase φₙ</span></div>
         <div class="hrows" id="hrows"></div>
       </div>
@@ -145,7 +146,7 @@
     <div class="tablist">
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments & challenges</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
       <button><i data-lucide="globe-2"></i> Real-world</button>
     </div>
@@ -260,7 +261,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
   'use strict';
@@ -410,6 +411,7 @@
   SL.bind('#bN', v => { S.N = v; if (['sine', 'square', 'saw', 'tri'].includes(S.preset)) applyPreset(S.preset); }, v => v);
   SL.bind('#bSpeed', v => { S.period = v; }, v => v + ' s');
   $('#bIdeal').onchange = () => S.dirty = true;
+  $('#bParts').onchange = () => S.dirty = true;
 
   function waveStats() {
     let mx = -Infinity, mn = Infinity, err = 0, pw = 0; const K = 2048;
@@ -459,6 +461,17 @@
       for (let p = wx0; p <= wx1; p += 1) { const ph = th - TAU * span * (p - wx0) / (wx1 - wx0); const v = ideal[S.preset](ph); p === wx0 ? ctx.moveTo(p, cy - v * unit) : ctx.lineTo(p, cy - v * unit); }
       ctx.stroke(); ctx.setLineDash([]);
     }
+    // individual harmonics: each coloured sine is one rotating circle; the yellow wave is their sum
+    if ($('#bParts').checked) {
+      ctx.lineWidth = 1.2; ctx.globalAlpha = .55;
+      for (let n = 1; n <= NH; n++) {
+        const A = S.A[n]; if (A < 1e-3) continue;
+        ctx.strokeStyle = hcol(n); ctx.beginPath();
+        for (let p = wx0; p <= wx1; p += 2) { const ph = th - TAU * span * (p - wx0) / (wx1 - wx0); const v = A * Math.sin(n * ph + S.P[n]); p === wx0 ? ctx.moveTo(p, cy - v * unit) : ctx.lineTo(p, cy - v * unit); }
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
     ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2.4; ctx.shadowColor = '#facc15'; ctx.shadowBlur = 10; ctx.beginPath();
     for (let p = wx0; p <= wx1; p += 1) { const ph = th - TAU * span * (p - wx0) / (wx1 - wx0); const v = wave(ph); p === wx0 ? ctx.moveTo(p, cy - v * unit) : ctx.lineTo(p, cy - v * unit); }
     ctx.stroke(); ctx.shadowBlur = 0;
@@ -486,7 +499,7 @@
     const ov = (ws.mx - 1) / 2 * 100;
     HUD = [`harmonics <b>${ws.nz}</b>`, `peak <b>${fmt(ws.mx, 3)}</b>`, `RMS <b>${fmt(ws.rms, 3)}</b>`, S.preset === 'square' ? `Gibbs <b>${ov.toFixed(1)} %</b>` : `f₀ <b>${S.f0} Hz</b>`];
     STATS = [['Non-zero terms', ws.nz], ['Peak value', fmt(ws.mx, 4)], ['RMS', fmt(ws.rms, 4)], ['RMS error vs ideal', isFinite(ws.err) ? fmt(ws.err, 4) : '—'], ['Highest freq.', fmt(S.f0 * maxHarm(), 0) + '<small>Hz</small>'], ['Power check Σ Aₙ²/2', fmt(S.A.reduce((s, a) => s + a * a / 2, 0), 4)]];
-    LEG = [['x(t)', '#facc15'], ['ideal', 'rgba(255,255,255,.6)']];
+    LEG = [['x(t) = sum', '#facc15'], ['ideal', 'rgba(255,255,255,.6)']].concat($('#bParts').checked ? [['harmonics', hcol(3)]] : []);
   }
   const maxHarm = () => { let m = 0; for (let n = 1; n <= NH; n++) if (S.A[n] > 0.005) m = n; return m; };
 
@@ -949,6 +962,17 @@
   setFType('lp');
   setMode('build');
   loop.start();
+  // guided tour (registered after SimLab mounts the hero; each target is scrolled into view instantly so the tip lands in the right place)
+  const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
+  tourGo([
+    { el: '#stage', before: () => setMode('build'), title: 'Waves from circles', text: 'Each spinning circle is one sine wave (a harmonic). Chained tip to tip they trace the yellow sum on the right; the bars below are the amplitude spectrum.' },
+    { el: '#bPreset', title: 'Pick a target', text: 'Square, sawtooth and triangle waves load their exact Fourier coefficients. Watch the 9 % overshoot (Gibbs) at the square wave’s jumps.' },
+    { el: '#bN', title: 'Add harmonics', text: 'Drag the highest harmonic N up and the sum gets closer to the target. You can also set each amplitude and phase by hand in the rows below.' },
+    { el: '#bPartsRow', title: 'See the ingredients', text: 'With this on, each harmonic is drawn in its own colour behind the yellow sum, so you can see how they add and cancel.' },
+    { el: '#listen', title: 'Hear it', text: 'Play the wave you built. More high harmonics make the tone brighter and buzzier.' },
+    { el: '#modes', title: 'Five modes', text: 'Analyse real signals with the FFT, explore sampling and aliasing, design filters, and draw a shape for epicycles to retrace.' },
+    { el: '#tabChal', title: 'Challenges', text: 'Auto-checked tasks across all modes. Each lights up when you meet the target.' },
+  ]);
   window.FOURIER.state = S; window.FOURIER.setMode = setMode;
 })();
 </script>

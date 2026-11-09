@@ -9,8 +9,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
+  .qcap{margin:10px 0 0;padding:9px 11px;border-radius:10px;background:color-mix(in srgb,var(--accent) 9%,transparent);border:1px solid color-mix(in srgb,var(--accent) 28%,transparent);font-size:.86rem;line-height:1.5}
+  #eCv,#nCv{touch-action:none}
   .labbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding-top:22px}
   .labbar .seg button{display:inline-flex;align-items:center;gap:6px}
   .labbar .seg svg{width:15px;height:15px}
@@ -67,13 +69,13 @@
   <!-- ===================== A. INTERIOR ===================== -->
   <section class="lab" data-mode="int">
     <div class="col">
-      <div class="stage earth">
+      <div class="stage earth" id="eStage">
         <canvas id="eCv" aria-label="Earth cross-section with seismic rays"></canvas>
         <div class="hud"><span class="readout">t = <b id="hT">0.0</b> min</span><span class="readout" id="hHover">Hover the planet for layer data</span></div>
         <div class="stage-toolbar"><button class="btn sm" id="ePlay"><i data-lucide="play"></i> Release waves</button></div>
       </div>
-      <div class="chartrow">
-        <div class="chartbox"><canvas id="ttCv"></canvas><span class="cap">Travel-time curves</span></div>
+      <div class="chartrow" id="ttRow">
+        <div class="chartbox" id="ttBox"><canvas id="ttCv"></canvas><span class="cap">Travel-time curves</span></div>
         <div class="chartbox"><canvas id="ptCv"></canvas></div>
       </div>
     </div>
@@ -87,7 +89,7 @@
         <div class="ctl"><label for="tScrub">Time since earthquake</label><output></output><input type="range" id="tScrub" min="0" max="25" step="0.1" value="0"></div>
         <p class="mini" style="margin:6px 0 0">Drag the red star to move the earthquake. Click anywhere on the surface to place a seismometer and read its arrival times.</p>
       </div>
-      <div class="panel">
+      <div class="panel" id="seisPanel">
         <h3><i data-lucide="radio-tower"></i> Seismometer</h3>
         <div class="stats">
           <div class="stat"><div class="k">Distance Δ</div><div class="v" id="sD">–</div></div>
@@ -95,6 +97,7 @@
           <div class="stat"><div class="k">First S</div><div class="v" id="sS">–</div></div>
           <div class="stat"><div class="k">S − P</div><div class="v" id="sSP">–</div></div>
         </div>
+        <p class="qcap" id="qCap" aria-live="polite"></p>
       </div>
       <div class="panel">
         <h3><i data-lucide="layers"></i> Plate boundaries</h3>
@@ -211,7 +214,7 @@
     <div class="tablist">
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
       <button><i data-lucide="mountain"></i> The East African Rift</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
     </div>
@@ -316,7 +319,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
 'use strict';
@@ -513,6 +516,12 @@ function stationInfo() {
   $('#sP').innerHTML = tp == null ? '<span style="color:#7dd3fc">shadow</span>' : mmss(tp) + (D > 100 && D < 143 ? '<small>weak, via inner core</small>' : D >= 143 ? '<small>PKP</small>' : '');
   $('#sS').innerHTML = ts == null ? '<span style="color:#f9a8d4">none</span>' : mmss(ts);
   $('#sSP').innerHTML = tp != null && ts != null ? mmss(ts - tp) : '–';
+  // what the seismometer reading means
+  let q;
+  if (D < 104) q = `At ${SL.fmt(D, 0)}° the station sits outside the shadow zones, so it records both waves. P (about 6–13 km/s) always arrives first; the ${tp != null && ts != null ? mmss(ts - tp) : ''} wait for S grows with distance, which is how seismologists measure how far away a quake was.`;
+  else if (D <= 140) q = `At ${SL.fmt(D, 0)}° the station is in the <b>shadow zone</b>. The liquid outer core bends P waves away from here (only weak waves refracted by the inner core arrive), and S waves cannot cross liquid at all. This is how we know the outer core is molten.`;
+  else q = `At ${SL.fmt(D, 0)}° no S wave arrives: shear waves cannot travel through the liquid outer core. P reappears as PKP, focused through the core.`;
+  $('#qCap').innerHTML = q;
   if (D >= 104 && D <= 140) done('ch1', `Δ = ${SL.fmt(D, 0)}°: no direct P or S arrive here; only weak waves refracted through the inner core.`);
 }
 const PLATE_TXT = { div: 'Divergent: plates pull apart, magma rises and new oceanic crust forms, recording reversals of Earth\'s magnetic field as stripes.', conv: 'Convergent: dense oceanic lithosphere sinks beneath a continent. Earthquakes deepen along the slab (a Wadati–Benioff zone) and melting feeds a volcanic arc.', trans: 'Transform: plates slide horizontally past each other. Crust is neither created nor destroyed, but friction builds strain that is released in earthquakes.', rift: 'East African Rift: the Somali plate moves away from the Nubian plate by a few mm per year. The crust thins, blocks drop along normal faults to form the rift valley, and rising magma feeds volcanoes.' };
@@ -914,6 +923,17 @@ SL.quiz('#quiz', [
 
 newQuake(); dirty.mag = true;
 loops.int.start();
+  // guided tour (registered after SimLab mounts the hero; each target is scrolled into view instantly so the tip lands in the right place)
+  const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
+  tourGo([
+    { el: '#eStage', before: () => document.querySelector('#modeSeg [data-mode=int]').click(), title: 'Inside the Earth', text: 'Seismic rays fan out from the red star through the mantle and core. Drag the star to move the earthquake; tap the surface to move the white seismometer.' },
+    { el: '#ePlay', title: 'Release the waves', text: 'Watch P waves (blue) race ahead of S waves (pink). S waves stop at the liquid outer core.' },
+    { el: '#seisPanel', title: 'Read the seismometer', text: 'Distance, first P and S arrivals and the S − P delay at your station. The note explains what the reading tells us about the interior.' },
+    { el: '#ttBox', title: 'Travel-time curves', text: 'Arrival time against distance for every ray, with the shadow zone shaded. The dashed line marks your station.' },
+    { el: '#plateSeg', title: 'Plate boundaries', text: 'See why earthquakes happen where plates pull apart, collide or slide past each other, including the East African Rift.' },
+    { el: '#modeSeg', title: 'More labs', text: 'Locate a Rift Valley earthquake by triangulation, compare magnitudes and energy, and shake buildings to find resonance.' },
+    { el: '#tabChal', title: 'Challenges', text: 'Auto-checked tasks, such as finding the shadow zone or locating a mystery epicentre.' },
+  ]);
 window.QuakeLab = { traceRay, vel, get tt() { return tt; }, firstArrival, get Q() { return Q; }, get traces() { return traces; }, STA, KSP, respAmp, bld, sysOf, setProt: v => { prot = v; bld.forEach(b => b.S = null); }, get picks() { return picks; } };
 })();
 </script>

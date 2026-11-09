@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   .modebar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-top:22px}
   .modebar .seg button{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;font-size:.9rem}
@@ -45,6 +45,7 @@
   .kv b{font-family:var(--mono);color:var(--text);font-weight:600}
   .tbl-wrap{overflow-x:auto}
   .disclaimer{font-size:.8rem;color:var(--dim)}
+  .shiftcap{margin:10px 0 0;padding:9px 12px;border-radius:10px;background:color-mix(in srgb,var(--accent) 9%,transparent);border:1px solid color-mix(in srgb,var(--accent) 28%,transparent);font-size:.88rem;line-height:1.5}
 </style>
 </head>
 <body data-page="market">
@@ -79,6 +80,7 @@
         <span><i style="background:rgba(239,68,68,.65)"></i>Deadweight loss</span>
         <span><i style="background:rgba(250,204,21,.45)"></i>Total revenue P×Q</span>
       </div>
+      <p class="shiftcap" id="shiftCap" aria-live="polite" style="display:none"></p>
       <div class="stats tight" id="statsC">
         <div class="stat"><div class="k">Consumer surplus</div><div class="v" id="sCS">0</div><div class="sub">KES '000/day</div></div>
         <div class="stat"><div class="k">Producer surplus</div><div class="v" id="sPS">0</div><div class="sub">KES '000/day</div></div>
@@ -110,7 +112,7 @@
         <label class="toggle">Show original curves after shifts <input type="checkbox" id="tBase" checked></label>
       </div>
 
-      <div class="panel">
+      <div class="panel" id="shiftPanel">
         <h3><i data-lucide="move-horizontal"></i> Shifters</h3>
         <div class="panel-title" style="margin-top:0">Demand (buyers)</div>
         <div class="ctl"><label for="inc">Household income</label><output></output><input type="range" id="inc" min="-30" max="30" step="1" value="0"></div>
@@ -140,7 +142,7 @@
         <p class="hint" id="polHint">No intervention: the market clears at the equilibrium.</p>
       </div>
 
-      <div class="panel">
+      <div class="panel" id="scenPanel">
         <h3><i data-lucide="sparkles"></i> Scenarios</h3>
         <div class="presets">
           <button class="btn" data-preset="reset"><i data-lucide="rotate-ccw"></i> Default market</button>
@@ -232,7 +234,7 @@
     <div class="tablist">
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
       <button><i data-lucide="globe-2"></i> Real world</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
     </div>
@@ -388,7 +390,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
   'use strict';
@@ -764,6 +766,25 @@
       quota: M.binding ? `Only ${F(D.quota, 1)} t may be sold. Licence holders earn a rent of KES ${F(M.Pb - M.Prec, 1)} per kg.` : `Not binding: the quota exceeds Q* = ${F(M.Qeq, 1)} t. Drag the purple line left.`,
     }[M.pol];
     setText('polHint', hint);
+    shiftCaption();
+  }
+  // explain a shift: which curve moved, which way, and how the equilibrium responded
+  let lastShiftCap = '';
+  function shiftCaption() {
+    const el = $('#shiftCap');
+    const shifted = ['inc', 'pref', 'buyers', 'expct', 'cost', 'tech', 'sellers'].some(k => Math.abs(D[k]) > 1e-3);
+    let s = '';
+    if (shifted) {
+      const g = fns(D, true), f = M.f, P0 = rootDec(P => g.Qd(P) - g.Qs(P), 0, PCAP), Q0 = g.Qd(P0);
+      const dd = f.Qd(P0) - g.Qd(P0), ds = f.Qs(P0) - g.Qs(P0);
+      const word = (d, n) => Math.abs(d) < 0.3 ? '' : `<b style="color:${n === 'Demand' ? '#60a5fa' : '#fb923c'}">${n} shifted ${d > 0 ? 'right' : 'left'}</b> (${d > 0 ? '+' : '−'}${F(Math.abs(d), 1)} t/day at the old price)`;
+      const parts = [word(dd, 'Demand'), word(ds, 'Supply')].filter(Boolean);
+      const pc = (M.Peq / P0 - 1) * 100;
+      s = `${parts.join(' and ') || 'The shifts cancel out at the old price'}. Equilibrium moves from KES ${F(P0, 0)} and ${F(Q0, 1)} t to <b>KES ${F(M.Peq, 0)}</b> (${pc >= 0 ? '+' : ''}${F(pc, 1)} %) and <b>${F(M.Qeq, 1)} t</b>.`;
+      if (parts.length === 1) s += ` The other curve does not move: the market slides <i>along</i> it, which is a change in quantity ${Math.abs(dd) >= 0.3 ? 'supplied' : 'demanded'}, not in ${Math.abs(dd) >= 0.3 ? 'supply' : 'demand'}.`;
+      else if (parts.length === 2) s += ' With both curves moving, one of price or quantity is pinned down only by the sizes of the two shifts.';
+    }
+    if (s !== lastShiftCap) { lastShiftCap = s; el.innerHTML = s; el.style.display = s ? '' : 'none'; }
   }
 
   /* ---------------- pointer interaction ---------------- */
@@ -1293,6 +1314,18 @@
     { q: 'A quota that cuts quantity to the same level as a tax produces the same prices. What is different?', options: ['The deadweight loss is larger', 'Buyers pay less', 'The wedge goes to licence holders as quota rent, not to the government', 'Nothing at all'], answer: 2, why: 'The price wedge is identical, so CS, PS and DWL match; the rectangle that was tax revenue becomes rent for whoever holds the quota licences.' },
     { q: 'In the live double auction, nobody knows the supply and demand curves. Why do prices still approach the equilibrium?', options: ['A central auctioneer computes it', 'Traders with unmatched offers keep improving them, and no one trades at a loss, so only the intramarginal units trade', 'Prices are randomly drawn around the equilibrium', 'Sellers collude to set the price'], answer: 1, why: 'Competition among buyers (raising bids) and sellers (cutting asks), constrained by values and costs, squeezes trades into the band where demand and supply cross: Smith\'s classic result.' },
     { q: 'Which is an example of market failure where a tax could increase total surplus?', options: ['A tax on tomatoes in a competitive market', 'A tax on emissions from a factory polluting a river', 'A tax on bread with inelastic demand', 'A tax on imported phones'], answer: 1, why: 'Pollution is a negative externality: the private supply curve ignores external costs, so output is too high. A corrective (Pigouvian) tax moves output towards the socially efficient level.' },
+  ]);
+
+  // guided tour (registered after SimLab mounts the hero; each target is scrolled into view instantly so the tip lands in the right place)
+  const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
+  tourGo([
+    { el: '#stageC', before: () => setMode('curves'), title: 'Supply and demand', text: 'A Nairobi tomato market. Drag either curve to shift it, or drag the white handles to rotate it. The shaded areas are consumer surplus (blue) and producer surplus (green).' },
+    { el: '#shiftPanel h3', title: 'What shifts a curve', text: 'Income, tastes, the number of buyers, input costs, technology and expectations each shift one curve. A note under the graph explains every shift you make.' },
+    { el: '#polSeg', title: 'Add a policy', text: 'Try a tax, subsidy, price ceiling, price floor or quota. Watch the purple revenue and the red deadweight-loss triangle appear.' },
+    { el: '#statsC', title: 'Count the welfare', text: 'Surplus, government revenue and deadweight loss in KES thousand per day, plus who really pays a tax and the elasticities.' },
+    { el: '#scenPanel', title: 'Scenarios', text: 'One click sets up a drought, a fuel price rise, festive demand or a policy, so you can predict the result first and then check.' },
+    { el: '#modeSeg', title: 'Live market game', text: 'Switch to the live game: buyers and sellers haggle crate by crate, and prices discover the equilibrium on their own.' },
+    { el: '#tabChal', title: 'Challenges', text: 'Auto-checked tasks on shifts, elasticity and policy. Each lights up when you meet it.' },
   ]);
 
   // expose for automated tests

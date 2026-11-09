@@ -9,8 +9,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
+  .ebcap{margin:0;padding:9px 12px;border-radius:10px;background:color-mix(in srgb,var(--accent) 9%,transparent);border:1px solid color-mix(in srgb,var(--accent) 28%,transparent);font-size:.88rem;line-height:1.5}
+  @media (max-width:600px){.stage-toolbar .btn{min-width:40px;min-height:38px}}
   .labbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding-top:22px}
   .labbar .seg button{display:inline-flex;align-items:center;gap:6px}
   .labbar .seg svg{width:15px;height:15px}
@@ -62,7 +64,7 @@
   <!-- ===================== A. ENERGY BALANCE ===================== -->
   <section class="lab" data-mode="ebm">
     <div class="col">
-      <div class="stage ebm">
+      <div class="stage ebm" id="ebStage">
         <canvas id="ebCv" aria-label="Radiation balance diagram"></canvas>
         <div class="hud hud-b">
           <span class="readout">T<sub>s</sub> <b id="hT">–</b></span>
@@ -71,7 +73,8 @@
         </div>
         <div class="stage-toolbar"><button class="btn sm" id="ebPlay" aria-label="Play or pause"><i data-lucide="pause"></i></button></div>
       </div>
-      <div class="chartrow">
+      <p class="ebcap" id="ebCap" aria-live="polite"></p>
+      <div class="chartrow" id="ebCharts">
         <div class="chartbox"><canvas id="ebTcv"></canvas></div>
         <div class="chartbox"><canvas id="ebBcv"></canvas></div>
       </div>
@@ -91,7 +94,7 @@
         <div class="ctl"><label for="depth">Ocean mixed-layer depth</label><output></output><input type="range" id="depth" min="10" max="300" step="5" value="70"></div>
         <div class="ctl"><label for="ebSpeed">Speed</label><output></output><input type="range" id="ebSpeed" min="1" max="40" step="1" value="6"></div>
       </div>
-      <div class="panel">
+      <div class="panel" id="ebExp">
         <h3><i data-lucide="zap"></i> Experiments</h3>
         <div class="presets">
           <button class="btn sm" id="bDouble"><i data-lucide="chevrons-up"></i> Double CO₂</button>
@@ -197,7 +200,7 @@
     <div class="tablist">
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
       <button><i data-lucide="map-pin"></i> East Africa</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
     </div>
@@ -317,7 +320,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
 'use strict';
@@ -403,6 +406,7 @@ function ebStats() {
   eb.target = target;
   $('#hT').textContent = `${SL.fmt(eb.Ts - 273.15, 1)} °C (${SL.fmt(eb.Ts, 1)} K)`;
   $('#hN').textContent = (f.N >= 0.005 ? '+' : '') + (Math.abs(f.N) < 0.005 ? '0.00' : f.N.toFixed(2)); $('#hYr').textContent = Math.floor(eb.yr);
+  ebCaption(f, target);
   $('#sTeq').innerHTML = target ? `${SL.fmt(target.T - 273.15, 1)}<small>°C</small>` : '–';
   $('#sG').innerHTML = `${SL.fmt(f.G, 0)}<small>W m⁻²</small>`;
   $('#sF').innerHTML = `${SL.fmt(dF(), 2)}<small>W m⁻²</small>`;
@@ -413,6 +417,20 @@ function ebStats() {
   if (eb.m === 'zero' && eb.eps >= 0.999 && eb.bf === 0 && target && Math.abs(target.T - 254.6) < 1.5) done('ch1', 'with no greenhouse effect Earth would be about 255 K (−18 °C).');
   if (eb.dbl && Math.abs(f.N) < 0.05 && Math.abs(eb.co2 - 560) < 1) { const dT = eb.Ts - eb.dbl; const ecs = 5.35 * Math.LN2 / lam; if (Math.abs(dT - ecs) < 0.25) done('ch2', `warming of ${SL.fmt(dT, 2)} K matches the ECS.`); }
   if (eb.Ts < 250) wasFrozen = true; if (wasFrozen && eb.ice && eb.Ts > 280) { done('ch3', `the planet thawed at S₀ = ${eb.S0} W m⁻² and ${eb.co2} ppm CO₂: hysteresis!`); wasFrozen = false; }
+}
+// plain-language reading of the energy budget
+let lastEbCap = '';
+function ebCaption(f, target) {
+  const N = f.N, Tc = eb.Ts - 273.15, bal = Math.abs(N) < 0.05;
+  let s;
+  if (bal) s = `<b>In balance.</b> The planet absorbs ${SL.fmt(f.asr, 0)} W m⁻² of sunlight and loses the same to space, so ${SL.fmt(Tc, 1)} °C is steady. Try <b>Double CO₂</b> or raise the CO₂ slider to trap more infrared.`;
+  else {
+    const dir = N > 0 ? 'warming' : 'cooling', lam = lamEff(target ? target.T : eb.Ts), tau = lam > 0.05 ? heatCap() / lam / 3.156e7 : NaN;
+    s = `<b style="color:${N > 0 ? '#fb923c' : '#60a5fa'}">${N > 0 ? 'Gaining' : 'Losing'} ${SL.fmt(Math.abs(N), 2)} W m⁻²</b>, so the surface is ${dir}`;
+    s += target ? ` towards ${SL.fmt(target.T - 273.15, 1)} °C${isFinite(tau) ? `, closing about 63 % of the gap every ${SL.fmt(tau, 1)} years (deeper ocean = slower)` : ''}.` : ' with no stable temperature in reach: a runaway.';
+    if (eb.Ts < 250 && eb.ice) s += ' Ice cover reflects so much sunlight that the planet can stay frozen.';
+  }
+  if (s !== lastEbCap) { lastEbCap = s; $('#ebCap').innerHTML = s; }
 }
 function drawEB(t) {
   const { ctx, w, h } = ebSt, f = fluxes(eb.Ts);
@@ -758,6 +776,17 @@ SL.quiz('#quiz', [
 
 ebStats(); drawEBcharts(); setEbPlay();
 loops.ebm.start();
+  // guided tour (registered after SimLab mounts the hero; each target is scrolled into view instantly so the tip lands in the right place)
+  const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
+  tourGo([
+    { el: '#ebStage', before: () => document.querySelector('#modeSeg [data-mode=ebm]').click(), title: 'Energy in, energy out', text: 'Sunlight arrives (yellow), some is reflected, the surface radiates infrared (orange) and part of it escapes to space (red). The difference is trapped by the greenhouse effect (pink).' },
+    { el: '#co2', title: 'Add CO₂', text: 'Drag the CO₂ slider. Each doubling adds about 3.7 W m⁻² of forcing, so the planet takes in more than it loses and warms.' },
+    { el: '#ebExp', title: 'Quick experiments', text: 'Double CO₂, jump to today’s 420 ppm, fire a big eruption, or start from a snowball Earth with the ice–albedo feedback on.' },
+    { el: '#ebCap', title: 'What is happening', text: 'This caption reads the energy budget for you: how big the imbalance is, where the temperature is heading and how quickly.' },
+    { el: '#ebCharts', title: 'Watch it settle', text: 'Left: temperature approaching its new equilibrium. Right: absorbed sunlight versus outgoing energy; they cross at the equilibrium temperature.' },
+    { el: '#modeSeg', title: 'Two more labs', text: 'Design a world emissions pathway to 2100 against the carbon budget, then see what warming means for rainfall in East Africa.' },
+    { el: '#tabChal', title: 'Challenges', text: 'Auto-checked tasks, such as finding Earth’s temperature with no greenhouse effect or escaping a snowball Earth.' },
+  ]);
 window.ClimateLab = { eb, fluxes, equilibria, lamEff, climateModel, pol, recalc, get run() { return run; }, ondFactor };
 })();
 </script>

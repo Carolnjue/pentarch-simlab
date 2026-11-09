@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   #stage{height:620px;touch-action:none}
   @media (max-width:980px){#stage{height:540px}}
@@ -53,6 +53,7 @@
   .verdict.ok{border-color:color-mix(in srgb,var(--ok) 50%,transparent);background:rgba(34,197,94,.08)}
   .verdict.bad{border-color:color-mix(in srgb,var(--bad) 50%,transparent);background:rgba(239,68,68,.08)}
   .verdict.warn{border-color:color-mix(in srgb,var(--warn) 50%,transparent);background:rgba(245,158,11,.08)}
+  @media (max-width:600px){.lab .btn.sm{min-height:36px}.mgrid input{min-height:38px}}
 </style>
 </head>
 <body data-page="matrices">
@@ -140,7 +141,7 @@
         <div class="verdict" id="verdict"></div>
       </div>
 
-      <div class="panel">
+      <div class="panel" id="resPanel">
         <h3><i data-lucide="gauge"></i> Live results</h3>
         <div class="stats" id="stats"></div>
         <div class="tex-box" id="invBox"><span class="lbl" id="invLbl">Inverse</span><div id="invTex"></div></div>
@@ -152,7 +153,7 @@
     <div class="tablist">
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments & challenges</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
       <button><i data-lucide="globe-2"></i> Real-world</button>
     </div>
@@ -284,7 +285,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
   'use strict';
@@ -447,7 +448,17 @@
   const ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
   const Mt2 = () => { const e = ease(S.t); return [[1 + (S.M[0][0] - 1) * e, S.M[0][1] * e], [S.M[1][0] * e, 1 + (S.M[1][1] - 1) * e]]; };
   function drawM2() {
-    const V = view2(null, st.w < 600 ? 3.3 : 4.2); S.V2 = V; const M = Mt2();
+    // auto-zoom: frame the transformed shape, basis vectors and v/Av (frozen while dragging so handles stay under the finger)
+    const base = st.w < 600 ? 3.3 : 4.2, mn = Math.min(st.w, st.h);
+    if (!drag) {
+      const M0 = Mt2(), pts = SHAPES[S.shape].flat().map(p => ap2(M0, p)).concat([[M0[0][0], M0[1][0]], [M0[0][1], M0[1][1]], [M0[0][0] + M0[0][1], M0[1][0] + M0[1][1]]]);
+      if ($('#showV').checked) pts.push(S.v, ap2(M0, S.v));
+      let need = base; pts.forEach(p => { need = Math.max(need, Math.abs(p[0]) * 1.15 * mn / st.w, Math.abs(p[1]) * 1.28 * mn / st.h); });
+      S.r2t = Math.min(need, 12);
+    }
+    S.r2 = S.r2 || S.r2t || base;
+    if (S.r2t && Math.abs(S.r2 - S.r2t) > 0.002) { S.r2 += (S.r2t - S.r2) * 0.15; S.dirty = true; }
+    const V = view2(null, S.r2); S.V2 = V; const M = Mt2();
     bgGrid(V); tGrid(V, M, C.pos);
     const d = det2(M);
     // unit square
@@ -901,6 +912,17 @@
   document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
   function init() { S._init = true; m2Changed(true); compTex(); setMode('m2'); loop.start(); }
   if (window.katex) init(); else { let n = 0; const t = setInterval(() => { if (window.katex || ++n > 30) { clearInterval(t); init(); } }, 100); }
+  // guided tour (registered after SimLab mounts the hero; each target is scrolled into view instantly so the tip lands in the right place)
+  const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
+  tourGo([
+    { el: '#stage', before: () => setMode('m2'), title: 'A matrix moves the plane', text: 'Drag the green î and pink ĵ handles: they are the columns of A. The grid, the unit square and the yellow house all follow. The view zooms to keep everything in frame.' },
+    { el: '#m2in', title: 'Type the numbers', text: 'Or edit the four entries directly. Column 1 is where î lands, column 2 is where ĵ lands.' },
+    { el: '#m2pre', title: 'Classic transformations', text: 'Try Rotate, Shear, Reflect and Project. Singular squashes the plane onto a line, so det = 0.' },
+    { el: '#anim2', title: 'Watch it happen', text: 'Animate from the identity to see the plane morph smoothly into its image. Use A⁻¹ to undo it.' },
+    { el: '#resPanel', title: 'Read the matrix', text: 'det is the area scale factor (negative means flipped), the eigenvalues are stretch factors along the purple lines, and the inverse appears when det ≠ 0.' },
+    { el: '#modes', title: 'Five modes', text: 'Compose two transformations (order matters), go 3D, use homogeneous coordinates for a robot arm, and solve linear systems step by step.' },
+    { el: '#tabChal', title: 'Challenges', text: 'Auto-checked tasks, such as building a reflection by hand or hunting eigenvectors.' },
+  ]);
   window.MAT.state = S; window.MAT.setMode = m => setMode(m); window.MAT.loadSys = loadSys; window.MAT.eliminate = eliminate;
 })();
 </script>
