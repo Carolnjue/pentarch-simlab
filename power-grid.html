@@ -141,9 +141,9 @@
       <canvas class="gauge" id="gauge" role="img" aria-label="System frequency gauge centred on 50 Hz; the reading is shown below it"></canvas>
       <div class="fbig" id="fbig">50.000<small>Hz</small></div>
       <div class="stats tight" style="margin-top:8px">
-        <div class="stat"><div class="k">ROCOF</div><div class="v" id="sRocof">0<small>Hz/s</small></div></div>
-        <div class="stat"><div class="k">Inertia</div><div class="v" id="sInertia">0<small>GW·s</small></div></div>
-        <div class="stat"><div class="k">Last nadir</div><div class="v" id="sNadir">–<small>Hz</small></div></div>
+        <div class="stat" title="Rate of change of frequency: how fast frequency is moving, in Hz per second. Large values follow a sudden loss of generation."><div class="k">ROCOF</div><div class="v" id="sRocof">0<small>Hz/s</small></div></div>
+        <div class="stat" title="Kinetic energy stored in all spinning generators. More inertia means frequency falls more slowly after a trip."><div class="k">Inertia</div><div class="v" id="sInertia">0<small>GW·s</small></div></div>
+        <div class="stat" title="Nadir: the lowest frequency reached after the last disturbance. Below 49.0 Hz, customers are disconnected automatically (load shedding)."><div class="k">Last nadir</div><div class="v" id="sNadir">–<small>Hz</small></div></div>
         <div class="stat"><div class="k">Imbalance</div><div class="v" id="sImb">0<small>MW</small></div></div>
       </div>
       <div class="fcap" id="fcap" aria-live="off"></div>
@@ -166,6 +166,7 @@
     <div class="panel">
       <h3><i data-lucide="sliders-horizontal"></i> Generation dispatch <span class="muted small hint" style="font-weight:400;margin-left:auto">Setpoint slider · Start/Stop · governor (GOV) and AGC participation</span></h3>
       <div class="uhead"><span></span><span>Unit</span><span>Status</span><span>Output (Pmin | P | Pmax)</span><span>Setpoint</span><span class="hg">Control</span><span></span></div>
+      <p class="mini" style="margin:6px 0 8px">Your job: keep generation equal to demand so frequency stays near 50 Hz. Drag a unit's setpoint to change its output; Start/Stop brings it on or off line. <b>GOV</b> (governor) lets a unit add power automatically when frequency drops; <b>AGC</b> (automatic generation control) then slowly brings frequency back to exactly 50 Hz. Spinning reserve = spare capacity on units already running. Pmin/Pmax = the unit's minimum and maximum output.</p>
       <div class="units" id="units"></div>
     </div>
     <aside>
@@ -246,7 +247,7 @@
     <div class="eq">$$P_\text{generation} = P_\text{demand} + P_\text{losses} + \frac{dE_\text{kinetic}}{dt}$$</div>
     <p>When demand exceeds generation, the shortfall is drawn from the kinetic energy of the rotating machines, they slow down, and frequency falls. Frequency is therefore a system-wide, real-time measure of the balance between supply and demand.</p>
     <h3>Inertia</h3>
-    <p>The inertia constant $H$ of a machine is its stored kinetic energy at rated speed divided by its MVA rating:</p>
+    <p>Think of every generator as a heavy flywheel: the more spinning mass, the harder it is to slow down, so frequency changes more gently. The inertia constant $H$ of a machine is its stored kinetic energy at rated speed divided by its power rating $S_\text{rated}$ (in MVA). $J$ is the moment of inertia of the rotor and $\omega_0$ its rated angular speed. $H$ is in seconds: how long the stored energy alone could supply full output.</p>
     <div class="eq">$$H = \frac{\tfrac12 J\omega_0^2}{S_\text{rated}}\quad[\text{s}]$$</div>
     <p>Typical values: large steam and geothermal turbines 3–6 s, hydro 2–4 s, reciprocating diesel engines 1–2 s. Wind farms (behind power converters), solar PV, batteries and HVDC links contribute <b>no natural inertia</b>. The system's total stored energy is $E_\text{sys} = \sum H_i S_i$, shown in the frequency panel in GW·s. When the sun is high, many synchronous units are switched off, $E_\text{sys}$ falls, and the same disturbance causes a faster and deeper frequency drop.</p>
     <h3>Operating states</h3>
@@ -263,7 +264,7 @@
 
   <div class="tabpanel prose">
     <h3>The aggregated swing equation</h3>
-    <p>For one machine, Newton's second law for rotation in per-unit form gives</p>
+    <p>In words: if mechanical power in ($P_m$) is more than electrical power out ($P_e$), the rotor speeds up; if less, it slows down. For one machine, Newton's second law for rotation in per-unit form (every quantity expressed as a fraction of the machine's rating) gives</p>
     <div class="eq">$$\frac{2H}{\omega_0}\frac{d\omega}{dt} = P_m - P_e\quad(\text{per unit on the machine base})$$</div>
     <p>Treating the whole grid as one equivalent rotating mass (all machines swing together, which is a good approximation for the first few seconds of a large event) and writing it in frequency:</p>
     <div class="eq">$$\frac{d\,\Delta f}{dt} = \frac{f_0}{2E_\text{sys}}\Big(\sum_i P_{m,i} - P_L\big(1 + D\,\tfrac{\Delta f}{f_0}\big)\Big),\qquad E_\text{sys} = \sum_i H_i S_i$$</div>
@@ -1072,11 +1073,11 @@ let PROG = {}; try { PROG = JSON.parse(localStorage.getItem('sl-grid-prog') || '
 const saveP = () => { try { localStorage.setItem('sl-grid-prog', JSON.stringify(PROG)); } catch (e) {} };
 function saveBest(id, s) { PROG['best_' + id] = Math.max(PROG['best_' + id] || 0, Math.round(s)); saveP(); renderCh(); }
 const CH = [
-  { id: 'ride', t: 'Ride-through', d: 'Survive a largest-unit trip in any scenario with the nadir above 49.0 Hz (no load shedding).' },
+  { id: 'ride', t: 'Ride-through', d: 'Press Trip largest unit (under Inject an event) and keep the lowest frequency (Last nadir) above 49.0 Hz, so no load is shed. Hint: before the trip, make sure spinning reserve exceeds the largest unit and governors (GOV) are on.' },
   { id: 'li', t: 'Low inertia, no shedding', d: 'Complete the "Low-inertia midday" scenario without any UFLS operation.' },
   { id: 'peak', t: 'Peak performer', d: 'Get through the evening peak scenario with less than 1 MWh of energy not served.' },
   { id: 'cor', t: 'Congestion manager', d: 'Complete the corridor scenario with L2b still in service and no load shed: relieve the overload by re-dispatch, not by cutting supply.' },
-  { id: 'manual', t: 'Human AGC', d: 'With AGC off, keep frequency within 49.9–50.1 Hz for one hour of grid time.' },
+  { id: 'manual', t: 'Human AGC', d: 'Untick the master AGC switch (next to Restore one stage, under the frequency panel) and keep frequency within 49.9–50.1 Hz for one hour of grid time by moving setpoints yourself: frequency falling means generation is short, so raise output.' },
   { id: 'green', t: 'Clean hour', d: 'Run one hour of grid time with a renewable share above 85 % and frequency within 49.8–50.2 Hz.' },
   { id: 'bs', t: 'Black-start engineer', d: 'Restore 90 % of demand after a national blackout.' },
   { id: 'day', t: 'A clean day', d: 'Finish "A day in control" with no energy not served and no blackout.' },
@@ -1086,7 +1087,7 @@ function renderCh() { $('#chal').innerHTML = CH.map(c => `<div class="chk"><span
 renderCh();
 let chT = { manual: 0, green: 0, ride: null };
 function checkCh(h) {
-  if (!S.agc && !S.blackout && Math.abs(S.df) <= 0.1) chT.manual += h; else chT.manual = 0; if (chT.manual >= 3600) award('manual');
+  if (!S.agc && !S.blackout && Math.abs(S.df) <= 0.1) { const b0 = chT.manual; chT.manual += h; if (!PROG.ch_manual && Math.floor(chT.manual / 900) > Math.floor(b0 / 900) && chT.manual < 3600) SL.toast(`Human AGC: ${Math.floor(chT.manual / 60)} of 60 minutes inside 49.9–50.1 Hz.`, 'ok'); } else { if (!S.agc && chT.manual >= 300 && typeof PROG !== 'undefined' && !PROG.ch_manual) SL.toast(`Human AGC: frequency left 49.9–50.1 Hz (${(50 + S.df).toFixed(2)} Hz), timer restarts. ${S.df < 0 ? 'Raise' : 'Lower'} a setpoint.`, 'warn', 4500); chT.manual = 0; } if (chT.manual >= 3600) award('manual');
   if (!S.blackout && S.renNow > 0.85 && Math.abs(S.df) <= 0.2) chT.green += h; else chT.green = 0; if (chT.green >= 3600) award('green');
   const last = LOG.find(l => /largest unit trip/.test(l.msg));
   if (last && S.t - last.t > 60 && S.t - last.t < 70 && !S.ufls.some(x => x) && !S.blackout && S.nadir > 49.0) award('ride');

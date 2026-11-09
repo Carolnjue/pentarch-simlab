@@ -172,6 +172,7 @@
           </select></div>
         <div class="btn-row" style="margin-top:8px"><button class="btn primary" id="startShift"><i data-lucide="play"></i> Start shift</button><button class="btn" id="endShift"><i data-lucide="flag"></i> End exercise</button></div>
         <div class="fp-note" id="shiftNote">Choose an exercise and start the shift. The plant runs normally until something goes wrong.</div>
+        <p class="mini" style="margin:6px 0 0"><b>New to SCADA?</b> Explore in free operation first: tap any equipment on the overview (or a Faceplate tab) to see its readings and controls. Tags follow a code: first letter = what is measured (L level, F flow, P pressure, T temperature), then T transmitter, I indicator, C controller, V valve; the number is the plant area (1xx borehole … 4xx reservoir, 5xx town). So LT-401 is the reservoir level transmitter. Full key in the P&amp;ID symbols tab.</p>
         <div class="panel-title">Your diagnosis</div>
         <div class="diag"><select id="diagSel" aria-label="Root cause"><option value="">Root cause…</option></select><button class="btn sm" id="diagBtn">Record</button></div>
         <div class="fp-note" id="diagNote">Record what you believe the root cause is. It is marked in the debrief.</div>
@@ -242,7 +243,7 @@
       <li><b>Historian.</b> Stores time-stamped values so you can trend and investigate after an event.</li>
     </ol>
     <h3>Scaling a 4–20 mA signal</h3>
-    <p>The live zero (4 mA rather than 0 mA) lets the PLC tell "zero level" apart from "broken wire". For a transmitter ranged from LRV to URV:</p>
+    <p>The live zero (4 mA rather than 0 mA) lets the PLC tell "zero level" apart from "broken wire". A transmitter is calibrated over a range from its lower range value (LRV, the reading at 4 mA) to its upper range value (URV, at 20 mA); in between the current is proportional to the process variable (PV, the quantity being measured):</p>
     <div class="eq">$$\text{PV} = \text{LRV} + \frac{I-4\ \text{mA}}{16\ \text{mA}}\,(\text{URV}-\text{LRV})$$</div>
     <p>LT-401 is ranged 0–4.5 m, so 13.6 mA means $0 + \tfrac{9.6}{16}\times 4.5 = 2.70$ m. Under the NAMUR NE 43 convention a current below 3.6 mA or above 21 mA signals a fault, and the HMI should show the value as <b>bad quality</b>. A transmitter that is stuck at a plausible value is harder: its quality looks fine, and only comparison with other evidence (a second transmitter, a mass balance, the absence of normal signal noise) reveals it.</p>
     <h3>Control modes, permissives and interlocks</h3>
@@ -255,7 +256,7 @@
     <h3>The reservoir level loop</h3>
     <p>The reservoir obeys a simple mass balance. With plan area $A$ = 180 m²:</p>
     <div class="eq">$$A\frac{dh}{dt} = Q_\text{in} - Q_\text{out} - Q_\text{backwash} - Q_\text{overflow}$$</div>
-    <p>LIC-401 is a PI controller that moves inlet valve LCV-401 to hold the level at its setpoint:</p>
+    <p>LIC-401 is a PI (proportional–integral) controller that moves inlet valve LCV-401 to hold the level at its setpoint (the target level). In words: the P part opens the valve more the further the level is below target; the I part keeps adding opening for as long as any error remains, so the level ends up exactly on target. $e$ is the error, $u$ the valve opening:</p>
     <div class="eq">$$u(t) = K_p\,e(t) + \frac{K_p}{T_i}\int_0^t e\,d\tau,\qquad e = h_\text{SP} - h_\text{measured}$$</div>
     <p>Here $K_p$ = 120 %/m and $T_i$ = 25 min, with anti-windup (the integral stops when the valve is fully open or shut). The borehole pump runs while LCV-401 is open more than 10 % and goes to "sleep" after the valve has been below 5 % for a minute. Note the weakness: the controller trusts the <i>measured</i> level. If LT-401 freezes low, the controller keeps opening the valve. That is why independent float switches (LSHH-402, LSL-403) exist and why the backup transmitter LT-402 is compared continuously.</p>
     <div class="callout"><i data-lucide="info"></i><div>This is a teaching model. Hydraulics use quadratic pump and system curves solved every simulation step, a linear well drawdown model, and well-mixed tanks for chlorine. Real plants add many more details (water hammer, motor starting currents, chlorine decay kinetics that depend on temperature and organic matter), but the cause-and-effect chains here are the ones operators really use.</div></div>
@@ -1457,7 +1458,7 @@ let PROG = {};
 try { PROG = JSON.parse(localStorage.getItem('sl-plant-prog') || '{}'); } catch (e) { PROG = {}; }
 function saveProg(id, score, resolved) { if (resolved) { PROG[id] = Math.max(PROG[id] || 0, Math.round(score)); } try { localStorage.setItem('sl-plant-prog', JSON.stringify(PROG)); } catch (e) {} }
 const CH = [
-  { id: 'manual', t: 'Hand control', d: 'In Manual, hold the reservoir within ±0.1 m of 3.0 m for 30 minutes of plant time.' },
+  { id: 'manual', t: 'Hand control', d: 'Open the LIC-401 faceplate (reservoir level controller), switch it to Manual and set the inlet valve opening yourself. Keep the LT-401 level between 2.9 and 3.1 m (±0.1 m of 3.0 m) for 30 minutes of plant time. Hint: when the level is steady, inflow equals outflow; compare FT-201 with FT-202. Progress is announced every 10 minutes.' },
   { id: 'bw', t: 'Clean filter, happy town', d: 'Complete a backwash while the town stays above 1 bar throughout.' },
   { id: 'affinity', t: 'Affinity laws', d: 'Run BP-101 in Manual at 40 Hz or less (above 30 Hz) for 10 minutes of plant time, and compare the flow with the 50 Hz value. Does Q fall in proportion to speed?' },
   { id: 'f3', t: 'Three emergencies', d: 'Resolve any three different emergencies.' },
@@ -1467,7 +1468,7 @@ const CH = [
 let chT = { manual: 0, bwPress: true, bwStart: 0, aff: 0 };
 function checkChallenges(h) {
   if (h) {
-    if (S.lic.mode === 'man' && Math.abs(S.res.h - 3.0) <= 0.1) chT.manual += h; else chT.manual = 0;
+    if (S.lic.mode === 'man' && Math.abs(S.res.h - 3.0) <= 0.1) { const before = chT.manual; chT.manual += h; if (!PROG.ch_manual && Math.floor(chT.manual / 600) > Math.floor(before / 600) && chT.manual < 1800) SL.toast(`Hand control: ${Math.floor(chT.manual / 60)} of 30 minutes held within ±0.1 m of 3.0 m.`, 'ok'); } else { if (S.lic.mode === 'man' && chT.manual >= 300 && !PROG.ch_manual) SL.toast(`Hand control: the level drifted to ${S.res.h.toFixed(2)} m, outside 2.9–3.1 m. The timer restarts; nudge the valve ${S.res.h > 3 ? 'closed' : 'open'} a little.`, 'warn', 5000); chT.manual = 0; }
     if (chT.manual >= 1800) award('manual');
     if (S.filt.bw && !chT.bwStart) { chT.bwStart = 1; chT.bwPress = true; }
     if (chT.bwStart && S.town.Pdisp < 1) chT.bwPress = false;
