@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=3">
+<link rel="stylesheet" href="assets/css/simlab.css?v=5">
 <style>
   .labbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding-top:22px}
   .labbar .seg button{display:inline-flex;align-items:center;gap:6px}
@@ -317,7 +317,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=3"></script>
+<script src="assets/js/simlab.js?v=5"></script>
 <script>
 (() => {
 'use strict';
@@ -427,18 +427,19 @@ function drawEB(t) {
   ctx.fillStyle = gg; ctx.fillRect(0, gy, dw, h - gy);
   ctx.fillStyle = '#1d4e7a'; ctx.fillRect(dw * 0.55, gy + 4, dw * 0.45, h - gy - 4);
   if (ice > 0.05) { ctx.fillStyle = `rgba(235,245,255,${clamp(ice * 1.2, 0, 0.95)})`; ctx.fillRect(0, gy, dw * clamp(ice * 1.3, 0, 1), h - gy); }
-  ctx.fillStyle = '#cbd5e1'; ctx.font = '600 11px Inter, sans-serif'; ctx.textAlign = 'left'; ctx.textAlign = 'right'; ctx.fillText(`Surface  ${SL.fmt(eb.Ts - 273.15, 1)} °C`, dw - 10, h - 12); ctx.textAlign = 'left';
+  ctx.fillStyle = '#cbd5e1'; ctx.font = '600 11px Inter, sans-serif'; ctx.textAlign = 'left'; ctx.textAlign = 'right'; ctx.fillText(`Surface  ${SL.fmt(eb.Ts - 273.15, 1)} °C`, dw - 10, narrow ? gy - 8 : h - 12); ctx.textAlign = 'left';
   // atmosphere layers
   const layersY = eb.m === 'zero' ? [h * 0.42] : [h * 0.52, h * 0.32];
-  const L = f.L;
+  const L = f.L, layerLabs = [];
   layersY.forEach((ly, i) => {
     const a = eb.m === 'zero' ? 1 - eb.eps + 0.25 : eb.epsL;
     const g = ctx.createLinearGradient(0, ly - 22, 0, ly + 22); g.addColorStop(0, 'rgba(120,170,255,0)'); g.addColorStop(0.5, `rgba(120,170,255,${0.08 + 0.3 * a})`); g.addColorStop(1, 'rgba(120,170,255,0)');
     ctx.fillStyle = g; ctx.fillRect(0, ly - 22, dw, 44);
     ctx.fillStyle = '#93c5fd'; ctx.font = '600 10.5px JetBrains Mono, monospace';
     const lab = eb.m === 'zero' ? `Atmosphere ε = ${eb.eps.toFixed(3)}` : `Layer ${i + 1} · ε ${eb.epsL.toFixed(2)} · ${SL.fmt((i ? L.T2 : L.T1) - 273.15, 0)} °C`;
-    ctx.fillText(lab, 10, ly - 26);
+    layerLabs.push([lab, ly]);
   });
+  const drawLayerLabs = () => { ctx.textAlign = 'left'; ctx.font = '600 10.5px JetBrains Mono, monospace'; layerLabs.forEach(([lab, ly]) => { const lw0 = ctx.measureText(lab).width; ctx.fillStyle = 'rgba(7,11,22,.72)'; ctx.fillRect(6, ly - 39, lw0 + 8, 18); ctx.fillStyle = '#93c5fd'; ctx.fillText(lab, 10, ly - 26); }); };
   // flux arrows (width ∝ flux)
   const wpx = v => clamp(Math.abs(v) / 24, 1.5, 22);
   const flow = (x1, y1, x2, y2, v, col, lab, side) => {
@@ -447,7 +448,10 @@ function drawEB(t) {
     const n = Math.max(2, Math.round(Math.abs(v) / 40)), L2 = Math.hypot(x2 - x1, y2 - y1);
     ctx.fillStyle = 'rgba(255,255,255,.85)';
     for (let k = 0; k < n; k++) { const q = ((t * 70 / L2) + k / n) % 1; ctx.beginPath(); ctx.arc(x1 + (x2 - x1) * q, y1 + (y2 - y1) * q, 1.6, 0, 7); ctx.fill(); }
-    if (lab) { ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = side === 'l' ? 'right' : 'left'; ctx.fillStyle = '#e6ecf7'; const mx = (x1 + x2) / 2 + (side === 'l' ? -lw / 2 - 6 : lw / 2 + 6), my = (y1 + y2) / 2; ctx.fillText(lab, mx, my - 2); ctx.fillStyle = '#93a1bd'; ctx.font = '10px Inter, sans-serif'; ctx.fillText(SL.fmt(v, 0) + ' W m⁻²', mx, my + 11); }
+    if (lab) { ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = side === 'l' ? 'right' : 'left'; const mx = (x1 + x2) / 2 + (side === 'l' ? -lw / 2 - 6 : lw / 2 + 6), my = (y1 + y2) / 2;
+      const vt = SL.fmt(v, 0) + ' W m⁻²', tw = Math.max(ctx.measureText(lab).width, ctx.measureText(vt).width * 0.9) + 8, bx = side === 'l' ? mx - tw + 4 : mx - 4;
+      ctx.fillStyle = 'rgba(7,11,22,.72)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx, my - 15, tw, 31, 5) : ctx.rect(bx, my - 15, tw, 31); ctx.fill();
+      ctx.fillStyle = '#e6ecf7'; ctx.fillText(lab, mx, my - 2); ctx.fillStyle = '#93a1bd'; ctx.font = '10px Inter, sans-serif'; ctx.fillText(SL.fmt(v, 0) + ' W m⁻²', mx, my + 11); }
   };
   const top = 26, xs = dw * 0.3, xr = dw * 0.44, xu = dw * 0.63, xo = dw * 0.9;
   const nm = narrow ? ['Sun', 'Refl.', 'Surface', 'G', 'Back', 'OLR'] : ['Sunlight', 'Reflected', 'Surface IR σT⁴', 'Greenhouse G', 'Back radiation', 'Outgoing IR'];
@@ -458,6 +462,7 @@ function drawEB(t) {
   if (eb.m === 'zero') flow(xu + gx2, layersY[0] - 12, xu + gx2, gy - 4, f.G, '#f472b6', nm[3], 'r');
   else { flow(xu + gx2, layersY[0] + 14, xu + gx2, gy - 4, L.down, '#f472b6', nm[4], 'r'); }
   flow(xo, layersY[layersY.length - 1] - 16, xo, top, f.olr, '#ef4444', nm[5], 'l');
+  drawLayerLabs();
   // sun
   const sg = ctx.createRadialGradient(xs - 14, 6, 2, xs - 14, 6, 70); sg.addColorStop(0, 'rgba(255,240,180,1)'); sg.addColorStop(0.25, 'rgba(253,224,71,.6)'); sg.addColorStop(1, 'rgba(253,224,71,0)');
   ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(xs - 14, 6, 70, 0, 7); ctx.fill();

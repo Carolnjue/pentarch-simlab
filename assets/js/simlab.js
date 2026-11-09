@@ -118,7 +118,7 @@
       </div></div></div>`;
     return `<header class="sl-header" id="slHeader"><div class="container bar">
       <a class="sl-logo" href="index.html"><span class="mark">${LOGO}</span><span><b class="pw">PENTARCH</b> SimLab<small>Learn by doing</small></span></a>
-      <nav class="sl-nav" aria-label="Departments">${main}${more}</nav>
+      <nav class="sl-nav" aria-label="Departments"><div class="item m-search"><a href="#" id="slSearchM">${icon('search')} Search all labs</a></div>${main}${more}</nav>
       <button class="sl-search" id="slSearchBtn" aria-label="Search labs">${icon('search')}<span>Search</span><kbd>/</kbd></button>
       <button class="sl-burger" id="slBurger" aria-label="Menu">${icon('menu')}</button>
     </div></header>`;
@@ -238,6 +238,7 @@
     if (m) document.title = document.title || `${m.title} · Pentarch SimLab`;
     const showPalette = palette();
     const sb = document.getElementById('slSearchBtn'); if (sb) sb.onclick = showPalette;
+    const sm = document.getElementById('slSearchM'); if (sm) sm.onclick = e => { e.preventDefault(); document.getElementById('slHeader').classList.remove('mobile-open'); showPalette(); };
     const hdr = document.getElementById('slHeader');
     const burger = document.getElementById('slBurger');
     if (burger) burger.onclick = () => hdr.classList.toggle('mobile-open');
