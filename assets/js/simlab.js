@@ -145,7 +145,7 @@
 
   function pageHero(m) {
     const d = deptById[m.dept];
-    return `<section class="page-hero" data-fx="${m.dept}"><canvas class="hero-fx" aria-hidden="true"></canvas><div class="container">
+    return `<section class="page-hero" data-fx="${m.dept}" aria-label="Lab introduction"><canvas class="hero-fx" aria-hidden="true"></canvas><div class="container">
       <div class="crumbs"><a href="index.html">SimLab</a> / <a href="index.html#${d.id}">${d.name}</a> / ${m.title}</div>
       <div class="tag">${icon(m.icon)} ${d.name}</div>
       <h1>${m.title}</h1>
@@ -201,12 +201,12 @@
     const d = deptById[m.dept];
     const card = x => `<a class="card" href="${x.id}.html" data-dept="${x.dept}"><span class="badge">${deptById[x.dept].name}</span><span class="ic">${icon(x.icon)}</span><h3>${x.title}</h3><p>${x.desc}</p><span class="go">Open lab ${icon('arrow-right')}</span></a>`;
     const sec = document.createElement('section');
-    sec.className = 'container sl-more';
+    sec.className = 'container sl-more'; sec.setAttribute('aria-label', 'More labs');
     sec.innerHTML = `<div class="sl-pn">
         <a href="${prev.id}.html" class="sl-pn-a"><span>${icon('arrow-left')} Previous in ${d.name}</span><b>${prev.title}</b></a>
         <a href="${next.id}.html" class="sl-pn-a right"><span>Next in ${d.name} ${icon('arrow-right')}</span><b>${next.title}</b></a>
       </div>
-      <h3 class="sl-more-h">Keep exploring</h3>
+      <h2 class="sl-more-h">Keep exploring</h2>
       <div class="grid3">${pick.map(card).join('')}</div>`;
     return sec;
   }
@@ -294,7 +294,7 @@
     document.querySelectorAll('.sl-tour').forEach(x => x.remove());
     let i = start || 0;
     const ov = document.createElement('div'); ov.className = 'sl-tour';
-    ov.innerHTML = `<div class="sl-tour-hole"></div><div class="sl-tour-tip" role="dialog" aria-live="polite"><div class="sl-tour-n"></div><h4></h4><p></p><div class="btn-row"><button class="btn sm ghost" data-a="skip">Close</button><span style="flex:1"></span><button class="btn sm" data-a="back">Back</button><button class="btn sm primary" data-a="next">Next</button></div></div>`;
+    ov.innerHTML = `<div class="sl-tour-hole"></div><div class="sl-tour-tip" role="dialog" aria-modal="true" aria-labelledby="slTourH" aria-live="polite"><div class="sl-tour-n"></div><h4 id="slTourH"></h4><p></p><div class="btn-row"><button class="btn sm ghost" data-a="skip">Close</button><span style="flex:1"></span><button class="btn sm" data-a="back">Back</button><button class="btn sm primary" data-a="next">Next</button></div></div>`;
     document.body.appendChild(ov);
     const hole = ov.querySelector('.sl-tour-hole'), tip = ov.querySelector('.sl-tour-tip');
     const show = () => {
@@ -449,8 +449,8 @@
   function fmt(n, d = 2) {
     if (n === null || n === undefined || !isFinite(n)) return '—';
     const a = Math.abs(n);
-    if (a !== 0 && (a >= 1e6 || a < 1e-3)) return n.toExponential(Math.max(1, d - 1)).replace('e+', 'e');
-    return n.toLocaleString('en', { maximumFractionDigits: d, minimumFractionDigits: 0 });
+    if (a !== 0 && (a >= 1e6 || a < 1e-3)) return n.toExponential(Math.max(1, d - 1)).replace('e+', 'e').replace(/-/g, '\u2212');
+    return n.toLocaleString('en', { maximumFractionDigits: d, minimumFractionDigits: 0 }).replace(/^-/, '\u2212');
   }
 
   function toast(msg, type, ms) {
@@ -475,7 +475,7 @@
     if (!el) return;
     let score = 0, answered = 0;
     el.classList.add('quiz');
-    el.innerHTML = questions.map((q, i) => `<div class="q" data-i="${i}"><p>${i + 1}. ${q.q}</p><div class="opts">${q.options.map((o, j) => `<button class="opt" data-j="${j}">${o}</button>`).join('')}</div><div class="why">${q.why || ''}</div></div>`).join('') + `<p class="score"></p>`;
+    el.innerHTML = questions.map((q, i) => `<div class="q" data-i="${i}"><p>${i + 1}. ${q.q}</p><div class="opts">${q.options.map((o, j) => `<button class="opt" data-j="${j}" aria-label="${String(o).replace(/<[^>]+>/g, '').replace(/\$/g, '').replace(/\\/g, '').replace(/"/g, '&quot;')}">${o}</button>`).join('')}</div><div class="why">${q.why || ''}</div></div>`).join('') + `<p class="score"></p>`;
     el.addEventListener('click', e => {
       const b = e.target.closest('.opt'); if (!b) return;
       const qd = b.closest('.q'); if (qd.classList.contains('done')) return;
