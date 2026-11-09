@@ -1,0 +1,1559 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plant Operator Console · Pentarch SimLab</title>
+<meta name="description" content="Operate a SCADA-controlled borehole and water treatment plant: read the HMI, respond to alarms, diagnose faults such as dry-running pumps, burst mains and power failures, and keep the town supplied with safe water.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .ops{padding:20px 0 10px}
+  /* Alarm banner (annunciator) */
+  .annun{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#14171c;border:1px solid #2c323b;border-radius:12px;padding:8px 10px;margin-bottom:10px}
+  .annun .cnt{display:flex;gap:6px;flex-wrap:wrap}
+  .pcount{display:inline-flex;align-items:center;gap:6px;font:600 .75rem var(--mono);padding:4px 8px;border-radius:7px;background:#1d2229;border:1px solid #2c323b;color:#9aa4b2}
+  .pcount i{display:inline-block;width:10px;height:10px}
+  .pcount.has{color:#e9edf2}
+  .pcount.flash{animation:blink 1s infinite}
+  .annun .latest{flex:1;min-width:220px;font:500 .82rem var(--mono);color:#cfd6df;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .annun .latest b{font-weight:600}
+  .annun .btn{padding:6px 10px;font-size:.78rem}
+  .pi{display:inline-grid;place-items:center;width:16px;height:16px;font:700 .62rem var(--mono);color:#111;flex:none}
+  .pi.p1{background:#ef4444;color:#fff}.pi.p2{background:#f97316;clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}.pi.p3{background:#facc15;clip-path:polygon(0 0,100% 0,50% 100%)}.pi.p4{background:#c084fc;border-radius:50%}
+  /* HMI bar */
+  .hmibar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+  .clock{font:600 1.05rem var(--mono);background:#14171c;border:1px solid #2c323b;border-radius:10px;padding:6px 12px;color:#e9edf2;letter-spacing:.04em}
+  .clock small{font-size:.68rem;color:#8b949e;margin-left:6px;letter-spacing:.1em}
+  .hmibar .status{font:500 .78rem var(--mono);color:#9aa4b2;margin-left:auto}
+  .stage.hmi{min-height:0;background:#2a2e35;border-color:#3a414b;border-radius:12px}
+  .hmi-scroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
+  #cv{width:100%;aspect-ratio:1100/620;height:auto;cursor:default;touch-action:pan-x pan-y}
+  @media (max-width:760px){#cv{width:900px;max-width:none}}
+  .console>*,.console2>*{min-width:0}
+  .hmi-tip{position:absolute;pointer-events:none;background:#14171c;border:1px solid #4b5563;border-radius:8px;padding:7px 10px;font:500 .74rem var(--mono);color:#e5e7eb;display:none;z-index:5;max-width:260px;line-height:1.45}
+  .hmi-tip b{color:#fff}
+  .swipe{display:none;font:500 .72rem var(--mono);color:#8b949e;padding:6px 10px}
+  @media (max-width:760px){.swipe{display:block}}
+  /* Console */
+  .console{display:grid;grid-template-columns:380px minmax(0,1fr);gap:14px;margin-top:14px}
+  .console2{display:grid;grid-template-columns:1.25fr 1fr .85fr;gap:14px;margin-top:14px}
+  @media (max-width:1100px){.console2{grid-template-columns:1fr 1fr}.console2>:last-child{grid-column:1/-1}}
+  @media (max-width:980px){.console,.console2{grid-template-columns:1fr}.console2>:last-child{grid-column:auto}}
+  .console .panel+.panel{margin-top:14px}
+  .hmipanel{background:#1b1f25;border-color:#2c323b}
+  .fp-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+  .fp-h b{font:700 1rem var(--mono)}
+  .fp-h span.d{color:var(--muted);font-size:.85rem}
+  .fp-st{margin-left:auto;font:600 .72rem var(--mono);padding:3px 8px;border-radius:6px;background:#2a2f37;color:#d1d5db;letter-spacing:.06em;text-transform:uppercase}
+  .fp-st.trip{background:#ef4444;color:#fff}
+  .fp-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}
+  .fp-v{background:#14171c;border:1px solid #2c323b;border-radius:8px;padding:6px 9px}
+  .fp-v .k{font:500 .64rem var(--mono);color:#8b949e;letter-spacing:.08em;text-transform:uppercase}
+  .fp-v .v{font:600 .95rem var(--mono);color:#e9edf2}
+  .fp-v .v small{font-size:.68rem;color:#9aa4b2;margin-left:3px}
+  .fp-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0;font-size:.85rem;color:var(--muted);flex-wrap:wrap}
+  .fp-field{border-top:1px dashed #2c323b;margin-top:10px;padding-top:10px}
+  .fp-field .lbl{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:#8b949e;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+  .fp-field .lbl svg{width:13px;height:13px}
+  .fp-note{font-size:.78rem;color:#8b949e;margin-top:6px}
+  .seg button:disabled{opacity:.4;cursor:not-allowed}
+  .eqlist{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+  .eqlist button{all:unset;cursor:pointer;font:600 .7rem var(--mono);padding:4px 7px;border-radius:6px;border:1px solid #2c323b;color:#9aa4b2}
+  .eqlist button.on{border-color:#d1d5db;color:#fff;background:#2a2f37}
+  /* Alarm list */
+  .alist{max-height:260px;overflow:auto;border:1px solid #2c323b;border-radius:10px;background:#14171c}
+  .alist table{width:100%;border-collapse:collapse;font:500 .76rem var(--mono)}
+  .alist th{position:sticky;top:0;background:#1d2229;color:#8b949e;font-weight:600;text-align:left;padding:6px 8px;font-size:.66rem;letter-spacing:.08em;text-transform:uppercase}
+  .alist td{padding:5px 8px;border-top:1px solid #23282f;color:#cfd6df;vertical-align:middle}
+  .alist tr.unack td{color:#fff}
+  .alist tr.unack td.desc{animation:blink 1.2s infinite}
+  .alist tr.rtn td{color:#7d8590}
+  .alist td .btn{padding:3px 7px;font-size:.68rem;border-radius:6px}
+  .alist .empty{padding:18px;text-align:center;color:#6b7280}
+  .tbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+  .trendbox{position:relative;height:230px;background:#14171c;border:1px solid #2c323b;border-radius:10px}
+  .trendbox canvas{width:100%;height:100%;display:block}
+  .legend{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font:500 .72rem var(--mono);color:#9aa4b2}
+  .legend span i{display:inline-block;width:12px;height:3px;margin-right:5px;vertical-align:middle}
+  /* SOP / log */
+  .sop details{border:1px solid #2c323b;border-radius:10px;background:#14171c;margin-bottom:7px}
+  .sop summary{cursor:pointer;padding:9px 12px;font-weight:600;font-size:.86rem;list-style:none;display:flex;gap:8px;align-items:center}
+  .sop summary::-webkit-details-marker{display:none}
+  .sop summary .code{font:600 .7rem var(--mono);color:#8b949e}
+  .sop .body{padding:0 14px 12px;font-size:.84rem;color:#cfd6df}
+  .sop .body ol{padding-left:1.2em;margin:.3em 0}
+  .sop .body li{margin:.25em 0}
+  .sop .body .caut{border-left:3px solid #f59e0b;padding:4px 10px;background:rgba(245,158,11,.07);margin-top:8px;font-size:.8rem}
+  .log{max-height:340px;overflow:auto;font:500 .76rem var(--mono);border:1px solid #2c323b;border-radius:10px;background:#14171c;padding:4px 0}
+  .log div{padding:4px 10px;border-bottom:1px solid #1f242b;color:#cfd6df}
+  .log div .tm{color:#8b949e;margin-right:6px}
+  .log div.op{color:#a5d8ff}.log div.fld{color:#c7f9cc}.log div.al{color:#fca5a5}.log div.sys{color:#9aa4b2}.log div.note{color:#fde68a}
+  .lognote{display:flex;gap:6px;margin-top:8px}
+  .lognote input{flex:1}
+  .scorebar{height:8px;background:#23282f;border-radius:5px;overflow:hidden;margin:3px 0 9px}
+  .scorebar i{display:block;height:100%;background:#9aa4b2;border-radius:5px;transition:width .4s}
+  .sc-row{display:flex;justify-content:space-between;font-size:.82rem;color:var(--muted)}
+  .sc-row b{font-family:var(--mono);color:var(--text)}
+  .bigscore{font:700 2.2rem var(--display);line-height:1}
+  .diag{display:flex;gap:6px;margin-top:8px}
+  .diag select{flex:1;min-width:0}
+  .debrief h3{margin-top:0}
+  .debrief table{margin:8px 0}
+  .debrief .tl{font:500 .76rem var(--mono);max-height:160px;overflow:auto;background:var(--bg2);border-radius:8px;padding:8px}
+  .chk{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:8px}
+  .chk .led{margin-top:6px;flex:none}
+  .chk b{display:block}
+  .legend-svg{background:#2a2e35;border-radius:12px;border:1px solid #3a414b;padding:10px}
+  .legend-svg svg{width:100%;height:auto;display:block}
+  .tagtbl td:first-child{font-family:var(--mono);font-weight:600}
+  .pcwrap{height:300px;background:#14171c;border:1px solid #2c323b;border-radius:12px;position:relative}
+  .pcwrap canvas{width:100%;height:100%;display:block}
+</style>
+</head>
+<body data-page="plant-operator">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+<section class="ops">
+  <div class="annun" id="annun" aria-live="polite">
+    <div class="cnt" id="pcounts"></div>
+    <div class="latest" id="latest">No active alarms</div>
+    <button class="btn sm" id="ackAll"><i data-lucide="check-check"></i> Ack all</button>
+    <button class="btn sm" id="silence"><i data-lucide="bell-off"></i> Silence</button>
+    <button class="btn sm on" id="horn" aria-pressed="true"><i data-lucide="volume-2"></i> Horn</button>
+  </div>
+  <div class="hmibar">
+    <div class="clock" id="clock">06:00:00<small>DAY 1</small></div>
+    <div class="seg" id="speed"><button data-s="0">Pause</button><button data-s="1">1×</button><button data-s="10">10×</button><button data-s="30" class="on">30×</button><button data-s="60">60×</button><button data-s="120">120×</button></div>
+    <span class="status" id="status">Free operation</span>
+  </div>
+  <div class="stage hmi" id="hmiStage">
+    <div class="hmi-scroll" id="hmiScroll"><canvas id="cv" aria-label="SCADA overview graphic of the borehole, treatment works, reservoir, booster station and power supply"></canvas></div>
+    <div class="hmi-tip" id="tip"></div>
+  </div>
+  <div class="swipe">Swipe the graphic sideways to pan. Tap equipment to open its faceplate.</div>
+
+  <div class="console">
+    <aside>
+      <div class="panel hmipanel">
+        <h3><i data-lucide="clipboard-list"></i> Shift &amp; scenario</h3>
+        <div class="ctl" style="grid-template-columns:1fr"><label for="scen">Exercise</label>
+          <select id="scen">
+            <option value="random">Training shift: random emergency</option>
+            <option value="dryrun">Borehole pump dry-running</option>
+            <option value="boostertrip">Booster pump trip</option>
+            <option value="burst">Burst raw water main</option>
+            <option value="chlor">Chlorinator failure</option>
+            <option value="filter">Filter blockage after a storm</option>
+            <option value="power">Power failure</option>
+            <option value="sensor">Instrument failure</option>
+            <option value="overflow">Reservoir overflow</option>
+            <option value="free">Free operation (no faults)</option>
+          </select></div>
+        <div class="btn-row" style="margin-top:8px"><button class="btn primary" id="startShift"><i data-lucide="play"></i> Start shift</button><button class="btn" id="endShift"><i data-lucide="flag"></i> End exercise</button></div>
+        <div class="fp-note" id="shiftNote">Choose an exercise and start the shift. The plant runs normally until something goes wrong.</div>
+        <div class="panel-title">Your diagnosis</div>
+        <div class="diag"><select id="diagSel"><option value="">Root cause…</option></select><button class="btn sm" id="diagBtn">Record</button></div>
+        <div class="fp-note" id="diagNote">Record what you believe the root cause is. It is marked in the debrief.</div>
+      </div>
+      <div class="panel hmipanel" id="fpPanel">
+        <h3><i data-lucide="panel-right-open"></i> Faceplate</h3>
+        <div class="eqlist" id="eqlist"></div>
+        <div id="fp"></div>
+      </div>
+    </aside>
+    <div>
+      <div class="panel hmipanel">
+        <h3><i data-lucide="siren"></i> Alarm summary <span class="seg" id="afilt" style="margin-left:auto"><button class="on" data-f="act">Active</button><button data-f="shelved">Shelved</button><button data-f="hist">History</button></span></h3>
+        <div class="alist" id="alist"></div>
+      </div>
+      <div class="panel hmipanel">
+        <h3><i data-lucide="line-chart"></i> Trends (historian)</h3>
+        <div class="tbar">
+          <div class="seg" id="tgrp"><button class="on" data-g="res">Reservoir &amp; town</button><button data-g="well">Borehole</button><button data-g="qual">Water quality</button><button data-g="pwr">Power</button></div>
+          <div class="seg" id="twin"><button data-w="1">1 h</button><button class="on" data-w="4">4 h</button><button data-w="12">12 h</button></div>
+        </div>
+        <div class="trendbox"><canvas id="trend"></canvas></div>
+        <div class="legend" id="tleg"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="console2">
+    <div class="panel hmipanel sop" id="sop">
+      <h3><i data-lucide="book-marked"></i> Operating procedures (SOP cards)</h3>
+    </div>
+    <div class="panel hmipanel">
+      <h3><i data-lucide="notebook-pen"></i> Shift logbook</h3>
+      <div class="log" id="log"></div>
+      <div class="lognote"><input type="text" id="noteIn" placeholder="Add an operator note…" maxlength="160"><button class="btn sm" id="noteBtn">Log</button></div>
+    </div>
+    <div class="panel hmipanel">
+      <h3><i data-lucide="award"></i> Shift performance</h3>
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px"><span class="bigscore" id="scTotal">–</span><span class="muted small" id="scState">No exercise running</span></div>
+      <div class="sc-row"><span>Service continuity</span><b id="scCont">–</b></div><div class="scorebar"><i id="bCont" style="width:0"></i></div>
+      <div class="sc-row"><span>Water quality</span><b id="scQual">–</b></div><div class="scorebar"><i id="bQual" style="width:0"></i></div>
+      <div class="sc-row"><span>Safety &amp; assets</span><b id="scSafe">–</b></div><div class="scorebar"><i id="bSafe" style="width:0"></i></div>
+      <div class="sc-row"><span>Time since alarm</span><b id="scTime">–</b></div><div class="scorebar"><i id="bTime" style="width:0"></i></div>
+      <div class="fp-note">Weights: continuity 30%, quality 20%, safety 20%, time to resolve 15%, diagnosis 15%.</div>
+    </div>
+  </div>
+</section>
+
+<section class="tabs" data-tabs id="learn">
+  <div class="tablist">
+    <button><i data-lucide="cpu"></i> SCADA &amp; PLC basics</button>
+    <button><i data-lucide="shapes"></i> P&amp;ID symbols</button>
+    <button><i data-lucide="fan"></i> Pumps, NPSH &amp; dry-running</button>
+    <button><i data-lucide="bell-ring"></i> Alarm management</button>
+    <button><i data-lucide="droplets"></i> Chlorination &amp; CT</button>
+    <button><i data-lucide="calculator"></i> Worked examples</button>
+    <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+    <button><i data-lucide="circle-help"></i> Quiz</button>
+  </div>
+
+  <div class="tabpanel prose">
+    <h3>From sensor to screen</h3>
+    <p>A water scheme like the one above is run from a <b>SCADA</b> system (Supervisory Control And Data Acquisition). It has four layers:</p>
+    <ol>
+      <li><b>Field instruments and actuators.</b> Transmitters convert a process variable into a standard signal, usually a 4–20 mA current loop. Actuators (motor starters, variable-speed drives, valve actuators) do the physical work.</li>
+      <li><b>PLC</b> (Programmable Logic Controller). It runs a scan cycle every few tens of milliseconds: read inputs, execute logic (interlocks, sequences, PID loops), write outputs. Control happens here, not on the screen. If the SCADA PC fails, the PLC keeps the plant running.</li>
+      <li><b>SCADA server and HMI</b> (Human–Machine Interface). Polls the PLCs, draws the graphics, raises alarms and sends operator commands back down.</li>
+      <li><b>Historian.</b> Stores time-stamped values so you can trend and investigate after an event.</li>
+    </ol>
+    <h3>Scaling a 4–20 mA signal</h3>
+    <p>The live zero (4 mA rather than 0 mA) lets the PLC tell "zero level" apart from "broken wire". For a transmitter ranged from LRV to URV:</p>
+    <div class="eq">$$\text{PV} = \text{LRV} + \frac{I-4\ \text{mA}}{16\ \text{mA}}\,(\text{URV}-\text{LRV})$$</div>
+    <p>LT-401 is ranged 0–4.5 m, so 13.6 mA means $0 + \tfrac{9.6}{16}\times 4.5 = 2.70$ m. Under the NAMUR NE 43 convention a current below 3.6 mA or above 21 mA signals a fault, and the HMI should show the value as <b>bad quality</b>. A transmitter that is stuck at a plausible value is harder: its quality looks fine, and only comparison with other evidence (a second transmitter, a mass balance, the absence of normal signal noise) reveals it.</p>
+    <h3>Control modes, permissives and interlocks</h3>
+    <ul>
+      <li><b>Auto / Manual (Hand–Off–Auto).</b> In Auto the PLC starts and stops equipment. In Manual the operator commands it from the faceplate. Start/Stop buttons are disabled in Auto so that the operator and the PLC never fight over the same device.</li>
+      <li><b>Permissive:</b> a condition that must be true before something may start (BP-101 cannot start unless XV-101 is open).</li>
+      <li><b>Interlock / trip:</b> a condition that forces equipment off (booster pumps stop on reservoir low-low level LSL-403; a motor trips on thermistor over-temperature or thermal overload). Trips latch and need a deliberate reset.</li>
+      <li><b>Sequence:</b> a timed series of steps (the filter backwash: drain, air scour, water wash, settle).</li>
+    </ul>
+    <h3>The reservoir level loop</h3>
+    <p>The reservoir obeys a simple mass balance. With plan area $A$ = 180 m²:</p>
+    <div class="eq">$$A\frac{dh}{dt} = Q_\text{in} - Q_\text{out} - Q_\text{backwash} - Q_\text{overflow}$$</div>
+    <p>LIC-401 is a PI controller that moves inlet valve LCV-401 to hold the level at its setpoint:</p>
+    <div class="eq">$$u(t) = K_p\,e(t) + \frac{K_p}{T_i}\int_0^t e\,d\tau,\qquad e = h_\text{SP} - h_\text{measured}$$</div>
+    <p>Here $K_p$ = 120 %/m and $T_i$ = 25 min, with anti-windup (the integral stops when the valve is fully open or shut). The borehole pump runs while LCV-401 is open more than 10 % and goes to "sleep" after the valve has been below 5 % for a minute. Note the weakness: the controller trusts the <i>measured</i> level. If LT-401 freezes low, the controller keeps opening the valve. That is why independent float switches (LSHH-402, LSL-403) exist and why the backup transmitter LT-402 is compared continuously.</p>
+    <div class="callout"><i data-lucide="info"></i><div>This is a teaching model. Hydraulics use quadratic pump and system curves solved every simulation step, a linear well drawdown model, and well-mixed tanks for chlorine. Real plants add many more details (water hammer, motor starting currents, chlorine decay kinetics that depend on temperature and organic matter), but the cause-and-effect chains here are the ones operators really use.</div></div>
+    <h3>The scheme in numbers</h3>
+    <table class="data">
+      <tr><th>Item</th><th>Value</th></tr>
+      <tr><td>Borehole</td><td>Static water level 38 m bgl, specific capacity 2.4 m³/h per m, pump intake 88 m bgl</td></tr>
+      <tr><td>BP-101</td><td>30 kW submersible on VFD, shut-off head 160 m at 50 Hz, about 65 m³/h duty</td></tr>
+      <tr><td>Raw main</td><td>DN150, 1.8 km, ending at pressure filter F-201</td></tr>
+      <tr><td>Chlorination</td><td>12.5 % sodium hypochlorite, flow-paced dose 1.8 mg/L, 30 m³ contact pipe</td></tr>
+      <tr><td>Reservoir T-401</td><td>180 m² × 4.0 m to overflow (720 m³)</td></tr>
+      <tr><td>Booster P-201/P-202</td><td>22 kW each, duty/standby, town 20 m above the reservoir</td></tr>
+      <tr><td>Town</td><td>About 1,250 m³/day; morning and evening peaks about 1.7 × average</td></tr>
+      <tr><td>Standby generator</td><td>G-001, 80 kW (100 kVA), 400 L day tank, automatic transfer switch</td></tr>
+    </table>
+  </div>
+
+  <div class="tabpanel prose">
+    <h3>Reading a P&amp;ID</h3>
+    <p>Piping and Instrumentation Diagrams use standard symbols (ISA-5.1 / ISO 14617) so that anyone can read any plant. The overview graphic above is a simplified P&amp;ID in the style of ISA-101: grey equipment, with colour reserved for alarms.</p>
+    <div class="legend-svg" id="pidLegend"></div>
+    <h3>Instrument tag letters (ISA-5.1)</h3>
+    <div class="grid2">
+      <table class="data tagtbl"><tr><th>First letter</th><th>Measured variable</th></tr>
+        <tr><td>F</td><td>Flow</td></tr><tr><td>L</td><td>Level</td></tr><tr><td>P</td><td>Pressure</td></tr><tr><td>PD / DP</td><td>Differential pressure</td></tr><tr><td>T</td><td>Temperature</td></tr><tr><td>A</td><td>Analysis (chlorine, turbidity, pH)</td></tr><tr><td>Z</td><td>Position</td></tr><tr><td>J</td><td>Power</td></tr><tr><td>H</td><td>Hand (manual)</td></tr>
+      </table>
+      <table class="data tagtbl"><tr><th>Following letters</th><th>Function</th></tr>
+        <tr><td>T</td><td>Transmitter</td></tr><tr><td>I</td><td>Indicator</td></tr><tr><td>C</td><td>Controller</td></tr><tr><td>V</td><td>Valve (LCV = level control valve)</td></tr><tr><td>S</td><td>Switch (LSHH = level switch high-high)</td></tr><tr><td>A</td><td>Alarm</td></tr><tr><td>Q</td><td>Totaliser / integrate</td></tr><tr><td>H, L</td><td>High, low (HH, LL = high-high, low-low)</td></tr>
+      </table>
+    </div>
+    <p>So <b>AIT-301</b> is an analyser-indicator-transmitter (the chlorine residual analyser), <b>DPIT-201</b> is the filter differential-pressure transmitter and <b>LSL-403</b> is a low-level switch. Loop numbers group devices: 1xx borehole, 2xx treatment, 3xx chemical dosing, 4xx reservoir, 5xx network.</p>
+  </div>
+
+  <div class="tabpanel prose">
+    <h3>Pump curve meets system curve</h3>
+    <p>A centrifugal pump's head falls as flow rises. A good approximation is a parabola; the affinity laws scale it with speed ratio $r = n/n_0$ (for a VFD, $r = f/50$ Hz):</p>
+    <div class="eq">$$H_p(Q) = H_0 r^2 - aQ^2,\qquad Q \propto r,\quad H \propto r^2,\quad P \propto r^3$$</div>
+    <p>The pipework needs a head that rises with flow: a static lift plus friction. For a borehole the static lift itself grows with flow because the water level draws down:</p>
+    <div class="eq">$$H_\text{sys}(Q) = \underbrace{\Big(h_\text{SWL} + \frac{Q}{S_c}\Big)}_{\text{pumping level}} + z + kQ^2 + \Delta h_\text{filter}(Q) + \Delta h_\text{valves}(Q)$$</div>
+    <p>where $S_c$ is the specific capacity (m³/h per metre of drawdown). The pump runs where the curves cross. Watch it live below: change the VFD speed, throttle LCV-401 or let the filter clog, and the operating point moves.</p>
+    <div class="pcwrap"><canvas id="pumpCurve"></canvas></div>
+    <p class="small muted">Solid: BP-101 at its present speed (dashed: 50 Hz). Grey: system curve with the present valves, filter and aquifer. Vertical dashed line: the flow at which the pumping level reaches the intake.</p>
+    <h3>Dry-running versus cavitation</h3>
+    <p><b>Cavitation</b> happens when the pressure at the impeller eye falls below the vapour pressure, so vapour bubbles form and collapse violently. The criterion is net positive suction head:</p>
+    <div class="eq">$$\text{NPSH}_a = \frac{p_\text{atm} - p_v}{\rho g} + h_\text{sub} - h_\text{loss} \;>\; \text{NPSH}_r + \text{margin}$$</div>
+    <p>At about 1,600 m altitude in central Kenya, $p_\text{atm} \approx 84$ kPa, and at 25 °C $p_v \approx 3.2$ kPa, so the atmospheric term is about 8.2 m. A submersible pump with 20 m of submergence has an NPSHa near 28 m, far above a typical NPSHr of 3–6 m. Submersibles rarely cavitate. Their danger is <b>dry-running</b>: if the pumping level falls to the intake, the pump draws air, flow and motor current collapse, and the motor (which is cooled by water flowing past it) overheats within minutes.</p>
+    <div class="callout warn"><i data-lucide="triangle-alert"></i><div><b>The signature of dry-running:</b> motor current falls well below normal (around 40 % of full-load current), flow falls to near zero, wellhead pressure drops, well level is at the intake, and motor temperature rises. A <i>closed discharge valve</i> (dead-heading) also gives low current and low flow, but the pressure is <i>high</i>, not low. Compare tags before you act.</div></div>
+    <h3>Sustainable yield</h3>
+    <p>With a linear drawdown model the maximum flow that keeps a submergence margin $m$ above the intake at depth $z_i$ is</p>
+    <div class="eq">$$Q_\text{max} = S_c\,(z_i - m - h_\text{SWL})$$</div>
+    <p>When a drought lowers the static level and screen encrustation reduces $S_c$, $Q_\text{max}$ can drop below the pump's 50 Hz output. The fix is to reduce speed (the affinity laws), install a low-level probe or underload relay that trips the pump, and plan rehabilitation of the borehole.</p>
+  </div>
+
+  <div class="tabpanel prose">
+    <h3>What an alarm is for</h3>
+    <p>An alarm is an audible and/or visible means of telling the operator about an equipment malfunction, process deviation or abnormal condition <b>that requires a timely response</b> (ISA-18.2 / IEC 62682). If no action is needed, it should be an event or a message, not an alarm.</p>
+    <h3>Priorities</h3>
+    <table class="data">
+      <tr><th>Priority</th><th>Meaning</th><th>Respond within</th><th>Target share of alarms</th></tr>
+      <tr><td><span class="pi p1">1</span> Critical</td><td>Loss of supply, public-health or safety consequence</td><td>Immediately</td><td>About 5 %</td></tr>
+      <tr><td><span class="pi p2">2</span> High</td><td>Severe consequence if not handled soon</td><td>Within minutes</td><td>About 15 %</td></tr>
+      <tr><td><span class="pi p3">3</span> Medium</td><td>Deviation that will grow if ignored</td><td>Within 30 min</td><td>About 80 % (medium and low together)</td></tr>
+      <tr><td><span class="pi p4">4</span> Low</td><td>Advisory, maintenance due</td><td>This shift</td><td></td></tr>
+    </table>
+    <p>Priority is coded redundantly by <b>colour, shape and number</b>, so that it is still readable by colour-blind operators and on a monochrome display.</p>
+    <h3>The alarm state model</h3>
+    <ol class="steps">
+      <li><b>Unacknowledged, active:</b> flashing, horn sounding. The operator has not yet seen it.</li>
+      <li><b>Acknowledged, active:</b> steady. The operator has seen it; the condition still exists.</li>
+      <li><b>Unacknowledged, returned to normal:</b> the condition cleared before anyone looked. It stays listed so it is not missed.</li>
+      <li><b>Shelved:</b> temporarily hidden by the operator (here for one hour of plant time), for example a known nuisance alarm during maintenance. Shelving must be tracked and time-limited because a shelved alarm cannot warn you.</li>
+    </ol>
+    <h3>Acknowledging is not fixing</h3>
+    <p>Pressing "Ack" only silences the horn and stops the flashing. Good practice: <b>acknowledge, assess, act, log</b>. Read the whole alarm list, look for the first alarm in the sequence (it often points at the root cause), confirm with trends and other tags, act, and write it down.</p>
+    <h3>Alarm floods and standing alarms</h3>
+    <p>EEMUA 191 suggests an average of no more than about one alarm per 10 minutes per operator in normal operation, and calls more than 10 alarms in 10 minutes a <b>flood</b>. A power failure easily produces a flood, which is why the first alarm matters. <b>Standing alarms</b> (active for days) and <b>shelved</b> alarms train operators to ignore them. In the power-failure exercise, an ignored low-battery or low-fuel alarm from the previous shift is exactly what turns a short interruption into a long outage.</p>
+    <h3>Rationalisation tools</h3>
+    <ul><li><b>Deadband:</b> the value must return past the limit by a margin before the alarm clears, to stop chattering.</li><li><b>On-delay:</b> the condition must persist for a set time (here 10–60 s) before the alarm is raised.</li><li><b>State-based suppression:</b> low-flow alarms on a pump are only meaningful while the pump is commanded to run.</li></ul>
+  </div>
+
+  <div class="tabpanel prose">
+    <h3>Why chlorinate</h3>
+    <p>Free chlorine (hypochlorous acid HOCl and hypochlorite OCl⁻) inactivates bacteria and viruses and leaves a <b>residual</b> that protects water in the pipes. Sodium hypochlorite dissociates as</p>
+    <div class="eq">$$\mathrm{NaOCl + H_2O \rightarrow HOCl + NaOH},\qquad \mathrm{HOCl \rightleftharpoons H^+ + OCl^-}\ (\text{p}K_a \approx 7.5)$$</div>
+    <p>HOCl is roughly 80 times more effective than OCl⁻, which is why disinfection works best at pH below 8.</p>
+    <h3>Dose, demand and residual</h3>
+    <div class="eq">$$C_\text{residual} = C_\text{dose} - C_\text{demand}$$</div>
+    <p>The demand is the chlorine consumed by iron, manganese, ammonia and organic matter. Turbid water carries more demand and shields microbes, so <b>filtration first, then disinfection</b>. The plant doses flow-paced: mass rate $\dot m = C_\text{dose}\,Q$. At 1.8 mg/L and 65 m³/h that is 117 g/h of chlorine, about 0.94 L/h of 12.5 % hypochlorite.</p>
+    <h3>The CT concept</h3>
+    <p>Inactivation depends on the product of residual concentration and contact time:</p>
+    <div class="eq">$$CT = C \times T_{10}\quad[\text{mg·min/L}],\qquad T_{10} = \text{BF}\times\frac{V}{Q}$$</div>
+    <p>$T_{10}$ is the time by which only 10 % of the water has passed through the tank, found from the hydraulic residence time $V/Q$ multiplied by a baffling factor BF (0.1 for an unbaffled tank, 0.3 for a poorly baffled reservoir, 0.7 or more for a serpentine contact tank, 1.0 for a pipe). WHO guidance for effective disinfection is a free residual of at least 0.5 mg/L after at least 30 min contact at pH below 8, that is CT ≥ 15 mg·min/L. At the consumer's tap, aim for 0.2–0.5 mg/L.</p>
+    <h3>Model used in the simulator</h3>
+    <p>The contact pipe is two well-mixed cells in series (a simple stand-in for plug flow) and the reservoir is one well-mixed tank with first-order bulk decay $k_b$:</p>
+    <div class="eq">$$V\frac{dC}{dt} = Q_\text{in}\,C_\text{in} - Q_\text{in}\,C - k_b V C$$</div>
+    <p>At steady state $C = C_\text{in}\,\dfrac{Q}{Q + k_b V}$. With $k_b$ = 0.025 h⁻¹, a 600 m³ volume and 60 m³/h inflow, $C = 0.8\,C_\text{in}$. Because the reservoir is large, its outlet residual (AIT-302) changes slowly. The contact analyser AIT-301 is your early warning of a dosing failure.</p>
+    <div class="callout warn"><i data-lucide="triangle-alert"></i><div>Overdosing is also a quality failure: above about 2–3 mg/L customers complain of taste and odour, and WHO's health-based guideline value for chlorine is 5 mg/L. Never run both dosing pumps at the full flow-paced dose at the same time.</div></div>
+  </div>
+
+  <div class="tabpanel prose">
+    <h3>1. Will the borehole run dry?</h3>
+    <div class="worked">
+      <p>During a drought the static water level is 46 m below ground and the specific capacity has fallen to $S_c$ = 0.85 m³/h per m. The intake is at 88 m. What is the largest flow that keeps 3 m of submergence?</p>
+      <p>$Q_\text{max} = S_c(z_i - m - h_\text{SWL}) = 0.85\times(88 - 3 - 46) = 0.85 \times 39 = 33$ m³/h.</p>
+      <p>At 50 Hz BP-101 wants about 60 m³/h, which would need a pumping level of $46 + 60/0.85 = 117$ m, below the intake. It will dry-run. In the simulator the pump settles at about 32 m³/h with 4–5 m of submergence at 43 Hz, and about 30 m³/h with 7 m of submergence at 42 Hz, the setting SOP-01 recommends.</p>
+      <p>Affinity check: flow falls faster than speed here because the static head (pumping level) is large; at 42 Hz the shut-off head is $160 \times 0.84^2 = 113$ m.</p>
+    </div>
+    <h3>2. Reservoir time-to-empty</h3>
+    <div class="worked">
+      <p>The raw main bursts at 10:00. The reservoir is at 2.9 m and the town draws 60 m³/h. Booster pumps cut out at 0.4 m (LSL-403). How long does storage last?</p>
+      <p>Usable volume $= A\,\Delta h = 180 \times (2.9 - 0.4) = 450$ m³. Time $= 450 / 60 = 7.5$ h. This is your window to isolate and repair the main. If the evening peak arrives (about 90 m³/h) the window shrinks. Calm, deliberate isolation is better than restarting the pump into a burst main.</p>
+    </div>
+    <h3>3. Pump power and current</h3>
+    <div class="worked">
+      <p>BP-101 delivers 65 m³/h against a total head of 112 m (65 m pumping level plus 47 m at the wellhead). Hydraulic power:</p>
+      <p>$P_h = \rho g Q H = 1000 \times 9.81 \times \frac{65}{3600} \times 112 = 19.8$ kW. With a pump efficiency of about 0.69, shaft power is about 28.8 kW.</p>
+      <p>The model's current is $I = \sqrt{I_m^2 + (k P)^2}$ with magnetising current $I_m = 0.35 \times 64 = 22.4$ A and $k = 1.91$ A/kW: $I = \sqrt{22.4^2 + 55^2} \approx 59$ A, about 92 % of the 64 A full-load current. Dry-running drops shaft power to about 5 kW, so $I \approx \sqrt{22.4^2 + 10^2} \approx 25$ A: the low-current alarm fires below 50 % (32 A). A throttled pump at 20 m³/h still draws about 40 A, so the alarm does not chatter during normal level control.</p>
+    </div>
+    <h3>4. Hypochlorite consumption</h3>
+    <div class="worked">
+      <p>Dose 1.8 mg/L = 1.8 g/m³. At 65 m³/h: $1.8 \times 65 = 117$ g/h of available chlorine. A 12.5 % (w/v) solution contains 125 g/L, so the pump delivers $117/125 = 0.94$ L/h, about 22 L/day. The 500 L day tank lasts about three weeks.</p>
+    </div>
+    <h3>5. CT at the reservoir</h3>
+    <div class="worked">
+      <p>Reservoir at 3.0 m holds $180 \times 3.0 = 540$ m³; outflow 50 m³/h. HRT $= 540/50 = 10.8$ h $= 648$ min. With BF = 0.3, $T_{10} = 194$ min. With 0.8 mg/L residual, $CT = 0.8 \times 194 = 155$ mg·min/L, ten times the 15 mg·min/L target. The contact pipe alone (30 m³ at 65 m³/h, BF = 1) gives $T_{10} = 28$ min and $CT = 1.2 \times 28 = 33$ mg·min/L.</p>
+    </div>
+    <h3>6. Generator load</h3>
+    <div class="worked">
+      <p>On the 80 kW generator: BP-101 about 29 kW of shaft power (31 kW electrical at 93 % motor efficiency), one booster about 19 kW (20 kW electrical), auxiliaries 3 kW: total about 54 kW, 68 % load. Starting the second booster adds 20 kW (74 kW, 93 %), and at peak flows the pumps draw more. Run one booster only on the generator.</p>
+    </div>
+  </div>
+
+  <div class="tabpanel prose">
+    <p>Challenges are checked automatically while the simulator runs. Progress is remembered in this browser.</p>
+    <div id="chal"></div>
+    <h3>Guided experiments</h3>
+    <ol class="steps">
+      <li><b>Affinity laws.</b> In free operation, open the BP-101 faceplate, switch to Manual and step the VFD from 50 to 40 Hz. Watch FT-101, the current and the pump-curve chart in the Pumps tab. Is $Q \propto f$? Explain why flow falls faster than speed (think about static head).</li>
+      <li><b>Mass balance.</b> Put LIC-401 in Manual with the valve at 100 %. Use the trend to measure $dh/dt$ and check $A\,dh/dt = Q_\text{in} - Q_\text{out}$ with FT-201 and FT-202.</li>
+      <li><b>Controller tuning.</b> Change the level setpoint from 3.2 to 2.6 m in Auto and watch how LCV-401 and the level respond. What would a larger proportional gain do?</li>
+      <li><b>Chlorine lag.</b> Stop the duty dosing pump in free operation and time how long AIT-301 and AIT-302 take to fall below 0.5 mg/L. Relate this to the residence times $V/Q$.</li>
+      <li><b>Filter life.</b> Run at 120× and watch DPIT-201 climb over a day. Backwash, and compare the filtered turbidity before and after.</li>
+    </ol>
+  </div>
+
+  <div class="tabpanel"><div id="quiz"></div></div>
+</section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const f1 = n => (isFinite(n) ? n.toFixed(1) : '—'), f2 = n => (isFinite(n) ? n.toFixed(2) : '—'), f0 = n => (isFinite(n) ? Math.round(n).toString() : '—');
+
+/* ===================== PARAMETERS ===================== */
+const K = {
+  SWL0: 38, intake: 88, Sc0: 2.4, wellTau: 420,
+  H0: 160, a: 0.0111, CvX: 85, CvL: 30, bPipe: 0.0055, dp0: 0.25, elev: 14,
+  bpPr: 28, bpQ: 62, bpFLA: 64, bpK: 1.91,
+  A: 180, ovf: 4.0,
+  bH0: 75, bA: 0.00408, bPr: 22, bQ: 70, bFLA: 46, bK: 1.75, townZ: 20, kf: 0.00185, Pnom: 25,
+  Davg: 52, genKW: 80, tankL: 400, kb: 0.025 / 3600, kc: 0.1 / 3600, Vc: 15,
+};
+const PROF = [0.42, 0.38, 0.36, 0.36, 0.42, 0.65, 1.15, 1.65, 1.7, 1.4, 1.15, 1.05, 1.1, 1.05, 0.95, 0.95, 1.05, 1.3, 1.6, 1.7, 1.45, 1.05, 0.72, 0.52];
+const PROFAVG = PROF.reduce((a, b) => a + b) / 24;
+const demandF = hr => { const i = Math.floor(hr) % 24, fr = hr - Math.floor(hr); return lerp(PROF[i], PROF[(i + 1) % 24], fr) / PROFAVG; };
+const PRI = { 1: { n: 'Critical', c: '#ef4444' }, 2: { n: 'High', c: '#f97316' }, 3: { n: 'Medium', c: '#facc15' }, 4: { n: 'Low', c: '#c084fc' } };
+
+/* ===================== STATE ===================== */
+let S, F = null, AL = {}, HIST = [], LOG = [];
+function fresh() {
+  return {
+    t: 6 * 3600, day: 1, warm: false,
+    well: { d: 65, SWL: K.SWL0, Sc: K.Sc0, air: false },
+    bp: { mode: 'auto', manRun: false, run: false, trip: '', hz: 0, sp: 50, I: 0, T: 45, P: 0, sleepT: 0, want: true, ocT: 0 },
+    xv: { cmd: 1, pos: 1 },
+    ft101: 0, ft201: 0, pt101: 0, hw: 0, leak: 0, kL: 0,
+    filt: { m: 0.35, turbRaw: 4, turbOut: 0.18, dp: 0.3, bw: '', bwT: 0, bwDone: 0 },
+    cl: { sp: 1.8, c1: 1.2, c2: 1.2, C: 0.85, dose: 0, dps: [mkDP('DP-301'), mkDP('DP-302')], duty: 0, tankL: 420 },
+    lcv: { cmd: 60, pos: 60, stuck: false, hv: true },
+    lic: { mode: 'auto', sp: 3.2, out: 60, I: 60, src: 'LT-401' },
+    res: { h: 3.1, ovf: 0, ovfVol: 0, bwQ: 0 },
+    lt401: { frozen: null, v: 3.1 }, lt402: 3.1,
+    boost: [mkB('P-201'), mkB('P-202')], duty: 0, lowCut: false,
+    town: { Q: 0, D: 50, Pn: 2.5, Pdisp: 2.5, pdis: 5.5 },
+    pw: { grid: true, ats: 'grid', atsMode: 'auto', lossT: 0, gridStable: 999, live: true, liveT: 999, load: 0 },
+    gen: { mode: 'auto', st: 'off', fault: '', fuel: 78, batt: 13.1, t: 0, tries: 0, req: false, manRun: false, ovT: 0, charger: true },
+    jobs: [], flags: {},
+  };
+}
+function mkDP(id) { return { id, mode: 'auto', manRun: false, run: false, ok: true, pf: false }; }
+function mkB(id) { return { id, mode: 'auto', manRun: false, run: false, trip: '', T: 45, I: 0, Q: 0, P: 0, bear: 0, oc: 0, tripT: 0 }; }
+const hourOf = t => (t / 3600) % 24;
+const clockStr = t => { const s = Math.floor(t % 86400); return [s / 3600, (s % 3600) / 60, s % 60].map(x => String(Math.floor(x)).padStart(2, '0')).join(':'); };
+const noise = (k, amp) => amp * (Math.sin(S.t * 0.013 * k + k) * 0.6 + Math.sin(S.t * 0.071 * k + 2 * k) * 0.4);
+
+/* ===================== HYDRAULICS ===================== */
+function solveRaw(r, d, x, v, m, kL, phi) {
+  const Hmax = K.H0 * r * r - d;
+  if (r < 0.05 || Hmax <= 0) return { Q: 0, Qm: 0, Ql: 0, Hw: 0, pt: 0 };
+  const aX = K.a + (x > 0.01 ? 1 / (K.CvX * x) ** 2 : 1e9);
+  const qp = Hw => phi * Math.sqrt(Math.max(0, Hmax - Hw) / aX);
+  const R2 = K.bPipe + (v > 0.005 ? 1 / (K.CvL * v) ** 2 : 1e9), lin = 10.2 * K.dp0 / 60 * (1 + 4 * Math.pow(m, 1.5));
+  const qm = Hw => Hw <= K.elev ? 0 : (-lin + Math.sqrt(lin * lin + 4 * R2 * (Hw - K.elev))) / (2 * R2);
+  const ql = Hw => kL * Math.sqrt(Math.max(0, Hw));
+  let lo = 0, hi = Hmax;
+  for (let i = 0; i < 44; i++) { const mid = (lo + hi) / 2; if (qp(mid) - qm(mid) - ql(mid) > 0) lo = mid; else hi = mid; }
+  const Hw = (lo + hi) / 2, Q = qp(Hw);
+  const xl = x > 0.01 ? (Q / phi / (K.CvX * x)) ** 2 : 0;
+  return { Q, Qm: qm(Hw), Ql: ql(Hw), Hw, pt: (Hw + Math.min(xl, Hmax)) / 10.2 };
+}
+function solveTown(n, lvl, D) {
+  if (n === 0 || D <= 0) return { Q: 0, Pn: 0, H: 0 };
+  const g = Q => K.bH0 - K.bA * (Q / n) ** 2 + lvl - K.townZ - K.kf * Q * Q - K.Pnom * (Q / D) ** 2;
+  if (g(0) <= 0) return { Q: 0, Pn: 0, H: K.bH0 };
+  let lo = 0, hi = 400;
+  for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; if (g(mid) > 0) lo = mid; else hi = mid; }
+  const Q = (lo + hi) / 2;
+  return { Q, Pn: K.Pnom * (Q / D) ** 2, H: K.bH0 - K.bA * (Q / n) ** 2 };
+}
+function motorI(P, r, FLA, k) { return Math.sqrt((0.35 * FLA) ** 2 + (k * P / Math.max(r, 0.25)) ** 2); }
+
+/* ===================== MODEL STEP ===================== */
+function step(h) {
+  const s = S;
+  s.t += h; if (s.t >= 86400 * s.day) s.day++;
+  const hr = hourOf(s.t);
+  for (const j of s.jobs) if (!j.done && s.t >= j.at) { j.done = true; j.fn(); }
+  s.jobs = s.jobs.filter(j => !j.done);
+  if (F && F.on && FAULTS[F.id].tick) FAULTS[F.id].tick(h);
+  if (F && !F.on && F.injectAt && s.t >= F.injectAt) injectFault();
+
+  powerStep(h);
+  const live = s.pw.live;
+
+  /* ----- level measurement and LIC-401 ----- */
+  s.lt402 = s.res.h + noise(3, 0.006);
+  s.lt401.v = s.lt401.frozen != null ? s.lt401.frozen : s.res.h + noise(5, 0.005);
+  const meas = s.lic.src === 'LT-401' ? s.lt401.v : s.lt402;
+  if (s.lic.mode === 'auto') {
+    const e = s.lic.sp - meas, Kp = 120, Ti = 1500;
+    const u = Kp * e + s.lic.I;
+    if (!((u >= 100 && e > 0) || (u <= 0 && e < 0))) s.lic.I += Kp / Ti * e * h;
+    s.lic.I = clamp(s.lic.I, -50, 100);
+    s.lic.out = clamp(Kp * e + s.lic.I, 0, 100);
+  }
+  s.lcv.cmd = s.lic.out;
+  if (!s.lcv.stuck && live) s.lcv.pos += clamp(s.lcv.cmd - s.lcv.pos, -1 * h, 1 * h);
+  if (live) s.xv.pos += clamp(s.xv.cmd - s.xv.pos, -h / 30, h / 30);
+
+  /* ----- BP-101 ----- */
+  const bp = s.bp;
+  if (s.lcv.pos > 10) { bp.sleepT = 0; bp.want = true; } else if (s.lcv.pos < 5) { bp.sleepT += h; if (bp.sleepT > 60) bp.want = false; }
+  if (!live && bp.mode === 'man') bp.manRun = false;
+  let run = bp.mode === 'auto' ? (bp.want && s.xv.pos > 0.9 && s.pw.liveT > 10) : bp.manRun;
+  if (bp.trip || !live || s.filt.bw) run = false;
+  bp.run = run;
+  const hzT = run ? bp.sp : 0;
+  bp.hz += clamp(hzT - bp.hz, -6 * h, 5 * h); if (!live) bp.hz = 0;
+  const w = s.well, sub = K.intake - w.d;
+  if (!w.air && sub < 0.3 && bp.hz > 5) w.air = true;
+  if (w.air && (sub > 4 || bp.hz < 1)) w.air = false;
+  const r = bp.hz / 50;
+  const sol = solveRaw(r, w.d, s.xv.pos, (s.lcv.pos / 100) * (s.lcv.hv ? 1 : 0), s.filt.m, s.kL, w.air ? 0.07 : 1);
+  s.ft101 = sol.Q; s.ft201 = sol.Qm; s.leak = sol.Ql; s.hw = sol.Hw; s.pt101 = sol.pt;
+  w.d += (w.SWL + sol.Q / w.Sc - w.d) * (1 - Math.exp(-h / K.wellTau));
+  const q = r > 0.05 ? Math.min(1.3, sol.Q / (K.bpQ * r)) : 0;
+  bp.P = r > 0.02 ? K.bpPr * r ** 3 * (0.42 + 0.58 * q) * (w.air ? 0.42 : 1) : 0;
+  bp.I = r > 0.02 ? motorI(bp.P, r, K.bpFLA, K.bpK) : 0;
+  {
+    const Ploss = bp.hz > 1 ? 0.9 + 2.0 * (bp.I / K.bpFLA) ** 2 + (w.air ? 2.5 : 0) : 0;
+    const Rth = 8 / (0.05 + 0.95 * Math.min(1, sol.Q / 40));
+    const Tt = 25 + Rth * Ploss;
+    bp.T += (Tt - bp.T) * (1 - Math.exp(-h / 1200));
+    if (bp.T > 100 && !bp.trip) { bp.trip = 'Motor thermistor (over-temperature)'; ev('al', 'BP-101 TRIPPED: motor thermistor over-temperature'); if (F && F.on) F.pen.trips++; }
+    if (bp.run && bp.I > 1.15 * K.bpFLA) { bp.ocT += h; if (bp.ocT > 30 && !bp.trip) { bp.trip = 'Thermal overload'; ev('al', 'BP-101 TRIPPED: thermal overload'); if (F && F.on) F.pen.trips++; } } else bp.ocT = 0;
+  }
+
+  /* ----- Filter ----- */
+  const fl = s.filt;
+  fl.m = Math.min(1.4, fl.m + h * (s.ft201 / 60) * (fl.turbRaw / 4) / (40 * 3600));
+  fl.dp = s.ft201 > 1 ? K.dp0 * (s.ft201 / 60) * (1 + 4 * Math.pow(fl.m, 1.5)) : fl.dp * Math.exp(-h / 20);
+  const tOut = 0.15 + fl.turbRaw * 0.004 + (fl.m > 0.8 ? (fl.m - 0.8) * fl.turbRaw * 0.25 : 0);
+  fl.turbOut += (tOut - fl.turbOut) * (1 - Math.exp(-h / 300));
+  s.res.bwQ = 0;
+  if (fl.bw) {
+    fl.bwT += h;
+    const ph = [['drain', 60], ['air', 120], ['wash', 360], ['settle', 120]];
+    let acc = 0, cur = '';
+    for (const [n, d] of ph) { acc += d; if (fl.bwT < acc) { cur = n; break; } }
+    if (!live) { fl.bw = ''; ev('sys', 'Backwash aborted: power lost'); }
+    else if (!cur) { fl.bw = ''; fl.bwDone = s.t; ev('sys', 'F-201 backwash complete. Filter returned to service'); }
+    else {
+      fl.bw = cur;
+      if (cur === 'wash') { s.res.bwQ = 150; fl.m = Math.max(0.03, fl.m * Math.exp(-h / 70)); }
+    }
+  }
+
+  /* ----- Chlorination ----- */
+  const cl = s.cl, Qf = s.ft201;
+  let nDose = 0;
+  cl.dps.forEach((d, i) => {
+    if (!live) { if (d.run) d.pf = true; d.run = false; d.manRun = false; return; }
+    if (d.mode === 'auto') d.run = !d.pf && i === cl.duty && Qf > 5;
+    else d.run = d.manRun && !d.pf;
+    if (d.run && d.ok && cl.tankL > 1) nDose++;
+  });
+  cl.dose = nDose * cl.sp;
+  cl.tankL = Math.max(0, cl.tankL - nDose * cl.sp * Qf / 125 * h / 3600);
+  const demand = 0.55 + 0.05 * fl.turbOut;
+  const cIn = Qf > 0.5 ? Math.max(0, cl.dose - demand) : cl.c1;
+  const qs = Qf / 3600;
+  cl.c1 += (qs / K.Vc * (cIn - cl.c1) - K.kc * cl.c1) * h;
+  cl.c2 += (qs / K.Vc * (cl.c1 - cl.c2) - K.kc * cl.c2) * h;
+  const V = Math.max(5, K.A * s.res.h);
+  cl.C += (qs / V * (cl.c2 - cl.C) - K.kb * cl.C) * h;
+  cl.C = Math.max(0, cl.C);
+
+  /* ----- Boosters ----- */
+  const res = s.res;
+  if (res.h < 0.4) s.lowCut = true; else if (res.h > 0.8) s.lowCut = false;
+  const B = s.boost, duty = B[s.duty], stby = B[1 - s.duty];
+  const avail = p => live && !p.trip && p.mode !== 'oos' && !s.lowCut;
+  B.forEach(p => { if (!live && p.mode === 'man') p.manRun = false; });
+  const dutyOn = duty.mode === 'auto' ? avail(duty) && s.pw.liveT > 20 : duty.manRun && avail(duty);
+  const dutyUnavail = duty.trip || duty.mode === 'oos' || (duty.mode === 'man' && !duty.manRun) || !avail(duty);
+  const stbyOn = stby.mode === 'auto' ? avail(stby) && s.pw.liveT > 25 && dutyUnavail : stby.manRun && avail(stby);
+  duty.run = dutyOn; stby.run = stbyOn;
+  const n = (B[0].run ? 1 : 0) + (B[1].run ? 1 : 0);
+  s.town.D = K.Davg * demandF(hr) * (s.flags.dmult || 1);
+  const ts = solveTown(n, res.h, s.town.D);
+  s.town.Q = res.h > 0.05 ? ts.Q : 0;
+  s.town.Pn = ts.Pn;
+  s.town.Pdisp += (ts.Pn / 10.2 - s.town.Pdisp) * (1 - Math.exp(-h / (n ? 30 : 90)));
+  s.town.pdis = n ? (ts.H + res.h) / 10.2 : res.h / 10.2;
+  B.forEach(p => {
+    const qi = p.run ? s.town.Q / n : 0; p.Q = qi;
+    p.P = p.run ? K.bPr * (0.42 + 0.58 * Math.min(qi / K.bQ, 1.4)) + p.bear : 0;
+    p.I = p.run ? motorI(p.P, 1, K.bFLA, K.bK) : 0;
+    const Ploss = p.run ? 0.7 + 1.6 * (p.I / K.bFLA) ** 2 + p.bear * 0.8 : 0;
+    p.T += (30 + 8 * Ploss - p.T) * (1 - Math.exp(-h / 900));
+    if (p.run && p.I > 1.15 * K.bFLA) { p.oc += h; if (p.oc > 30 && !p.trip) { p.trip = 'Thermal overload'; ev('al', p.id + ' TRIPPED: thermal overload'); } } else p.oc = 0;
+    if (p.T > 120 && !p.trip) { p.trip = 'Winding over-temperature'; ev('al', p.id + ' TRIPPED: winding over-temperature'); }
+  });
+
+  /* ----- Reservoir mass balance ----- */
+  const Qin = s.ft201 * (fl.bw ? 0 : 1);
+  let hn = res.h + (Qin - s.town.Q - res.bwQ) / 3600 / K.A * h;
+  res.ovf = 0;
+  if (hn > K.ovf) { res.ovf = (hn - K.ovf) * K.A * 3600 / h; res.ovfVol += res.ovf * h / 3600; hn = K.ovf; }
+  res.h = Math.max(0, hn);
+
+  /* ----- Electrical load ----- */
+  const aux = 3 + nDose * 0.25 + (fl.bw === 'wash' ? 15 : 0) + (fl.bw === 'air' ? 7.5 : 0);
+  s.pw.load = live ? bp.P / 0.93 + B.reduce((a, p) => a + p.P / 0.93, 0) + aux : 0;
+  if (s.pw.ats === 'gen' && live && s.pw.load > K.genKW) {
+    s.gen.ovT += h;
+    if (s.gen.ovT > 10) { s.gen.st = 'fault'; s.gen.fault = 'Overload: breaker tripped'; s.pw.ats = 'open'; ev('al', 'G-001 breaker tripped on overload (' + f0(s.pw.load) + ' kW on an 80 kW set)'); if (F && F.on) F.pen.genOL++; }
+  } else s.gen.ovT = 0;
+}
+
+function powerStep(h) {
+  const p = S.pw, g = S.gen;
+  if (p.grid) p.gridStable += h; else p.gridStable = 0;
+  if (p.atsMode === 'auto') {
+    if (p.ats === 'grid') {
+      if (!p.grid) { p.lossT += h; if (p.lossT > 3) { p.ats = 'open'; g.req = true; ev('sys', 'ATS: grid lost, start signal sent to G-001'); } } else p.lossT = 0;
+    } else if (p.ats === 'open') {
+      if (p.grid && p.gridStable > 30) { p.ats = 'grid'; g.req = false; ev('sys', 'ATS: transferred to grid'); }
+      else if (g.st === 'run' && g.t > 10) { p.ats = 'gen'; ev('sys', 'ATS: transferred to generator'); }
+      else if (!p.grid) g.req = true;
+    } else if (p.ats === 'gen') {
+      if (p.grid && p.gridStable > 60) { p.ats = 'grid'; g.req = false; ev('sys', 'ATS: grid stable, retransferred to grid. G-001 cooling down'); }
+      else if (g.st !== 'run') p.ats = 'open';
+    }
+  } else if (p.ats === 'gen' && g.st !== 'run') p.ats = 'open';
+  const want = g.mode === 'auto' ? g.req : g.mode === 'man' ? g.manRun : false;
+  switch (g.st) {
+    case 'off': if (want) { g.st = 'crank'; g.t = 0; g.tries = 1; } break;
+    case 'crank':
+      g.t += h; g.batt = Math.max(9, g.batt - 0.02 * h);
+      if (g.t >= 5) {
+        if (g.batt >= 11.6 && g.fuel > 0.3) { g.st = 'run'; g.t = 0; ev('sys', 'G-001 started'); }
+        else if (g.tries < 3) { g.st = 'rest'; g.t = 0; }
+        else { g.st = 'fault'; g.fault = g.fuel <= 0.3 ? 'Fail to start: no fuel' : 'Fail to start: low cranking voltage'; ev('al', 'G-001 ' + g.fault); }
+      }
+      break;
+    case 'rest': g.t += h; if (g.t >= 6) { g.st = 'crank'; g.t = 0; g.tries++; } if (!want) g.st = 'off'; break;
+    case 'run':
+      g.t += h;
+      g.fuel = Math.max(0, g.fuel - (2 + 0.26 * (p.ats === 'gen' ? p.load : 0)) / K.tankL * 100 * h / 3600);
+      g.batt += (13.6 - g.batt) * (1 - Math.exp(-h / 600));
+      if (g.fuel <= 0.3) { g.st = 'fault'; g.fault = 'Shutdown: fuel exhausted'; ev('al', 'G-001 shut down: fuel exhausted'); }
+      else if (!want) { g.st = 'cool'; g.t = 0; }
+      break;
+    case 'cool': g.t += h; g.fuel = Math.max(0, g.fuel - 2 / K.tankL * 100 * h / 3600); if (want) g.st = 'run'; else if (g.t > 120) g.st = 'off'; break;
+    case 'fault': if (!g.fault) g.st = 'off'; break;
+  }
+  if (p.grid && g.charger && g.st !== 'crank') g.batt += (13.2 - g.batt) * (1 - Math.exp(-h / 3600));
+  const was = p.live;
+  p.live = (p.ats === 'grid' && p.grid) || (p.ats === 'gen' && g.st === 'run');
+  if (p.live) p.liveT += h; else p.liveT = 0;
+  if (was && !p.live) ev('al', 'MCC-1 bus de-energised: all drives stopped');
+  if (!was && p.live) ev('sys', 'MCC-1 bus energised (' + (p.ats === 'gen' ? 'generator' : 'grid') + '). PLC restart sequence running');
+}
+
+/* ===================== ALARMS ===================== */
+const LT401 = () => S.lt401.v;
+const ALDEF = [
+  { id: 'BP_LOI', tag: 'BP-101', eq: 'BP101', pri: 2, d: 20, desc: 'Borehole pump low motor current (underload)', c: () => S.bp.run && S.bp.hz > 20 && S.bp.I < 0.5 * K.bpFLA, v: () => f0(S.bp.I) + ' A' },
+  { id: 'BP_OC', tag: 'BP-101', eq: 'BP101', pri: 3, d: 10, desc: 'Borehole pump motor overcurrent', c: () => S.bp.I > 1.05 * K.bpFLA, v: () => f0(S.bp.I) + ' A' },
+  { id: 'BP_TH', tag: 'TT-101', eq: 'BP101', pri: 3, d: 5, desc: 'Borehole pump motor temperature high', c: () => S.bp.T > 80, v: () => f0(S.bp.T) + ' °C' },
+  { id: 'BP_TRIP', tag: 'BP-101', eq: 'BP101', pri: 1, d: 0, desc: 'Borehole pump tripped', c: () => !!S.bp.trip, v: () => S.bp.trip },
+  { id: 'LT100_L', tag: 'LT-100', eq: 'WELL', pri: 3, d: 10, desc: 'Borehole level low: submergence below 6 m', c: () => K.intake - S.well.d < 6, v: () => f1(S.well.d) + ' m bgl' },
+  { id: 'LT100_LL', tag: 'LT-100', eq: 'WELL', pri: 2, d: 5, desc: 'Borehole level low-low: at pump intake', c: () => K.intake - S.well.d < 1.5, v: () => f1(S.well.d) + ' m bgl' },
+  { id: 'FT101_L', tag: 'FT-101', eq: 'BP101', pri: 3, d: 30, desc: 'Raw water low flow with pump running', c: () => S.bp.run && S.bp.hz > 25 && S.ft101 < 10, v: () => f0(S.ft101) + ' m³/h' },
+  { id: 'PT101_L', tag: 'PT-101', eq: 'MAIN', pri: 3, d: 20, desc: 'Wellhead pressure low', c: () => S.bp.run && S.bp.hz > 40 && S.pt101 < 3.0, v: () => f1(S.pt101) + ' bar' },
+  { id: 'FQ_DEV', tag: 'FQ-101', eq: 'MAIN', pri: 2, d: 45, desc: 'Raw main flow imbalance FT-101 vs FT-201', c: () => Math.abs(S.ft101 - S.ft201) > 8, v: () => f0(S.ft101 - S.ft201) + ' m³/h' },
+  { id: 'AIT200_H', tag: 'AIT-200', eq: 'F201', pri: 4, d: 30, desc: 'Raw water turbidity high', c: () => S.filt.turbRaw > 20, v: () => f0(S.filt.turbRaw) + ' NTU' },
+  { id: 'DP201_H', tag: 'DPIT-201', eq: 'F201', pri: 4, d: 30, desc: 'Filter differential pressure high: backwash due', c: () => S.filt.dp > 0.8, v: () => f2(S.filt.dp) + ' bar' },
+  { id: 'DP201_HH', tag: 'DPIT-201', eq: 'F201', pri: 2, d: 30, desc: 'Filter differential pressure high-high', c: () => S.filt.dp > 1.1, v: () => f2(S.filt.dp) + ' bar' },
+  { id: 'AIT201_H', tag: 'AIT-201', eq: 'F201', pri: 2, d: 30, desc: 'Filtered water turbidity high (> 1 NTU)', c: () => S.filt.turbOut > 1.0, v: () => f2(S.filt.turbOut) + ' NTU' },
+  { id: 'AIT301_L', tag: 'AIT-301', eq: 'DOSING', pri: 2, d: 60, desc: 'Contact pipe chlorine residual low', c: () => S.cl.c2 < 0.5 && S.ft201 > 5, v: () => f2(S.cl.c2) + ' mg/L' },
+  { id: 'AIT301_H', tag: 'AIT-301', eq: 'DOSING', pri: 3, d: 60, desc: 'Contact pipe chlorine residual high', c: () => S.cl.c2 > 3, v: () => f2(S.cl.c2) + ' mg/L' },
+  { id: 'AIT302_L', tag: 'AIT-302', eq: 'T401', pri: 1, d: 60, desc: 'Reservoir outlet chlorine residual low', c: () => S.cl.C < 0.2, v: () => f2(S.cl.C) + ' mg/L' },
+  { id: 'AIT302_H', tag: 'AIT-302', eq: 'T401', pri: 3, d: 60, desc: 'Reservoir outlet chlorine residual high', c: () => S.cl.C > 2.5, v: () => f2(S.cl.C) + ' mg/L' },
+  { id: 'DP301_NF', tag: 'FS-301', eq: 'DOSING', pri: 3, d: 90, desc: 'DP-301 running but no stroke flow', c: () => S.cl.dps[0].run && !S.cl.dps[0].ok, v: () => 'no flow' },
+  { id: 'DP302_NF', tag: 'FS-302', eq: 'DOSING', pri: 3, d: 90, desc: 'DP-302 running but no stroke flow', c: () => S.cl.dps[1].run && !S.cl.dps[1].ok, v: () => 'no flow' },
+  { id: 'DP_PF', tag: 'DP-30x', eq: 'DOSING', pri: 2, d: 30, desc: 'Dosing pumps stopped after power loss: reset required', c: () => S.cl.dps.some(d => d.pf) && S.ft201 > 5, v: () => 'latched' },
+  { id: 'NAOCL_L', tag: 'LT-303', eq: 'DOSING', pri: 4, d: 10, desc: 'Hypochlorite day tank low', c: () => S.cl.tankL < 60, v: () => f0(S.cl.tankL) + ' L' },
+  { id: 'LT401_H', tag: 'LT-401', eq: 'T401', pri: 3, d: 10, desc: 'Reservoir level high', c: () => LT401() > 3.75, v: () => f2(LT401()) + ' m' },
+  { id: 'LT401_L', tag: 'LT-401', eq: 'T401', pri: 3, d: 10, desc: 'Reservoir level low', c: () => LT401() < 1.0, v: () => f2(LT401()) + ' m' },
+  { id: 'LSHH402', tag: 'LSHH-402', eq: 'T401', pri: 1, d: 3, desc: 'Reservoir high-high level float switch', c: () => S.res.h > 3.85, v: () => 'TRIPPED' },
+  { id: 'OVF', tag: 'FS-404', eq: 'T401', pri: 1, d: 5, desc: 'Reservoir overflowing to drain', c: () => S.res.ovf > 0.5, v: () => f0(S.res.ovf) + ' m³/h' },
+  { id: 'LSL403', tag: 'LSL-403', eq: 'T401', pri: 1, d: 3, desc: 'Reservoir low-low: booster pumps cut out', c: () => S.lowCut, v: () => 'TRIPPED' },
+  { id: 'LT_DEV', tag: 'LT-401/402', eq: 'T401', pri: 3, d: 60, desc: 'Level transmitter deviation LT-401 vs LT-402', c: () => Math.abs(LT401() - S.lt402) > 0.2, v: () => f2(LT401() - S.lt402) + ' m' },
+  { id: 'ZS401', tag: 'ZT-401', eq: 'LCV401', pri: 2, d: 60, desc: 'LCV-401 position does not follow command', c: () => S.pw.live && Math.abs(S.lcv.cmd - S.lcv.pos) > 15, v: () => 'cmd ' + f0(S.lcv.cmd) + '% / pos ' + f0(S.lcv.pos) + '%' },
+  { id: 'P201_TRIP', tag: 'P-201', eq: 'P201', pri: 2, d: 0, desc: 'Booster pump P-201 tripped', c: () => !!S.boost[0].trip, v: () => S.boost[0].trip },
+  { id: 'P202_TRIP', tag: 'P-202', eq: 'P202', pri: 2, d: 0, desc: 'Booster pump P-202 tripped', c: () => !!S.boost[1].trip, v: () => S.boost[1].trip },
+  { id: 'P201_OC', tag: 'P-201', eq: 'P201', pri: 3, d: 10, desc: 'Booster P-201 motor overcurrent', c: () => S.boost[0].I > 1.05 * K.bFLA, v: () => f0(S.boost[0].I) + ' A' },
+  { id: 'P202_OC', tag: 'P-202', eq: 'P202', pri: 3, d: 10, desc: 'Booster P-202 motor overcurrent', c: () => S.boost[1].I > 1.05 * K.bFLA, v: () => f0(S.boost[1].I) + ' A' },
+  { id: 'P201_TH', tag: 'TT-201', eq: 'P201', pri: 3, d: 10, desc: 'Booster P-201 winding temperature high', c: () => S.boost[0].T > 90, v: () => f0(S.boost[0].T) + ' °C' },
+  { id: 'P202_TH', tag: 'TT-202', eq: 'P202', pri: 3, d: 10, desc: 'Booster P-202 winding temperature high', c: () => S.boost[1].T > 90, v: () => f0(S.boost[1].T) + ' °C' },
+  { id: 'PT501_L', tag: 'PT-501', eq: 'TOWN', pri: 1, d: 60, desc: 'Town network pressure low (below 1 bar)', c: () => S.town.Pdisp < 1.0, v: () => f2(S.town.Pdisp) + ' bar' },
+  { id: 'GRID', tag: 'Q-001', eq: 'POWER', pri: 1, d: 2, desc: 'Grid supply failure (utility incomer)', c: () => !S.pw.grid, v: () => '0 V' },
+  { id: 'GEN_F', tag: 'G-001', eq: 'POWER', pri: 1, d: 0, desc: 'Standby generator fault', c: () => S.gen.st === 'fault', v: () => S.gen.fault },
+  { id: 'GEN_BATT', tag: 'G-001', eq: 'POWER', pri: 3, d: 30, desc: 'Generator starter battery voltage low', c: () => S.gen.batt < 11.8 && S.gen.st !== 'crank', v: () => f1(S.gen.batt) + ' V' },
+  { id: 'GEN_FUEL', tag: 'LT-901', eq: 'POWER', pri: 2, d: 10, desc: 'Generator fuel level low', c: () => S.gen.fuel < 15, v: () => f0(S.gen.fuel) + ' %' },
+  { id: 'GEN_RUN', tag: 'G-001', eq: 'POWER', pri: 4, d: 5, desc: 'Generator running on load', c: () => S.pw.ats === 'gen', v: () => f0(S.pw.load) + ' kW' },
+  { id: 'GEN_OL', tag: 'JT-001', eq: 'POWER', pri: 2, d: 3, desc: 'Generator load above 95 %', c: () => S.pw.ats === 'gen' && S.pw.live && S.pw.load > K.genKW * 0.95, v: () => f0(S.pw.load) + ' kW' },
+];
+const ALBY = Object.fromEntries(ALDEF.map(a => [a.id, a]));
+let ALHIST = [], hornSilenced = false;
+function resetAlarms() { AL = {}; ALDEF.forEach(a => AL[a.id] = { active: false, acked: true, t0: 0, dT: 0, shelf: 0, val: '' }); ALHIST = []; }
+function evalAlarms(h) {
+  for (const a of ALDEF) {
+    const st = AL[a.id]; let c = false;
+    try { c = a.c(); } catch (e) { c = false; }
+    if (c) { st.dT += h; if (!st.active && st.dT >= a.d) { st.active = true; st.acked = false; st.t0 = S.t; st.val = a.v(); if (!S.warm) { ALHIST.unshift({ t: S.t, id: a.id, ev: 'ALM' }); ev('al', `[P${a.pri}] ${a.tag} ${a.desc} (${st.val})`); hornSilenced = false; if (F && F.on && !F.firstAlarm) F.firstAlarm = S.t; } } }
+    else { st.dT = 0; if (st.active) { st.active = false; if (!S.warm) ALHIST.unshift({ t: S.t, id: a.id, ev: 'RTN' }); } }
+    if (st.active) st.val = a.v();
+    if (S.warm) st.acked = true;
+  }
+  if (ALHIST.length > 200) ALHIST.length = 200;
+}
+const shelved = st => st.shelf > S.t;
+function eqAlarm(eq) {
+  let best = null;
+  for (const a of ALDEF) { const st = AL[a.id]; if (a.eq !== eq || shelved(st)) continue; if (st.active || !st.acked) { if (!best || a.pri < best.pri) best = { pri: a.pri, un: !st.acked }; } }
+  return best;
+}
+function ack(id) { const st = AL[id]; if (!st.acked) { st.acked = true; ALHIST.unshift({ t: S.t, id, ev: 'ACK' }); if (F && F.on) F.acks++; } }
+
+/* ===================== LOG ===================== */
+function ev(kind, msg) { if (S && S.warm) return; LOG.unshift({ t: S ? S.t : 0, kind, msg }); if (LOG.length > 300) LOG.length = 300; logDirty = true; if (F && F.on && kind === 'op') F.ops.push({ t: S.t, msg }); }
+let logDirty = true;
+function job(desc, mins, fn) { S.jobs.push({ at: S.t + mins * 60, fn, desc }); ev('op', desc + ` (ETA ${mins} min)`); }
+function field(msg) { ev('fld', 'FIELD: ' + msg); SL.toast('<b>Field report</b><br>' + msg, 'warn', 6500); }
+
+/* ===================== FAULTS ===================== */
+const DIAG = [
+  ['dryrun', 'Borehole pump dry-running: pumping level at the intake'],
+  ['boostertrip', 'Duty booster mechanical fault and trip; standby not in Auto'],
+  ['burst', 'Burst on the raw water main'],
+  ['chlor', 'Duty dosing pump air-locked (no chlorine delivered)'],
+  ['filter', 'Filter blocked by high solids load after a storm'],
+  ['power', 'Grid failure with standby generator unable to run'],
+  ['sensor', 'Level transmitter LT-401 frozen (false low reading)'],
+  ['overflow', 'Reservoir inlet valve LCV-401 jammed open'],
+  ['x_town', 'Burst on the town distribution main'],
+  ['x_impeller', 'Worn borehole pump impeller'],
+  ['x_plc', 'PLC failure'],
+  ['x_overdose', 'Chlorine overdose'],
+];
+const FAULTS = {
+  dryrun: {
+    name: 'Borehole pump dry-running', hour: 14.5, target: 20 * 60, hold: 600,
+    pre() { },
+    inject() { F.ramp = 0; },
+    tick(h) { F.ramp = Math.min(1, F.ramp + h / 900); S.well.Sc = lerp(K.Sc0, 0.85, F.ramp); S.well.SWL = lerp(K.SWL0, 46, F.ramp); },
+    ok() { return S.bp.run && !S.well.air && K.intake - S.well.d >= 3 && S.bp.hz <= 44 && S.bp.T < 80; },
+    root: 'A long dry spell lowered the regional water table (static level from 38 m to 46 m below ground) and encrustation of the borehole screen cut the specific capacity from 2.4 to 0.85 m³/h per m. At 50 Hz the pump wanted about 60 m³/h, which would need a pumping level of about 117 m, well below the intake at 88 m. The pump started drawing air: flow and motor current collapsed and the motor, which relies on water flowing past it for cooling, heated up.',
+    evidence: ['BP-101 current fell from about 59 A to about 25 A (underload) while speed stayed at 50 Hz', 'LT-100 showed the pumping level falling to the intake (submergence near zero)', 'FT-101 and PT-101 both dropped: low flow with LOW pressure (a closed valve would give HIGH pressure)', 'Motor temperature TT-101 rose steadily'],
+    actions: ['Switch BP-101 to Manual and stop it before the thermistor trips', 'Let the well recover (watch LT-100 rise)', 'Restart at reduced speed (about 42 Hz or less) so that the pumping level stays at least 3 m above the intake', 'Log it and request borehole rehabilitation, a low-level probe and an underload relay; manage demand because yield is now about half'],
+  },
+  boostertrip: {
+    name: 'Booster pump trip', hour: 6.25, target: 10 * 60, hold: 300,
+    pre() { S.boost[1].mode = 'man'; S.boost[1].manRun = false; },
+    inject() { F.ramp = 0; },
+    tick(h) { if (S.boost[0].run) S.boost[0].bear = Math.min(9, S.boost[0].bear + h * 9 / 1200); },
+    ok() { return S.boost[1].run && S.town.Pdisp >= 1.0 && (S.boost[0].mode === 'oos' || S.flags.fitP201); },
+    root: 'The drive-end bearing of duty pump P-201 was failing. Rising friction increased the motor current and winding temperature until the thermal overload tripped the pump. The standby pump P-202 had been left in Manual after maintenance, so the PLC could not start it automatically and the town lost pressure.',
+    evidence: ['P-201 overcurrent and winding-temperature alarms came first (early warning)', 'Then P-201 tripped on thermal overload and PT-501 town pressure fell', 'P-202 faceplate showed mode MANUAL: auto-changeover was not possible'],
+    actions: ['Start P-202 (or put it in Auto so the PLC starts it)', 'Do not reset and restart P-201 repeatedly; put it Out of Service and call a fitter', 'Confirm PT-501 recovers above 1 bar', 'Log the event; note that equipment must be returned to Auto after maintenance'],
+  },
+  burst: {
+    name: 'Burst raw water main', hour: 9.75, target: 75 * 60, hold: 300,
+    pre() { },
+    inject() { S.kL = 7; S.flags.burst = true; },
+    ok() { return !S.flags.burst && S.xv.pos > 0.9 && S.bp.run && Math.abs(S.ft101 - S.ft201) < 3; },
+    root: 'A 150 mm uPVC raw water main split about 1.25 km from the borehole. Water escaped to ground, so the pump ran further out on its curve (higher flow, lower head) while less water reached the filter.',
+    evidence: ['FT-101 (wellhead flow) rose while FT-201 (filter inlet flow) fell: flow imbalance', 'PT-101 wellhead pressure dropped', 'BP-101 current rose slightly (pump moved right on its curve)'],
+    actions: ['Stop BP-101 (Manual, Stop) and close XV-101 to isolate the main', 'Dispatch the repair crew (they cannot work on a pressurised main)', 'Supply the town from reservoir storage meanwhile', 'After the repair, open XV-101, restart BP-101 and confirm FT-101 equals FT-201'],
+  },
+  chlor: {
+    name: 'Chlorinator failure', hour: 8.75, target: 30 * 60, hold: 600,
+    pre() { },
+    inject() { S.cl.dps[0].ok = false; },
+    ok() { return S.cl.c2 >= 0.8 && S.cl.dose > 0; },
+    root: 'Duty dosing pump DP-301 became air-locked (gas from the hypochlorite collected in the pump head). The motor kept stroking, so the pump showed RUNNING, but no chemical was delivered. Unchlorinated water entered the contact pipe and reservoir.',
+    evidence: ['FS-301 stroke-flow switch showed no flow with the pump running', 'AIT-301 contact residual fell steadily; AIT-302 followed slowly because of the large reservoir volume', 'Hypochlorite day tank level was normal, so the chemical had not run out'],
+    actions: ['Change over to standby DP-302 (select it as duty or start it in Manual)', 'Request priming of DP-301 (bleed the air from the pump head)', 'Do not run both pumps at full dose', 'Confirm AIT-301 is back above 0.8 mg/L and log the period of under-dosing; consider holding back supply if AIT-302 falls below 0.2 mg/L'],
+  },
+  filter: {
+    name: 'Filter blockage', hour: 13.75, target: 45 * 60, hold: 600,
+    pre() { S.filt.m = 0.55; },
+    inject() { S.flags.storm = true; },
+    tick(h) { S.filt.turbRaw = lerp(S.filt.turbRaw, 4, 1 - Math.exp(-h / (4 * 3600))); if (F.t < 600) S.filt.turbRaw = Math.max(S.filt.turbRaw, 70); },
+    ok() { return S.filt.bwDone > F.onset && S.filt.dp < 0.6 && S.filt.turbOut < 1.0; },
+    root: 'A storm made the raw water very turbid (about 70 NTU instead of 4). The pressure filter captured the extra solids and clogged many times faster than normal. Differential pressure rose past the backwash point and, as the bed loaded up, particles started breaking through into the filtered water.',
+    evidence: ['AIT-200 raw turbidity jumped', 'DPIT-201 climbed quickly (backwash due, then high-high)', 'AIT-201 filtered turbidity rose above 1 NTU and the chlorine demand increased'],
+    actions: ['Check the reservoir has enough water, then start a backwash from the F-201 faceplate', 'Watch the filtered turbidity after the filter returns to service', 'Expect to backwash more often until the raw water clears', 'Log the turbidity event; poor filtration reduces disinfection effectiveness'],
+  },
+  power: {
+    name: 'Power failure', hour: 18.4, target: 30 * 60, hold: 300,
+    pre() { F.variant = Math.random() < 0.5 ? 'battery' : 'fuel'; if (F.variant === 'battery') { S.gen.batt = 11.3; S.gen.charger = false; } else { S.gen.fuel = 1.6; } },
+    post() { if (F.variant === 'battery') { AL.GEN_BATT.acked = true; } else { AL.GEN_FUEL.shelf = S.t + 6 * 3600; AL.GEN_FUEL.acked = true; } },
+    inject() { S.pw.grid = false; F.gridBack = S.t + 150 * 60; },
+    tick() { if (!S.pw.grid && S.t > F.gridBack) { S.pw.grid = true; ev('sys', 'Grid supply restored'); } },
+    ok() { return S.pw.live && S.boost.some(p => p.run) && S.town.Pdisp >= 1 && (!S.bp.run || S.cl.dose > 0) && (S.pw.ats !== 'gen' || S.gen.fuel > 10); },
+    root: 'A fault on the utility feeder cut the grid supply. The ATS correctly called the standby generator, but the generator could not carry the load: VARIANT. The warning had been on the alarm list before the shift started, but it was ignored.',
+    evidence: ['GRID alarm first, then the MCC-1 bus de-energised', 'G-001 fault alarm', 'VAREVIDENCE'],
+    actions: ['Read the first alarm and the generator status', 'VARACTION', 'Reset the generator fault so it restarts and the ATS transfers', 'Restart the chlorine dosing pumps (they latch off after a power loss)', 'Run only one booster pump on the generator to avoid overload'],
+  },
+  sensor: {
+    name: 'Instrument failure', hour: 21.5, target: 30 * 60, hold: 600,
+    pre() { S.lic.sp = 3.6; S.res.h = 3.6; },
+    inject() { S.lt401.frozen = S.res.h - 0.12; },
+    ok() { return (S.lic.src === 'LT-402' || S.lic.mode === 'man') && S.flags.tech && S.res.h > 1 && S.res.h < 3.8; },
+    root: 'The LT-401 level transmitter froze at a plausible value just below the setpoint (a failed electronics module held its last output). Its signal quality looked good, but the real level kept rising. LIC-401, trusting the bad reading, drove LCV-401 fully open.',
+    evidence: ['LT-401 trend went perfectly flat (no normal signal noise)', 'LT-402 (backup ultrasonic) kept rising and the deviation alarm came in', 'Mass balance: inflow FT-201 was much larger than outflow FT-202, so the level could not be steady', 'LSHH-402 float confirmed the real level'],
+    actions: ['Switch LIC-401 to the backup transmitter LT-402 (or take the loop to Manual)', 'Request an instrument technician to check LT-401', 'Bring the level back below the high alarm', 'Log it; never trust one transmitter over a mass balance'],
+  },
+  overflow: {
+    name: 'Reservoir overflow', hour: 23.4, target: 20 * 60, hold: 300,
+    pre() { S.lic.sp = 3.6; S.res.h = 3.6; },
+    inject() { S.lcv.stuck = true; S.lcv.pos = 100; },
+    ok() { return S.res.ovf < 0.1 && S.res.h < 3.8 && S.flags.fitLCVreq; },
+    root: 'The LCV-401 positioner failed and drove the valve fully open, where it jammed. As night-time demand fell, LIC-401 commanded the valve closed, but it stayed open. The borehole pump kept running because its auto logic follows the valve position, so the reservoir filled to overflow.',
+    evidence: ['ZT-401 position stayed at 100 % while the command fell (discrepancy alarm)', 'LT-401 and LT-402 agreed with each other and both rose (so not an instrument fault)', 'LSHH-402 and then the overflow switch FS-404'],
+    actions: ['Stop BP-101 in Manual (or close the manual isolating valve HV-401)', 'Request a fitter for LCV-401', 'Control the inflow manually until the valve is repaired', 'Log the volume lost to overflow'],
+  },
+};
+
+/* ===================== SCENARIO CONTROL ===================== */
+function warmup(sec) { S.warm = true; let tt = 0; while (tt < sec) { step(2); evalAlarms(2); hist(); tt += 2; } S.warm = false; }
+function startShift() {
+  try { SL.audio(); } catch (e) {}
+  let id = $('#scen').value;
+  const random = id === 'random';
+  if (random) { const ks = Object.keys(FAULTS); id = ks[Math.floor(Math.random() * ks.length)]; }
+  S = fresh(); resetAlarms(); HIST = []; LOG = []; F = null;
+  const startH = id === 'free' ? 6 : FAULTS[id].hour;
+  S.t = (startH - 3) * 3600; if (S.t < 0) S.t += 86400;
+  if (id !== 'free') { F = mkF(id, random); FAULTS[id].pre(); }
+  warmup(3 * 3600);
+  if (F && FAULTS[id].post) FAULTS[id].post();
+  if (F) F.injectAt = S.t + 90 + Math.random() * 150;
+  ev('sys', `Shift handover at ${clockStr(S.t).slice(0, 5)}. Plant in normal operation.` + (F && F.id === 'power' ? ' Previous shift notes: nothing to report.' : ''));
+  $('#shiftNote').textContent = id === 'free' ? 'Free operation. Explore the plant; no faults will be injected.' : random ? 'Training shift running. An emergency will occur. Watch the alarm banner.' : `Exercise: ${FAULTS[id].name}. Watch the alarms, diagnose and recover.`;
+  $('#diagSel').value = ''; $('#diagNote').textContent = 'Record what you believe the root cause is. It is marked in the debrief.';
+  refreshFP(); setSpeed(30);
+}
+function mkF(id, random) { return { id, random, on: false, done: false, onset: 0, injectAt: 0, t: 0, win: 0, sup: 0, qual: 0, okT: 0, pen: { dry: 0, hot: 0, trips: 0, genOL: 0, reset: 0, dead: 0 }, ovf0: 0, diag: [], ops: [], acks: 0, firstAlarm: 0, variant: '' }; }
+function injectFault() { F.on = true; F.onset = S.t; F.ovf0 = S.res.ovfVol; FAULTS[F.id].inject(); }
+function scoreTick(h) {
+  if (!F || !F.on || F.done) return;
+  F.t += h; F.win += h;
+  if (S.town.Pdisp >= 1.0) F.sup += h;
+  const good = S.cl.C >= 0.2 && S.cl.C <= 2.5 && S.filt.turbOut <= 1.0 && !(S.ft201 > 5 && S.cl.c2 < 0.3) && S.cl.c2 < 3.5;
+  if (good) F.qual += h;
+  if (S.bp.run && S.well.air) F.pen.dry += h;
+  if (S.bp.T > 90) F.pen.hot += h;
+  if (S.bp.run && S.xv.pos < 0.1) F.pen.dead += h;
+  if (FAULTS[F.id].ok()) { F.okT += h; if (F.okT >= FAULTS[F.id].hold) finish(true); } else F.okT = 0;
+}
+function scores() {
+  if (!F || !F.on) return null;
+  const cont = F.win ? 100 * F.sup / F.win : 100, qual = F.win ? 100 * F.qual / F.win : 100;
+  const ovf = S.res.ovfVol - F.ovf0;
+  const safe = clamp(100 - 2 * F.pen.dry / 60 - F.pen.hot / 60 - 10 * F.pen.trips - 15 * F.pen.genOL - Math.min(30, ovf * 0.5) - 10 * F.pen.reset - F.pen.dead / 60, 0, 100);
+  const tgt = FAULTS[F.id].target, el = (F.done && F.resolved ? F.tRes : F.t);
+  const time = F.done && !F.resolved ? 0 : clamp(100 * (1 - Math.max(0, el - tgt) / (3 * tgt)), 0, 100);
+  const dg = F.diag.length ? (F.diag[0] === F.id ? 100 : F.diag.includes(F.id) ? 50 : 0) : 0;
+  const total = 0.3 * cont + 0.2 * qual + 0.2 * safe + 0.15 * time + 0.15 * dg;
+  return { cont, qual, safe, time, dg, total, ovf, el };
+}
+function finish(resolved) {
+  if (!F || F.done) return;
+  if (!F.on) { SL.toast('The exercise had not started yet. Nothing to score.', 'warn'); F = null; return; }
+  F.done = true; F.resolved = resolved; F.tRes = resolved ? Math.max(0, F.t - FAULTS[F.id].hold) : F.t;
+  const sc = scores(); const fd = FAULTS[F.id];
+  ev('sys', resolved ? `Plant recovered: ${fd.name}. Exercise complete.` : 'Exercise ended by the operator.');
+  saveProg(F.id, sc.total, resolved);
+  let root = fd.root, evd = fd.evidence.slice(), act = fd.actions.slice();
+  if (F.id === 'power') {
+    const bat = F.variant === 'battery';
+    root = root.replace('VARIANT', bat ? 'its starter battery was flat (the battery charger had failed days earlier) so the engine could not crank' : 'its day tank held only a few litres of diesel, so it started, carried the load briefly and then shut down');
+    evd = evd.map(x => x.replace('VAREVIDENCE', bat ? 'GEN_BATT low-voltage alarm had been standing (acknowledged but not acted on) since before the shift' : 'The GEN_FUEL low-fuel alarm had been shelved by the previous shift'));
+    act = act.map(x => x.replace('VARACTION', bat ? 'Request a battery boost/jump-start (field action)' : 'Order an emergency fuel delivery (field action)'));
+  }
+  const grade = sc.total >= 85 ? 'Excellent' : sc.total >= 70 ? 'Competent' : sc.total >= 50 ? 'Needs practice' : 'Not yet competent';
+  const tl = F.ops.slice().reverse().slice(0, 30).map(o => `<div>+${f0((o.t - F.onset) / 60)} min · ${o.msg}</div>`).join('') || '<div>No operator actions were logged.</div>';
+  const dName = id => (DIAG.find(d => d[0] === id) || [0, '—'])[1];
+  SL.modal(`<div class="debrief"><h3>${resolved ? 'Debrief: plant recovered' : 'Debrief: exercise ended'}</h3>
+    <p class="muted">${fd.name}${F.variant ? ' (' + (F.variant === 'battery' ? 'flat starter battery' : 'no fuel') + ')' : ''} · time to stabilise ${f0(sc.el / 60)} min (target ${f0(fd.target / 60)} min)</p>
+    <div style="display:flex;align-items:baseline;gap:12px"><span class="bigscore">${f0(sc.total)}</span><b>${grade}</b></div>
+    <table class="data"><tr><th>Criterion</th><th>Score</th><th>Weight</th></tr>
+      <tr><td>Service continuity (town above 1 bar)</td><td class="num">${f0(sc.cont)}</td><td class="num">30 %</td></tr>
+      <tr><td>Water quality (residual and turbidity in range)</td><td class="num">${f0(sc.qual)}</td><td class="num">20 %</td></tr>
+      <tr><td>Safety and asset protection</td><td class="num">${f0(sc.safe)}</td><td class="num">20 %</td></tr>
+      <tr><td>Time to resolve</td><td class="num">${f0(sc.time)}</td><td class="num">15 %</td></tr>
+      <tr><td>Diagnosis (${F.diag.length ? dName(F.diag[0]) : 'none recorded'})</td><td class="num">${f0(sc.dg)}</td><td class="num">15 %</td></tr></table>
+    <h4>Root cause</h4><p>${root}</p>
+    <h4>The evidence on the HMI</h4><ul>${evd.map(x => `<li>${x}</li>`).join('')}</ul>
+    <h4>Correct response</h4><ol>${act.map(x => `<li>${x}</li>`).join('')}</ol>
+    ${F.pen.dry > 0 ? `<p class="small" style="color:#fca5a5">Pump ran dry for ${f1(F.pen.dry / 60)} min.</p>` : ''}${F.pen.trips ? `<p class="small" style="color:#fca5a5">Motor trips during the exercise: ${F.pen.trips}.</p>` : ''}${F.pen.genOL ? '<p class="small" style="color:#fca5a5">The generator was overloaded and tripped.</p>' : ''}${sc.ovf > 1 ? `<p class="small" style="color:#fca5a5">${f0(sc.ovf)} m³ of treated water overflowed to drain.</p>` : ''}${F.pen.reset ? '<p class="small" style="color:#fca5a5">A tripped pump with a mechanical fault was reset and restarted.</p>' : ''}
+    <h4>Your actions</h4><div class="tl">${tl}</div></div>`, { ok: 'Close' });
+  $('#shiftNote').textContent = 'Exercise finished. The plant keeps running in free operation. Choose another exercise to continue.';
+  checkChallenges();
+}
+
+/* ===================== OPERATOR ACTIONS ===================== */
+const ACT = {
+  'bp.auto': () => { S.bp.mode = 'auto'; ev('op', 'BP-101 mode set to AUTO'); },
+  'bp.man': () => { S.bp.mode = 'man'; S.bp.manRun = S.bp.run; ev('op', 'BP-101 mode set to MANUAL'); },
+  'bp.start': () => { if (S.bp.mode !== 'man') return SL.toast('Switch BP-101 to Manual first.', 'warn'); if (S.bp.trip) return SL.toast('BP-101 is tripped. Reset the trip first.', 'bad'); if (S.xv.pos < 0.9) return SL.toast('Start blocked: permissive XV-101 not open.', 'bad'); if (!S.pw.live) return SL.toast('No power on MCC-1.', 'bad'); S.bp.manRun = true; ev('op', `BP-101 START (VFD ${f1(S.bp.sp)} Hz)`); },
+  'bp.stop': () => { if (S.bp.mode !== 'man') return SL.toast('Switch BP-101 to Manual first.', 'warn'); S.bp.manRun = false; ev('op', 'BP-101 STOP'); },
+  'bp.reset': () => { if (!S.bp.trip) return; if (S.bp.trip.includes('thermistor') && S.bp.T > 70) return SL.toast(`Reset refused: motor still ${f0(S.bp.T)} °C. Thermistor resets below 70 °C.`, 'bad'); ev('op', 'BP-101 trip reset (' + S.bp.trip + ')'); S.bp.trip = ''; },
+  'xv.open': () => { S.xv.cmd = 1; ev('op', 'XV-101 OPEN command'); },
+  'xv.close': () => { S.xv.cmd = 0; ev('op', 'XV-101 CLOSE command'); if (S.bp.run) SL.toast('Caution: closing XV-101 with BP-101 running will dead-head the pump.', 'warn'); },
+  'bw.start': () => { if (S.filt.bw) return; if (!S.pw.live) return SL.toast('No power for backwash.', 'bad'); if (S.res.h < 1.0) return SL.toast('Backwash permissive: reservoir must be above 1.0 m.', 'bad'); S.filt.bw = 'drain'; S.filt.bwT = 0; ev('op', 'F-201 backwash sequence STARTED'); },
+  'dp.duty0': () => { S.cl.duty = 0; ev('op', 'Dosing duty pump selected: DP-301'); },
+  'dp.duty1': () => { S.cl.duty = 1; ev('op', 'Dosing duty pump selected: DP-302'); },
+  'lic.auto': () => { S.lic.mode = 'auto'; S.lic.I = S.lic.out; ev('op', 'LIC-401 to AUTO'); },
+  'lic.man': () => { S.lic.mode = 'man'; ev('op', 'LIC-401 to MANUAL'); },
+  'lic.src401': () => { S.lic.src = 'LT-401'; ev('op', 'LIC-401 measurement source: LT-401'); },
+  'lic.src402': () => { S.lic.src = 'LT-402'; ev('op', 'LIC-401 measurement source: LT-402 (backup)'); },
+  'b.duty0': () => { S.duty = 0; ev('op', 'Booster duty pump: P-201'); },
+  'b.duty1': () => { S.duty = 1; ev('op', 'Booster duty pump: P-202'); },
+  'gen.auto': () => { S.gen.mode = 'auto'; ev('op', 'G-001 mode AUTO'); },
+  'gen.man': () => { S.gen.mode = 'man'; S.gen.manRun = S.gen.st === 'run'; ev('op', 'G-001 mode MANUAL'); },
+  'gen.start': () => { if (S.gen.mode !== 'man') return SL.toast('Generator in Auto: it starts on the ATS signal. Switch to Manual to start it by hand.', 'warn'); S.gen.manRun = true; ev('op', 'G-001 manual START'); },
+  'gen.stop': () => { if (S.gen.mode !== 'man') return SL.toast('Switch the generator to Manual first.', 'warn'); S.gen.manRun = false; ev('op', 'G-001 manual STOP'); },
+  'gen.reset': () => { if (S.gen.st !== 'fault') return; ev('op', 'G-001 fault reset (' + S.gen.fault + ')'); S.gen.fault = ''; S.gen.st = 'off'; S.gen.tries = 0; },
+  'ats.auto': () => { S.pw.atsMode = 'auto'; ev('op', 'ATS mode AUTO'); },
+  'ats.man': () => { S.pw.atsMode = 'man'; ev('op', 'ATS mode MANUAL'); },
+  'ats.grid': () => { if (S.pw.atsMode !== 'man') return SL.toast('Set the ATS to Manual first.', 'warn'); if (!S.pw.grid) return SL.toast('Grid not available.', 'bad'); S.pw.ats = 'grid'; ev('op', 'ATS manual transfer to GRID'); },
+  'ats.gen': () => { if (S.pw.atsMode !== 'man') return SL.toast('Set the ATS to Manual first.', 'warn'); if (S.gen.st !== 'run') return SL.toast('Generator not running.', 'bad'); S.pw.ats = 'gen'; ev('op', 'ATS manual transfer to GENERATOR'); },
+  // field actions
+  'job.dip': () => job('Operator sent to dip BP-101 borehole', 6, () => field(`Dip meter at BP-101: water level ${f1(S.well.d)} m below ground; pump intake at ${K.intake} m. ${K.intake - S.well.d < 2 ? 'Water level is AT the intake. Pump is surging and drawing air.' : 'Submergence ' + f1(K.intake - S.well.d) + ' m.'}`)),
+  'job.fitBP': () => job('Mechanical fitter requested for BP-101', 30, () => field(S.well.air || K.intake - S.well.d < 3 ? 'Fitter: insulation and phase currents are fine. The pump is starved of water; problem is in the well, not the motor.' : 'Fitter: BP-101 electrically and mechanically healthy.')),
+  'job.walk': () => job('Operator sent to walk the raw water main', 8, () => field(S.flags.burst ? 'Water gushing from a split in the DN150 main at chainage 1+250 m; road flooding. Isolate and repair needed.' : 'Raw main walked end to end: no leaks found.')),
+  'job.crew': () => {
+    if (!S.flags.burst) return job('Repair crew requested for raw main', 20, () => field('Crew found nothing to repair on the raw main.'));
+    job('Pipe repair crew dispatched to raw main', 15, () => {
+      if (S.bp.hz > 1 || S.xv.pos > 0.05) { field('Crew on site: the main is still pressurised. Stop BP-101 and close XV-101, then call us back.'); return; }
+      field('Crew on site, main isolated and drained. Excavating and fitting a repair coupling: about 40 min.');
+      S.jobs.push({ at: S.t + 40 * 60, fn: () => { S.flags.burst = false; S.kL = 0; field('Raw main repaired and backfilled. Open XV-101 slowly and restart BP-101.'); }, desc: 'repair' });
+    });
+  },
+  'job.filt': () => job('Operator sent to inspect F-201', 5, () => field(`Filter inlet sample ${f0(S.filt.turbRaw)} NTU, outlet ${f2(S.filt.turbOut)} NTU. Differential pressure gauge ${f2(S.filt.dp)} bar.${S.filt.turbRaw > 20 ? ' Raw water is brown after the rain.' : ''}`)),
+  'job.prime0': () => job('Operator sent to prime DP-301', 5, () => { S.cl.dps[0].ok = true; field('DP-301 head bled of air and primed. Stroke flow restored.'); }),
+  'job.prime1': () => job('Operator sent to prime DP-302', 5, () => { S.cl.dps[1].ok = true; field('DP-302 head bled and primed.'); }),
+  'job.dpcheck': () => job('Operator sent to check the dosing skid', 4, () => field(`Day tank ${f0(S.cl.tankL)} L. DP-301 ${S.cl.dps[0].run ? (S.cl.dps[0].ok ? 'running, delivering' : 'running but NOT delivering: air in the pump head') : 'stopped'}. DP-302 ${S.cl.dps[1].run ? (S.cl.dps[1].ok ? 'running, delivering' : 'running, not delivering') : 'stopped'}.`)),
+  'job.hvclose': () => job('Operator sent to CLOSE manual valve HV-401', 4, () => { S.lcv.hv = false; field('HV-401 closed by hand. Reservoir inlet isolated.'); }),
+  'job.hvopen': () => job('Operator sent to OPEN manual valve HV-401', 4, () => { S.lcv.hv = true; field('HV-401 opened.'); }),
+  'job.fitLCV': () => { S.flags.fitLCVreq = true; job('Fitter requested for LCV-401', 40, () => { if (S.lcv.stuck) { S.lcv.stuck = false; field('Fitter: LCV-401 positioner failed and drove the valve fully open; gearbox jammed. Positioner replaced, valve stroked 0–100 %. Back in service.'); } else field('Fitter: LCV-401 strokes correctly.'); }); },
+  'job.tech': () => { S.flags.tech = true; job('Instrument technician requested for LT-401', 35, () => { if (S.lt401.frozen != null) { S.lt401.frozen = null; field('Technician: LT-401 electronics module frozen at its last output. Module replaced and loop-checked against LT-402.'); } else field('Technician: LT-401 calibration checked, within 0.5 %.'); }); },
+  'job.fit201': () => { S.flags.fitP201 = true; job('Fitter requested for booster P-201', 20, () => { if (S.boost[0].bear > 1) { S.boost[0].mode = 'oos'; field('Fitter: P-201 drive-end bearing hot and rumbling. Pump locked out (Out of Service) for bearing replacement.'); } else field('Fitter: P-201 vibration and temperatures normal.'); }); },
+  'job.fit202': () => job('Fitter requested for booster P-202', 20, () => field('Fitter: P-202 healthy. Mode selector was in MANUAL after last week\'s maintenance.')),
+  'job.batt': () => job('Battery boost / jump-start requested for G-001', 3, () => { S.gen.batt = 12.8; field('G-001 starter battery boosted to 12.8 V. Battery charger found faulty: replacement ordered. Reset the generator fault to restart.'); }),
+  'job.fuel': () => job('Emergency diesel delivery ordered for G-001', 25, () => { S.gen.fuel = Math.min(100, S.gen.fuel + 80); field('Bowser delivered 320 L of diesel. G-001 day tank at ' + f0(S.gen.fuel) + ' %. Reset the generator fault to restart.'); }),
+  'job.gencheck': () => job('Operator sent to check G-001 locally', 4, () => field(`G-001 local panel: battery ${f1(S.gen.batt)} V, fuel gauge ${f0(S.gen.fuel)} %, status ${S.gen.st.toUpperCase()}${S.gen.fault ? ' (' + S.gen.fault + ')' : ''}. Charger ${S.gen.charger ? 'OK' : 'FAILED (no output)'}.`)),
+  'job.utility': () => job('Called the utility control centre', 2, () => field(S.pw.grid ? 'Utility: no outages reported on your feeder.' : 'Utility: 33 kV feeder fault, crews dispatched; estimated restoration 2–3 hours.')),
+  'job.town': () => job('Checked customer complaints line', 3, () => field(S.town.Pdisp < 1 ? 'Many calls: no water at the taps in the upper estates.' : S.cl.C > 2.5 ? 'Complaints of a strong chlorine taste.' : 'No unusual complaints.')),
+};
+function dpAct(i, a) {
+  const d = S.cl.dps[i];
+  if (a === 'auto') { d.mode = 'auto'; ev('op', d.id + ' mode AUTO'); }
+  if (a === 'man') { d.mode = 'man'; d.manRun = d.run; ev('op', d.id + ' mode MANUAL'); }
+  if (a === 'start') { if (d.mode !== 'man') return SL.toast('Switch ' + d.id + ' to Manual first.', 'warn'); d.manRun = true; d.pf = false; ev('op', d.id + ' START'); }
+  if (a === 'stop') { if (d.mode !== 'man') return SL.toast('Switch ' + d.id + ' to Manual first.', 'warn'); d.manRun = false; ev('op', d.id + ' STOP'); }
+  if (a === 'reset') { if (!d.pf) return; d.pf = false; ev('op', d.id + ' power-fail latch reset'); }
+}
+function bAct(i, a) {
+  const p = S.boost[i];
+  if (a === 'auto') { p.mode = 'auto'; ev('op', p.id + ' mode AUTO'); }
+  if (a === 'man') { p.mode = 'man'; p.manRun = p.run; ev('op', p.id + ' mode MANUAL'); }
+  if (a === 'oos') { p.mode = 'oos'; p.manRun = false; ev('op', p.id + ' OUT OF SERVICE (locked out)'); }
+  if (a === 'start') { if (p.mode !== 'man') return SL.toast('Switch ' + p.id + ' to Manual first.', 'warn'); if (p.trip) return SL.toast(p.id + ' is tripped. Reset first.', 'bad'); if (S.lowCut) return SL.toast('Blocked: reservoir low-low (LSL-403).', 'bad'); if (!S.pw.live) return SL.toast('No power on MCC-1.', 'bad'); p.manRun = true; ev('op', p.id + ' START'); }
+  if (a === 'stop') { if (p.mode !== 'man') return SL.toast('Switch ' + p.id + ' to Manual first.', 'warn'); p.manRun = false; ev('op', p.id + ' STOP'); }
+  if (a === 'reset') { if (!p.trip) return; if (p.T > 90) return SL.toast(`Reset refused: winding still ${f0(p.T)} °C.`, 'bad'); ev('op', p.id + ' trip reset'); if (p.bear > 1 && F && F.on) { F.pen.reset++; } p.trip = ''; }
+}
+
+/* ===================== FACEPLATES ===================== */
+const EQ = [['BP101', 'BP-101'], ['WELL', 'Well'], ['MAIN', 'Raw main'], ['F201', 'F-201'], ['DOSING', 'Dosing'], ['LCV401', 'LIC-401'], ['T401', 'T-401'], ['P201', 'P-201'], ['P202', 'P-202'], ['POWER', 'Power'], ['TOWN', 'Town']];
+let sel = 'BP101';
+const V = (k, l, u) => `<div class="fp-v"><div class="k">${l}</div><div class="v"><span data-k="${k}"></span><small>${u || ''}</small></div></div>`;
+const SEG = (key, opts) => `<div class="seg" data-seg="${key}">${opts.map(([a, l]) => `<button data-act="${a}" data-val="${l.toLowerCase()}">${l}</button>`).join('')}</div>`;
+const FIELD = btns => `<div class="fp-field"><div class="lbl"><i data-lucide="hard-hat"></i> Field actions (take plant time)</div><div class="btn-row">${btns.map(([a, l]) => `<button class="btn sm" data-act="${a}">${l}</button>`).join('')}</div></div>`;
+const FP = {
+  BP101: () => `<div class="fp-h"><b>BP-101</b><span class="d">Borehole submersible pump, 30 kW, VFD</span><span class="fp-st" data-k="bp.st"></span></div>
+    <div class="fp-grid">${V('bp.hz', 'Speed', 'Hz')}${V('bp.I', 'Current', 'A')}${V('bp.T', 'Motor temp TT-101', '°C')}${V('bp.P', 'Shaft power', 'kW')}${V('ft101', 'Flow FT-101', 'm³/h')}${V('pt101', 'Wellhead PT-101', 'bar')}</div>
+    <div class="fp-row">Control mode ${SEG('bp.mode', [['bp.auto', 'Auto'], ['bp.man', 'Manual']])}</div>
+    <div class="btn-row"><button class="btn sm" data-act="bp.start" data-man="bp"><i data-lucide="play"></i> Start</button><button class="btn sm" data-act="bp.stop" data-man="bp"><i data-lucide="square"></i> Stop</button><button class="btn sm" data-act="bp.reset"><i data-lucide="rotate-ccw"></i> Reset trip</button></div>
+    <div class="ctl"><label>VFD speed setpoint</label><output data-k="bp.sp"></output><input type="range" min="30" max="50" step="0.5" data-in="bp.sp"></div>
+    <div class="fp-note">Auto: runs while LCV-401 is open (permissive: XV-101 open). Full-load current 64 A. Thermistor trip at 100 °C.</div>
+    <div class="fp-row">Wellhead valve XV-101 <span data-k="xv"></span><span class="btn-row"><button class="btn sm" data-act="xv.open">Open</button><button class="btn sm" data-act="xv.close">Close</button></span></div>
+    ${FIELD([['job.dip', 'Dip the borehole'], ['job.fitBP', 'Call fitter']])}`,
+  WELL: () => `<div class="fp-h"><b>LT-100</b><span class="d">Borehole level (pressure transducer)</span></div>
+    <div class="fp-grid">${V('well.d', 'Pumping level', 'm bgl')}${V('well.sub', 'Submergence', 'm')}${V('well.dd', 'Drawdown', 'm')}${V('ft101', 'Yield FT-101', 'm³/h')}</div>
+    <div class="fp-note">Static water level at commissioning 38 m bgl; pump intake 88 m bgl. Keep at least 3 m of submergence.</div>
+    ${FIELD([['job.dip', 'Dip the borehole']])}`,
+  MAIN: () => `<div class="fp-h"><b>Raw main</b><span class="d">DN150 uPVC, 1.8 km, wellhead to F-201</span></div>
+    <div class="fp-grid">${V('ft101', 'Wellhead FT-101', 'm³/h')}${V('ft201', 'Filter inlet FT-201', 'm³/h')}${V('fqdev', 'Imbalance', 'm³/h')}${V('pt101', 'Wellhead PT-101', 'bar')}</div>
+    <div class="fp-row">Isolation XV-101 <span data-k="xv"></span><span class="btn-row"><button class="btn sm" data-act="xv.open">Open</button><button class="btn sm" data-act="xv.close">Close</button></span></div>
+    ${FIELD([['job.walk', 'Walk the main'], ['job.crew', 'Dispatch repair crew']])}`,
+  F201: () => `<div class="fp-h"><b>F-201</b><span class="d">Pressure sand filter</span><span class="fp-st" data-k="bw.st"></span></div>
+    <div class="fp-grid">${V('dp', 'ΔP DPIT-201', 'bar')}${V('turbRaw', 'Raw AIT-200', 'NTU')}${V('turbOut', 'Filtered AIT-201', 'NTU')}${V('ft201', 'Flow FT-201', 'm³/h')}</div>
+    <div class="btn-row"><button class="btn sm" data-act="bw.start"><i data-lucide="refresh-cw"></i> Start backwash</button></div>
+    <div class="fp-note">Backwash sequence about 11 min: drain, air scour, water wash at 150 m³/h from T-401, settle. BP-101 is held off during backwash. Backwash at 0.8 bar ΔP.</div>
+    ${FIELD([['job.filt', 'Inspect filter']])}`,
+  DOSING: () => `<div class="fp-h"><b>Chlorination</b><span class="d">NaOCl 12.5 %, flow-paced</span></div>
+    <div class="fp-grid">${V('dose', 'Dose delivered', 'mg/L')}${V('c2', 'Contact AIT-301', 'mg/L')}${V('C', 'Reservoir AIT-302', 'mg/L')}${V('tankL', 'Day tank LT-303', 'L')}${V('ct', 'CT (contact pipe)', 'mg·min/L')}${V('ft201', 'Plant flow', 'm³/h')}</div>
+    <div class="ctl"><label>Dose setpoint</label><output data-k="cl.sp"></output><input type="range" min="0.5" max="5" step="0.1" data-in="cl.sp"></div>
+    <div class="fp-row">Duty pump ${SEG('cl.duty', [['dp.duty0', 'DP-301'], ['dp.duty1', 'DP-302']])}</div>
+    ${[0, 1].map(i => `<div class="fp-row"><b class="mono" style="color:var(--text)">DP-30${i + 1}</b><span data-k="dp${i}.st"></span>${SEG('dp' + i + '.mode', [['dp' + i + '.auto', 'Auto'], ['dp' + i + '.man', 'Manual']])}<span class="btn-row"><button class="btn sm" data-act="dp${i}.start">Start</button><button class="btn sm" data-act="dp${i}.stop">Stop</button><button class="btn sm" data-act="dp${i}.reset">Reset</button></span></div>`).join('')}
+    <div class="fp-note">In Auto only the duty pump runs, while plant flow exceeds 5 m³/h. After a power loss both pumps latch off until reset.</div>
+    ${FIELD([['job.dpcheck', 'Check dosing skid'], ['job.prime0', 'Prime DP-301'], ['job.prime1', 'Prime DP-302']])}`,
+  LCV401: () => `<div class="fp-h"><b>LIC-401</b><span class="d">Reservoir level control → LCV-401</span></div>
+    <div class="fp-grid">${V('lt401', 'LT-401 (primary)', 'm')}${V('lt402', 'LT-402 (backup)', 'm')}${V('lic.out', 'Output (command)', '%')}${V('lcv.pos', 'Valve position ZT-401', '%')}</div>
+    <div class="fp-row">Mode ${SEG('lic.mode', [['lic.auto', 'Auto'], ['lic.man', 'Manual']])}</div>
+    <div class="fp-row">Measurement ${SEG('lic.src', [['lic.src401', 'LT-401'], ['lic.src402', 'LT-402']])}</div>
+    <div class="ctl"><label>Level setpoint</label><output data-k="lic.sp"></output><input type="range" min="1.5" max="3.8" step="0.05" data-in="lic.sp"></div>
+    <div class="ctl"><label>Manual output (Manual mode)</label><output data-k="lic.mo"></output><input type="range" min="0" max="100" step="1" data-in="lic.out"></div>
+    <div class="fp-row">Manual isolating valve HV-401 <span data-k="hv"></span></div>
+    ${FIELD([['job.hvclose', 'Close HV-401'], ['job.hvopen', 'Open HV-401'], ['job.fitLCV', 'Call valve fitter'], ['job.tech', 'Call instrument tech']])}`,
+  T401: () => `<div class="fp-h"><b>T-401</b><span class="d">Clear-water reservoir, 720 m³</span></div>
+    <div class="fp-grid">${V('lt401', 'LT-401', 'm')}${V('lt402', 'LT-402', 'm')}${V('vol', 'Volume (LT-402)', 'm³')}${V('C', 'Outlet AIT-302', 'mg/L')}${V('ft201', 'Inflow FT-201', 'm³/h')}${V('townQ', 'Outflow FT-202', 'm³/h')}${V('net', 'Net inflow', 'm³/h')}${V('ovf', 'Overflow FS-404', 'm³/h')}</div>
+    <div class="fp-note">LSHH-402 float at 3.85 m. Overflow weir 4.00 m. LSL-403 cuts out the boosters at 0.4 m (resets at 0.8 m).</div>
+    ${FIELD([['job.tech', 'Call instrument tech']])}`,
+  P201: () => boostFP(0), P202: () => boostFP(1),
+  POWER: () => `<div class="fp-h"><b>Power supply</b><span class="d">Grid, G-001 80 kW, ATS, MCC-1</span><span class="fp-st" data-k="pw.st"></span></div>
+    <div class="fp-grid">${V('grid', 'Grid incomer', '')}${V('ats', 'ATS position', '')}${V('load', 'MCC-1 load', 'kW')}${V('gen.st', 'G-001 status', '')}${V('fuel', 'Fuel LT-901', '%')}${V('batt', 'Starter battery', 'V')}</div>
+    <div class="fp-row">G-001 mode ${SEG('gen.mode', [['gen.auto', 'Auto'], ['gen.man', 'Manual']])}<span class="btn-row"><button class="btn sm" data-act="gen.start">Start</button><button class="btn sm" data-act="gen.stop">Stop</button><button class="btn sm" data-act="gen.reset">Reset fault</button></span></div>
+    <div class="fp-row">ATS mode ${SEG('ats.mode', [['ats.auto', 'Auto'], ['ats.man', 'Manual']])}<span class="btn-row"><button class="btn sm" data-act="ats.grid">To grid</button><button class="btn sm" data-act="ats.gen">To gen</button></span></div>
+    <div class="fp-note">Auto: on grid loss the ATS starts G-001 (3 crank attempts) and transfers when it is ready. Generator rating 80 kW: run one booster only.</div>
+    ${FIELD([['job.gencheck', 'Check G-001 locally'], ['job.batt', 'Boost battery'], ['job.fuel', 'Order diesel'], ['job.utility', 'Call utility']])}`,
+  TOWN: () => `<div class="fp-h"><b>Town network</b><span class="d">About 1,250 m³/day, 20 m above T-401</span></div>
+    <div class="fp-grid">${V('townD', 'Demand (at 2.5 bar)', 'm³/h')}${V('townQ', 'Supplied FT-202', 'm³/h')}${V('pt501', 'Critical node PT-501', 'bar')}${V('pt202', 'Booster discharge PT-202', 'bar')}</div>
+    <div class="fp-note">Minimum service pressure at the critical node: 1 bar. Demand is pressure-dependent: lower pressure, less water reaches the taps.</div>
+    ${FIELD([['job.town', 'Check complaints line']])}`,
+};
+function boostFP(i) {
+  const id = 'P-20' + (i + 1);
+  return `<div class="fp-h"><b>${id}</b><span class="d">Booster pump, 22 kW, ${i === S.duty ? 'DUTY' : 'STANDBY'}</span><span class="fp-st" data-k="b${i}.st"></span></div>
+    <div class="fp-grid">${V('b' + i + '.I', 'Current', 'A')}${V('b' + i + '.T', 'Winding temp', '°C')}${V('b' + i + '.Q', 'Flow', 'm³/h')}${V('b' + i + '.P', 'Shaft power', 'kW')}</div>
+    <div class="fp-row">Mode ${SEG('b' + i + '.mode', [['b' + i + '.auto', 'Auto'], ['b' + i + '.man', 'Manual'], ['b' + i + '.oos', 'OOS']])}</div>
+    <div class="btn-row"><button class="btn sm" data-act="b${i}.start"><i data-lucide="play"></i> Start</button><button class="btn sm" data-act="b${i}.stop"><i data-lucide="square"></i> Stop</button><button class="btn sm" data-act="b${i}.reset"><i data-lucide="rotate-ccw"></i> Reset trip</button></div>
+    <div class="fp-row">Duty selection ${SEG('b.duty', [['b.duty0', 'P-201'], ['b.duty1', 'P-202']])}</div>
+    <div class="fp-note">Auto: the duty pump runs; the standby starts automatically if the duty pump is unavailable, but only if the standby is in Auto. Full-load current 46 A.</div>
+    ${FIELD([['job.fit20' + (i + 1), 'Call fitter']])}`;
+}
+const stTxt = (run, trip, extra) => trip ? 'TRIPPED' : extra || (run ? 'RUNNING' : 'STOPPED');
+const KV = {
+  'bp.st': () => S.bp.trip ? 'TRIPPED' : S.bp.run ? (S.well.air ? 'RUN · NO LOAD' : 'RUNNING') : S.filt.bw ? 'HELD (BACKWASH)' : 'STOPPED',
+  'bp.hz': () => f1(S.bp.hz), 'bp.I': () => f1(S.bp.I), 'bp.T': () => f0(S.bp.T), 'bp.P': () => f1(S.bp.P), 'bp.sp': () => f1(S.bp.sp) + ' Hz',
+  ft101: () => f1(S.ft101), ft201: () => f1(S.ft201), pt101: () => f2(S.pt101), fqdev: () => f1(S.ft101 - S.ft201),
+  xv: () => S.xv.pos > 0.98 ? 'OPEN' : S.xv.pos < 0.02 ? 'CLOSED' : 'MOVING ' + f0(S.xv.pos * 100) + '%',
+  'well.d': () => f1(S.well.d), 'well.sub': () => f1(K.intake - S.well.d), 'well.dd': () => f1(S.well.d - S.well.SWL),
+  'bw.st': () => S.filt.bw ? 'BACKWASH: ' + S.filt.bw.toUpperCase() : 'IN SERVICE', dp: () => f2(S.filt.dp), turbRaw: () => f1(S.filt.turbRaw), turbOut: () => f2(S.filt.turbOut),
+  dose: () => f2(S.cl.dose), c2: () => f2(S.cl.c2), C: () => f2(S.cl.C), tankL: () => f0(S.cl.tankL), 'cl.sp': () => f1(S.cl.sp) + ' mg/L',
+  ct: () => S.ft201 > 1 ? f0(S.cl.c2 * K.Vc * 2 / S.ft201 * 60) : '—',
+  'dp0.st': () => dpSt(0), 'dp1.st': () => dpSt(1),
+  lt401: () => f2(S.lt401.v), lt402: () => f2(S.lt402), 'lic.out': () => f0(S.lic.out), 'lcv.pos': () => f0(S.lcv.pos), 'lic.sp': () => f2(S.lic.sp) + ' m', 'lic.mo': () => f0(S.lic.out) + ' %',
+  hv: () => S.lcv.hv ? 'OPEN' : 'CLOSED', vol: () => f0(S.lt402 * K.A), townQ: () => f1(S.town.Q), net: () => f1(S.ft201 * (S.filt.bw ? 0 : 1) - S.town.Q - S.res.bwQ), ovf: () => f0(S.res.ovf),
+  'b0.st': () => bSt(0), 'b1.st': () => bSt(1), 'b0.I': () => f1(S.boost[0].I), 'b1.I': () => f1(S.boost[1].I), 'b0.T': () => f0(S.boost[0].T), 'b1.T': () => f0(S.boost[1].T), 'b0.Q': () => f1(S.boost[0].Q), 'b1.Q': () => f1(S.boost[1].Q), 'b0.P': () => f1(S.boost[0].P), 'b1.P': () => f1(S.boost[1].P),
+  'pw.st': () => S.pw.live ? (S.pw.ats === 'gen' ? 'ON GENERATOR' : 'ON GRID') : 'DEAD BUS',
+  grid: () => S.pw.grid ? '415 V' : 'FAILED', ats: () => S.pw.ats.toUpperCase() + (S.pw.atsMode === 'man' ? ' (MAN)' : ''), load: () => f0(S.pw.load), 'gen.st': () => (S.gen.st === 'fault' ? 'FAULT' : S.gen.st.toUpperCase()), fuel: () => f0(S.gen.fuel), batt: () => f1(S.gen.batt),
+  townD: () => f1(S.town.D), pt501: () => f2(S.town.Pdisp), pt202: () => f2(S.town.pdis),
+};
+function dpSt(i) { const d = S.cl.dps[i]; return d.pf ? 'PWR-FAIL LATCH' : d.run ? (d.ok ? 'DOSING' : 'RUN · NO FLOW') : 'STOPPED'; }
+function bSt(i) { const p = S.boost[i]; return p.trip ? 'TRIPPED' : p.mode === 'oos' ? 'OUT OF SERVICE' : p.run ? 'RUNNING' : 'STOPPED'; }
+const SEGV = { 'bp.mode': () => S.bp.mode === 'auto' ? 'auto' : 'manual', 'lic.mode': () => S.lic.mode === 'auto' ? 'auto' : 'manual', 'lic.src': () => S.lic.src.toLowerCase(), 'cl.duty': () => 'dp-30' + (S.cl.duty + 1), 'dp0.mode': () => S.cl.dps[0].mode === 'auto' ? 'auto' : 'manual', 'dp1.mode': () => S.cl.dps[1].mode === 'auto' ? 'auto' : 'manual', 'b0.mode': () => ({ auto: 'auto', man: 'manual', oos: 'oos' })[S.boost[0].mode], 'b1.mode': () => ({ auto: 'auto', man: 'manual', oos: 'oos' })[S.boost[1].mode], 'b.duty': () => 'p-20' + (S.duty + 1), 'gen.mode': () => S.gen.mode === 'auto' ? 'auto' : 'manual', 'ats.mode': () => S.pw.atsMode === 'auto' ? 'auto' : 'manual' };
+function refreshFP() {
+  $('#eqlist').innerHTML = EQ.map(([k, l]) => `<button data-eq="${k}" class="${k === sel ? 'on' : ''}">${l}</button>`).join('');
+  $('#fp').innerHTML = FP[sel]();
+  $$('#fp [data-in]').forEach(inp => { const k = inp.dataset.in; inp.value = k === 'bp.sp' ? S.bp.sp : k === 'cl.sp' ? S.cl.sp : k === 'lic.sp' ? S.lic.sp : S.lic.out; inp.dispatchEvent(new Event('input', { bubbles: true })); });
+  SL.refreshIcons($('#fp')); updFP();
+}
+function updFP() {
+  $$('#fp [data-k], #fp [data-k]').forEach(el => { const f = KV[el.dataset.k]; if (f) el.textContent = f(); });
+  $$('#fp .fp-st').forEach(el => el.classList.toggle('trip', /TRIP|FAULT|DEAD|NO LOAD|NO FLOW|LATCH/.test(el.textContent)));
+  $$('#fp [data-seg]').forEach(sg => { const v = SEGV[sg.dataset.seg] && SEGV[sg.dataset.seg](); sg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.val === v)); });
+  $$('#fp [data-man="bp"]').forEach(b => b.disabled = S.bp.mode !== 'man');
+}
+document.addEventListener('click', e => {
+  const eqb = e.target.closest('#eqlist [data-eq]'); if (eqb) { sel = eqb.dataset.eq; refreshFP(); return; }
+  const b = e.target.closest('#fp [data-act]'); if (!b) return;
+  const a = b.dataset.act; let m;
+  if ((m = a.match(/^dp(\d)\.(\w+)$/))) dpAct(+m[1], m[2]);
+  else if ((m = a.match(/^b(\d)\.(\w+)$/))) bAct(+m[1], m[2]);
+  else if (ACT[a]) ACT[a]();
+  updFP();
+});
+document.addEventListener('input', e => {
+  const inp = e.target.closest('#fp [data-in]'); if (!inp) return;
+  const v = +inp.value, k = inp.dataset.in;
+  if (k === 'bp.sp') S.bp.sp = v; if (k === 'cl.sp') S.cl.sp = v; if (k === 'lic.sp') S.lic.sp = v;
+  if (k === 'lic.out') { if (S.lic.mode === 'man') S.lic.out = v; }
+  const out = inp.closest('.ctl').querySelector('output'); if (out && KV[out.dataset.k]) out.textContent = KV[out.dataset.k]();
+});
+document.addEventListener('change', e => {
+  const inp = e.target.closest('#fp [data-in]'); if (!inp) return;
+  const k = inp.dataset.in, v = +inp.value;
+  const nm = { 'bp.sp': `BP-101 VFD setpoint ${f1(v)} Hz`, 'cl.sp': `Chlorine dose setpoint ${f1(v)} mg/L`, 'lic.sp': `LIC-401 setpoint ${f2(v)} m`, 'lic.out': S.lic.mode === 'man' ? `LIC-401 manual output ${f0(v)} %` : null }[k];
+  if (nm) ev('op', nm); else if (k === 'lic.out') SL.toast('LIC-401 is in Auto: switch to Manual to set the output.', 'warn');
+});
+
+/* ===================== HISTORIAN & TRENDS ===================== */
+let histNext = 0;
+function hist() {
+  if (S.t < histNext) return; histNext = S.t + 15;
+  HIST.push([S.t, S.lt401.v, S.lt402, S.ft201, S.town.Q, S.town.Pdisp, K.intake - S.well.d, S.bp.I, S.bp.T, S.ft101, S.cl.c2, S.cl.C, S.filt.turbOut, S.filt.dp, S.pw.load, S.pw.live ? 415 : 0, S.gen.fuel, S.lcv.pos, S.boost[0].I + S.boost[1].I]);
+  if (HIST.length > 3000) HIST.splice(0, HIST.length - 3000);
+}
+const PENS = {
+  res: [[1, 'LT-401 level', 0, 4.5, 'm', '#60a5fa'], [2, 'LT-402 level', 0, 4.5, 'm', '#93c5fd', [4, 4]], [3, 'FT-201 inflow', 0, 120, 'm³/h', '#4ade80'], [4, 'FT-202 town flow', 0, 120, 'm³/h', '#e5e7eb'], [5, 'PT-501 town', 0, 5, 'bar', '#d4b483']],
+  well: [[6, 'Submergence', 0, 60, 'm', '#60a5fa'], [7, 'BP-101 current', 0, 80, 'A', '#e5e7eb'], [8, 'Motor temp', 0, 120, '°C', '#d4b483'], [9, 'FT-101 flow', 0, 100, 'm³/h', '#4ade80']],
+  qual: [[10, 'AIT-301 contact Cl', 0, 3, 'mg/L', '#4ade80'], [11, 'AIT-302 reservoir Cl', 0, 3, 'mg/L', '#60a5fa'], [12, 'AIT-201 turbidity', 0, 3, 'NTU', '#d4b483'], [13, 'DPIT-201 ΔP', 0, 1.5, 'bar', '#e5e7eb']],
+  pwr: [[14, 'MCC-1 load', 0, 120, 'kW', '#e5e7eb'], [15, 'Bus voltage', 0, 450, 'V', '#60a5fa'], [16, 'G-001 fuel', 0, 100, '%', '#d4b483'], [18, 'Booster current (sum)', 0, 100, 'A', '#4ade80']],
+};
+let tg = 'res', twin = 4, trendHover = null;
+const tst = SL.canvas($('#trend'));
+function drawTrend() {
+  const { ctx, w, h } = tst; ctx.clearRect(0, 0, w, h);
+  const pl = 44, pr = 10, pt = 10, pb = 22;
+  const t1 = S.t, t0 = t1 - twin * 3600;
+  const X = t => pl + (t - t0) / (t1 - t0) * (w - pl - pr);
+  ctx.font = '10px JetBrains Mono, monospace'; ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.fillStyle = '#6b7280'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) { const y = pt + (h - pt - pb) * i / 4; ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(w - pr, y); ctx.stroke(); ctx.textAlign = 'right'; ctx.fillText((100 - i * 25) + '%', pl - 5, y + 3); }
+  const stepH = twin <= 1 ? 900 : twin <= 4 ? 3600 : 7200;
+  for (let t = Math.ceil(t0 / stepH) * stepH; t <= t1; t += stepH) { const x = X(t); ctx.beginPath(); ctx.moveTo(x, pt); ctx.lineTo(x, h - pb); ctx.stroke(); ctx.textAlign = 'center'; ctx.fillText(clockStr(t).slice(0, 5), x, h - 7); }
+  const pens = PENS[tg];
+  const data = HIST.filter(r => r[0] >= t0 - 30);
+  pens.forEach(([ix, , lo, hi, , col, dash]) => {
+    ctx.strokeStyle = col; ctx.lineWidth = 1.7; ctx.setLineDash(dash || []); ctx.beginPath();
+    data.forEach((r, i) => { const y = pt + (1 - clamp((r[ix] - lo) / (hi - lo), 0, 1)) * (h - pt - pb); const x = X(r[0]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.stroke(); ctx.setLineDash([]);
+  });
+  if (tg === 'res') { const y = pt + (1 - S.lic.sp / 4.5) * (h - pt - pb); ctx.strokeStyle = 'rgba(96,165,250,.35)'; ctx.setLineDash([2, 4]); ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(w - pr, y); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = 'rgba(147,197,253,.7)'; ctx.textAlign = 'left'; ctx.fillText('SP', pl + 3, y - 3); }
+  let hv = null;
+  if (trendHover != null && data.length) {
+    const tt = t0 + (trendHover - pl) / (w - pl - pr) * (t1 - t0);
+    let best = data[0]; for (const r of data) if (Math.abs(r[0] - tt) < Math.abs(best[0] - tt)) best = r;
+    const x = X(best[0]); ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.moveTo(x, pt); ctx.lineTo(x, h - pb); ctx.stroke(); hv = best;
+  }
+  const last = hv || HIST[HIST.length - 1];
+  $('#tleg').innerHTML = (hv ? `<span style="color:#e5e7eb">${clockStr(hv[0])}</span>` : '') + pens.map(([ix, n, lo, hi, u, col]) => `<span><i style="background:${col}"></i>${n} <b style="color:#e5e7eb">${last ? (Math.abs(last[ix]) < 10 ? last[ix].toFixed(2) : last[ix].toFixed(0)) : ''}</b> ${u} <span style="color:#6b7280">[${lo}–${hi}]</span></span>`).join('');
+}
+$('#trend').addEventListener('pointermove', e => { trendHover = SL.ptr(e, $('#trend')).x; });
+$('#trend').addEventListener('pointerleave', () => trendHover = null);
+$('#tgrp').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; tg = b.dataset.g; $$('#tgrp button').forEach(x => x.classList.toggle('on', x === b)); });
+$('#twin').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; twin = +b.dataset.w; $$('#twin button').forEach(x => x.classList.toggle('on', x === b)); });
+
+/* ===================== HMI GRAPHIC ===================== */
+const C = { bg: '#2a2e35', pipe: '#6b7380', pipeOn: '#aeb6c2', eq: '#c9d1d9', eqDim: '#7d8590', fillRun: '#9ba3ae', txt: '#e6edf3', dim: '#98a1ad', water: '#435466', box: '#1f2329', boxLine: '#3d444e' };
+const cst = SL.canvas($('#cv'));
+let HITS = [], animT = 0, hover = null, flash = true;
+function hit(id, x, y, w, h) { HITS.push({ id, x, y, w, h }); }
+function drawHMI(dt) {
+  animT += dt; flash = Math.floor(animT * 2) % 2 === 0;
+  const { ctx, w, dpr } = cst; const sc = w / 1100;
+  ctx.setTransform(dpr * sc, 0, 0, dpr * sc, 0, 0);
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, 1100, 620);
+  HITS = [];
+  ctx.font = '600 12px JetBrains Mono, monospace'; ctx.fillStyle = C.dim; ctx.textAlign = 'left';
+  ctx.fillText('MTO SAFI WATER SUPPLY  ·  WSS-01 OVERVIEW', 16, 22);
+  ctx.textAlign = 'right'; ctx.fillText(clockStr(S.t) + '  ' + (S.pw.live ? (S.pw.ats === 'gen' ? 'ON GENERATOR' : 'GRID OK') : 'NO POWER'), 1084, 22);
+  // ground
+  ctx.strokeStyle = '#4a515c'; ctx.lineWidth = 1; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(20, 140); ctx.lineTo(160, 140); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = C.dim; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText('GL', 22, 136);
+  /* ---- borehole ---- */
+  const dY = d => 140 + d * 4;
+  ctx.fillStyle = '#23272d'; ctx.fillRect(66, 140, 48, 460);
+  const wl = dY(S.well.d);
+  const grd = ctx.createLinearGradient(0, wl, 0, 600); grd.addColorStop(0, '#4b5e73'); grd.addColorStop(1, '#3a4a5b');
+  ctx.fillStyle = grd; ctx.fillRect(67, Math.min(600, wl), 46, Math.max(0, 600 - wl));
+  ctx.strokeStyle = C.eqDim; ctx.lineWidth = 2; ctx.strokeRect(66, 140, 48, 460);
+  ctx.strokeStyle = '#8fa3b8'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(60, wl); ctx.lineTo(120, wl); ctx.stroke();
+  ctx.setLineDash([2, 3]); ctx.strokeStyle = '#6b7380'; ctx.beginPath(); ctx.moveTo(60, dY(S.well.SWL)); ctx.lineTo(120, dY(S.well.SWL)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = C.dim; ctx.textAlign = 'right'; ctx.fillText('SWL', 58, dY(S.well.SWL) + 3); ctx.fillText('INTAKE', 58, dY(K.intake) + 3);
+  ctx.strokeStyle = '#6b7380'; ctx.beginPath(); ctx.moveTo(60, dY(K.intake)); ctx.lineTo(66, dY(K.intake)); ctx.stroke();
+  // riser + pump + motor
+  pipe([[90, dY(K.intake) - 18], [90, 110]], S.ft101, 4);
+  const run = S.bp.hz > 1;
+  ctx.fillStyle = run ? C.fillRun : C.bg; ctx.strokeStyle = C.eq; ctx.lineWidth = 1.5;
+  rr(ctx, 80, dY(K.intake) - 20, 20, 22, 3); ctx.fill(); ctx.stroke();
+  rr(ctx, 80, dY(K.intake) + 4, 20, 26, 3); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = run ? '#2a2e35' : C.eqDim; ctx.beginPath(); for (let i = 0; i < 3; i++) { ctx.moveTo(82, dY(K.intake) - 14 + i * 6); ctx.lineTo(98, dY(K.intake) - 14 + i * 6); } ctx.stroke();
+  if (S.well.air && run) { for (let i = 0; i < 6; i++) { const yy = dY(K.intake) - ((animT * 40 + i * 13) % 60); ctx.strokeStyle = 'rgba(220,230,240,.6)'; ctx.beginPath(); ctx.arc(74 + (i % 3) * 16, yy, 2, 0, 7); ctx.stroke(); } }
+  hit('BP101', 64, dY(K.intake) - 30, 52, 70); hit('WELL', 66, 150, 48, dY(K.intake) - 190);
+  ind(ctx, 120, dY(K.intake) - 22, 'BP101'); ind(ctx, 120, wl - 10, 'WELL');
+  tagBox(ctx, 128, 290, 'LT-100', [[f1(S.well.d), 'm bgl'], [f1(K.intake - S.well.d), 'm sub']], 'WELL');
+  tagBox(ctx, 128, 372, 'BP-101', [[f1(S.bp.hz), 'Hz'], [f0(S.bp.I), 'A'], [f0(S.bp.T), '°C']], 'BP101', S.bp.trip ? 'TRIP' : S.bp.mode === 'man' ? 'MAN' : 'AUTO');
+  /* ---- wellhead & raw main ---- */
+  pipe([[90, 110], [440, 110]], S.ft101 > 0.5 ? S.ft201 + 0.01 : 0, 4);
+  instr(ctx, 136, 110, 'FT', '101'); readout(ctx, 136, 50, f1(S.ft101), 'm³/h', 'MAIN', 1);
+  instr(ctx, 206, 110, 'PT', '101'); readout(ctx, 206, 50, f2(S.pt101), 'bar', 'MAIN', 1);
+  valve(ctx, 262, 110, S.xv.pos, true); ctx.fillStyle = C.dim; ctx.textAlign = 'center'; ctx.fillText('XV-101', 262, 136);
+  hit('MAIN', 244, 84, 36, 56);
+  ctx.fillStyle = C.dim; ctx.textAlign = 'center'; ctx.fillText('RAW MAIN DN150 · 1.8 km', 362, 154);
+  if (S.flags.burst) { for (let i = 0; i < 9; i++) { const a = -Math.PI / 2 + (i - 4) * 0.22, rr2 = (animT * 60 + i * 9) % 30; ctx.fillStyle = 'rgba(160,190,220,.55)'; ctx.beginPath(); ctx.arc(345 + Math.cos(a) * rr2, 110 + Math.sin(a) * rr2, 2, 0, 7); ctx.fill(); } }
+  hit('MAIN', 290, 96, 100, 44); ind(ctx, 300, 96, 'MAIN');
+  instr(ctx, 390, 110, 'AIT', '200'); readout(ctx, 390, 50, f1(S.filt.turbRaw), 'NTU', 'F201', 1);
+  instr(ctx, 440, 110, 'FT', '201'); readout(ctx, 438, 120, f1(S.ft201), 'm³/h', 'MAIN', 1);
+  /* ---- filter ---- */
+  pipe([[440, 110], [470, 110]], S.ft201, 4);
+  ctx.fillStyle = S.filt.bw ? '#3a4048' : C.bg; ctx.strokeStyle = C.eq; ctx.lineWidth = 2; rr(ctx, 470, 60, 70, 150, 30); ctx.fill(); ctx.stroke();
+  const mh = clamp(S.filt.m / 1.2, 0, 1) * 60;
+  ctx.fillStyle = '#5a5246'; ctx.fillRect(478, 150, 54, 40); ctx.fillStyle = 'rgba(120,100,70,.7)'; ctx.fillRect(478, 150 - mh * 0.4, 54, mh * 0.4);
+  ctx.fillStyle = C.txt; ctx.textAlign = 'center'; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.fillText('F-201', 505, 92); ctx.font = '10px JetBrains Mono, monospace'; ctx.fillStyle = C.dim; ctx.fillText(S.filt.bw ? 'BW ' + S.filt.bw.toUpperCase() : 'FILTER', 505, 106);
+  hit('F201', 466, 56, 78, 158); ind(ctx, 548, 66, 'F201');
+  readout(ctx, 470, 30, 'ΔP ' + f2(S.filt.dp), 'bar', 'F201');
+  pipe([[505, 210], [505, 240], [600, 240]], S.filt.bw ? 0 : S.ft201, 4);
+  instr(ctx, 545, 240, 'AIT', '201'); readout(ctx, 526, 252, f2(S.filt.turbOut), 'NTU', 'F201');
+  /* ---- dosing ---- */
+  ctx.strokeStyle = C.eq; ctx.lineWidth = 1.5; ctx.fillStyle = C.bg; ctx.strokeRect(470, 340, 56, 70);
+  const tf = clamp(S.cl.tankL / 500, 0, 1); ctx.fillStyle = '#4a5560'; ctx.fillRect(471, 409 - 68 * tf, 54, 68 * tf);
+  ctx.fillStyle = C.dim; ctx.textAlign = 'center'; ctx.fillText('T-301', 498, 330); ctx.fillText('NaOCl', 498, 424);
+  [0, 1].forEach(i => { const x = 562 + i * 56, y = 380, d = S.cl.dps[i]; pipe([[526, 400], [x, 400], [x, y + 12]], 0, 2); pump(ctx, x, y, 11, d.run, false); ctx.fillStyle = C.dim; ctx.textAlign = 'center'; ctx.fillText('DP-30' + (i + 1), x, y + 30); pipe([[x, y - 11], [x, 300], [600, 300], [600, 244]], d.run && d.ok ? 20 : 0, 2); ind(ctx, x + 14, y - 22, 'DOSING'); });
+  hit('DOSING', 462, 322, 190, 112);
+  ctx.fillStyle = C.eq; ctx.beginPath(); ctx.moveTo(600, 240); ctx.lineTo(594, 232); ctx.lineTo(606, 232); ctx.fill();
+  /* ---- contact pipe ---- */
+  const cp = [[600, 240], [640, 240]]; for (let i = 0; i < 4; i++) { const x = 640 + i * 18; cp.push([x, i % 2 ? 240 : 200], [x + 18, i % 2 ? 240 : 200]); }
+  cp.push([712, 240], [760, 240]);
+  pipe(cp, S.filt.bw ? 0 : S.ft201, 4);
+  ctx.fillStyle = C.dim; ctx.textAlign = 'center'; ctx.fillText('CONTACT PIPE 30 m³', 676, 190);
+  instr(ctx, 740, 240, 'AIT', '301'); readout(ctx, 720, 252, f2(S.cl.c2), 'mg/L', 'DOSING');
+  /* ---- HV-401, LCV-401, reservoir ---- */
+  pipe([[760, 240], [860, 240], [860, 268]], S.filt.bw ? 0 : S.ft201, 4);
+  valve(ctx, 780, 240, S.lcv.hv ? 1 : 0, false); ctx.fillStyle = C.dim; ctx.textAlign = 'center'; ctx.fillText('HV-401', 780, 222);
+  valve(ctx, 822, 240, S.lcv.pos / 100, true); ctx.fillText('LCV-401', 822, 272); ctx.fillStyle = C.txt; ctx.fillText(f0(S.lcv.pos) + '%', 822, 208);
+  hit('LCV401', 766, 196, 74, 84); ind(ctx, 846, 210, 'LCV401');
+  const tx = 820, ty = 268, tw = 160, th = 220, hy = v => ty + th - v / 4.5 * th;
+  ctx.fillStyle = C.bg; ctx.strokeStyle = C.eq; ctx.lineWidth = 2; ctx.fillRect(tx, ty, tw, th);
+  const lvlY = hy(S.res.h); const g2 = ctx.createLinearGradient(0, lvlY, 0, ty + th); g2.addColorStop(0, '#4b5e73'); g2.addColorStop(1, '#3a4a5b');
+  ctx.fillStyle = g2; ctx.fillRect(tx + 1, lvlY, tw - 2, ty + th - lvlY);
+  ctx.strokeStyle = '#8fa3b8'; ctx.lineWidth = 1; ctx.beginPath(); for (let x = tx + 2; x < tx + tw - 2; x += 4) ctx.lineTo(x, lvlY + Math.sin(x * 0.2 + animT * 3) * 1.2); ctx.stroke();
+  ctx.strokeStyle = C.eq; ctx.lineWidth = 2; ctx.strokeRect(tx, ty, tw, th);
+  ctx.setLineDash([3, 3]); ctx.strokeStyle = 'rgba(200,210,220,.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(tx, hy(S.lic.sp)); ctx.lineTo(tx + tw, hy(S.lic.sp)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = C.dim; ctx.textAlign = 'left'; ctx.fillText('SP', tx + 4, hy(S.lic.sp) - 3);
+  [[3.85, 'LSHH-402'], [0.4, 'LSL-403']].forEach(([v, n]) => { ctx.fillStyle = C.eqDim; ctx.beginPath(); ctx.arc(tx + tw - 8, hy(v), 4, 0, 7); ctx.fill(); ctx.fillStyle = C.dim; ctx.textAlign = 'right'; ctx.fillText(n, tx + tw - 15, hy(v) + 3); });
+  pipe([[tx + tw, hy(4.0)], [tx + tw + 12, hy(4.0)], [tx + tw + 12, hy(4.0) + 34]], S.res.ovf, 3);
+  ctx.fillStyle = C.dim; ctx.textAlign = 'left'; ctx.fillText('OVF', tx + tw + 18, hy(4.0) + 30);
+  ctx.fillStyle = C.txt; ctx.font = '600 12px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText('T-401', tx + tw / 2, ty + 18); ctx.font = '10px JetBrains Mono, monospace';
+  hit('T401', tx, ty, tw, th); ind(ctx, tx + 6, ty + 6 + 18, 'T401');
+  tagBox(ctx, tx + 34, ty + 40, 'LT-401 / 402', [[f2(S.lt401.v), 'm'], [f2(S.lt402), 'm']], 'T401');
+  bar(ctx, tx - 14, ty, 8, th, S.lt401.v / 4.5, [1.0 / 4.5, 3.75 / 4.5]);
+  /* ---- boosters ---- */
+  pipe([[tx + 20, ty + th], [tx + 20, 530], [960, 530]], S.town.Q, 4);
+  instr(ctx, tx + 60, 530, 'AIT', '302'); readout(ctx, tx + 42, 545, f2(S.cl.C), 'mg/L', 'T401');
+  [0, 1].forEach(i => {
+    const p = S.boost[i], x = 980 + i * 60, y = 560;
+    pipe([[960, 530], [960, 560], [x - 16, 560]], i === 0 ? S.town.Q : (p.run ? p.Q : 0), 3);
+    pump(ctx, x, y, 14, p.run, !!p.trip);
+    ctx.fillStyle = C.dim; ctx.textAlign = 'center'; ctx.fillText(p.id, x, y + 28); ctx.fillStyle = C.txt; ctx.fillText(p.run ? f0(p.I) + ' A' : (p.trip ? 'TRIP' : p.mode === 'oos' ? 'OOS' : p.mode === 'man' ? 'MAN' : 'STBY'), x, y + 40);
+    pipe([[x, y - 14], [x, 510], [1070, 510]], p.run ? p.Q : 0, 3);
+    hit('P20' + (i + 1), x - 20, y - 20, 40, 64); ind(ctx, x + 12, y - 26, 'P20' + (i + 1));
+  });
+  pipe([[1070, 510], [1070, 150]], S.town.Q, 4);
+  instr(ctx, 1070, 470, 'PT', '202'); readout(ctx, 1022, 448, f2(S.town.pdis), 'bar', 'TOWN', 1);
+  instr(ctx, 1070, 420, 'FT', '202'); readout(ctx, 1022, 398, f1(S.town.Q), 'm³/h', 'TOWN', 1);
+  /* ---- town ---- */
+  ctx.strokeStyle = C.eq; ctx.lineWidth = 1.5; ctx.fillStyle = C.bg;
+  for (let i = 0; i < 5; i++) { const x = 900 + i * 36, y = 120 - (i % 2) * 10; ctx.beginPath(); ctx.moveTo(x, y + 30); ctx.lineTo(x, y + 10); ctx.lineTo(x + 13, y); ctx.lineTo(x + 26, y + 10); ctx.lineTo(x + 26, y + 30); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  pipe([[1070, 150], [890, 150]], S.town.Q, 3);
+  ctx.fillStyle = C.txt; ctx.font = '600 12px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText('TOWN NETWORK', 900, 60); ctx.font = '10px JetBrains Mono, monospace';
+  hit('TOWN', 890, 46, 200, 112); ind(ctx, 1010, 52, 'TOWN');
+  tagBox(ctx, 900, 168, 'PT-501 · demand', [[f2(S.town.Pdisp), 'bar'], [f0(S.town.D), 'm³/h']], 'TOWN');
+  /* ---- power ---- */
+  ctx.save(); ctx.translate(80, 0);
+  ctx.strokeStyle = '#4a515c'; ctx.setLineDash([2, 4]); ctx.strokeRect(160, 450, 420, 150); ctx.setLineDash([]);
+  ctx.fillStyle = C.dim; ctx.textAlign = 'left'; ctx.fillText('POWER SUPPLY · MCC-1 415 V', 168, 466);
+  const live = S.pw.live, busC = live ? C.pipeOn : '#5a616b';
+  // grid
+  ctx.strokeStyle = S.pw.grid ? C.eq : C.eqDim; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(200, 500, 14, 0, 7); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(192, 500); ctx.quadraticCurveTo(196, 492, 200, 500); ctx.quadraticCurveTo(204, 508, 208, 500); ctx.stroke();
+  ctx.fillStyle = C.dim; ctx.textAlign = 'center'; ctx.fillText('GRID', 200, 528); ctx.fillStyle = S.pw.grid ? C.txt : C.dim; ctx.fillText(S.pw.grid ? '415 V' : '0 V', 200, 540);
+  // gen
+  ctx.strokeStyle = C.eq; ctx.fillStyle = S.gen.st === 'run' || S.gen.st === 'cool' ? C.fillRun : C.bg; ctx.beginPath(); ctx.arc(200, 572, 14, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = S.gen.st === 'run' ? '#1f2329' : C.txt; ctx.font = '700 12px JetBrains Mono, monospace'; ctx.fillText('G', 200, 576); ctx.font = '10px JetBrains Mono, monospace';
+  ctx.fillStyle = C.dim; ctx.textAlign = 'left'; ctx.fillText('G-001 ' + (S.gen.st === 'fault' ? 'FAULT' : S.gen.st.toUpperCase()), 222, 568); ctx.fillText('fuel ' + f0(S.gen.fuel) + '%  batt ' + f1(S.gen.batt) + ' V', 222, 582);
+  // ATS
+  ctx.strokeStyle = C.eq; ctx.strokeRect(300, 498, 50, 46); ctx.fillStyle = C.dim; ctx.textAlign = 'center'; ctx.fillText('ATS', 325, 492);
+  ctx.strokeStyle = S.pw.grid ? C.pipeOn : '#5a616b'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(214, 500); ctx.lineTo(304, 508); ctx.stroke();
+  ctx.strokeStyle = S.gen.st === 'run' ? C.pipeOn : '#5a616b'; ctx.beginPath(); ctx.moveTo(214, 572); ctx.lineTo(270, 572); ctx.lineTo(270, 534); ctx.lineTo(304, 534); ctx.stroke();
+  ctx.strokeStyle = C.txt; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(346, 521);
+  if (S.pw.ats === 'grid') ctx.lineTo(306, 508); else if (S.pw.ats === 'gen') ctx.lineTo(306, 534); else ctx.lineTo(318, 521); ctx.stroke();
+  // bus
+  ctx.strokeStyle = busC; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(350, 521); ctx.lineTo(565, 521); ctx.stroke();
+  const loads = [['BP-101', S.bp.P], ['P-201', S.boost[0].P], ['P-202', S.boost[1].P], ['AUX', live ? 3 : 0]];
+  loads.forEach(([n, p], i) => { const x = 380 + i * 50; ctx.strokeStyle = busC; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x, 521); ctx.lineTo(x, 545); ctx.stroke(); ctx.strokeStyle = C.eq; ctx.beginPath(); ctx.arc(x, 553, 8, 0, 7); ctx.stroke(); ctx.fillStyle = C.txt; ctx.textAlign = 'center'; ctx.fillText('M', x, 556); ctx.fillStyle = C.dim; ctx.fillText(n, x, 576); ctx.fillStyle = C.txt; ctx.fillText(f0(p / 0.93) + ' kW', x, 589); });
+  ctx.fillStyle = C.txt; ctx.textAlign = 'left'; ctx.fillText('BUS ' + (live ? '415 V' : '0 V') + '  LOAD ' + f0(S.pw.load) + ' kW', 360, 508);
+  ind(ctx, 566, 460, 'POWER'); ctx.restore(); hit('POWER', 240, 450, 420, 150);
+  if (hover) { const hh = HITS.find(x => x.id === hover); if (hh) { ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.setLineDash([4, 3]); ctx.lineWidth = 1; ctx.strokeRect(hh.x - 3, hh.y - 3, hh.w + 6, hh.h + 6); ctx.setLineDash([]); } }
+  const sh = HITS.find(x => x.id === sel); if (sh) { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.strokeRect(sh.x - 4, sh.y - 4, sh.w + 8, sh.h + 8); }
+}
+function rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function pipe(pts, flow, wd) {
+  const ctx = cst.ctx; ctx.lineJoin = 'round';
+  ctx.strokeStyle = flow > 0.5 ? C.pipeOn : C.pipe; ctx.lineWidth = wd; ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.stroke();
+  if (flow > 0.5) { ctx.strokeStyle = 'rgba(42,46,53,.85)'; ctx.lineWidth = Math.max(1, wd - 2.5); ctx.setLineDash([5, 11]); ctx.lineDashOffset = -animT * (8 + Math.min(flow, 150) * 0.5); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0; }
+}
+function pump(ctx, x, y, r, run, trip) {
+  ctx.lineWidth = 1.5; ctx.strokeStyle = C.eq; ctx.fillStyle = run ? C.fillRun : C.bg;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x - r * 0.5, y + r * 0.6); ctx.lineTo(x + r * 0.7, y); ctx.lineTo(x - r * 0.5, y - r * 0.6); ctx.closePath(); ctx.strokeStyle = run ? '#2a2e35' : C.eq; ctx.stroke();
+  if (trip) { ctx.strokeStyle = C.eq; ctx.beginPath(); ctx.moveTo(x - r, y - r); ctx.lineTo(x + r, y + r); ctx.stroke(); }
+}
+function valve(ctx, x, y, open, actuated) {
+  ctx.lineWidth = 1.5; ctx.strokeStyle = C.eq; ctx.fillStyle = open > 0.5 ? C.fillRun : C.bg;
+  ctx.beginPath(); ctx.moveTo(x - 12, y - 8); ctx.lineTo(x + 12, y + 8); ctx.lineTo(x + 12, y - 8); ctx.lineTo(x - 12, y + 8); ctx.closePath(); ctx.fill(); ctx.stroke();
+  if (actuated) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - 16); ctx.stroke(); ctx.beginPath(); ctx.arc(x, y - 16, 8, Math.PI, 0); ctx.closePath(); ctx.fillStyle = C.bg; ctx.fill(); ctx.stroke(); }
+}
+function instr(ctx, x, y, a, b) { ctx.lineWidth = 1.2; ctx.strokeStyle = C.eqDim; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - 14); ctx.stroke(); ctx.fillStyle = C.bg; ctx.strokeStyle = C.eq; ctx.beginPath(); ctx.arc(x, y - 26, 12, 0, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = C.txt; ctx.font = '600 8px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(a, x, y - 27); ctx.fillText(b, x, y - 19); ctx.font = '10px JetBrains Mono, monospace'; }
+function readout(ctx, x, y, v, u, eq, center) { ctx.font = '600 11px JetBrains Mono, monospace'; const tw = ctx.measureText(v).width; ctx.font = '9px JetBrains Mono, monospace'; const uw = ctx.measureText(u).width; const W = tw + uw + 14; if (center) x = Math.round(x - W / 2); ctx.fillStyle = C.box; ctx.strokeStyle = C.boxLine; ctx.lineWidth = 1; ctx.fillRect(x, y, W, 16); ctx.strokeRect(x, y, W, 16); ctx.fillStyle = C.txt; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText(v, x + 5, y + 12); ctx.fillStyle = C.dim; ctx.font = '9px JetBrains Mono, monospace'; ctx.fillText(u, x + tw + 9, y + 12); ctx.font = '10px JetBrains Mono, monospace'; if (eq) hit(eq, x, y, W, 16); }
+function tagBox(ctx, x, y, title, rows, eq, mode) {
+  const W = 108, H = 18 + rows.length * 16; ctx.fillStyle = C.box; ctx.strokeStyle = C.boxLine; ctx.lineWidth = 1; ctx.fillRect(x, y, W, H); ctx.strokeRect(x, y, W, H);
+  ctx.fillStyle = C.dim; ctx.font = '600 9px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText(title, x + 6, y + 12);
+  if (mode) { ctx.textAlign = 'right'; ctx.fillStyle = mode === 'TRIP' ? C.txt : C.dim; ctx.fillText(mode, x + W - 6, y + 12); }
+  rows.forEach(([v, u], i) => { ctx.textAlign = 'right'; ctx.fillStyle = C.txt; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.fillText(v, x + 66, y + 28 + i * 16); ctx.textAlign = 'left'; ctx.fillStyle = C.dim; ctx.font = '9px JetBrains Mono, monospace'; ctx.fillText(u, x + 70, y + 28 + i * 16); });
+  ctx.font = '10px JetBrains Mono, monospace'; if (eq) hit(eq, x, y, W, H);
+}
+function bar(ctx, x, y, w, h, f, lim) { ctx.fillStyle = C.box; ctx.fillRect(x, y, w, h); ctx.strokeStyle = C.boxLine; ctx.strokeRect(x, y, w, h); ctx.fillStyle = '#5b6878'; ctx.fillRect(x + 1, y + h * (1 - clamp(f, 0, 1)), w - 2, h * clamp(f, 0, 1)); ctx.strokeStyle = C.dim; lim.forEach(l => { ctx.beginPath(); ctx.moveTo(x - 3, y + h * (1 - l)); ctx.lineTo(x + w + 3, y + h * (1 - l)); ctx.stroke(); }); }
+function ind(ctx, x, y, eq) {
+  const a = eqAlarm(eq); if (!a) return; if (a.un && !flash) return;
+  const c = PRI[a.pri].c; ctx.fillStyle = c; ctx.beginPath(); const s = 9;
+  if (a.pri === 1) ctx.rect(x - s, y - s, 2 * s, 2 * s);
+  else if (a.pri === 2) { ctx.moveTo(x, y - s - 2); ctx.lineTo(x + s + 2, y); ctx.lineTo(x, y + s + 2); ctx.lineTo(x - s - 2, y); }
+  else if (a.pri === 3) { ctx.moveTo(x - s - 1, y - s); ctx.lineTo(x + s + 1, y - s); ctx.lineTo(x, y + s + 1); }
+  else ctx.arc(x, y, s, 0, 7);
+  ctx.closePath(); ctx.fill(); ctx.fillStyle = a.pri === 1 ? '#fff' : '#111'; ctx.font = '700 10px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(a.pri, x, y + (a.pri === 3 ? 1 : 4)); ctx.font = '10px JetBrains Mono, monospace';
+}
+const cvEl = $('#cv'), tip = $('#tip');
+function hmiPt(e) { const r = cvEl.getBoundingClientRect(); const sc = r.width / 1100; return { x: (e.clientX - r.left) / sc, y: (e.clientY - r.top) / sc }; }
+function hitAt(p) { for (let i = HITS.length - 1; i >= 0; i--) { const hh = HITS[i]; if (p.x >= hh.x && p.x <= hh.x + hh.w && p.y >= hh.y && p.y <= hh.y + hh.h) return hh.id; } return null; }
+const TIPS = {
+  BP101: () => `<b>BP-101 borehole pump</b><br>${KV['bp.st']()} · ${S.bp.mode.toUpperCase()}<br>${f1(S.bp.hz)} Hz · ${f1(S.bp.I)} A · ${f0(S.bp.T)} °C<br>Flow ${f1(S.ft101)} m³/h · PT-101 ${f2(S.pt101)} bar`,
+  WELL: () => `<b>LT-100 borehole level</b><br>Pumping level ${f1(S.well.d)} m bgl<br>Submergence ${f1(K.intake - S.well.d)} m above intake`,
+  MAIN: () => `<b>Raw main</b><br>FT-101 ${f1(S.ft101)} · FT-201 ${f1(S.ft201)} m³/h<br>PT-101 ${f2(S.pt101)} bar · XV-101 ${KV.xv()}`,
+  F201: () => `<b>F-201 pressure filter</b><br>ΔP ${f2(S.filt.dp)} bar · ${KV['bw.st']()}<br>Raw ${f1(S.filt.turbRaw)} NTU → filtered ${f2(S.filt.turbOut)} NTU`,
+  DOSING: () => `<b>Chlorination</b><br>DP-301 ${dpSt(0)} · DP-302 ${dpSt(1)}<br>Dose ${f2(S.cl.dose)} mg/L · AIT-301 ${f2(S.cl.c2)} mg/L`,
+  LCV401: () => `<b>LIC-401 / LCV-401</b><br>${S.lic.mode.toUpperCase()} · SP ${f2(S.lic.sp)} m · PV ${f2(S.lic.src === 'LT-401' ? S.lt401.v : S.lt402)} m<br>Command ${f0(S.lic.out)} % · position ${f0(S.lcv.pos)} %`,
+  T401: () => `<b>T-401 reservoir</b><br>LT-401 ${f2(S.lt401.v)} m · LT-402 ${f2(S.lt402)} m<br>AIT-302 ${f2(S.cl.C)} mg/L · overflow ${f0(S.res.ovf)} m³/h`,
+  P201: () => `<b>P-201</b> ${bSt(0)} · ${S.boost[0].mode.toUpperCase()}<br>${f1(S.boost[0].I)} A · ${f0(S.boost[0].T)} °C`,
+  P202: () => `<b>P-202</b> ${bSt(1)} · ${S.boost[1].mode.toUpperCase()}<br>${f1(S.boost[1].I)} A · ${f0(S.boost[1].T)} °C`,
+  POWER: () => `<b>Power</b> ${KV['pw.st']()}<br>Grid ${KV.grid()} · ATS ${KV.ats()}<br>G-001 ${KV['gen.st']()} · fuel ${f0(S.gen.fuel)} % · ${f1(S.gen.batt)} V`,
+  TOWN: () => `<b>Town network</b><br>PT-501 ${f2(S.town.Pdisp)} bar · supplied ${f1(S.town.Q)} m³/h<br>Demand ${f1(S.town.D)} m³/h`,
+};
+cvEl.addEventListener('pointermove', e => {
+  if (e.pointerType === 'touch') return;
+  const p = hmiPt(e); hover = hitAt(p); cvEl.style.cursor = hover ? 'pointer' : 'default';
+  if (hover) { tip.style.display = 'block'; tip.innerHTML = TIPS[hover](); const sr = $('#hmiStage').getBoundingClientRect(); let x = e.clientX - sr.left + 14, y = e.clientY - sr.top + 14; if (x + 260 > sr.width) x -= 280; if (y + 90 > sr.height) y -= 100; tip.style.left = x + 'px'; tip.style.top = y + 'px'; } else tip.style.display = 'none';
+});
+cvEl.addEventListener('pointerleave', () => { hover = null; tip.style.display = 'none'; });
+cvEl.addEventListener('click', e => { const id = hitAt(hmiPt(e)); if (id) { sel = id; refreshFP(); if (window.innerWidth < 980) $('#fpPanel').scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
+
+/* ===================== ALARM UI ===================== */
+let afilt = 'act';
+function renderAlarms() {
+  const rows = [];
+  if (afilt === 'hist') {
+    $('#alist').innerHTML = ALHIST.length ? `<table><tr><th>Time</th><th>Event</th><th>P</th><th>Tag</th><th>Description</th></tr>${ALHIST.slice(0, 80).map(hh => { const a = ALBY[hh.id]; return `<tr><td>${clockStr(hh.t)}</td><td>${hh.ev}</td><td><span class="pi p${a.pri}">${a.pri}</span></td><td>${a.tag}</td><td>${a.desc}</td></tr>`; }).join('')}</table>` : '<div class="empty">No alarm history yet</div>';
+    return;
+  }
+  for (const a of ALDEF) {
+    const st = AL[a.id]; const sh = shelved(st);
+    if (afilt === 'shelved' ? !sh : (sh || (!st.active && st.acked))) continue;
+    if (afilt === 'shelved' && !sh) continue;
+    rows.push({ a, st });
+  }
+  rows.sort((x, y) => (x.st.acked - y.st.acked) || (x.a.pri - y.a.pri) || (y.st.t0 - x.st.t0));
+  $('#alist').innerHTML = rows.length ? `<table><tr><th>Time</th><th>P</th><th>Tag</th><th>Description</th><th>Value</th><th>State</th><th></th></tr>${rows.map(({ a, st }) => `<tr class="${!st.acked ? 'unack' : ''} ${!st.active ? 'rtn' : ''}"><td>${clockStr(st.t0)}</td><td><span class="pi p${a.pri}">${a.pri}</span></td><td>${a.tag}</td><td class="desc">${a.desc}</td><td>${st.val}</td><td>${st.active ? (st.acked ? 'ACK' : 'UNACK') : 'RTN'}</td><td style="white-space:nowrap">${afilt === 'shelved' ? `<button class="btn" data-unshelve="${a.id}">Unshelve</button>` : `${!st.acked ? `<button class="btn" data-ack="${a.id}">Ack</button> ` : ''}${st.active ? `<button class="btn" data-shelve="${a.id}">Shelve</button>` : ''}`}</td></tr>`).join('')}</table>` : `<div class="empty">${afilt === 'shelved' ? 'No shelved alarms' : 'No active alarms'}</div>`;
+}
+$('#alist').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.ack) { ack(b.dataset.ack); }
+  if (b.dataset.shelve) { const st = AL[b.dataset.shelve]; st.shelf = S.t + 3600; st.acked = true; ev('op', 'Alarm SHELVED for 1 h: ' + ALBY[b.dataset.shelve].tag + ' ' + ALBY[b.dataset.shelve].desc); }
+  if (b.dataset.unshelve) { AL[b.dataset.unshelve].shelf = 0; ev('op', 'Alarm unshelved: ' + ALBY[b.dataset.unshelve].tag); }
+  renderAlarms(); renderBanner();
+});
+$('#afilt').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; afilt = b.dataset.f; $$('#afilt button').forEach(x => x.classList.toggle('on', x === b)); renderAlarms(); });
+function renderBanner() {
+  const cnt = { 1: [0, 0], 2: [0, 0], 3: [0, 0], 4: [0, 0] }; let top = null; let nShelf = 0;
+  for (const a of ALDEF) { const st = AL[a.id]; if (shelved(st)) { nShelf++; continue; } if (st.active || !st.acked) { cnt[a.pri][0]++; if (!st.acked) cnt[a.pri][1]++; if (!top || (!st.acked && top.st.acked) || (st.acked === top.st.acked && (a.pri < top.a.pri || (a.pri === top.a.pri && st.t0 > top.st.t0)))) top = { a, st }; } }
+  $('#pcounts').innerHTML = [1, 2, 3, 4].map(p => `<span class="pcount ${cnt[p][0] ? 'has' : ''} ${cnt[p][1] ? 'flash' : ''}" title="${PRI[p].n}"><span class="pi p${p}">${p}</span>${cnt[p][0]}</span>`).join('') + (nShelf ? `<span class="pcount" title="Shelved">SHLV ${nShelf}</span>` : '');
+  $('#latest').innerHTML = top ? `<span class="pi p${top.a.pri}" style="vertical-align:middle;margin-right:6px">${top.a.pri}</span><b>${clockStr(top.st.t0)} ${top.a.tag}</b> ${top.a.desc} · ${top.st.val}${top.st.acked ? '' : ' · UNACK'}` : 'No active alarms';
+  $('#annun').style.borderColor = top && !top.st.acked ? PRI[top.a.pri].c : '#2c323b';
+}
+$('#ackAll').onclick = () => { ALDEF.forEach(a => { if (!shelved(AL[a.id])) ack(a.id); }); renderAlarms(); renderBanner(); };
+$('#silence').onclick = () => { hornSilenced = true; };
+let hornOn = true;
+$('#horn').onclick = () => { hornOn = !hornOn; $('#horn').classList.toggle('on', hornOn); $('#horn').setAttribute('aria-pressed', hornOn); if (hornOn) try { SL.audio(); } catch (e) {} };
+let hornT = 0;
+function horn(dt) {
+  hornT -= dt; if (hornT > 0 || !hornOn || hornSilenced || speed === 0) return;
+  let p = 9; for (const a of ALDEF) { const st = AL[a.id]; if (!st.acked && st.active && !shelved(st)) p = Math.min(p, a.pri); }
+  if (p > 2) return; hornT = p === 1 ? 0.9 : 1.8;
+  const ac = window.__plantAudio; if (!ac || ac.state !== 'running') return;
+  const o = ac.createOscillator(), g = ac.createGain(); o.type = 'square'; o.frequency.value = p === 1 ? 880 : 660; g.gain.value = 0.0001;
+  o.connect(g); g.connect(ac.destination); const t = ac.currentTime; g.gain.exponentialRampToValueAtTime(0.05, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28); o.start(t); o.stop(t + 0.3);
+}
+document.addEventListener('pointerdown', () => { if (!window.__plantAudio) { try { window.__plantAudio = SL.audio(); } catch (e) {} } }, { once: false });
+
+/* ===================== LOG UI & SCORE UI ===================== */
+function renderLog() { if (!logDirty) return; logDirty = false; $('#log').innerHTML = LOG.slice(0, 150).map(l => `<div class="${l.kind}"><span class="tm">${clockStr(l.t)}</span>${l.msg}</div>`).join('') || '<div class="sys">Log empty</div>'; }
+$('#noteBtn').onclick = () => { const v = $('#noteIn').value.trim(); if (!v) return; ev('note', 'NOTE: ' + v.replace(/</g, '&lt;')); if (F && F.on) F.ops.push({ t: S.t, msg: 'Note: ' + v.replace(/</g, '&lt;') }); $('#noteIn').value = ''; };
+$('#noteIn').addEventListener('keydown', e => { if (e.key === 'Enter') $('#noteBtn').click(); });
+function renderScore() {
+  const sc = scores();
+  const setB = (id, b, v) => { $(id).textContent = v == null ? '–' : f0(v); $(b).style.width = (v == null ? 0 : v) + '%'; };
+  if (!sc) { $('#scTotal').textContent = '–'; $('#scState').textContent = F ? 'Plant normal. Stay alert.' : 'No exercise running'; ['#scCont', '#scQual', '#scSafe', '#scTime'].forEach(x => $(x).textContent = '–'); ['#bCont', '#bQual', '#bSafe', '#bTime'].forEach(x => $(x).style.width = 0); return; }
+  setB('#scCont', '#bCont', sc.cont); setB('#scQual', '#bQual', sc.qual); setB('#scSafe', '#bSafe', sc.safe);
+  $('#scTime').textContent = f0(sc.el / 60) + ' min'; $('#bTime').style.width = sc.time + '%';
+  $('#scTotal').textContent = F.done ? f0(sc.total) : f0(0.3 * sc.cont + 0.2 * sc.qual + 0.2 * sc.safe + 0.15 * sc.time);
+  $('#scState').textContent = F.done ? (F.resolved ? 'Resolved' : 'Ended') : F.okT > 0 ? `Stabilising… ${f0(F.okT / 60)}/${f0(FAULTS[F.id].hold / 60)} min` : 'Abnormal situation in progress';
+}
+$('#diagSel').innerHTML = '<option value="">Root cause…</option>' + DIAG.slice().sort((a, b) => a[1].localeCompare(b[1])).map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
+$('#diagBtn').onclick = () => {
+  const v = $('#diagSel').value; if (!v) return;
+  if (!F || !F.on || F.done) return SL.toast('No abnormal situation to diagnose yet.', 'warn');
+  F.diag.push(v); ev('op', 'Diagnosis recorded: ' + DIAG.find(d => d[0] === v)[1]); $('#diagNote').textContent = `Recorded at ${clockStr(S.t).slice(0, 5)}. Your first diagnosis counts fully; a later correct one earns half.`;
+};
+$('#startShift').onclick = startShift;
+$('#endShift').onclick = () => { if (F && !F.done) finish(false); else SL.toast('No exercise in progress.', 'warn'); };
+
+/* ===================== SOP CARDS ===================== */
+const SOPS = [
+  ['SOP-00', 'General alarm response', '<ol><li><b>Acknowledge</b> the alarm (this only silences it).</li><li><b>Assess</b>: read the whole list, find the <i>first</i> alarm, open the faceplate, check trends of related tags.</li><li><b>Confirm</b> with independent evidence (a second instrument, a mass balance, a field check) before acting on one reading.</li><li><b>Act</b> using the relevant SOP below. Protect people first, then public health, then equipment, then supply.</li><li><b>Log</b> the time, what you saw, what you did and who you called.</li></ol>'],
+  ['SOP-01', 'BP-101 low current / low flow', '<ol><li>Compare PT-101: <b>low pressure</b> with low current points to the well (dry-running); <b>high pressure</b> points to a closed valve (dead-heading).</li><li>Check LT-100 submergence. Below 3 m: switch BP-101 to Manual and <b>stop it</b>.</li><li>Allow the level to recover (watch the trend).</li><li>Restart in Manual at reduced speed (start about 42 Hz). Hold submergence above 3 m and the motor below 80 °C.</li><li>Send an operator to dip the well to confirm. Report the reduced yield.</li></ol><div class="caut">Never reset a thermistor trip and restart at full speed into a dry well. The motor depends on water flow for cooling.</div>'],
+  ['SOP-02', 'Booster trip / low town pressure', '<ol><li>Check which booster is running and the mode of the standby pump.</li><li>If the standby is not running, start it (Manual Start, or put it in Auto).</li><li>Check the reservoir is above the LSL-403 cut-out (0.4 m).</li><li>Do not reset a tripped motor more than once without an investigation. Put it Out of Service and call a fitter.</li><li>Confirm PT-501 recovers above 1 bar.</li></ol>'],
+  ['SOP-03', 'Flow imbalance / low raw-main pressure', '<ol><li>Compare FT-101 (wellhead) with FT-201 (filter inlet). A difference of more than 8 m³/h means water is leaving the main.</li><li>Send an operator to walk the main.</li><li>If a burst is confirmed: switch BP-101 to Manual, stop it, close XV-101.</li><li>Dispatch the repair crew. The crew needs the main isolated and depressurised.</li><li>Watch reservoir storage and town supply. After the repair, open XV-101 and restart BP-101; confirm the flows match.</li></ol>'],
+  ['SOP-04', 'Low chlorine residual', '<ol><li>Check that a dosing pump is running and that its stroke-flow switch shows flow.</li><li>Check the hypochlorite day tank level.</li><li>Running but no flow: change to the standby pump (select it as duty, or run it in Manual) and request priming of the faulty pump.</li><li>After a power cut, reset the dosing pumps.</li><li>If AIT-302 is below 0.2 mg/L, inform the supervisor: water may need to be held back or flushed.</li></ol><div class="caut">Do not raise the dose above about 3 mg/L to "catch up", and never run both pumps at the full flow-paced dose.</div>'],
+  ['SOP-05', 'High filter ΔP / turbidity', '<ol><li>Backwash at 0.8 bar ΔP or if the filtered turbidity exceeds 1 NTU.</li><li>Before backwashing, check the reservoir is above 1.0 m (the wash uses about 15 m³ and BP-101 is held off for 11 min).</li><li>Start the backwash from the F-201 faceplate and watch the sequence.</li><li>After the wash, check AIT-201 is below 1 NTU (target below 0.5).</li><li>During high raw turbidity expect frequent backwashes; consider reducing flow.</li></ol>'],
+  ['SOP-06', 'Loss of grid power', '<ol><li>Confirm the GRID alarm. The ATS should start G-001 and transfer within about 30 s.</li><li>If G-001 does not run, read its fault and check battery voltage and fuel locally.</li><li>Flat battery: request a boost. No fuel: order diesel. Then reset the generator fault.</li><li>When the bus is live, check that BP-101 and the duty booster restart, and <b>reset the dosing pumps</b>.</li><li>Keep generator load below 80 kW: one booster only.</li><li>Call the utility for a restoration estimate. Log everything.</li></ol>'],
+  ['SOP-07', 'Transmitter deviation / suspect instrument', '<ol><li>Compare LT-401 and LT-402, and do a mass balance: if inflow exceeds outflow, the level must be rising.</li><li>A trend that is perfectly flat (no noise) suggests a frozen transmitter.</li><li>Switch LIC-401 to the healthy transmitter, or take the loop to Manual.</li><li>Request an instrument technician.</li><li>Return the loop to normal only after the repair.</li></ol>'],
+  ['SOP-08', 'High reservoir level / overflow', '<ol><li>Check that LT-401 and LT-402 agree. If they disagree, use SOP-07.</li><li>Compare the LCV-401 command with its position (ZT-401). A valve that does not follow its command is mechanically faulty.</li><li>Stop the inflow: BP-101 to Manual and stop it, or close HV-401 by hand.</li><li>Request a fitter for LCV-401. Control the inflow manually until it is repaired.</li><li>Log the overflow volume.</li></ol>'],
+];
+$('#sop').insertAdjacentHTML('beforeend', SOPS.map(([c, t, b]) => `<details><summary><span class="code">${c}</span>${t}</summary><div class="body">${b}</div></details>`).join(''));
+
+/* ===================== CHALLENGES ===================== */
+let PROG = {};
+try { PROG = JSON.parse(localStorage.getItem('sl-plant-prog') || '{}'); } catch (e) { PROG = {}; }
+function saveProg(id, score, resolved) { if (resolved) { PROG[id] = Math.max(PROG[id] || 0, Math.round(score)); } try { localStorage.setItem('sl-plant-prog', JSON.stringify(PROG)); } catch (e) {} }
+const CH = [
+  { id: 'manual', t: 'Hand control', d: 'In Manual, hold the reservoir within ±0.1 m of 3.0 m for 30 minutes of plant time.' },
+  { id: 'bw', t: 'Clean filter, happy town', d: 'Complete a backwash while the town stays above 1 bar throughout.' },
+  { id: 'affinity', t: 'Affinity laws', d: 'Run BP-101 at 40 Hz or less in Manual with at least 40 m³/h... impossible? Get as close as you can: run stably at 40 Hz for 10 min.' },
+  { id: 'f3', t: 'Three emergencies', d: 'Resolve any three different emergencies.' },
+  { id: 'f8', t: 'Senior operator', d: 'Resolve all eight emergencies.' },
+  { id: 'ace', t: 'Textbook response', d: 'Score 90 or more on any emergency.' },
+];
+let chT = { manual: 0, bwPress: true, bwStart: 0, aff: 0 };
+function checkChallenges(h) {
+  if (h) {
+    if (S.lic.mode === 'man' && Math.abs(S.res.h - 3.0) <= 0.1) chT.manual += h; else chT.manual = 0;
+    if (chT.manual >= 1800) award('manual');
+    if (S.filt.bw && !chT.bwStart) { chT.bwStart = 1; chT.bwPress = true; }
+    if (chT.bwStart && S.town.Pdisp < 1) chT.bwPress = false;
+    if (chT.bwStart && !S.filt.bw) { if (chT.bwPress && S.filt.bwDone) award('bw'); chT.bwStart = 0; }
+    if (S.bp.mode === 'man' && S.bp.run && S.bp.hz <= 40.1 && S.bp.hz > 30) chT.aff += h; else chT.aff = 0;
+    if (chT.aff >= 600) award('affinity');
+  }
+  const done = Object.keys(FAULTS).filter(k => PROG[k]);
+  if (done.length >= 3) award('f3'); if (done.length >= 8) award('f8');
+  if (Object.values(PROG).some(v => typeof v === 'number' && v >= 90)) award('ace');
+}
+function award(id) { if (PROG['ch_' + id]) return; PROG['ch_' + id] = true; try { localStorage.setItem('sl-plant-prog', JSON.stringify(PROG)); } catch (e) {} const c = CH.find(x => x.id === id); SL.toast(`<b>Challenge complete:</b> ${c.t}`, 'ok'); renderCh(); }
+CH[2].d = 'Run BP-101 in Manual at 40 Hz or less (above 30 Hz) for 10 minutes of plant time, and compare the flow with the 50 Hz value. Does Q fall in proportion to speed?';
+function renderCh() {
+  $('#chal').innerHTML = CH.map(c => `<div class="chk"><span class="led ${PROG['ch_' + c.id] ? 'on' : ''}"></span><div><b>${c.t}</b><span class="muted small">${c.d}</span></div></div>`).join('') +
+    `<h3>Emergency record</h3><table class="data"><tr><th>Emergency</th><th>Best score</th></tr>${Object.entries(FAULTS).map(([k, f]) => `<tr><td>${f.name}</td><td class="num">${PROG[k] != null ? PROG[k] : '–'}</td></tr>`).join('')}</table>`;
+}
+renderCh();
+
+/* ===================== PUMP CURVE TAB ===================== */
+const pcs = SL.canvas($('#pumpCurve'));
+function drawPumpCurve() {
+  const { ctx, w, h } = pcs; if (w < 10) return;
+  const r = Math.max(S.bp.hz, 1) / 50, d0 = S.well.SWL;
+  const v = (S.lcv.pos / 100) * (S.lcv.hv ? 1 : 0), x = S.xv.pos;
+  const R2 = K.bPipe + (v > 0.005 ? 1 / (K.CvL * v) ** 2 : 1e9), lin = 10.2 * K.dp0 / 60 * (1 + 4 * Math.pow(S.filt.m, 1.5));
+  const xl = x > 0.01 ? 1 / (K.CvX * x) ** 2 : 1e9;
+  const sys = [], pmp = [], p50 = [];
+  for (let Q = 0; Q <= 100; Q += 2) {
+    const Hs = d0 + Q / S.well.Sc + K.elev + R2 * Q * Q + lin * Q + xl * Q * Q; if (Hs < 200) sys.push([Q, Hs]);
+    const Hp = K.H0 * r * r - K.a * Q * Q; if (Hp > 0) pmp.push([Q, Hp]);
+    const H5 = K.H0 - K.a * Q * Q; if (H5 > 0) p50.push([Q, H5]);
+  }
+  const { X, Y } = SL.chart(pcs, [{ data: p50, color: 'rgba(229,231,235,.35)', dash: [5, 5], width: 1.5 }, { data: sys, color: '#9aa4b2', label: 'System curve' }, { data: pmp, color: '#60a5fa', label: `Pump at ${f1(S.bp.hz)} Hz` }], { xmin: 0, xmax: 100, ymin: 0, ymax: 180, xlabel: 'flow Q (m³/h)  ·  y: head H (m)', pad: [30, 14, 30, 46] });
+  const Qlim = S.well.Sc * (K.intake - S.well.SWL);
+  if (Qlim < 100) { ctx.strokeStyle = 'rgba(250,204,21,.6)'; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(X(Qlim), Y(0)); ctx.lineTo(X(Qlim), Y(180)); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = '#facc15'; ctx.font = '11px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText('dry-run limit ' + f0(Qlim) + ' m³/h', X(Qlim) + 4, Y(170)); }
+  if (S.bp.hz > 1) { const Hop = S.well.d + S.pt101 * 10.2; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(X(S.ft101), Y(Hop), 5, 0, 7); ctx.fill(); ctx.fillStyle = '#e5e7eb'; ctx.textAlign = 'left'; ctx.fillText(`Q = ${f1(S.ft101)} m³/h, H = ${f0(Hop)} m`, X(S.ft101) + 8, Y(Hop) - 8); }
+}
+
+/* ===================== P&ID LEGEND ===================== */
+(function legend() {
+  const s = '#c9d1d9', t = '#e6edf3', d = '#98a1ad';
+  const item = (x, y, svg, lbl) => `<g transform="translate(${x},${y})">${svg}<text x="0" y="46" fill="${d}" font-size="11" text-anchor="middle" font-family="JetBrains Mono, monospace">${lbl}</text></g>`;
+  const items = [
+    [`<circle r="14" fill="none" stroke="${s}" stroke-width="1.5"/><path d="M-7 8 L10 0 L-7 -8 Z" fill="none" stroke="${s}" stroke-width="1.5"/>`, 'Pump (stopped)'],
+    [`<circle r="14" fill="#9ba3ae" stroke="${s}" stroke-width="1.5"/><path d="M-7 8 L10 0 L-7 -8 Z" fill="none" stroke="#2a2e35" stroke-width="1.5"/>`, 'Pump (running)'],
+    [`<path d="M-14 -9 L14 9 L14 -9 L-14 9 Z" fill="none" stroke="${s}" stroke-width="1.5"/>`, 'Manual valve'],
+    [`<path d="M-14 -1 L14 17 L14 -1 L-14 17 Z" fill="#9ba3ae" stroke="${s}" stroke-width="1.5" transform="translate(0,-4)"/><line x1="0" y1="4" x2="0" y2="-14" stroke="${s}" stroke-width="1.5"/><path d="M-9 -14 A9 9 0 0 1 9 -14 Z" fill="none" stroke="${s}" stroke-width="1.5"/>`, 'Control valve'],
+    [`<path d="M-14 -9 L14 9 L14 -9 L-14 9 Z" fill="none" stroke="${s}" stroke-width="1.5"/><line x1="-14" y1="-12" x2="14" y2="-12" stroke="${s}" stroke-width="1.5"/><path d="M8 -16 L14 -12 L8 -8" fill="none" stroke="${s}" stroke-width="1.5"/>`, 'Check valve'],
+    [`<circle r="15" fill="none" stroke="${s}" stroke-width="1.5"/><text y="-1" fill="${t}" font-size="9" text-anchor="middle" font-family="JetBrains Mono, monospace">PT</text><text y="10" fill="${t}" font-size="9" text-anchor="middle" font-family="JetBrains Mono, monospace">101</text>`, 'Field instrument'],
+    [`<rect x="-16" y="-16" width="32" height="32" fill="none" stroke="${s}" stroke-width="1.2"/><circle r="15" fill="none" stroke="${s}" stroke-width="1.5"/><line x1="-15" y1="0" x2="15" y2="0" stroke="${s}" stroke-width="1"/><text y="-3" fill="${t}" font-size="9" text-anchor="middle" font-family="JetBrains Mono, monospace">LIC</text><text y="11" fill="${t}" font-size="9" text-anchor="middle" font-family="JetBrains Mono, monospace">401</text>`, 'PLC/HMI function'],
+    [`<rect x="-18" y="-18" width="36" height="36" rx="3" fill="none" stroke="${s}" stroke-width="1.5"/><rect x="-17" y="2" width="34" height="15" fill="#435466"/>`, 'Tank'],
+    [`<rect x="-14" y="-20" width="28" height="40" rx="12" fill="none" stroke="${s}" stroke-width="1.5"/><rect x="-10" y="4" width="20" height="10" fill="#5a5246"/>`, 'Pressure filter'],
+    [`<circle r="14" fill="none" stroke="${s}" stroke-width="1.5"/><text y="4" fill="${t}" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono, monospace">G</text>`, 'Generator'],
+    [`<line x1="-22" y1="0" x2="22" y2="0" stroke="${s}" stroke-width="4"/>`, 'Process line'],
+    [`<line x1="-22" y1="0" x2="22" y2="0" stroke="${s}" stroke-width="1.5" stroke-dasharray="5 4"/>`, 'Electrical signal'],
+  ];
+  const cols = 6;
+  const svg = `<svg viewBox="0 0 720 150" xmlns="http://www.w3.org/2000/svg">${items.map(([g, l], i) => item(60 + (i % cols) * 120, 30 + Math.floor(i / cols) * 76, g, l)).join('')}</svg>`;
+  $('#pidLegend').innerHTML = svg;
+})();
+
+/* ===================== QUIZ ===================== */
+SL.quiz('#quiz', [
+  { q: 'BP-101 shows 24 A (normally 59 A), FT-101 is near zero and PT-101 is low. What is the most likely cause?', options: ['The wellhead valve XV-101 is closed', 'The pump is dry-running: the well level is at the intake', 'The motor is overloaded', 'The VFD is at maximum speed'], answer: 1, why: 'Low current plus low flow plus LOW pressure means the pump is moving air, not water. A closed valve would give low current and low flow but HIGH pressure (dead-heading).' },
+  { q: 'A 4–20 mA level transmitter ranged 0–4.5 m outputs 12 mA. What level does the PLC read?', options: ['2.25 m', '2.7 m', '3.0 m', '1.5 m'], answer: 0, why: '(12 − 4)/16 = 0.5 of span, so 0.5 × 4.5 = 2.25 m.' },
+  { q: 'Pressing "Acknowledge" on an alarm…', options: ['Clears the fault', 'Resets the tripped equipment', 'Tells the system an operator has seen it; the condition may still be present', 'Removes it from the historian'], answer: 2, why: 'Acknowledgement only changes the alarm state (stops flashing and the horn). The process condition and any trip remain until fixed and reset.' },
+  { q: 'Flow at the wellhead (FT-101) rises while flow at the filter inlet (FT-201) falls and wellhead pressure drops. What is happening?', options: ['Filter blockage', 'A burst or major leak on the raw main between the meters', 'Dry-running', 'A frozen transmitter'], answer: 1, why: 'A leak lowers the system resistance, so the pump runs further out on its curve (more flow, less head), while less water reaches the downstream meter.' },
+  { q: 'Using the affinity laws, if a pump runs at 40 Hz instead of 50 Hz, its shut-off head becomes…', options: ['80 % of the original', '64 % of the original', '51 % of the original', 'Unchanged'], answer: 1, why: 'Head scales with speed squared: (40/50)² = 0.64.' },
+  { q: 'Why do the dosing pumps latch off after a power interruption in this plant?', options: ['To save chemical', 'So that an operator confirms the dosing system is healthy before chlorine is added again', 'Because the PLC loses its program', 'Because the ATS disconnects them permanently'], answer: 1, why: 'Many chemical systems need a manual reset after a power loss. The catch is that the borehole restarts automatically, so the operator must remember to reset dosing or unchlorinated water flows to the reservoir.' },
+  { q: 'Free chlorine residual 0.6 mg/L with a T10 of 40 minutes gives a CT of…', options: ['24 mg·min/L', '66.7 mg·min/L', '0.015 mg·min/L', '40.6 mg·min/L'], answer: 0, why: 'CT = C × T10 = 0.6 × 40 = 24 mg·min/L, above the WHO guidance of 15 mg·min/L.' },
+  { q: 'LT-401 reads a steady 3.48 m, LT-402 reads 3.80 m and rising, and inflow exceeds outflow by 40 m³/h. Which instrument do you trust?', options: ['LT-401, it is the primary', 'LT-402, because it agrees with the mass balance', 'Neither: shut the plant down', 'Average the two'], answer: 1, why: 'A positive net inflow means the level must be rising. LT-402 is consistent with the physics; LT-401 is frozen. Switch the controller to LT-402 and call an instrument technician.' },
+  { q: 'The standby generator is rated 80 kW. BP-101 takes about 31 kW and each booster about 20 kW. Which line-up is safe on the generator?', options: ['BP-101 and both boosters', 'BP-101 and one booster', 'Both boosters only, plus the backwash pumps', 'Everything: generators can be overloaded briefly'], answer: 1, why: 'About 31 + 20 + 3 kW auxiliaries = 54 kW. Adding the second booster pushes the set close to or past its rating, especially at peak flow, and risks an overload trip.' },
+  { q: 'According to ISA-18.2, which of these should NOT be configured as an alarm?', options: ['Reservoir high-high level', 'Generator running on load during a planned test, which needs no action', 'Chlorine residual low', 'Booster pump tripped'], answer: 1, why: 'An alarm must require a timely operator response. Conditions that need no action should be events or messages, otherwise they become nuisance alarms that train operators to ignore the list.' },
+]);
+
+/* ===================== MAIN LOOP ===================== */
+let speed = 30;
+function setSpeed(v) { speed = v; $$('#speed button').forEach(b => b.classList.toggle('on', +b.dataset.s === v)); }
+$('#speed').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setSpeed(+b.dataset.s); });
+let uiT = 0, slowT = 0, pcVisible = false;
+$('#learn').addEventListener('tab', e => { pcVisible = e.detail === 2; });
+function tick(dt) {
+  if (speed > 0) {
+    let simDt = dt * speed;
+    while (simDt > 1e-6) { const hh = Math.min(2, simDt); step(hh); evalAlarms(hh); scoreTick(hh); hist(); checkChallenges(hh); simDt -= hh; }
+  }
+  drawHMI(dt); horn(dt);
+  uiT += dt; slowT += dt;
+  if (uiT > 0.25) {
+    uiT = 0;
+    $('#clock').innerHTML = clockStr(S.t) + `<small>DAY ${S.day}</small>`;
+    $('#status').textContent = speed === 0 ? 'PAUSED' : (F ? (F.done ? 'Exercise complete' : 'Training shift in progress') : 'Free operation') + ` · ${speed}× · 1 s = ${speed} s plant time`;
+    renderBanner(); renderAlarms(); renderLog(); updFP(); renderScore(); drawTrend();
+    if (pcVisible) drawPumpCurve();
+  }
+}
+const loop = SL.loop(tick);
+document.addEventListener('visibilitychange', () => { if (document.hidden) loop.stop(); else loop.start(); });
+
+/* ===================== INIT ===================== */
+$('#scen').value = 'random';
+S = fresh(); resetAlarms(); S.t = 3 * 3600; warmup(3 * 3600);
+ev('sys', 'SCADA online. Plant in free operation. Choose an exercise and start the shift.');
+refreshFP(); loop.start();
+window.__plant = { run(sec) { let t = 0; while (t < sec) { step(2); evalAlarms(2); scoreTick(2); hist(); t += 2; } }, get S() { return S; }, get F() { return F; }, AL: () => AL, FAULTS, ACT, bAct, dpAct, step, startShift, scores, setSpeed, finish, injectFault, evalAlarms, scoreTick, hist };
+})();
+</script>
+</body>
+</html>
