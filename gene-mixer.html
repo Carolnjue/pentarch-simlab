@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   .orgs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-top:22px}
   .orgs button{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--panel);border:1px solid var(--line);transition:.18s;min-width:0}
@@ -53,6 +53,13 @@
   .numrow label{font-size:.72rem;color:var(--dim);font-family:var(--mono)}
   .diag{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:10px;margin:12px 0}
   .diag svg{width:100%;height:auto;display:block}
+  .tally{margin-top:10px;display:grid;gap:6px;font-size:.8rem;color:var(--muted)}
+  .tally .tr{display:grid;grid-template-columns:215px 1fr;align-items:center;gap:10px}
+  .tally b{font-family:var(--mono);color:var(--text)} .tally em{font-style:normal;color:var(--dim);font-family:var(--mono);font-size:.72rem}
+  .tally .tb{display:flex;height:12px;border-radius:7px;overflow:hidden;background:var(--line2);gap:2px}
+  .tally .tb i{display:block;min-width:2px;transition:flex .5s ease}
+  .tally .tk{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.74rem} .tally .tk i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  @media (max-width:560px){ .tally .tr{grid-template-columns:1fr;gap:4px} .al{height:36px;min-width:46px} }
 </style>
 </head>
 <body data-page="gene-mixer">
@@ -73,6 +80,7 @@
         <div class="hud" id="hud"></div>
         <div class="tip" id="tip"></div>
       </div>
+      <div class="tally" id="tally" aria-live="polite"></div>
     </div>
     <aside>
       <!-- CROSS / PUNNETT / PEDIGREE controls -->
@@ -135,7 +143,7 @@
     <div class="tablist">
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
       <button><i data-lucide="list"></i> Ratio cheat sheet</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
     </div>
@@ -283,7 +291,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
 'use strict';
@@ -639,6 +647,12 @@ function ratioUI() {
   $('#ratioTable').innerHTML = `<table class="ptab"><tr><th>Phenotype</th><th style="text-align:right">Exp.</th>${N ? '<th style="text-align:right">E</th><th style="text-align:right">O</th>' : ''}</tr>` + D.classes.map((c, k) => `<tr><td><i style="background:${c.col}"></i>${c.key}</td><td class="n">${ok ? Math.round(ratio[k]) : SL.fmt(c.p * 100, 1) + '%'}</td>${N ? `<td class="n">${SL.fmt(T.rows[k].E, 1)}</td><td class="n">${T.rows[k].O}</td>` : ''}</tr>`).join('') + `</table>` + (D.lethal > 0 ? `<p class="small-note">${SL.fmt(D.lethal * 100, 1)}% of zygotes are lethal (KK) and die as embryos${N ? `; ${S.dead} died in this batch` : ''}. Ratios are among survivors.</p>` : '') + (ok ? `<p class="small-note">Expected ratio ${ratio.map(r => Math.round(r)).join(' : ')}</p>` : '');
   if (T) { const sig = T.p > 0.05; $('#chiBox').innerHTML = `χ² = <b>${SL.fmt(T.x2, 3)}</b> · df = <b>${T.df}</b> · p = <b>${fmtP(T.p)}</b><br>${T.df < 1 ? 'Only one phenotype class: no test needed.' : sig ? '<span style="color:var(--ok)">p &gt; 0.05: consistent with the expected ratio.</span>' : '<span style="color:var(--bad)">p ≤ 0.05: significant deviation (or chance, 1 time in 20).</span>'}${T.small ? `<br><span class="dim">${T.small} class(es) have E &lt; 5; use a bigger batch.</span>` : ''}${linkedPair() ? `<br>Recombinant offspring: <b>${SL.fmt(S.batch.filter(b => b.rec).length / N * 100, 1)}%</b> (gametes from a recombination event)` : ''}`; }
   else $('#chiBox').innerHTML = 'Mix to generate offspring and run a chi-square test.';
+  // expected vs observed as two proportion bars under the stage
+  const bar = ws => `<div class="tb">${D.classes.map((c, k) => ws[k] > 0 ? `<i style="flex:${ws[k]};background:${c.col}" title="${c.key}"></i>` : '').join('')}</div>`;
+  const exp = D.classes.map(c => c.p), obs = N && T ? T.rows.map(r => r.O) : null;
+  $('#tally').innerHTML = `<div class="tr"><span>Expected${ok ? ' <b>' + ratio.map(Math.round).join(' : ') + '</b>' : ''}</span>${bar(exp)}</div>` +
+    `<div class="tr"><span>Observed${obs ? ' <b>' + obs.join(' : ') + '</b> <em>n = ' + N + '</em>' : ' <em>mix to breed a batch</em>'}</span>${obs ? bar(obs) : '<div class="tb empty"></div>'}</div>` +
+    `<div class="tk">${D.classes.map(c => `<span><i style="background:${c.col}"></i>${c.key}</span>`).join('')}</div>`;
   drawRatio();
 }
 function drawRatio() {
@@ -925,6 +939,22 @@ SL.quiz('#quiz', [
 ['popN', 'popP0', 'popG', 'popR', 'wAA', 'wAa', 'waa'].forEach(id => PV[id] = +$('#' + id).value); PV.hwP = +$('#hwP').value;
 setOrg('pea', 3); drawOrgCards(); S.quiet = true; mix(); S.quiet = false; S.anim = null; popRun(); POP.anim = 1e9; popUI(); loop.start();
 window.GM = { S, ORGS, setOrg, applyPreset, mix, distribution, gametes, chiTest, chiP, popRun, PV, POP, genoStr, phen, selUI, PRESETS };
+  /* ---- guided tour ---- */
+  {
+    // jump (not smooth-scroll) to each target so the tip is placed against its final position
+    const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
+    const startTour = () => SL.tour(jump([
+      { el: '#orgs', title: 'Choose an organism', text: 'Each organism teaches a different pattern: Mendel\'s peas, snapdragons, blood groups, Labradors, fruit flies and more.' },
+      { el: '#stage', title: 'Parents, gametes and offspring', text: 'The parents sit at the top with their possible gametes. Tap two plants to cross them, or one to self-pollinate.' },
+      { el: '#presets', title: 'Start from a classic cross', text: 'Presets set up the textbook crosses: a monohybrid F1 × F1, a test cross, or Mendel\'s dihybrid cross.' },
+      { el: '#parentsBox', title: 'Set the genotypes', text: 'Tap the allele buttons to change each parent. Capital letters are dominant alleles.' },
+      { el: '#mixBtn', title: 'Breed a batch', text: 'Press <b>Mix genes</b> to make offspring by random fertilisation. Bigger batches land closer to the expected ratio.' },
+      { el: '#tally', title: 'Expected vs observed', text: 'The bars compare the ratio Mendel\'s laws predict with what you actually bred. The chi-square test in the results panel says if the difference is just chance.' },
+      { el: '#views', title: 'Other views', text: 'Switch to the Punnett square, a family pedigree, or a whole population evolving over generations.' },
+      { el: '#tabChal', title: 'Take the challenges', text: 'Guided tasks check themselves as you breed.', before: () => document.getElementById('tabChal').click() },
+    ]));
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
+  } // end tour
 })();
 </script>
 </body>

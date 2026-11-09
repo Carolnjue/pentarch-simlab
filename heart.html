@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   /* ---- Anatomy atlas ---- */
   .atl-stage{position:relative;background:radial-gradient(120% 90% at 50% 40%,#0c1528 0%,#050913 70%);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow);height:620px;touch-action:manipulation}
@@ -70,7 +70,7 @@
   .sec-head p{margin:4px 0 0;color:var(--muted);max-width:760px;font-size:.95rem}
   .kicker{font:600 .7rem var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
   @media (max-width:980px){.atl-stage{height:auto;aspect-ratio:var(--ar,1.5)}}
-  @media (max-width:560px){.atl-tools .btn span{display:none}.atl-tools{top:10px;bottom:auto;right:10px}.atl-crumbs{font-size:.68rem;padding:3px 8px;left:10px;top:10px}.atl-tools .btn.sm{padding:5px 7px}}
+  @media (max-width:560px){.atl-tools .btn span{display:none}.atl-tools{top:10px;bottom:auto;right:10px}.atl-crumbs{font-size:.68rem;padding:3px 8px;left:10px;top:10px}.atl-tools .btn.sm{padding:5px 7px;min-width:38px;min-height:38px;justify-content:center}.atl-key{gap:0 10px}.atl-key button{min-height:36px;padding:2px 0}.atl-chip{padding:8px 11px;font-size:.8rem}.atl-views .btn.sm{min-height:36px}}
 
   #heartAtlas{height:660px;--ar:1.4286}
   .wig-stage{height:560px}
@@ -190,6 +190,7 @@
         <div class="atl-views" id="atlViews"></div>
         <label class="toggle" style="margin-top:8px">Blood flow <input type="checkbox" id="tFlow" checked></label>
         <label class="toggle">Show labels <input type="checkbox" id="tLabels" checked></label>
+        <label class="toggle" title="Hear S1 (lub) as the AV valves close and S2 (dub) as the aortic and pulmonary valves close">Heart sounds (lub-dub audio) <input type="checkbox" id="tSnd"></label>
         <div class="btn-row" style="margin-top:6px"><button class="btn primary sm" id="btnTest"><i data-lucide="target"></i> Test yourself</button></div>
       </div>
       <div class="panel" id="atlInfo"><div class="atl-empty"><i data-lucide="mouse-pointer-click" style="width:16px;height:16px;vertical-align:-3px"></i> Click a structure to learn what it does.</div></div>
@@ -239,7 +240,7 @@
     <div class="tablist">
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
     </div>
     <div class="tabpanel prose">
@@ -295,7 +296,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 /* ---- Anatomy Atlas engine: zoomable, labelled, quizzable SVG explorer ---- */
 function Atlas(cfg) {
@@ -398,12 +399,12 @@ function Atlas(cfg) {
       });
       key.innerHTML = ids.filter(id => S[id]).map(id => `<button data-pick="${id}"${id === selected ? ' class="on"' : ''}><b>${ids.indexOf(id) + 1}</b>${S[id].short || S[id].name}</button>`).join('');
     } else {
-      lab.forEach(([id, ax, ay, tx0, ty0, txt]) => {
+      lab.forEach(([id, ax, ay, tx0, ty0, txt, via]) => {
         const left = tx0 < ax, g = document.createElementNS(NS, 'g');
         g.setAttribute('class', 'atl-lbl'); g.dataset.l = id;
         const name = txt || (S[id] && (S[id].short || S[id].name)) || id, lines = name.split('\n');
         const build = (tx, ty) => { const ex = tx + (left ? fs * .6 : -fs * .6), x = tx + (left ? -fs * .3 : fs * .3);
-          g.innerHTML = `<path d="M${ax} ${ay} L${ex} ${ty} L${tx} ${ty}" style="stroke-width:${fs / 14}"/><circle cx="${ax}" cy="${ay}" r="${fs * .2}"/>` +
+          g.innerHTML = `<path d="M${ax} ${ay} ${(via || []).map(p => `L${p[0]} ${p[1]} `).join('')}L${ex} ${ty} L${tx} ${ty}" style="stroke-width:${fs / 14}"/><circle cx="${ax}" cy="${ay}" r="${fs * .2}"/>` +
             `<text x="${x}" y="${ty - (lines.length - 1) * fs * .55}" text-anchor="${left ? 'end' : 'start'}" style="font-size:${fs}px;stroke-width:${fs * .28}px">${lines.map((t, i) => `<tspan x="${x}" dy="${i ? '1.1em' : '.34em'}">${t}</tspan>`).join('')}</text>`; };
         build(tx0, ty0); labelsG.appendChild(g);
         // keep the label text inside the visible part of the figure
@@ -610,17 +611,17 @@ function Atlas(cfg) {
   };
   const Vw = {
     whole: { title: 'Whole heart', vb: [0, 0, 1000, 700], fs: 15,
-      labels: [['svc', 342, 120, 270, 130, 'Superior\nvena cava'], ['rpa', 220, 231, 176, 160, 'Right pulmonary\nartery'], ['ra', 318, 330, 220, 300, 'Right\natrium'], ['tri', 392, 444, 220, 430, 'Tricuspid valve'],
+      labels: [['svc', 342, 120, 270, 130, 'Superior\nvena cava'], ['rpa', 220, 231, 176, 160, 'Right pulmonary\nartery'], ['ra', 318, 330, 220, 300, 'Right\natrium'], ['tri', 362, 436, 220, 436, 'Tricuspid valve'],
         ['rv', 430, 510, 220, 530, 'Right\nventricle'], ['ivc', 318, 650, 260, 650, 'Inferior\nvena cava'], ['aorta', 650, 90, 700, 40, 'Aorta'], ['arch', 528, 40, 460, 30, 'Arch branches'],
         ['pt', 600, 250, 790, 140, 'Pulmonary trunk'], ['lpa', 820, 215, 880, 245, 'Left pulmonary\nartery'], ['pv', 840, 330, 880, 330, 'Pulmonary\nveins'], ['la', 690, 360, 880, 405, 'Left atrium'],
-        ['mit', 655, 410, 880, 450, 'Mitral valve'], ['lv', 680, 520, 880, 520, 'Left ventricle'], ['septum', 548, 560, 470, 675, 'Interventricular septum'], ['aov', 494, 382, 220, 380, 'Aortic valve'], ['myo', 720, 620, 860, 610, 'Myocardium']],
+        ['mit', 702, 401, 880, 445, 'Mitral valve'], ['lv', 680, 520, 880, 520, 'Left ventricle'], ['septum', 548, 560, 470, 675, 'Interventricular septum'], ['aov', 478, 380, 438, 150, 'Aortic\nvalve', [[448, 360]]], ['myo', 720, 620, 860, 610, 'Myocardium']],
       hot: [['valves', 520, 380, 95, 'Valves']] },
     valves: { title: 'Valves', parent: 'whole', vb: [300, 250, 480, 340], fs: 9,
       labels: [['tri', 394, 446, 350, 500, 'Tricuspid\nvalve'], ['pul', 590, 312, 640, 272, 'Pulmonary valve'], ['aov', 494, 382, 440, 320, 'Aortic valve'], ['mit', 656, 414, 700, 440, 'Mitral valve'],
         ['chordae', 680, 510, 715, 500, 'Chordae\ntendineae'], ['pap', 640, 582, 600, 545, 'Papillary\nmuscles'], ['rvot', 530, 380, 600, 368, 'RV outflow tract'], ['pt', 600, 262, 530, 270, 'Pulmonary trunk']] },
     cond: { title: 'Conduction', parent: 'whole', vb: [0, 0, 1000, 700], fs: 15,
       labels: [['sa', 352, 262, 220, 240, 'Sinoatrial node'], ['avn', 455, 424, 220, 440, 'Atrioventricular node'], ['intern', 400, 340, 220, 340, 'Internodal pathways'], ['bach', 470, 256, 470, 170, "Bachmann's bundle"],
-        ['his', 480, 436, 880, 400, 'Bundle of His'], ['bb', 530, 520, 880, 500, 'Bundle branches'], ['purk', 712, 520, 880, 580, 'Purkinje fibres']] },
+        ['his', 492, 442, 441, 112, 'Bundle\nof His', [[478, 418], [451, 388]]], ['bb', 546, 606, 612, 688, 'Bundle branches'], ['purk', 712, 520, 880, 580, 'Purkinje fibres']] },
     coron: { title: 'Coronary arteries', parent: 'whole', vb: [0, 0, 1000, 700], fs: 15,
       labels: [['rca', 300, 480, 220, 500, 'Right coronary\nartery'], ['lca', 540, 390, 880, 380, 'Left main\ncoronary artery'], ['lad', 575, 560, 880, 560, 'Left anterior\ndescending'], ['lcx', 744, 430, 880, 460, 'Circumflex\nartery'], ['aorta', 498, 280, 220, 260]] },
   };
@@ -704,6 +705,19 @@ function Atlas(cfg) {
   const FS = 250, WIN = 3.2, NBUF = Math.round(FS * WIN);
   const buf = { ecg: new Float32Array(NBUF), pao: new Float32Array(NBUF), plv: new Float32Array(NBUF), pla: new Float32Array(NBUF), vlv: new Float32Array(NBUF), snd: new Float32Array(NBUF), sk: new Uint8Array(NBUF), ph: new Uint8Array(NBUF), mark: new Array(NBUF).fill('') };
   let bufI = 0, sampAcc = 0, sndUntil = -1, sndKind = 0;
+  // audible heart sounds: S1 lower and longer ("lub"), S2 shorter and higher ("dub")
+  let sndOn = false;
+  function beatSound(k) {
+    if (!sndOn || document.hidden) return;
+    const ac = SL.audio(); if (!ac || ac.state !== 'running') return;
+    const t0 = ac.currentTime + 0.005, dur = k === 1 ? 0.14 : 0.1;
+    const o = ac.createOscillator(), g = ac.createGain(), lp = ac.createBiquadFilter();
+    o.type = 'sine'; o.frequency.setValueAtTime(k === 1 ? 58 : 82, t0); o.frequency.exponentialRampToValueAtTime(k === 1 ? 38 : 55, t0 + dur);
+    lp.type = 'lowpass'; lp.frequency.value = 180;
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(k === 1 ? 0.9 : 0.7, t0 + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(lp); lp.connect(g); g.connect(ac.destination); o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+  document.getElementById('tSnd').addEventListener('change', e => { sndOn = e.target.checked; if (sndOn) { const ac = SL.audio(); ac && ac.resume && ac.resume(); SL.toast('Heart sounds on: <b>lub</b> is S1 (AV valves closing), <b>dub</b> is S2 (semilunar valves closing). Headphones help with the low pitch.', 'ok'); } });
   let mvOpen = false, avOpen = false, phase = 3, lastAvC = -9;
   const PHN = ['Isovolumetric contraction', 'Ejection', 'Isovolumetric relaxation', 'Ventricular filling'];
   let lastE = 0, aKick = 0;
@@ -728,8 +742,8 @@ function Atlas(cfg) {
     st.Vla += (Qpv - Qmv) * dt; st.Vlv += (Qmv - Qav) * dt; st.Pc += (Qav - st.Pc / PM.Rs) / PM.C * dt;
     Object.assign(st, { Plv, Pla, Qav, Qmv, Qpv, Pao: st.Pc + Qav * PM.Zc, E: ev_ });
     const mo = Qmv > 0.5, ao = Qav > 0.5;
-    if (mvOpen && !mo && Plv > Pla) { sndUntil = t + 0.05; sndKind = 1; }
-    if (avOpen && !ao) { sndUntil = t + 0.04; sndKind = 2; lastAvC = t; }
+    if (mvOpen && !mo && Plv > Pla) { sndUntil = t + 0.05; sndKind = 1; beatSound(1); }
+    if (avOpen && !ao) { sndUntil = t + 0.04; sndKind = 2; lastAvC = t; beatSound(2); }
     mvOpen = mo; avOpen = ao;
     phase = ao ? 1 : mo ? 3 : (st.tv < st.Ts * 0.4 && st.tv >= 0 ? 0 : (t - lastAvC < 0.25 ? 2 : 3));
     if (curBeat) { curBeat.minV = Math.min(curBeat.minV, st.Vlv); curBeat.maxP = Math.max(curBeat.maxP, st.Pao); curBeat.minP = Math.min(curBeat.minP, st.Pao); }
@@ -920,6 +934,21 @@ function Atlas(cfg) {
     animateConduction(); animateHeart(tReal); animFlows(paused ? 0 : dt * speed, $('#tFlow').checked); drawWig();
     uiT += dt; if (uiT > 0.4) { uiT = 0; updUI(); document.querySelectorAll('#circSvg .flow').forEach(p => p.style.setProperty('--dur', (60 / curRate() * 1.2 / Math.max(.2, speed)).toFixed(2) + 's')); }
   }).start();
+
+  /* ================= guided tour ================= */
+  // jump (not smooth-scroll) to each target so the tip is placed against its final position
+  const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
+  const startTour = () => SL.tour(jump([
+    { el: '#heartAtlas', title: 'A beating heart', text: 'Blue is deoxygenated blood, red is oxygenated. Watch the valves snap open and shut, and tap any structure to read what it does.', before: () => { if (atlas.quizzing) atlas.stopQuiz(); atlas.go('whole'); } },
+    { el: '#atlViews', title: 'Switch the view', text: 'Conduction shows the electrical wiring from the SA node to the Purkinje fibres; Valves zooms in on all four valves.', before: () => atlas.go('cond') },
+    { el: '#rhSel', title: 'Choose a rhythm', text: 'Try atrial fibrillation or heart block and watch the ECG and the beating pattern change.' },
+    { el: '.ctl:has(#hrSl)', title: 'Set the heart rate', text: 'Drag the rate up: diastole shortens far more than systole, so at very high rates the ventricles do not fill and stroke volume falls.' },
+    { el: '.hud-b', title: 'What is happening now', text: 'This caption names the phase of the cardiac cycle as it happens. Use ⅕ slow motion to follow each phase.' },
+    { el: '.wig-stage', title: 'The Wiggers diagram', text: 'The same beat plotted against time: ECG, pressures, volume and heart sounds. The sweep line is now.' },
+    { el: '.stat:has(#sCO)', title: 'Cardiac output', text: 'Heart rate × stroke volume. About 5 L/min at rest; watch it as you change rate and contractility.' },
+    { el: '#tabChal', title: 'Take the challenges', text: 'Guided tasks check themselves as you use the labs.', before: () => { atlas.go('whole'); document.getElementById('tabChal').click(); } },
+  ]));
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
 })();
 </script>
 </body>

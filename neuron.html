@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   .sec-head{margin:34px 0 0;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
   .sec-head h2{font-size:clamp(1.3rem,2.4vw,1.75rem);margin:0;display:flex;align-items:center;gap:10px}
@@ -101,7 +101,7 @@
         <div class="ctl"><label for="ko">Extracellular K⁺ (× normal)</label><output></output><input type="range" id="ko" min="0.5" max="5" step="0.1" value="1"></div>
         <div class="ctl"><label for="temp">Temperature</label><output></output><input type="range" id="temp" min="6.3" max="26" step="0.1" value="6.3"></div>
         <div class="ctl"><label for="speed">Playback (simulated ms per second)</label><output></output><input type="range" id="speed" min="2" max="60" step="1" value="12"></div>
-        <div class="btn-row"><button class="btn sm" id="presetNorm">Squid axon (standard)</button><button class="btn sm" id="presetTTX">Pufferfish toxin</button><button class="btn sm" id="presetHyperK">Hyperkalaemia</button></div>
+        <div class="btn-row"><button class="btn sm" id="presetNorm">Squid axon (standard)</button><button class="btn sm" id="presetTTX">Pufferfish toxin</button><button class="btn sm" id="presetHyperK">Hyperkalaemia</button><button class="btn sm" id="presetLido">Local anaesthetic</button><button class="btn sm" id="presetRef">Refractory period</button></div>
       </div>
       <div class="panel">
         <h3><i data-lucide="gauge"></i> Live results</h3>
@@ -194,7 +194,7 @@
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="calculator"></i> Nernst & Goldman</button>
       <button><i data-lucide="list-ordered"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments & challenges</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
     </div>
 
@@ -353,7 +353,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
   const $ = s => document.querySelector(s);
@@ -478,6 +478,8 @@
     SL.toast(`Threshold for a ${P.dur.toFixed(1)} ms pulse: <b>${thr.toFixed(2)} µA/cm²</b>. Traces show 85, 97, 103 and 120 % of threshold.`, 'ok', 5500);
   };
   const preset = (o) => { Object.entries(o).forEach(([k, v]) => { const el = $('#' + k); el.value = v; el.dispatchEvent(new Event('input')); }); hist = []; run(false); };
+  $('#presetLido').onclick = () => { preset({ ttx: 60, tea: 0, ko: 1, temp: 6.3, amp: 10 }); SL.toast('Lidocaine-type local anaesthetics block a share of the Na⁺ channels, so the threshold rises: the 10 µA/cm² pulse that fired before now fails. Press <b>Find threshold</b> to see how much more current is needed.', 'warn', 6000); };
+  $('#presetRef').onclick = () => { setMode('pair'); preset({ ttx: 0, tea: 0, ko: 1, temp: 6.3, amp: 10, gap: 5, amp2: 10 }); SL.toast('Two identical pulses 5 ms apart: the second fails because Na⁺ channels are still inactivated (h is low). Lengthen the interval or raise the 2nd pulse to find the refractory periods.', 'ok', 6500); };
   $('#presetNorm').onclick = () => preset({ ttx: 0, tea: 0, ko: 1, temp: 6.3 });
   $('#presetTTX').onclick = () => { preset({ ttx: 100, tea: 0, ko: 1, temp: 6.3, amp: 40 }); SL.toast('Tetrodotoxin from pufferfish blocks voltage-gated Na⁺ channels: no spike, only a passive response.', 'warn'); };
   $('#presetHyperK').onclick = () => { preset({ ttx: 0, tea: 0, ko: 4, temp: 6.3 }); SL.toast('High [K⁺]ₒ depolarises the resting membrane and inactivates Na⁺ channels (depolarisation block).', 'warn'); };
@@ -1206,6 +1208,22 @@
     synStep(dt);
     if (visible(synSec)) drawSyn(dt);
   }).start();
+  /* ---- guided tour ---- */
+  {
+    // jump (not smooth-scroll) to each target so the tip is placed against its final position
+    const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
+    const startTour = () => SL.tour(jump([
+      { el: '#hhStage', title: 'A patch of axon membrane', text: 'Na⁺ and K⁺ channels open and close above a live voltage trace. This is the Hodgkin–Huxley model of the squid giant axon.' },
+      { el: '.ctl:has(#amp)', title: 'Set the stimulus', text: 'Choose the current pulse strength. Small pulses give a small passive bump; above threshold you get an all-or-none spike.' },
+      { el: '#stimBtn', title: 'Fire it', text: 'Press <b>Stimulate</b> and watch Na⁺ rush in, then K⁺ leave. <b>Find threshold</b> searches for the smallest pulse that fires.' },
+      { el: '#modeSeg', title: 'Change the protocol', text: 'Two pulses reveal the refractory period, a train shows the maximum firing rate, and a step shows repetitive firing.' },
+      { el: '#phase', title: 'What is happening', text: 'This caption names the phase under the cursor as the spike plays back: rising, falling, after-hyperpolarisation.' },
+      { el: '#presetTTX', title: 'Try a drug', text: 'Presets apply pufferfish toxin, high potassium, a local anaesthetic or a refractory test. Each one explains itself.' },
+      { el: '#axSeg', title: 'Anatomy and the conduction race', text: 'Below, explore a motor neuron part by part, then switch to <b>Conduction race</b> to send spikes down myelinated and unmyelinated axons side by side.' },
+      { el: '#tabChal', title: 'Take the challenges', text: 'Guided tasks check themselves as you run the simulations.', before: () => document.getElementById('tabChal').click() },
+    ]));
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
+  } // end tour
 })();
 </script>
 </body>

@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   .sec-head{margin:34px 0 0}
   .sec-head h2{font-size:clamp(1.3rem,2.4vw,1.75rem);margin:0;display:flex;align-items:center;gap:10px}
@@ -57,6 +57,17 @@
   table.cmp td,table.cmp th{vertical-align:top}
   .tbl-wrap{overflow-x:auto}
   @media (max-width:980px){ #divStage{height:540px} #kStage{height:auto} }
+  .dnatrack{margin-top:12px;border:1px solid var(--line2);border-radius:10px;padding:8px 10px 4px;background:var(--bg2)}
+  .dt-h{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;font-size:.78rem;color:var(--muted)}
+  .dt-h b{font:700 .95rem var(--mono);color:var(--accent);margin-right:10px}
+  .dnatrack svg{display:block;width:100%;height:98px;overflow:visible}
+  .dnatrack .ax line{stroke:var(--line2);stroke-dasharray:3 4}
+  .dnatrack .ax text,.dnatrack .lbl{fill:var(--dim);font:600 10px var(--mono)}
+  .dnatrack path{fill:none;stroke:var(--accent);stroke-width:2;vector-effect:non-scaling-stroke}
+  .dnatrack circle{fill:var(--bg2);stroke:var(--accent);stroke-width:1.5;vector-effect:non-scaling-stroke}
+  .dnatrack circle.done{fill:color-mix(in srgb,var(--accent) 55%,transparent)} .dnatrack circle.on{fill:var(--accent)}
+  .dnatrack .cur{stroke:var(--text);stroke-opacity:.35;stroke-dasharray:2 3;vector-effect:non-scaling-stroke}
+  @media (max-width:560px){ .phase-chips button{padding:10px 9px} }
   @media (max-width:520px){ #divStage{height:470px} #asStage{height:470px} #zStage{height:420px} }
 </style>
 </head>
@@ -83,6 +94,7 @@
           <button class="btn sm" id="bRestart"><i data-lucide="rotate-ccw"></i></button>
         </div>
         <div class="phase-chips" id="chips"></div>
+        <div class="dnatrack" id="dnaTrack" aria-label="DNA content and chromosome number per cell through the division"></div>
         <label class="toggle" style="margin-top:8px">Show gene loci (A/a, B/b) <input type="checkbox" id="locT" checked></label>
       </div>
       <div class="panel narr" id="narr"></div>
@@ -196,7 +208,7 @@
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="columns-2"></i> Mitosis vs meiosis</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments & challenges</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
     </div>
     <div class="tabpanel prose">
@@ -317,7 +329,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
   const $ = s => document.querySelector(s);
@@ -524,6 +536,7 @@
     $('#chips').innerHTML = n.map((s, i) => `<button data-i="${i}" class="${i === ST.step ? 'on' : i < ST.step ? 'done' : ''}">${SHORT[ST.mode][i]}</button>`).join('');
     $('#hudPhase').textContent = n[ST.step];
     $('#hudPloidy').textContent = ploidy();
+    dnaTrack();
     $('#narr').innerHTML = `<h4>${ST.step + 1}. ${n[ST.step]}</h4>${narration()}`;
     $('#meioCtl').hidden = ST.mode !== 'meiosis';
     $('#oA').textContent = 'Pair A: ' + (ST.orient[0] ? 'paternal' : 'maternal') + ' left';
@@ -531,6 +544,19 @@
     gametes();
   }
   $('#chips').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { stopPlay(); go(+b.dataset.i); } });
+  // DNA content (C) and chromosome number per cell at each step: makes the halving in meiosis visible
+  const TRACK = { mitosis: { c: [4, 4, 4, 4, 4, 4, 2], n: [4, 4, 4, 4, 8, 8, 4] }, meiosis: { c: [4, 4, 4, 4, 4, 2, 2, 2, 2, 1], n: [4, 4, 4, 4, 4, 2, 2, 2, 4, 2] } };
+  function dnaTrack() {
+    const T = TRACK[ST.mode], k = T.c.length, W = 300, H = 98, x0 = 26, x1 = W - 10, X = i => x0 + (x1 - x0) * i / (k - 1), Y = c => 66 - Math.log2(c) * 22;
+    let path = '', dots = '';
+    T.c.forEach((c, i) => { path += (i ? `L${X(i)} ${Y(T.c[i - 1])} L${X(i)} ${Y(c)}` : `M${X(i)} ${Y(c)}`); });
+    path += ` L${x1 + 6} ${Y(T.c[k - 1])}`;
+    T.c.forEach((c, i) => { const on = i === ST.step; dots += `<circle cx="${X(i)}" cy="${Y(c)}" r="${on ? 5.5 : 3}" class="${on ? 'on' : i < ST.step ? 'done' : ''}"/>`; });
+    const cx = X(ST.step);
+    $('#dnaTrack').innerHTML = `<div class="dt-h"><span>DNA per cell</span><b>${T.c[ST.step]}C</b><span>chromosomes per cell</span><b>${T.n[ST.step]}</b></div>
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><g class="ax">${[1, 2, 4].map(c => `<line x1="${x0}" x2="${x1}" y1="${Y(c)}" y2="${Y(c)}"/><text x="${x0 - 6}" y="${Y(c) + 3.5}" text-anchor="end">${c}C</text>`).join('')}</g>
+      <line class="cur" x1="${cx}" x2="${cx}" y1="8" y2="74"/><path d="${path}"/>${dots}<text class="lbl" x="${x0}" y="90">${ST.mode === 'mitosis' ? 'Mitosis keeps 2C per daughter cell' : 'Meiosis: 4C → 2C → 1C after two divisions'}</text></svg>`;
+  }
   function ploidy() {
     const s = ST.step;
     if (ST.mode === 'mitosis') return ['2n = 4 · 4C (after S phase)', '2n = 4 · 8 chromatids', '2n = 4 · 8 chromatids', '2n = 4 · 8 chromatids', '8 chromosomes moving apart', '2 × (2n = 4)', '2 cells · 2n = 4 · 2C each'][s];
@@ -1115,6 +1141,22 @@
     if (visible(kEl)) drawK();
     if (visible(zEl)) drawZ(dt);
   }).start();
+  /* ---- guided tour ---- */
+  {
+    // jump (not smooth-scroll) to each target so the tip is placed against its final position
+    const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
+    const startTour = () => SL.tour(jump([
+      { el: '#divStage', title: 'Watch a cell divide', text: 'Maternal chromosomes are red, paternal blue. The letters mark gene loci so you can follow alleles into the daughter cells.' },
+      { el: '#divSeg', title: 'Mitosis or meiosis', text: 'Mitosis makes two identical diploid cells; meiosis makes four genetically different haploid gametes.' },
+      { el: '#bPlay', title: 'Play or step through', text: 'Press <b>Play</b> for the whole division, or use <b>Step</b> and the phase buttons to stop at each stage.' },
+      { el: '#narr', title: 'Read what is happening', text: 'The card explains each phase as you reach it, including the checkpoints and what goes wrong in nondisjunction.' },
+      { el: '#dnaTrack', title: 'Track the DNA', text: 'DNA content per cell, in C units, and the chromosome count. Mitosis returns to 2C; meiosis halves twice to 1C.' },
+      { el: '#asStage', title: 'Independent assortment', text: 'Lab 2 shuffles homologous pairs into gametes. With 23 pairs there are over 8 million combinations.' },
+      { el: '#kStage', title: 'Read a karyotype', text: 'Lab 3 shows normal and abnormal human karyotypes, such as trisomy 21. Pick one from the list to compare.' },
+      { el: '#tabChal', title: 'Take the challenges', text: 'Guided tasks check themselves as you use the labs.', before: () => document.getElementById('tabChal').click() },
+    ]));
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
+  } // end tour
 })();
 </script>
 </body>

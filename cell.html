@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   .sec-head{margin:34px 0 0}
   .sec-head h2{font-size:clamp(1.3rem,2.4vw,1.75rem);margin:0;display:flex;align-items:center;gap:10px}
@@ -53,7 +53,12 @@
   .chal li span{color:var(--muted);font-size:.88rem}
   .tbl-wrap{overflow-x:auto}
   @media (max-width:980px){ #cellStage{height:520px} #bStage{height:560px} }
-  @media (max-width:520px){ #cellStage{height:290px;min-height:0} #trStage{height:480px} #osStage{height:440px} #secStage{height:430px} #bStage{height:600px} }
+  .explore{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:.8rem;color:var(--muted)}
+  .explore b{color:var(--text)}
+  .explore-bar{flex:0 0 90px;height:6px;border-radius:9px;background:var(--line2);overflow:hidden}
+  .explore-bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s}
+  @media (max-width:560px){ .org-chips button{padding:9px 10px} .phase-chips button{min-width:22px;text-align:center;padding:10px 8px} }
+  @media (max-width:520px){ #cellStage{height:270px;min-height:0} #trStage{height:480px} #osStage{height:440px} #secStage{height:430px} #bStage{height:600px} }
 </style>
 </head>
 <body data-page="cell">
@@ -77,6 +82,7 @@
         <label class="toggle">Vesicle traffic and streaming <input type="checkbox" id="animT" checked></label>
         <div class="panel-title">Jump to</div>
         <div class="org-chips" id="orgChips"></div>
+        <div class="explore" id="orgProg"><div class="explore-bar"><i></i></div><span></span></div>
       </div>
       <div class="panel info" id="orgInfo"></div>
     </aside>
@@ -185,7 +191,7 @@
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="table"></i> Organelle table</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments & challenges</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
     </div>
     <div class="tabpanel prose">
@@ -280,7 +286,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
   const $ = s => document.querySelector(s);
@@ -643,6 +649,9 @@
   function chips() {
     const keys = cellMode === 'animal' ? ['nucleus', 'rer', 'ser', 'golgi', 'mito', 'lyso', 'perox', 'centro', 'vesicle', 'ribo', 'cyto', 'membrane'] : ['wall', 'plasmo', 'membrane', 'vacuole', 'chloro', 'nucleus', 'rer', 'ser', 'golgi', 'mito', 'perox', 'ribo', 'cyto'];
     $('#orgChips').innerHTML = keys.map(k => `<button data-k="${k}" class="${zoomedK === k ? 'on' : seen.has(k) ? 'seen' : ''}">${ORG[k].name.replace(' apparatus', '').replace('Large central vacuole', 'Vacuole').replace(' and centrioles', '').replace('endoplasmic reticulum', 'ER')}</button>`).join('');
+    const got = keys.filter(k => seen.has(k)).length, pr = $('#orgProg');
+    pr.querySelector('i').style.width = (100 * got / keys.length) + '%';
+    pr.querySelector('span').innerHTML = got === keys.length ? `<b>All ${keys.length}</b> ${cellMode === 'animal' ? 'animal' : 'plant'}-cell structures explored` : `Explored <b>${got}</b> of ${keys.length} structures${got ? '' : ': tap one in the cell or above'}`;
   }
   $('#orgChips').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const k = b.dataset.k; const el = svg.querySelector(`.org[data-k="${k}"]`); if (el) { if (k === 'cyto') { $('#cskT').checked = true; svg.querySelectorAll('.csk').forEach(g => g.style.display = ''); } zoomTo(el, k); } });
   document.querySelectorAll('#cellSeg button').forEach(b => b.onclick = () => { cellMode = b.dataset.m; document.querySelectorAll('#cellSeg button').forEach(x => x.classList.toggle('on', x === b)); VB = [0, 0, 1000, 680]; vbTo = null; svg.setAttribute('viewBox', VB.join(' ')); zoomedK = null; svg.classList.remove('zoomed'); $('#zoomOut').hidden = true; buildCell(); infoDefault(); $('#cellHud').textContent = (cellMode === 'animal' ? 'Animal' : 'Plant') + ' cell · click an organelle'; });
@@ -1143,6 +1152,22 @@
     if (visible(els.sec)) drawSec(dt);
     if (visible(els.b)) drawB();
   }).start();
+  /* ---- guided tour ---- */
+  {
+    // jump (not smooth-scroll) to each target so the tip is placed against its final position
+    const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
+    const startTour = () => SL.tour(jump([
+      { el: '#cellStage', title: 'Explore the cell', text: 'Tap any organelle to zoom in on it; tap again or press <b>Whole cell</b> to zoom out. Vesicles and the cytoskeleton move as they do in a living cell.' },
+      { el: '#cellSeg', title: 'Animal or plant', text: 'Switch to a plant cell to add the cell wall, chloroplasts and a large central vacuole, and lose the centrioles and lysosomes.' },
+      { el: '#orgChips', title: 'Jump to a structure', text: 'Every structure is one tap away. The bar below tracks how many you have explored.' },
+      { el: '#orgInfo', title: 'Read the organelle card', text: 'Structure, function, an everyday analogy and the diseases that follow when it fails.' },
+      { el: '#trStage', title: 'Move molecules across the membrane', text: 'Lab 2 animates diffusion, carrier proteins and the Na⁺/K⁺ pump molecule by molecule.' },
+      { el: '#trSeg', title: 'Choose a transport mode', text: 'Simple diffusion runs down a gradient, facilitated diffusion needs carriers, and only the active pump can push against a gradient, at the cost of ATP.' },
+      { el: '#trStats', title: 'Watch the numbers', text: 'Concentrations inside and out update live, so you can see equilibrium being reached or a gradient being built.' },
+      { el: '#tabChal', title: 'Take the challenges', text: 'Guided tasks check themselves as you explore and run the labs.', before: () => document.getElementById('tabChal').click() },
+    ]));
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
+  } // end tour
 })();
 </script>
 </body>

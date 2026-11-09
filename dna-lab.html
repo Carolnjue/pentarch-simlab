@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   .stations{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-top:22px}
   .stations button{all:unset;box-sizing:border-box;cursor:pointer;position:relative;display:flex;flex-direction:column;gap:3px;padding:11px 12px 10px;border-radius:12px;background:var(--panel);border:1px solid var(--line);transition:.18s;min-width:0}
@@ -212,7 +212,7 @@
     <div class="tablist">
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
       <button><i data-lucide="table"></i> Genetic code</button>
       <button><i data-lucide="globe-2"></i> Real-world</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
@@ -368,7 +368,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
 'use strict';
@@ -609,7 +609,7 @@ $('#customGo').onclick = () => {
 $('#restoreGene').onclick = () => { const d = GENE_DEFS.find(x => x.id === (S.gene.id === 'custom' ? 'msg' : S.gene.id)); setGene(buildGene(d)); };
 
 function helixLayout(w, h) {
-  const g = S.gene; dna.tw = w < 560 ? 15 : 21;
+  const g = S.gene; dna.tw = w < 560 ? 18 : 21;
   dna.n = Math.max(8, Math.min(32, Math.floor((w - (w < 560 ? 40 : 140)) / dna.tw)));
   const n = Math.min(dna.n, g.genomic.length - dna.off);
   return { n, x0: (w - n * dna.tw) / 2, ladY: h * 0.62 };
@@ -663,7 +663,7 @@ function drawHelix(ctx, w, h, dt) {
   const nar = x0 < 70;
   label(ctx, nar ? '5′' : 'coding 5′', x0 - 6, y1 + tw / 2, '#22d3ee', 10, 'right'); label(ctx, '3′', x0 + n * tw + 6, y1 + tw / 2, '#22d3ee', 10, 'left');
   label(ctx, nar ? '3′' : 'template 3′', x0 - 6, y2 + tw / 2, '#a78bfa', 10, 'right'); label(ctx, '5′', x0 + n * tw + 6, y2 + tw / 2, '#a78bfa', 10, 'left');
-  if (nar) label(ctx, 'top: coding strand · bottom: template strand', w / 2, y2 + tw + 30, '#93a1bd', 10.5, 'center');
+  if (nar) label(ctx, 'top: coding strand · bottom: template strand', w / 2, y2 + tw + 58, '#93a1bd', 10.5, 'center');
   for (let i = 0; i < n; i++) {
     const x = x0 + i * tw, b1 = seq[i], b2 = COMP[b1]; const hv = dna.hover && dna.hover.i === i;
     tile(ctx, x, y1, tw, b1, { lw: hv && dna.hover.s === 0 ? 2.5 : 1, stroke: hv && dna.hover.s === 0 ? '#fff' : null });
@@ -674,6 +674,22 @@ function drawHelix(ctx, w, h, dt) {
     const gi = dna.off + i; const rel = gi - g.tss;
     if ((rel >= 0 && (rel + 1) % 10 === 0) || rel === 0 || (rel < 0 && rel % 10 === 0)) label(ctx, posLabel(gi), x + tw / 2, y2 + tw + 12, '#5f6d8a', 9.5, 'center');
   }
+  // reading frame: each codon of the coding sequence and the amino acid it encodes (codons split by an intron show in pieces)
+  if (g.cdsG && g.cdsG.length) {
+    const yc = y2 + tw + 22, hc = 16, nc = Math.ceil(g.cdsG.length / 3);
+    let any = false;
+    for (let c = 0; c < nc; c++) {
+      const idx = [3 * c, 3 * c + 1, 3 * c + 2].filter(k => k < g.cdsG.length).map(k => g.cdsG[k] - dna.off).filter(i => i >= 0 && i < n);
+      if (!idx.length) continue;
+      if (!any) { any = true; label(ctx, nar ? 'aa' : 'protein', x0 - 6, yc + hc / 2, '#f5a524', 10, 'right'); }
+      const runs = []; idx.forEach(i => { const r = runs[runs.length - 1]; if (r && i === r[1] + 1) r[1] = i; else runs.push([i, i]); });
+      const stop = c >= g.protein.length, aa = stop ? 'Stop' : g.protein[c];
+      ctx.fillStyle = stop ? 'rgba(248,113,113,.22)' : c % 2 ? 'rgba(245,165,36,.16)' : 'rgba(245,165,36,.30)'; ctx.strokeStyle = stop ? 'rgba(248,113,113,.7)' : 'rgba(245,165,36,.65)'; ctx.lineWidth = 1;
+      let best = runs[0]; runs.forEach(r => { if (r[1] - r[0] > best[1] - best[0]) best = r; ctx.beginPath(); ctx.roundRect(x0 + r[0] * tw + 1.5, yc, (r[1] - r[0] + 1) * tw - 3, hc, 4); ctx.fill(); ctx.stroke(); });
+      const wpx = (best[1] - best[0] + 1) * tw;
+      if (wpx >= (stop ? 30 : 10)) label(ctx, aa, x0 + (best[0] + best[1] + 1) / 2 * tw, yc + hc / 2 + .5, stop ? '#fca5a5' : '#fde68a', 10.5, 'center', 700);
+    }
+  }
   // TSS arrow
   const ti = g.tss - dna.off; if (ti >= 0 && ti < n) { const x = x0 + ti * tw + 2; ctx.strokeStyle = '#f5a524'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y1 - 2); ctx.lineTo(x, y1 - 14); ctx.lineTo(x + 14, y1 - 14); ctx.stroke(); SL.arrow(ctx, x + 8, y1 - 14, x + 16, y1 - 14, '#f5a524', 2, 6); }
   dna.lay = { x0, y1, y2, tw, n };
@@ -683,7 +699,8 @@ function drawHelix(ctx, w, h, dt) {
 }
 function helixHit(p) {
   const L = dna.lay; if (!L) return null; const i = Math.floor((p.x - L.x0) / L.tw); if (i < 0 || i >= L.n) return null;
-  if (p.y >= L.y1 && p.y <= L.y1 + L.tw) return { i, s: 0 }; if (p.y >= L.y2 && p.y <= L.y2 + L.tw) return { i, s: 1 }; return null;
+  const m = 5; // a little slack around each tile for fingers
+  if (p.y >= L.y1 - m && p.y <= L.y1 + L.tw + m * .6) return { i, s: 0 }; if (p.y >= L.y2 - m * .6 && p.y <= L.y2 + L.tw + m) return { i, s: 1 }; return null;
 }
 
 // replication fork
@@ -1661,6 +1678,21 @@ setGene(buildGene(GENE_DEFS[0]));
 setStation('dna');
 loop.start();
 window.DNALAB = { GENE_DEFS, buildGene, translate, CODE, classify, S, sp, tl, mu, cr, setStation, setGene, spGo, autoCuts, guideFor, crEffect, crRepairOutcome };
+  /* ---- guided tour ---- */
+  {
+    // jump (not smooth-scroll) to each target so the tip is placed against its final position
+    const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
+    const startTour = () => SL.tour(jump([
+      { el: '#stations', title: 'Six stations, one gene', text: 'Follow one gene from DNA to protein: replication, transcription, splicing, translation, mutations and CRISPR editing. A tick appears as you finish each station.' },
+      { el: '#stage', title: 'The double helix', text: 'Drag sideways to slide along the gene. The ladder below spells both strands; tap any base to mutate it and its partner changes too. Once you reach the coding sequence, an amber row shows each codon and its amino acid.', before: () => { const b = document.querySelector('#stations [data-st="dna"]'); if (b && !b.classList.contains('on')) b.click(); } },
+      { el: '#geneSel', title: 'Pick a gene', text: 'Use the teaching gene, or real ones such as β-globin, whose sickle-cell mutation you can recreate in the mutation lab.' },
+      { el: '.ctl:has(#dnaOff)', title: 'Move along the gene', text: 'Slide the window from the promoter, through exons and introns, to the terminator. Find the ATG where the protein starts.' },
+      { el: '#dnaMode', title: 'Helix or replication fork', text: 'Switch to the fork to watch helicase, primase and DNA polymerase copy the leading and lagging strands.' },
+      { el: '#dnaStats', title: 'Gene statistics', text: 'Length, GC content, melting temperature, helix turns and exon count update when you edit the sequence.' },
+      { el: '#tabChal', title: 'Take the challenges', text: 'Guided tasks check themselves as you work through the stations.', before: () => document.getElementById('tabChal').click() },
+    ]));
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
+  } // end tour
 })();
 </script>
 </body>

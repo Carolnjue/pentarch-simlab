@@ -308,10 +308,11 @@
         if (!el) { hole.style.cssText = 'left:50%;top:40%;width:0;height:0'; tip.style.cssText = 'left:50%;top:40%;transform:translate(-50%,-50%)'; return; }
         const r = el.getBoundingClientRect(), pad = 8;
         hole.style.cssText = `left:${r.left - pad}px;top:${r.top - pad}px;width:${r.width + pad * 2}px;height:${r.height + pad * 2}px`;
-        const tw = Math.min(340, innerWidth - 24), below = r.bottom + 14 + 190 < innerHeight;
+        const tw = Math.min(340, innerWidth - 24); tip.style.width = tw + 'px'; const th = tip.offsetHeight || 190, below = r.bottom + 14 + th < innerHeight;
         let left = Math.max(12, Math.min(innerWidth - tw - 12, r.left + r.width / 2 - tw / 2));
         let top = below ? r.bottom + 14 : Math.max(12, r.top - 14 - tip.offsetHeight);
         if (r.height > innerHeight * .6) top = Math.min(innerHeight - tip.offsetHeight - 12, Math.max(12, r.top + 20));
+        top = Math.max(12, Math.min(innerHeight - th - 12, top));
         tip.style.cssText = `left:${left}px;top:${top}px;width:${tw}px`;
       };
       if (el) { el.scrollIntoView({ behavior: 'instant', block: 'center' }); requestAnimationFrame(() => requestAnimationFrame(place)); setTimeout(place, 250); } place();

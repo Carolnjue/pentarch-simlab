@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   .modebar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:22px}
   .modebar .seg button{padding:8px 16px;font-size:.9rem;display:inline-flex;align-items:center;gap:7px}
@@ -109,6 +109,7 @@
         <div class="ctl"><label for="ndose">Number of doses</label><output></output><input type="range" id="ndose" min="1" max="40" step="1" value="8"></div>
         <div class="ctl" id="ctlTinf"><label for="tinf">Infusion duration</label><output></output><input type="range" id="tinf" min="0.25" max="24" step="0.25" value="1"></div>
         <label class="toggle"><span>Loading dose</span><input type="checkbox" id="ldOn"></label>
+        <label class="toggle" title="Skip the dose in the middle of the course, as patients often do"><span>Patient misses a dose</span><input type="checkbox" id="missOn"></label>
         <div class="ctl" id="ctlLd"><label for="ld">Loading dose (replaces dose 1)</label><output></output><input type="range" id="ld" min="10" max="2000" step="10" value="400"></div>
       </div>
       <div class="panel">
@@ -194,7 +195,7 @@
     <div class="tablist">
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments & challenges</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
       <button><i data-lucide="list"></i> Glossary</button>
     </div>
@@ -344,7 +345,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
   const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
@@ -360,7 +361,7 @@
   };
 
   /* ---------------- State ---------------- */
-  const P = Object.assign({ renal: 100, hep: 100, ldOn: false }, DRUGS.T1, { ld: 400 });
+  const P = Object.assign({ renal: 100, hep: 100, ldOn: false, missOn: false }, DRUGS.T1, { ld: 400 });
   let SIM = null, BASE = null, SS = null;
 
   function effCL(p) { return p.CL * (p.fe * p.renal / 100 + (1 - p.fe) * p.hep / 100); }
@@ -375,7 +376,9 @@
     const k10 = CL / p.V, k12 = twoC ? p.Q / p.V : 0, k21 = twoC ? p.Q / p.V2 : 0, ka = p.ka, F = oral ? p.F : 1;
     const doses = [];
     const n = opts.single ? 1 : p.ndose;
-    for (let i = 0; i < n; i++) { const t = i * p.tau; if (t > tEnd + 1e-9) break; let a = p.dose; if (i === 0 && p.ldOn && !inf && !opts.single) a = p.ld; doses.push({ t, a }); }
+    // a missed dose: skip the one in the middle of the course (never the first)
+    const missIdx = p.missOn && !opts.single && n >= 3 ? Math.floor(n / 2) : -1; let missT = null;
+    for (let i = 0; i < n; i++) { const t = i * p.tau; if (t > tEnd + 1e-9) break; if (i === missIdx) { missT = t; continue; } let a = p.dose; if (i === 0 && p.ldOn && !inf && !opts.single) a = p.ld; doses.push({ t, a }); }
     const tinf = Math.min(p.tinf, p.tau);
     const rate = t => { if (!inf) return 0; let r = 0; for (const d of doses) if (t >= d.t - 1e-9 && t < d.t + tinf - 1e-9) r += d.a / tinf; return r; };
     let G = 0, A1 = 0, A2 = 0, Er = 0, Eh = 0;
@@ -401,7 +404,7 @@
       const e = dt / 6 * (k1[3] + 2 * k2[3] + 2 * k3[3] + k4[3]);
       Er += e * fr; Eh += e * (1 - fr);
     }
-    return { T, C, AG, A1: A1s, A2: A2s, ER, EH, doses, dt: dt * every, CL, k10, k12, k21, F };
+    return { T, C, AG, A1: A1s, A2: A2s, ER, EH, doses, missT, dt: dt * every, CL, k10, k12, k21, F };
   }
 
   function rates(p, CL) {
@@ -469,6 +472,7 @@
   }, fmts[id]));
   suppress = false;
   $('#ldOn').addEventListener('change', e => { P.ldOn = e.target.checked; vis(); schedule(); });
+  $('#missOn').addEventListener('change', e => { P.missOn = e.target.checked; schedule(); if (P.missOn) SL.toast('One dose is skipped mid-course. Watch the trough fall below the MEC, and note that it takes several half-lives to climb back to steady state. Doubling the next dose would overshoot the peak instead.', 'warn', 7000); });
   function seg(id, key, cb) {
     $$(id + ' button').forEach(b => b.addEventListener('click', () => {
       $$(id + ' button').forEach(x => x.classList.toggle('on', x === b));
@@ -562,6 +566,7 @@
     ctx.save(); ctx.shadowColor = ACC; ctx.shadowBlur = 12; ctx.lineWidth = 2.6; ctx.strokeStyle = '#fca5a5'; path(0, iCur); ctx.stroke(); ctx.restore();
     // dose markers
     s.doses.forEach((d, i) => { const x = X(d.t); const big = i === 0 && P.ldOn && P.route !== 'inf'; ctx.fillStyle = big ? '#facc15' : ACC; ctx.beginPath(); ctx.moveTo(x, h - pb - 1); ctx.lineTo(x - 5, h - pb - 10); ctx.lineTo(x + 5, h - pb - 10); ctx.closePath(); ctx.fill(); if (P.route === 'inf') { ctx.fillStyle = 'rgba(248,113,113,.35)'; ctx.fillRect(x, h - pb - 4, X(d.t + Math.min(P.tinf, P.tau)) - x, 3); } });
+    if (s.missT != null && s.missT <= P.tend) { const x = X(s.missT); ctx.strokeStyle = '#93a1bd'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x, h - pb - 1); ctx.lineTo(x - 5, h - pb - 10); ctx.lineTo(x + 5, h - pb - 10); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]); ctx.font = '600 10px JetBrains Mono, monospace'; ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'center'; ctx.fillText('missed', x, h - pb - 16); }
     if (P.route === 'inf' && P.ldOn) { ctx.fillStyle = '#facc15'; ctx.beginPath(); const x = X(0); ctx.moveTo(x + 1, h - pb - 12); ctx.lineTo(x - 4, h - pb - 21); ctx.lineTo(x + 6, h - pb - 21); ctx.fill(); }
     // half-life marker on washout (or first dose if no washout)
     const lz = r.lz, t12 = LN2 / lz;
@@ -715,8 +720,10 @@
     // IV line
     if (P.route !== 'oral') { ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(R.iv[0], R.iv[1]); ctx.quadraticCurveTo(20, 300, 18, 240); ctx.stroke(); ctx.fillStyle = 'rgba(147,197,253,.35)'; ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.fillRect(8, 205, 20, 34); ctx.strokeRect(8, 205, 20, 34); }
     // labels
-    ctx.font = '600 10px Inter, sans-serif'; ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'center';
-    const lab = (s, x, y, al) => { ctx.textAlign = al || 'center'; ctx.fillText(s, x, y); };
+    // labels: drawn in body coordinates, so size them to stay at least 11 px on screen however small the canvas
+    const lfs = Math.max(10, 11.5 / sc);
+    ctx.font = `600 ${lfs}px Inter, sans-serif`; ctx.fillStyle = '#b4c0d6'; ctx.textAlign = 'center'; ctx.lineJoin = 'round';
+    const lab = (s, x, y, al) => { ctx.textAlign = al || 'center'; ctx.lineWidth = lfs * .3; ctx.strokeStyle = 'rgba(5,9,19,.85)'; ctx.strokeText(s, x, y); ctx.fillText(s, x, y); };
     lab('Liver', R.liver[0] - 34, R.liver[1] + 3, 'right'); lab('Stomach', 226, 200, 'left'); lab('Gut', 186, 286, 'left'); lab('Kidneys', 76, 268, 'center'); lab('Bladder', 172, 350, 'left'); lab('Blood', 196, 150, 'left'); lab('Tissue', 122, 485);
     if (P.route !== 'oral') lab('IV', 18, 198);
     // particles
@@ -898,6 +905,22 @@
 
   vis(); recompute(); pdStats(); loop.start();
   window.__pk = { P, simulate, steadyState, effCL, rates, get SS() { return SS; }, get SIM() { return SIM; }, loadDrug, PD };
+  /* ---- guided tour ---- */
+  {
+    // jump (not smooth-scroll) to each target so the tip is placed against its final position
+    const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
+    const startTour = () => SL.tour(jump([
+      { el: '.pk-stage', title: 'Follow a drug through the body', text: 'Particles show where the drug is: gut, blood, tissue, urine or metabolised. The curve on the right is the plasma concentration over time.', before: () => { const b = document.querySelector('#mode [data-m="pk"]'); if (b && !b.classList.contains('on')) b.click(); } },
+      { el: '#drug', title: 'Choose a teaching drug', text: 'Four fictional drugs with realistic parameters: a renally cleared antibiotic, an oral drug, a long half-life drug and a two-compartment drug.' },
+      { el: '#route', title: 'Pick a route', text: 'An IV bolus peaks instantly, an infusion climbs smoothly, and an oral dose must be absorbed first, so its peak is lower and later.' },
+      { el: '.ctl:has(#tau)', title: 'Set the dosing interval', text: 'Shorter intervals give a higher average and a smaller swing. Aim to keep the curve inside the green therapeutic window.' },
+      { el: '.toggle:has(#missOn)', title: 'What if a dose is missed?', text: 'Skip one dose and watch the level fall below the minimum effective concentration, then take several half-lives to recover.' },
+      { el: '#hS', title: 'Is it working?', text: 'The status says whether the concentration right now is sub-therapeutic, in the window or toxic.' },
+      { el: '#mode', title: 'Pharmacodynamics', text: 'Switch to the dose–response lab to compare potency, efficacy, agonists and antagonists.' },
+      { el: '#tabChal', title: 'Take the challenges', text: 'Design regimens that meet clinical targets. Each challenge checks itself.', before: () => document.getElementById('tabChal').click() },
+    ]));
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
+  } // end tour
 })();
 </script>
 </body>

@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   .modebar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:22px}
   .modebar .seg button{padding:8px 16px;font-size:.9rem;display:inline-flex;align-items:center;gap:7px}
@@ -81,9 +81,14 @@
   table.news td,table.news th{text-align:center;padding:6px}
   table.news td:first-child{text-align:left}
   .b3{background:rgba(239,68,68,.25)}.b2{background:rgba(251,146,60,.22)}.b1{background:rgba(250,204,21,.16)}
-  @media (min-width:981px){#monLab>.stage{position:sticky;top:84px;align-self:start}}
+  @media (min-width:981px){#monLab>.stage,#monLab>.mon-col{position:sticky;top:84px;align-self:start}}
   @media (max-width:980px){.mon-stage{height:600px}}
   @media (max-width:520px){.tbtns{grid-template-columns:1fr 1fr}.mon-stage{border-width:4px}}
+  .trend{margin-top:12px;background:#010403;border:1px solid #1a2130;border-radius:12px;padding:8px 8px 6px}
+  .trend-h{display:flex;justify-content:space-between;align-items:center;font:600 .78rem var(--mono);color:var(--muted);margin:0 2px 6px}
+  .trend-h svg{width:14px;height:14px;vertical-align:-2px;color:var(--accent)}
+  #cvTrend{display:block;width:100%;height:150px}
+  @media (max-width:520px){.lim input{min-height:36px}}
 </style>
 </head>
 <body data-page="vitals">
@@ -102,12 +107,15 @@
 
   <!-- ================= MONITOR ================= -->
   <section class="lab wide-controls" id="monLab">
+    <div class="mon-col">
     <div class="stage mon-stage" id="monStage">
       <canvas id="cvMon"></canvas>
       <div class="mon-tools">
         <button class="btn sm" id="snd"><i data-lucide="volume-x"></i> Sound off</button>
         <button class="btn sm" id="silence"><i data-lucide="bell-off"></i> Pause alarms 2 min</button>
       </div>
+    </div>
+    <div class="trend" id="trend"><div class="trend-h"><span><i data-lucide="chart-line"></i> Trends</span><span class="dim" id="trendSpan">last 0 min</span></div><canvas id="cvTrend"></canvas></div>
     </div>
     <aside>
       <div class="panel">
@@ -188,7 +196,7 @@
     <div class="tablist">
       <button><i data-lucide="book-open"></i> Theory</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
-      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments & challenges</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
       <button><i data-lucide="file-text"></i> Scenario debriefs</button>
     </div>
@@ -284,7 +292,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
   const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
@@ -735,6 +743,7 @@
   }
   let dtSim = 0;
   $('#start').onclick = () => {
+    resetTrend();
     const k = $('#scen').value; if (k === 'free') return;
     SC = SCEN[k]; H = Object.assign({ o2: false }, SC.init()); simT = 0; score = 0; logArr = []; used = {}; outcome = null; failHold = 0; run = true;
     applyTargets(true); renderLog(); $$('#acts .btn').forEach(b => b.classList.remove('used'));
@@ -788,6 +797,29 @@
 
   /* =================== Main loop =================== */
   let alarmCache = [], acT = 0;
+  // ---- trends: what a real monitor's trend screen shows; deterioration is a pattern over time, not one number ----
+  const TRD = [], TRMAX = 120; let trClock = 0, trNext = 0;
+  const TRS = [['HR', 'hr', '#4ade80', 30, 180], ['SBP', 'sbp', '#f87171', 50, 220], ['SpO₂', 'spo2', '#facc15', 70, 100], ['RR', 'rr', '#e5e7eb', 0, 45], ['NEWS2', 'news', '#a78bfa', 0, 15]];
+  const stT = SL.canvas($('#cvTrend'), () => drawTrend());
+  function resetTrend() { TRD.length = 0; trClock = 0; trNext = 0; drawTrend(); }
+  function sampleTrend(dMin, n2) {
+    trClock += dMin; if (trClock < trNext) return; trNext = trClock + 0.5;
+    TRD.push({ t: trClock, hr: V.hr, sbp: V.sbp, spo2: V.spo2, rr: V.rr, news: n2.total }); if (TRD.length > TRMAX) TRD.shift();
+    drawTrend();
+  }
+  function drawTrend() {
+    const { ctx, w, h } = stT; ctx.clearRect(0, 0, w, h);
+    const lw = w < 480 ? 46 : 56, rows = TRS.length, rh = h / rows, t0 = TRD.length ? TRD[0].t : 0, t1 = TRD.length ? Math.max(TRD[TRD.length - 1].t, t0 + 5) : 5;
+    $('#trendSpan').textContent = `last ${TRD.length ? Math.round(TRD[TRD.length - 1].t - t0) : 0} min${SC && run ? ' (simulated)' : ''}`;
+    TRS.forEach(([lab, k, col, lo, hi], r) => {
+      const y0 = r * rh, X = t => lw + (w - lw - 44) * (t - t0) / (t1 - t0), Y = v => y0 + rh - 4 - (rh - 8) * Math.min(1, Math.max(0, (v - lo) / (hi - lo)));
+      ctx.fillStyle = 'rgba(255,255,255,.03)'; if (r % 2) ctx.fillRect(0, y0, w, rh);
+      ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = col; ctx.fillText(lab, 6, y0 + rh / 2);
+      if (!TRD.length) return;
+      ctx.strokeStyle = col; ctx.lineWidth = 1.8; ctx.beginPath(); TRD.forEach((p, i) => { const x = X(p.t), y = Y(p[k]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
+      const last = TRD[TRD.length - 1][k]; ctx.textAlign = 'right'; ctx.fillText(Math.round(last), w - 6, y0 + rh / 2);
+    });
+  }
   const loop = SL.loop(dt => {
     if (document.visibilityState !== 'visible' || $('#monLab').hidden) return;
     rt += dt; blink += dt * 1.6;
@@ -805,7 +837,7 @@
     advanceTraces(dt);
     acT += dt; if (acT > 0.25) { acT = 0; alarmCache = alarms(); }
     const n2 = news2(curObs());
-    drawMonitor(alarmCache, n2); renderLiveNews(n2);
+    drawMonitor(alarmCache, n2); renderLiveNews(n2); sampleTrend(SC && run ? dtSim : dt * speed / 60, n2);
     if (alarmCache.length) alarmSound(alarmCache[0].lvl);
   });
 
@@ -939,6 +971,22 @@
 
   showBrief(); setFree(true); loop.start();
   window.__vit = { news2, tews, CASES, SCEN, V, get H() { return H; }, get run() { return run; }, get simT() { return simT; }, setSim(t) { simT = t; } };
+  /* ---- guided tour ---- */
+  {
+    // jump (not smooth-scroll) to each target so the tip is placed against its final position
+    const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
+    const startTour = () => SL.tour(jump([
+      { el: '#monStage', title: 'A bedside monitor', text: 'ECG, pleth, arterial pressure and breathing traces with the numbers clinicians watch. Alarms sound when a value crosses its limit.', before: () => { const b = document.querySelector('#mode [data-m="mon"]'); if (b && !b.classList.contains('on')) b.click(); } },
+      { el: '#scen', title: 'Choose a patient', text: 'Free play lets you set every vital sign. The scenarios give you a deteriorating patient to assess and treat.' },
+      { el: '#start', title: 'Start the scenario', text: 'The clock runs and the patient changes. Pick actions from the list; good care stabilises them, delay makes them worse.' },
+      { el: '.ctl:has(#mSpO2)', title: 'Set the vital signs', text: 'In free play, drag any slider and watch the waveforms, alarms and early-warning score respond.' },
+      { el: '#trend', title: 'Read the trends', text: 'Deterioration is a pattern over time. A rising respiratory rate is often the first sign, long before the blood pressure falls.' },
+      { el: '#liveNews', title: 'NEWS2 early-warning score', text: 'Each vital sign scores 0–3; the total sets how urgently the patient must be reviewed.' },
+      { el: '#mode', title: 'Two more trainers', text: 'Practise calculating NEWS2 by hand, then run an emergency department triage shift.' },
+      { el: '#tabChal', title: 'Take the challenges', text: 'Guided tasks check themselves as you use the monitor and scenarios.', before: () => document.getElementById('tabChal').click() },
+    ]));
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
+  } // end tour
 })();
 </script>
 </body>
