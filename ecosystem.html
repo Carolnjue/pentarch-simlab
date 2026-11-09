@@ -1,0 +1,1170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Predator–Prey Ecosystem · Pentarch SimLab</title>
+<meta name="description" content="Run an agent-based Kenyan savannah with grass, zebras, gazelles, lions and cheetahs, explore Lotka–Volterra phase portraits, and dismantle a savannah food web to see trophic cascades.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .labbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding-top:22px}
+  .labbar .seg button{display:inline-flex;align-items:center;gap:6px}
+  .labbar .seg svg{width:15px;height:15px}
+  .labbar .hint{font-size:.84rem;color:var(--muted)}
+  .lab[hidden]{display:none}
+  .col{display:flex;flex-direction:column;gap:14px;min-width:0}
+  .stage.sav{height:500px}
+  .stage.lv{height:520px}
+  .stage.web{height:720px}
+  .chartbox{position:relative;background:#050913;border:1px solid var(--line);border-radius:var(--r);height:210px;overflow:hidden}
+  .chartbox canvas{display:block;width:100%;height:100%}
+  .chartbox .cap{position:absolute;right:10px;top:8px;font:500 .7rem var(--mono);color:var(--dim);letter-spacing:.06em;text-transform:uppercase;pointer-events:none}
+  .chartrow{display:grid;grid-template-columns:1.5fr 1fr;gap:14px}
+  .tools{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .tools .btn{padding:7px 6px;font-size:.78rem;flex-direction:column;gap:3px}
+  .tools .btn .sw{width:12px;height:12px;border-radius:50%;display:inline-block;border:1px solid rgba(255,255,255,.3)}
+  .ivs{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .ivs .btn{justify-content:flex-start;font-size:.8rem;padding:8px 10px}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;font-size:.78rem;color:var(--muted)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+  .pop .stat .v{display:flex;align-items:center;gap:6px}
+  .pop .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .log{font:500 .76rem var(--mono);color:var(--muted);max-height:120px;overflow:auto;margin:0;padding:0;list-style:none}
+  .log li{padding:3px 0;border-bottom:1px dashed var(--line)}
+  .log b{color:var(--accent);font-weight:600}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .evchip{font:600 .72rem var(--mono);padding:4px 8px;border-radius:7px;background:rgba(5,9,19,.8);border:1px solid var(--warn);color:var(--warn)}
+  .evchip.blue{border-color:#60a5fa;color:#93c5fd}
+  .info{font-size:.86rem;color:var(--muted)}
+  .info h4{color:var(--text);margin:0 0 4px;font-size:1rem}
+  .info .tl{font:600 .75rem var(--mono);color:var(--accent)}
+  .pyr{height:250px;position:relative}
+  .pyr canvas{width:100%;height:100%;display:block}
+  .mini{font-size:.8rem;color:var(--dim)}
+  .eig{font:500 .82rem var(--mono)}
+  .cl{display:flex;gap:10px;align-items:flex-start}
+  .cl .led{margin-top:6px;flex:none}
+  .worked h4{margin-top:0}
+  table.data td,table.data th{white-space:nowrap}
+  .tablewrap{overflow-x:auto}
+  @media (max-width:980px){.chartrow{grid-template-columns:1fr}}
+  @media (max-width:700px){#censusRow{grid-template-columns:1fr!important}}
+  @media (max-width:600px){.stage.sav{height:360px}.stage.lv{height:380px}.stage.web{height:520px}.chartbox{height:190px}.tools{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body data-page="ecosystem">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <div class="labbar">
+    <div class="seg" id="modeSeg" role="tablist" aria-label="Lab mode">
+      <button class="on" data-mode="sav"><i data-lucide="trees"></i> Savannah (agents)</button>
+      <button data-mode="lv"><i data-lucide="spline"></i> Lotka–Volterra (ODE)</button>
+      <button data-mode="web"><i data-lucide="network"></i> Food web &amp; energy</button>
+    </div>
+    <span class="hint" id="modeHint">Each animal is an agent with its own energy budget, age and behaviour.</span>
+  </div>
+
+  <!-- ===================== A. SAVANNAH (agent-based) ===================== -->
+  <section class="lab" data-mode="sav">
+    <div class="col">
+      <div class="stage sav" id="savStage">
+        <canvas id="savCv" aria-label="Savannah simulation"></canvas>
+        <div class="hud">
+          <span class="readout">Year <b id="hYear">1</b> · day <b id="hDay">0</b></span>
+          <span class="readout" id="hSeason">Long dry season</span>
+          <span class="readout">Rain <b id="hRain">0</b>%</span>
+        </div>
+        <div class="hud hud-r" style="top:auto;bottom:12px;left:12px;right:auto;justify-content:flex-start" id="evChips"></div>
+        <div class="stage-toolbar">
+          <button class="btn sm" id="savPlay" aria-label="Play or pause"><i data-lucide="pause"></i></button>
+          <button class="btn sm" id="savStep" aria-label="Step 1 day"><i data-lucide="skip-forward"></i></button>
+        </div>
+      </div>
+      <div class="chartrow">
+        <div class="chartbox"><canvas id="popCv"></canvas></div>
+        <div class="chartbox"><canvas id="phaseCv"></canvas><span class="cap">Phase plane</span></div>
+      </div>
+      <div class="grid2" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)" id="censusRow">
+      <div class="panel" style="margin:0">
+        <h3><i data-lucide="gauge"></i> Live census</h3>
+        <div class="stats pop">
+          <div class="stat"><div class="k">Zebra</div><div class="v"><span class="dot" style="background:#e2e8f0"></span><span id="cZ">0</span></div></div>
+          <div class="stat"><div class="k">Gazelle</div><div class="v"><span class="dot" style="background:#c9935a"></span><span id="cG">0</span></div></div>
+          <div class="stat"><div class="k">Lion</div><div class="v"><span class="dot" style="background:#f97316"></span><span id="cL">0</span></div></div>
+          <div class="stat"><div class="k">Cheetah</div><div class="v"><span class="dot" style="background:#eab308"></span><span id="cC">0</span></div></div>
+          <div class="stat"><div class="k">Wild dog</div><div class="v"><span class="dot" style="background:#a78bfa"></span><span id="cD">0</span></div></div>
+          <div class="stat"><div class="k">Grass cover</div><div class="v"><span class="dot" style="background:#4ade80"></span><span id="cGr">0</span><small>%</small></div></div>
+          <div class="stat"><div class="k">Kills / yr</div><div class="v" id="cK">0</div></div>
+          <div class="stat"><div class="k">Prey : predator</div><div class="v" id="cR">0</div></div>
+        </div>
+        
+      </div>
+        <div class="panel" style="margin:0"><h3><i data-lucide="scroll-text"></i> Event log</h3><ul class="log" id="log" style="max-height:170px"></ul></div>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="play-circle"></i> Simulation</h3>
+        <div class="ctl"><label for="preset">Scenario</label><span></span>
+          <select id="preset" style="grid-column:1/-1">
+            <option value="balanced">Balanced savannah</option>
+            <option value="nopred">No predators</option>
+            <option value="predheavy">Predator-heavy</option>
+            <option value="closed">Small fenced reserve (closed)</option>
+          </select></div>
+        <div class="ctl"><label for="speed">Speed</label><output>60</output><input type="range" id="speed" min="5" max="240" step="5" value="60"></div>
+        <div class="btn-row" style="margin-top:6px"><button class="btn primary" id="savReset"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn" id="savPlay2"><i data-lucide="pause"></i> Pause</button></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="mouse-pointer-click"></i> Click tool</h3>
+        <div class="tools" id="tools">
+          <button class="btn sm on" data-tool="inspect"><i data-lucide="search"></i>Inspect</button>
+          <button class="btn sm" data-tool="zebra"><span class="sw" style="background:#f1f5f9"></span>Zebra ×5</button>
+          <button class="btn sm" data-tool="gazelle"><span class="sw" style="background:#c9935a"></span>Gazelle ×5</button>
+          <button class="btn sm" data-tool="lion"><span class="sw" style="background:#d39a4a"></span>Lion ×2</button>
+          <button class="btn sm" data-tool="cheetah"><span class="sw" style="background:#ecc66f"></span>Cheetah ×2</button>
+          <button class="btn sm" data-tool="dog"><span class="sw" style="background:#6b5a43"></span>Wild dog ×4</button>
+        </div>
+        <div class="info" id="inspect" style="margin-top:10px">Click an animal on the savannah to inspect it, or choose a species and click to release animals.</div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="cloud-rain"></i> Environment</h3>
+        <div class="ctl"><label for="regrow">Grass regrowth rate</label><output>100%</output><input type="range" id="regrow" min="30" max="200" step="5" value="100"></div>
+        <div class="ctl"><label for="rainMul">Rainfall (× normal)</label><output>1.0</output><input type="range" id="rainMul" min="0.3" max="1.8" step="0.05" value="1"></div>
+        <label class="toggle">Open reserve (migration corridors)<input type="checkbox" id="openT" checked></label>
+        <label class="toggle">Fence across the reserve<input type="checkbox" id="fenceT"></label>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="siren"></i> Interventions</h3>
+        <div class="ivs">
+          <button class="btn sm" id="ivDrought"><i data-lucide="sun"></i> Drought</button>
+          <button class="btn sm" id="ivPoach"><i data-lucide="crosshair"></i> Poach predators</button>
+          <button class="btn sm" id="ivCull"><i data-lucide="scissors"></i> Cull herbivores</button>
+          <button class="btn sm" id="ivDisease"><i data-lucide="biohazard"></i> Distemper</button>
+          <button class="btn sm" id="ivDogs" style="grid-column:1/-1"><i data-lucide="dog"></i> Introduce a wild dog pack</button>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ===================== B. LOTKA–VOLTERRA ===================== -->
+  <section class="lab wide-controls" data-mode="lv" hidden>
+    <div class="col">
+      <div class="stage lv">
+        <canvas id="lvCv" aria-label="Phase portrait"></canvas>
+        <div class="hud"><span class="readout">Click the plane to launch a trajectory</span><span class="readout" id="lvHover">x = –, y = –</span></div>
+      </div>
+      <div class="chartbox"><canvas id="lvTs"></canvas><span class="cap">Latest trajectory: x(t), y(t)</span></div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="function-square"></i> Model</h3>
+        <div class="seg" id="lvModel" style="margin-bottom:8px">
+          <button class="on" data-m="classic">Classic</button><button data-m="logistic">Logistic prey</button><button data-m="holling">Holling II</button>
+        </div>
+        <div class="eq" id="lvEq" style="margin:6px 0 10px;font-size:.9rem"></div>
+        <div class="ctl"><label for="pa">α prey growth rate</label><output></output><input type="range" id="pa" min="0.1" max="2" step="0.05" value="1"></div>
+        <div class="ctl"><label for="pb">β attack rate</label><output></output><input type="range" id="pb" min="0.005" max="0.06" step="0.001" value="0.02"></div>
+        <div class="ctl"><label for="pg">γ predator death rate</label><output></output><input type="range" id="pg" min="0.1" max="2" step="0.05" value="0.8"></div>
+        <div class="ctl"><label for="pd">δ conversion × attack</label><output></output><input type="range" id="pd" min="0.002" max="0.04" step="0.0005" value="0.01"></div>
+        <div class="ctl" id="rowK"><label for="pK">K prey carrying capacity</label><output></output><input type="range" id="pK" min="60" max="1500" step="10" value="300"></div>
+        <div class="ctl" id="rowH"><label for="ph">h handling time</label><output></output><input type="range" id="ph" min="0" max="0.5" step="0.01" value="0.2"></div>
+        <div class="panel-title">Harvesting (effort per unit time)</div>
+        <div class="ctl"><label for="pEx">Prey harvest E<sub>x</sub></label><output></output><input type="range" id="pEx" min="0" max="0.8" step="0.02" value="0"></div>
+        <div class="ctl"><label for="pEy">Predator harvest E<sub>y</sub></label><output></output><input type="range" id="pEy" min="0" max="0.8" step="0.02" value="0"></div>
+        <div class="btn-row" style="margin-top:8px">
+          <button class="btn sm" id="lvCullPrey"><i data-lucide="scissors"></i> Remove 50% prey now</button>
+          <button class="btn sm" id="lvCullPred"><i data-lucide="crosshair"></i> Remove 50% predators now</button>
+          <button class="btn sm" id="lvClear"><i data-lucide="eraser"></i> Clear trajectories</button>
+        </div>
+        <div class="ctl" style="margin-top:6px"><label for="lvPreset">Preset</label><span></span>
+          <select id="lvPreset" style="grid-column:1/-1">
+            <option value="">Choose a preset…</option>
+            <option value="cycles">Neutral cycles (classic)</option>
+            <option value="damped">Damped oscillations (logistic prey)</option>
+            <option value="rm-stable">Rosenzweig–MacArthur: stable</option>
+            <option value="enrich">Paradox of enrichment (limit cycle)</option>
+            <option value="extinct">Predator cannot persist</option>
+          </select></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="crosshair"></i> Equilibrium analysis</h3>
+        <div class="stats">
+          <div class="stat"><div class="k">x* prey</div><div class="v" id="lvX">–</div></div>
+          <div class="stat"><div class="k">y* predators</div><div class="v" id="lvY">–</div></div>
+          <div class="stat" style="grid-column:1/-1"><div class="k">Eigenvalues of J at (x*, y*)</div><div class="v eig" id="lvEig">–</div></div>
+          <div class="stat"><div class="k">Type</div><div class="v" id="lvType" style="font-size:.9rem">–</div></div>
+          <div class="stat"><div class="k">Period (small)</div><div class="v" id="lvT">–</div></div>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ===================== C. FOOD WEB ===================== -->
+  <section class="lab wide-controls" data-mode="web" hidden>
+    <div class="col">
+      <div class="stage web">
+        <canvas id="webCv" aria-label="Savannah food web"></canvas>
+        <div class="hud"><span class="readout">Arrows point from food to feeder (direction of energy flow)</span></div>
+        <div class="hud hud-b legend" style="left:12px;bottom:12px;top:auto;max-width:calc(100% - 24px)">
+          <span class="readout"><i style="background:#4ade80"></i>Producer</span><span class="readout"><i style="background:#60a5fa"></i>Herbivore</span><span class="readout"><i style="background:#c084fc"></i>Insectivore / small predator</span><span class="readout"><i style="background:#f97316"></i>Carnivore</span><span class="readout"><i style="background:#a8a29e"></i>Detritus / carrion</span>
+        </div>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="mouse-pointer-click"></i> Explore the web</h3>
+        <div class="seg" id="webTool"><button class="on" data-t="inspect">Inspect</button><button data-t="remove">Remove species</button></div>
+        <div class="info" id="webInfo" style="margin-top:12px">Click a species to see what it eats and what eats it. Switch to <b>Remove species</b> to knock species out and watch secondary extinctions.</div>
+        <div class="stats" style="margin-top:12px">
+          <div class="stat"><div class="k">Species left</div><div class="v" id="wS">–</div></div>
+          <div class="stat"><div class="k">Feeding links</div><div class="v" id="wL">–</div></div>
+          <div class="stat"><div class="k">Connectance</div><div class="v" id="wC">–</div></div>
+          <div class="stat"><div class="k">Lost</div><div class="v" id="wX">0</div></div>
+        </div>
+        <div class="btn-row" style="margin-top:10px"><button class="btn sm" id="webReset"><i data-lucide="rotate-ccw"></i> Restore web</button></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="triangle"></i> Energy pyramid</h3>
+        <div class="ctl"><label for="npp">Net primary production</label><output></output><input type="range" id="npp" min="2000" max="20000" step="500" value="9000"></div>
+        <div class="ctl"><label for="eff">Transfer efficiency</label><output></output><input type="range" id="eff" min="2" max="25" step="1" value="10"></div>
+        <div class="pyr"><canvas id="pyrCv"></canvas></div>
+        <p class="mini" style="margin:6px 0 0">Bar widths use a logarithmic scale; units kJ m⁻² yr⁻¹.</p>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ===================== LEARNING TABS ===================== -->
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button><i data-lucide="globe-2"></i> Real-world savannahs</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. Populations grow, resources limit them</h3>
+      <p>A population with per-capita birth rate $b$ and death rate $d$ grows exponentially at rate $r=b-d$. Real populations run into limits, captured by the <b>logistic</b> equation, where $K$ is the carrying capacity set by food, water and space:</p>
+      <div class="eq">$$\frac{dN}{dt}=rN\quad\Rightarrow\quad N(t)=N_0e^{rt},\qquad\qquad \frac{dN}{dt}=rN\left(1-\frac{N}{K}\right)$$</div>
+
+      <h3>2. The Lotka–Volterra predator–prey model</h3>
+      <p>Alfred Lotka (1925) and Vito Volterra (1926) independently proposed the simplest model of two interacting species. With prey density $x$ and predator density $y$:</p>
+      <div class="eq">$$\frac{dx}{dt}=\alpha x-\beta xy,\qquad \frac{dy}{dt}=\delta xy-\gamma y$$</div>
+      <ul>
+        <li>$\alpha$: prey per-capita growth rate when no predators are present.</li>
+        <li>$\beta$: attack rate, so $\beta x$ is the number of prey one predator kills per unit time (a <i>type I</i> functional response).</li>
+        <li>$\delta=e\beta$: predator births per prey eaten ($e$ is the conversion efficiency) times the attack rate.</li>
+        <li>$\gamma$: predator per-capita death rate when no prey are available.</li>
+      </ul>
+      <p>Setting both derivatives to zero gives the <b>nullclines</b>. The prey nullcline is $y=\alpha/\beta$ (horizontal) and the predator nullcline is $x=\gamma/\delta$ (vertical); they cross at the coexistence equilibrium</p>
+      <div class="eq">$$x^*=\frac{\gamma}{\delta},\qquad y^*=\frac{\alpha}{\beta}.$$</div>
+      <p>Notice the surprise: the equilibrium number of <i>prey</i> is set by the <i>predator's</i> parameters, and vice versa.</p>
+
+      <h3>3. Stability: the Jacobian</h3>
+      <p>Linearising around $(x^*,y^*)$ gives the Jacobian matrix. For the classic model</p>
+      <div class="eq">$$J=\begin{pmatrix}\partial \dot x/\partial x & \partial \dot x/\partial y\\ \partial \dot y/\partial x & \partial \dot y/\partial y\end{pmatrix}_{(x^*,y^*)}=\begin{pmatrix}0 & -\beta x^*\\ \delta y^* & 0\end{pmatrix},\qquad \lambda=\pm i\sqrt{\alpha\gamma}.$$</div>
+      <p>Purely imaginary eigenvalues mean a <b>centre</b>: closed orbits around the equilibrium, with small-amplitude period $T\approx 2\pi/\sqrt{\alpha\gamma}$. The orbits are level curves of the conserved quantity</p>
+      <div class="eq">$$V(x,y)=\delta x-\gamma\ln x+\beta y-\alpha\ln y=\text{constant}.$$</div>
+      <p>Each initial condition stays on its own cycle forever (<i>neutral stability</i>): a one-off cull shifts the system onto a different cycle rather than letting it return. Predator peaks always lag prey peaks by about a quarter of a cycle, so the phase-plane trajectory runs <b>anticlockwise</b> when prey is on the horizontal axis.</p>
+      <p>In general, for a 2×2 Jacobian with trace $\tau$ and determinant $\Delta$, $\lambda=\tfrac{\tau}{2}\pm\sqrt{\tfrac{\tau^2}{4}-\Delta}$. If $\Delta&lt;0$ the point is a saddle; if $\Delta&gt;0$ and $\tau&lt;0$ it is stable (a spiral when $\tau^2&lt;4\Delta$); if $\tau&gt;0$ it is unstable.</p>
+
+      <h3>4. More realistic prey: logistic growth</h3>
+      <div class="eq">$$\frac{dx}{dt}=\alpha x\left(1-\frac{x}{K}\right)-\beta xy,\qquad x^*=\frac{\gamma}{\delta},\quad y^*=\frac{\alpha}{\beta}\left(1-\frac{x^*}{K}\right)$$</div>
+      <p>Self-limitation of the prey makes $\tau=-\alpha x^*/K&lt;0$, so oscillations are <b>damped</b> and every trajectory spirals into the equilibrium. If $x^*&gt;K$ the predator cannot persist: there is not enough prey even at carrying capacity.</p>
+
+      <h3>5. Satiation: the Holling type II functional response</h3>
+      <p>A lion cannot eat infinitely many zebras: each kill takes handling time $h$ (chasing, eating, resting). Holling's disc equation gives the per-predator kill rate</p>
+      <div class="eq">$$f(x)=\frac{\beta x}{1+\beta h x}\;\xrightarrow{x\to\infty}\;\frac1h,$$</div>
+      <p>which saturates at $1/h$. Combined with logistic prey this is the <b>Rosenzweig–MacArthur</b> model:</p>
+      <div class="eq">$$\frac{dx}{dt}=\alpha x\left(1-\frac{x}{K}\right)-\frac{\beta xy}{1+\beta hx},\qquad \frac{dy}{dt}=\frac{\delta xy}{1+\beta hx}-\gamma y,\qquad x^*=\frac{\gamma}{\delta-\gamma\beta h}.$$</div>
+      <p>The prey nullcline is now a hump. The equilibrium is stable when it sits to the right of the hump and unstable (with a stable <b>limit cycle</b>) when it sits to the left. Raising $K$ moves the hump to the right, so <i>enriching</i> the prey's environment can destabilise the system: Rosenzweig's <b>paradox of enrichment</b> (1971). The switch happens when $K&gt;2x^*+1/(\beta h)$ (a Hopf bifurcation).</p>
+
+      <h3>6. Harvesting and Volterra's principle</h3>
+      <p>Volterra was asked why predatory fish in the Adriatic became more common when fishing stopped during the First World War. Add harvest effort $E_x$ on prey and $E_y$ on predators:</p>
+      <div class="eq">$$x^*=\frac{\gamma+E_y}{\delta},\qquad y^*=\frac{\alpha-E_x}{\beta}\quad\text{(classic model)}$$</div>
+      <p>Harvesting both species equally <i>raises</i> average prey and <i>lowers</i> average predators. Poaching predators raises the prey equilibrium; culling prey lowers the predator equilibrium but leaves the prey equilibrium unchanged.</p>
+
+      <h3>7. From equations to agents</h3>
+      <p>The savannah tab is an <b>agent-based model</b> (ABM). Instead of densities, every animal is an individual with a position, an energy store, an age and simple rules:</p>
+      <ul>
+        <li><b>Grass</b> in each cell regrows logistically at a rate that follows Kenya's bimodal rainfall (long rains around March–May, short rains around October–December).</li>
+        <li><b>Grazers</b> pay a daily metabolic cost, eat grass in their cell (energy gain = bite × conversion), move towards greener cells, and flee nearby predators.</li>
+        <li><b>Predators</b> hunt only when hungry (a built-in satiation, like Holling type II), stalk the most catchable prey in view and succeed with a species-specific probability: lions are better at zebra, cheetahs and wild dogs at gazelles, and wild dogs succeed more often in packs.</li>
+        <li>Animals reproduce when mature and well fed, and die of starvation, old age or predation.</li>
+      </ul>
+      <div class="eq">$$E_{t+1}=E_t-c+g\cdot\text{intake}_t,\qquad \text{birth if } E&gt;0.6E_{\max}\text{ and age}&gt;\text{maturity (probabilistic)}$$</div>
+      <p>No differential equation is written down, yet predator–prey cycles <i>emerge</i>. ABMs add things the ODEs leave out: space (local overgrazing, refuges), individual variation, small-number randomness (<b>demographic stochasticity</b>) and therefore real extinctions.</p>
+      <div class="callout warn"><i data-lucide="info"></i><div>The savannah is a teaching model. Life histories are compressed (animals mature in months rather than years) so that several cycles fit into a few minutes, and the parameters are chosen for clarity rather than fitted to field data.</div></div>
+
+      <h3>8. Energy flow and the 10% rule</h3>
+      <p>Only part of the energy at one trophic level becomes biomass at the next. The <b>trophic transfer efficiency</b> combines how much is eaten, how much is assimilated and how much is turned into growth rather than respired:</p>
+      <div class="eq">$$\eta=\frac{P_{n+1}}{P_n}\approx 5\text{–}20\%\;(\text{typically}\approx10\%),\qquad E_n=E_1\,\eta^{\,n-1}$$</div>
+      <p>So with 10% efficiency, a top carnivore at level 4 receives only $0.1^3=0.1\%$ of the energy fixed by plants. This is why large predators are rare and food chains are short, and why removing a predator can ripple down through herbivores to vegetation: a <b>trophic cascade</b>.</p>
+    </div>
+
+    <div class="tabpanel prose">
+      <div class="worked">
+        <h4>Example 1: Classic Lotka–Volterra equilibrium and period</h4>
+        <p>Defaults in the ODE tab: $\alpha=1.0$, $\beta=0.02$, $\gamma=0.8$, $\delta=0.01$.</p>
+        <ol class="steps">
+          <li>Prey equilibrium: $x^*=\gamma/\delta=0.8/0.01=80$.</li>
+          <li>Predator equilibrium: $y^*=\alpha/\beta=1.0/0.02=50$.</li>
+          <li>Jacobian: $J=\begin{pmatrix}0&-\beta x^*\\\delta y^*&0\end{pmatrix}=\begin{pmatrix}0&-1.6\\0.5&0\end{pmatrix}$, so $\tau=0$, $\Delta=0.8$.</li>
+          <li>Eigenvalues: $\lambda=\pm i\sqrt{0.8}=\pm 0.894i$: a centre.</li>
+          <li>Small-oscillation period: $T=2\pi/0.894=7.02$ time units. Check the <i>Period</i> readout in the lab.</li>
+        </ol>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 2: Adding logistic prey ($K=300$)</h4>
+        <ol class="steps">
+          <li>The predator nullcline is unchanged: $x^*=80$.</li>
+          <li>$y^*=\frac{\alpha}{\beta}\left(1-\frac{x^*}{K}\right)=50\,(1-80/300)=36.7$.</li>
+          <li>$J=\begin{pmatrix}-\alpha x^*/K&-\beta x^*\\\delta y^*&0\end{pmatrix}=\begin{pmatrix}-0.267&-1.6\\0.367&0\end{pmatrix}$, $\tau=-0.267$, $\Delta=0.587$.</li>
+          <li>$\lambda=-0.133\pm i\sqrt{0.587-0.0178}=-0.133\pm0.754i$: a <b>stable spiral</b>. Oscillations decay with e-folding time $1/0.133\approx7.5$ time units.</li>
+        </ol>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 3: Holling type II and the paradox of enrichment</h4>
+        <p>Take $\beta=0.02$, $\delta=0.01$, $\gamma=0.8$, $h=0.2$, so $\beta h=0.004$.</p>
+        <ol class="steps">
+          <li>Kill rate at $x=100$ prey: $f=\frac{0.02\times100}{1+0.004\times100}=\frac{2}{1.4}=1.43$ prey per predator per unit time. The maximum is $1/h=5$.</li>
+          <li>Equilibrium prey: $x^*=\frac{\gamma}{\delta-\gamma\beta h}=\frac{0.8}{0.01-0.0032}=117.6$.</li>
+          <li>Hopf threshold: $K_c=2x^*+\frac{1}{\beta h}=235.3+250=485$.</li>
+          <li>So $K=300$ gives a stable equilibrium, while $K=800$ gives a limit cycle. Try both with the <i>Holling II</i> model.</li>
+        </ol>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 4: Volterra's principle with numbers</h4>
+        <ol class="steps">
+          <li>Classic defaults give $x^*=80$, $y^*=50$.</li>
+          <li>Poach predators with $E_y=0.2$: $x^*=(0.8+0.2)/0.01=100$ prey (up 25%); $y^*$ is unchanged at 50.</li>
+          <li>Harvest prey with $E_x=0.2$: $y^*=(1.0-0.2)/0.02=40$ predators (down 20%); $x^*$ is unchanged at 80.</li>
+        </ol>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 5: How much energy reaches a lion?</h4>
+        <ol class="steps">
+          <li>Grassland net primary production: $9000$ kJ m⁻² yr⁻¹ (the pyramid default).</li>
+          <li>Primary consumers (zebra, wildebeest): $9000\times0.10=900$ kJ m⁻² yr⁻¹.</li>
+          <li>Secondary consumers (lion, hyena): $900\times0.10=90$ kJ m⁻² yr⁻¹, i.e. 1% of NPP.</li>
+          <li>Per square kilometre ($10^6$ m²) that is $9\times10^{7}$ kJ = 90 GJ per year, shared among all the carnivores. A lion eats very roughly 5–8 kg of meat a day, so only a handful of large carnivores can be supported per km².</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <p>Challenges marked <span class="led on" style="vertical-align:middle"></span> are checked automatically while you work.</p>
+      <ol class="steps" id="challenges">
+        <li><div class="cl"><span class="led" id="ch1"></span><div><b>Trophic cascade.</b> In the savannah, press <i>Poach predators</i> and keep running. Within three years, grass cover should fall below 35% as released grazers multiply. <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led" id="ch2"></span><div><b>Island survival.</b> Switch off <i>Open reserve</i> (no immigration) and keep zebras, gazelles, lions and cheetahs all alive for 10 years. Hint: modest predator numbers and good grass regrowth help. <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led" id="ch3"></span><div><b>Ten-unit clock.</b> In the classic ODE model, tune $\alpha$ and $\gamma$ so the small-oscillation period is 10 ± 0.2 time units. <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led" id="ch4"></span><div><b>Paradox of enrichment.</b> In the Holling II model, find parameters where the coexistence equilibrium is unstable (the trajectory settles on a limit cycle). <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led" id="ch5"></span><div><b>Volterra's principle.</b> In the classic model, set predator harvest $E_y\ge0.3$ and observe that the prey equilibrium has risen by at least 30% while predators stay the same. <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led" id="ch6"></span><div><b>Keystone collapse.</b> In the food web, remove a single species that causes at least three <i>other</i> species to go extinct. <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led"></span><div><b>Open question.</b> Introduce wild dogs at a time when gazelles are scarce and again when they are abundant. Does the timing of an introduction matter? Relate your answer to the predator equation $\dot y=y(\delta x-\gamma)$.</div></div></li>
+        <li><div class="cl"><span class="led"></span><div><b>Open question.</b> Turn on the fence. Why do local crashes become more likely when animals cannot move between halves of the reserve?</div></div></li>
+      </ol>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Savannah ecosystems in East Africa</h3>
+      <div class="grid2">
+        <div class="callout"><i data-lucide="map"></i><div><b>The Serengeti–Mara.</b> The cross-border Serengeti–Maasai Mara ecosystem supports the largest remaining migration of large mammals: well over a million wildebeest together with hundreds of thousands of zebras and gazelles, tracking rainfall and fresh grass. Migration is a spatial strategy that the fence in the lab disrupts.</div></div>
+        <div class="callout"><i data-lucide="biohazard"></i><div><b>Disease in lions.</b> In 1994 a canine distemper virus outbreak, spread from domestic dogs, killed roughly a third of the Serengeti lion population. The <i>Distemper</i> intervention in the lab is inspired by this event.</div></div>
+        <div class="callout"><i data-lucide="sprout"></i><div><b>Grazing succession.</b> Zebras crop tall, coarse grass; wildebeest and gazelles then feed on shorter, more nutritious regrowth. Different grazers can therefore facilitate rather than simply compete with one another.</div></div>
+        <div class="callout"><i data-lucide="fence"></i><div><b>Fences and corridors.</b> Kenya's wildlife increasingly shares land with farms and settlements. Conservancies and wildlife corridors keep populations connected, reducing the extinction risk you can see when you close the reserve in the lab.</div></div>
+        <div class="callout"><i data-lucide="dog"></i><div><b>African wild dogs.</b> Wild dogs are endangered; they range widely, hunt in cooperative packs and are often outcompeted by lions and hyenas. Laikipia in central Kenya is one of the places where their numbers recovered.</div></div>
+        <div class="callout"><i data-lucide="trending-down"></i><div><b>Trophic cascades.</b> Removing top predators releases herbivores, which can suppress plants; the classic example is the return of wolves to Yellowstone. On savannahs, both predators and rainfall regulate herbivores, so cascades are real but often weaker and noisier.</div></div>
+      </div>
+      <h3>Famous data: the lynx and the hare</h3>
+      <p>Hudson's Bay Company fur records show roughly 10-year cycles in Canada lynx and snowshoe hare pelts, with lynx peaks lagging hare peaks. They are the textbook example of predator–prey oscillations, though later work showed that the hare's food plants and other predators also shape the cycle. It is a reminder that a two-species model is a starting point, not the whole story.</p>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const clamp = SL.clamp;
+
+/* ---------- small plotting helper ---------- */
+function niceStep(range, n) { const raw = range / n, p = Math.pow(10, Math.floor(Math.log10(raw || 1))), f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
+function plot(st, series, o) {
+  const { ctx, w, h } = st; o = Object.assign({ pad: [24, 12, 28, 44] }, o || {});
+  const [pt, pr, pb, pl] = o.pad;
+  let xs = [], ys = []; series.forEach(s => s.data.forEach(p => { xs.push(p[0]); ys.push(p[1]); }));
+  const xmin = o.xmin ?? (xs.length ? Math.min(...xs) : 0), xmax = o.xmax ?? (xs.length ? Math.max(...xs) : 1);
+  let ymin = o.ymin ?? (ys.length ? Math.min(...ys) : 0), ymax = o.ymax ?? (ys.length ? Math.max(...ys) : 1);
+  if (ymax - ymin < 1e-9) ymax = ymin + 1;
+  const X = x => pl + (x - xmin) / ((xmax - xmin) || 1) * (w - pl - pr), Y = y => h - pb - (y - ymin) / (ymax - ymin) * (h - pt - pb);
+  ctx.clearRect(0, 0, w, h);
+  ctx.font = '10.5px JetBrains Mono, monospace'; ctx.lineWidth = 1;
+  const ys_ = niceStep(ymax - ymin, 4), xs_ = niceStep(xmax - xmin, Math.max(3, Math.floor((w - pl - pr) / 70)));
+  for (let v = Math.ceil(ymin / ys_) * ys_; v <= ymax + 1e-9; v += ys_) { const y = Y(v); ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(w - pr, y); ctx.stroke(); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'right'; ctx.fillText(SL.fmt(Math.abs(v) < 1e-9 ? 0 : v, 2), pl - 6, y + 3.5); }
+  const xlw = o.xlabel ? ctx.measureText(o.xlabel).width + 10 : 0;
+  for (let v = Math.ceil(xmin / xs_) * xs_; v <= xmax + 1e-9; v += xs_) { const x = X(v); if (o.xlabel && x + 14 > w - pr - xlw) continue; ctx.strokeStyle = 'rgba(255,255,255,.04)'; ctx.beginPath(); ctx.moveTo(x, pt); ctx.lineTo(x, h - pb); ctx.stroke(); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'center'; ctx.fillText(o.xfmt ? o.xfmt(v) : SL.fmt(v, 2), x, h - pb + 14); }
+  ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.beginPath(); ctx.moveTo(pl, pt); ctx.lineTo(pl, h - pb); ctx.lineTo(w - pr, h - pb); ctx.stroke();
+  if (o.xlabel) { ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'right'; ctx.fillText(o.xlabel, w - pr, h - pb + 14); }
+  if (o.ylabel) { ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'left'; ctx.fillText(o.ylabel, pl + 4, pt - 8); }
+  ctx.save(); ctx.beginPath(); ctx.rect(pl, pt - 2, w - pl - pr, h - pt - pb + 2); ctx.clip();
+  series.forEach(s => {
+    if (!s.data.length) return;
+    ctx.strokeStyle = s.color; ctx.lineWidth = s.width || 1.8; ctx.setLineDash(s.dash || []); ctx.lineJoin = 'round';
+    ctx.beginPath(); s.data.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))); ctx.stroke(); ctx.setLineDash([]);
+    if (s.fill) { ctx.lineTo(X(s.data[s.data.length - 1][0]), Y(ymin)); ctx.lineTo(X(s.data[0][0]), Y(ymin)); ctx.closePath(); ctx.fillStyle = s.fill; ctx.fill(); }
+  });
+  ctx.restore();
+  if (o.legend !== false) { let lx = pl + 6; ctx.textAlign = 'left'; let ly = pt - 8; series.filter(s => s.label).forEach(s => { const tw = ctx.measureText(s.label).width; if (lx + tw + 14 > w - pr && lx > pl + 6) { lx = pl + 6; ly += 13; } ctx.fillStyle = s.color; ctx.fillRect(lx, ly - 4, 10, 3); ctx.fillStyle = '#93a1bd'; ctx.fillText(s.label, lx + 13, ly); lx += tw + 26; }); }
+  return { X, Y, xmin, xmax, ymin, ymax, pl, pt, pr, pb };
+}
+
+/* ---------- mode switching ---------- */
+const hints = { sav: 'Each animal is an agent with its own energy budget, age and behaviour.', lv: 'Population densities as continuous variables: click the phase plane to launch trajectories.', web: 'Who eats whom on a Kenyan savannah, and how energy thins out up the food chain.' };
+let mode = 'sav';
+$$('#modeSeg button').forEach(b => b.onclick = () => {
+  mode = b.dataset.mode;
+  $$('#modeSeg button').forEach(x => x.classList.toggle('on', x === b));
+  $$('section.lab').forEach(s => s.hidden = s.dataset.mode !== mode);
+  $('#modeHint').textContent = hints[mode];
+  savLoop.stop(); lvLoop.stop(); webLoop.stop();
+  ({ sav: savLoop, lv: lvLoop, web: webLoop })[mode].start();
+});
+document.addEventListener('visibilitychange', () => { const L = ({ sav: savLoop, lv: lvLoop, web: webLoop })[mode]; if (document.hidden) L.stop(); else L.start(); });
+
+/* =====================================================================
+   A. AGENT-BASED SAVANNAH
+   ===================================================================== */
+// Agent-based savannah model (shared between page and node tuning)
+function makeEco(seed, ov) {
+  let s = seed >>> 0 || 12345;
+  const rnd = () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+  const W = 96, H = 60;
+  const SP = {
+    zebra:   { kind: 'herb', Emax: 40, cost: 0.35, bite: 0.30, gain: 4.0, speed: 1.3, mature: 200, maxAge: 2200, birthP: 0.006, litter: [1, 1], flee: 1.8 },
+    gazelle: { kind: 'herb', Emax: 30, cost: 0.30, bite: 0.20, gain: 4.0, speed: 1.6, mature: 140, maxAge: 1500, birthP: 0.008, litter: [1, 1], flee: 2.2 },
+    lion:    { kind: 'pred', Emax: 60, cost: 0.40, speed: 1.6, vision: 5, sprint: 3.5, mature: 380, maxAge: 2800, birthP: 0.004, litter: [1, 2], prey: { zebra: [0.09, 30], gazelle: [0.05, 14] } },
+    cheetah: { kind: 'pred', Emax: 40, cost: 0.40, speed: 2.0, vision: 6, sprint: 5, mature: 300, maxAge: 2200, birthP: 0.005, litter: [1, 2], prey: { gazelle: [0.15, 14], zebra: [0.01, 30] } },
+    dog:     { kind: 'pred', Emax: 35, cost: 0.38, speed: 2.2, vision: 8, sprint: 4.5, mature: 260, maxAge: 2000, birthP: 0.006, litter: [1, 3], prey: { gazelle: [0.16, 14], zebra: [0.04, 30] }, pack: true },
+  };
+  if (ov) for (const k in ov) Object.assign(SP[k], ov[k]);
+  const P = { regrowMul: 1, open: true, regrow: 0.09, rain: 1.0, fence: false, droughtUntil: -1, cap: 1400 };
+  const grass = new Float32Array(W * H);
+  for (let i = 0; i < W * H; i++) grass[i] = 0.5 + 0.4 * rnd();
+  let animals = [];
+  let day = 0, nextId = 1;
+  const stats = { births: {}, deaths: {}, kills: 0, starved: 0 };
+  const events = [];
+  function add(sp, x, y, opt) {
+    const d = SP[sp];
+    const a = { id: nextId++, sp, x: x ?? rnd() * W, y: y ?? rnd() * H, px: 0, py: 0, E: d.Emax * (0.5 + 0.3 * rnd()), age: opt && opt.age != null ? opt.age : Math.floor(rnd() * d.maxAge * 0.5), dir: rnd() * 6.283, inf: 0, imm: false, alive: true };
+    a.px = a.x; a.py = a.y;
+    animals.push(a); return a;
+  }
+  function season(d) { // 0..1 rainfall factor, bimodal (long rains Mar-May, short rains Oct-Dec)
+    const doy = d % 365;
+    const g = (c, w) => Math.exp(-0.5 * ((doy - c) / w) ** 2);
+    return 0.25 + 0.85 * g(105, 28) + 0.7 * g(320, 24);
+  }
+  function rainNow() { return season(day) * P.rain * (day < P.droughtUntil ? 0.15 : 1); }
+  const idx = (x, y) => (Math.min(H - 1, Math.max(0, y | 0))) * W + Math.min(W - 1, Math.max(0, x | 0));
+  function crossFence(x0, x1) { return P.fence && ((x0 < W / 2) !== (x1 < W / 2)); }
+  function moveTo(a, nx, ny) {
+    nx = Math.max(0.2, Math.min(W - 0.2, nx)); ny = Math.max(0.2, Math.min(H - 0.2, ny));
+    if (crossFence(a.x, nx)) { a.dir += Math.PI; return; }
+    a.x = nx; a.y = ny;
+  }
+  function count() { const c = { zebra: 0, gazelle: 0, lion: 0, cheetah: 0, dog: 0 }; for (const a of animals) c[a.sp]++; return c; }
+  function step() {
+    const R = rainNow();
+    // grass
+    let gsum = 0;
+    for (let i = 0; i < grass.length; i++) {
+      let g = grass[i];
+      g += P.regrow * P.regrowMul * R * (g * (1 - g) + 0.015);
+      g -= 0.002 * g * Math.max(0, 0.6 - R); // dry-season senescence
+      grass[i] = g < 0 ? 0 : g > 1 ? 1 : g; gsum += grass[i];
+    }
+    const preds = animals.filter(a => SP[a.sp].kind === 'pred');
+    const BS = 6, BW = Math.ceil(W / BS), BH = Math.ceil(H / BS);
+    const hb = Array.from({ length: BW * BH }, () => []), pb = Array.from({ length: BW * BH }, () => []);
+    const bk = (x, y) => Math.min(BH - 1, Math.max(0, (y / BS) | 0)) * BW + Math.min(BW - 1, Math.max(0, (x / BS) | 0));
+    for (const a of animals) (SP[a.sp].kind === 'pred' ? pb : hb)[bk(a.x, a.y)].push(a);
+    const near = (B, x, y, r, fn) => { const x0 = Math.max(0, ((x - r) / BS) | 0), x1 = Math.min(BW - 1, ((x + r) / BS) | 0), y0 = Math.max(0, ((y - r) / BS) | 0), y1 = Math.min(BH - 1, ((y + r) / BS) | 0); for (let by = y0; by <= y1; by++) for (let bx = x0; bx <= x1; bx++) for (const q of B[by * BW + bx]) fn(q); };
+    const born = [];
+    for (const a of animals) {
+      a.px = a.x; a.py = a.y;
+      const d = SP[a.sp];
+      a.age++; a.E -= d.cost;
+      if (d.kind === 'herb') {
+        // flee nearest predator
+        let fx = 0, fy = 0, threat = false;
+        near(pb, a.x, a.y, 3, p => { const dx = a.x - p.x, dy = a.y - p.y, r2 = dx * dx + dy * dy; if (r2 < 9 && r2 > 1e-6) { const r = Math.sqrt(r2); fx += dx / r; fy += dy / r; threat = true; } });
+        if (a.alarm > 0) a.alarm--;
+        if (threat || a.alarm > 0) { if (!threat) fx = Math.cos(a.dir), fy = Math.sin(a.dir); a.dir = Math.atan2(fy, fx); const sp = d.speed * d.flee; moveTo(a, a.x + Math.cos(a.dir) * sp, a.y + Math.sin(a.dir) * sp); }
+        else {
+          // sample directions, move toward greener grass
+          let best = -1, bd = a.dir;
+          for (let k = 0; k < 4; k++) { const th = k === 0 ? a.dir : rnd() * 6.283; const g = grass[idx(a.x + Math.cos(th) * 3, a.y + Math.sin(th) * 3)]; if (g > best) { best = g; bd = th; } }
+          const here = grass[idx(a.x, a.y)];
+          if (here > 0.45 && rnd() < 0.6) { a.dir += (rnd() - 0.5) * 1.2; moveTo(a, a.x + Math.cos(a.dir) * 0.25, a.y + Math.sin(a.dir) * 0.25); }
+          else { a.dir = bd + (rnd() - 0.5) * 0.6; moveTo(a, a.x + Math.cos(a.dir) * d.speed, a.y + Math.sin(a.dir) * d.speed); }
+        }
+        const i = idx(a.x, a.y), take = Math.min(Math.max(0, grass[i] - 0.04) * 0.6, d.bite);
+        grass[i] -= take; a.E = Math.min(d.Emax, a.E + take * d.gain);
+      } else {
+        const hungry = a.E < d.Emax * 0.75;
+        if (a.cd > 0) a.cd--;
+        let target = null, tb = 1e9;
+        if (hungry && !(a.cd > 0)) near(hb, a.x, a.y, d.vision, h => {
+          if (!h.alive || !d.prey[h.sp]) return;
+          const dx = h.x - a.x, dy = h.y - a.y, r2 = dx * dx + dy * dy;
+          if (r2 > d.vision * d.vision) return;
+          if (P.fence && ((h.x < W / 2) !== (a.x < W / 2))) return;
+          const score = r2 / (d.prey[h.sp][0] + 0.05);
+          if (score < tb) { tb = score; target = h; }
+        });
+        if (target) {
+          const dx = target.x - a.x, dy = target.y - a.y, r = Math.hypot(dx, dy);
+          a.dir = Math.atan2(dy, dx);
+          if (r <= d.sprint) {
+            let p = d.prey[target.sp][0];
+            if (d.pack) { let mates = 0; near(pb, a.x, a.y, 5, q => { if (q !== a && q.sp === a.sp && Math.abs(q.x - a.x) < 5 && Math.abs(q.y - a.y) < 5) mates++; }); p = Math.min(0.85, p * (1 + 0.3 * Math.min(mates, 5))); }
+            moveTo(a, target.x - dx / r * 0.4, target.y - dy / r * 0.4);
+            if (rnd() < p) { target.alive = false; target.killedBy = a.sp; a.E = Math.min(d.Emax, a.E + d.prey[target.sp][1]); stats.kills++; a.cd = 2; a.feast = 3; events.push({ t: 'kill', x: target.x, y: target.y, sp: target.sp, by: a.sp, day }); if (events.length > 300) events.splice(0, 100); }
+            else { a.cd = 1 + Math.floor(rnd() * 2); target.alarm = 2; }
+          } else { const st = Math.min(r, d.speed); moveTo(a, a.x + dx / r * st, a.y + dy / r * st); }
+        } else {
+          if (d.pack) {
+            let cx = 0, cy = 0, n = 0; near(pb, a.x, a.y, 12, q => { if (q.sp === a.sp && q !== a) { const r2 = (q.x - a.x) ** 2 + (q.y - a.y) ** 2; if (r2 < 144) { cx += q.x; cy += q.y; n++; } } });
+            if (n) a.dir = Math.atan2(cy / n - a.y, cx / n - a.x) + (rnd() - 0.5) * 1.2;
+          }
+          a.dir += (rnd() - 0.5) * 0.9;
+          const sp = hungry ? d.speed * 0.7 : d.speed * 0.12;
+          moveTo(a, a.x + Math.cos(a.dir) * sp, a.y + Math.sin(a.dir) * sp);
+        }
+        // disease (canine distemper-like) among carnivores
+        if (a.inf > 0) {
+          a.inf--; if (a.inf === 0) a.imm = true;
+          if (rnd() < 0.011) { a.alive = false; a.diedOf = 'disease'; }
+          near(pb, a.x, a.y, 3, q => { if (q !== a && !q.inf && !q.imm && Math.abs(q.x - a.x) < 3 && Math.abs(q.y - a.y) < 3 && rnd() < 0.06) q.inf = 40; });
+        }
+      }
+      // reproduction
+      if (a.alive && a.age > d.mature && a.E > d.Emax * 0.6 && rnd() < d.birthP * (d.kind === 'herb' ? Math.min(1, 0.3 + R) : 1) && animals.length + born.length < P.cap) {
+        const n = d.litter[0] + Math.floor(rnd() * (d.litter[1] - d.litter[0] + 1));
+        for (let k = 0; k < n; k++) {
+          born.push([a.sp, a.x + (rnd() - 0.5), a.y + (rnd() - 0.5)]);
+        }
+        a.E -= d.Emax * (d.kind === 'herb' ? 0.35 : 0.12 * n);
+      }
+      // death
+      if (a.alive) {
+        if (a.E <= 0) { a.alive = false; a.diedOf = 'starvation'; stats.starved++; }
+        else if (a.age > d.maxAge * 0.7 && rnd() < (a.age - d.maxAge * 0.7) / (d.maxAge * 0.3) * 0.01) { a.alive = false; a.diedOf = 'age'; }
+        else if (rnd() < 0.00015) { a.alive = false; a.diedOf = 'other'; }
+      }
+    }
+    for (const a of animals) if (!a.alive) { stats.deaths[a.sp] = (stats.deaths[a.sp] || 0) + 1; }
+    animals = animals.filter(a => a.alive);
+    for (const [sp, x, y] of born) { const b = add(sp, x, y, { age: 0 }); b.E = SP[sp].Emax * 0.45; stats.births[sp] = (stats.births[sp] || 0) + 1; }
+    if (P.open) {
+      const c = count();
+      const imm = { zebra: 0.03, gazelle: 0.03, lion: 0.004, cheetah: 0.003 };
+      if (P.fence) { imm.zebra /= 2; imm.gazelle /= 2; }
+      for (const sp in imm) if (rnd() < imm[sp] * (c[sp] < 6 ? 3 : 1)) { const edge = rnd() < 0.5; const b = add(sp, edge ? (rnd() < 0.5 ? 0.3 : W - 0.3) : rnd() * W, edge ? rnd() * H : (rnd() < 0.5 ? 0.3 : H - 0.3), { age: SP[sp].mature + 50 }); b.migrant = true; }
+    }
+    day++;
+    return gsum / grass.length;
+  }
+  return { W, H, SP, P, grass, get animals() { return animals; }, set animals(v) { animals = v; }, get day() { return day; }, add, step, count, season, rainNow, rnd, stats, events };
+}
+
+const COL = { zebra: '#e2e8f0', gazelle: '#c9935a', lion: '#f97316', cheetah: '#eab308', dog: '#a78bfa' };
+const NAME = { zebra: 'Plains zebra', gazelle: "Thomson's gazelle", lion: 'Lion', cheetah: 'Cheetah', dog: 'African wild dog' };
+let texture = null;
+const chDone = {};
+let eco, hist, phaseTrail, running = true, acc = 0, tool = 'inspect', selected = null, killDays = [], grassMean = 0.7, trees = [];
+let poachDay = -1, poachHerb = 0, closedSince = 0, closedOk = true, seedN = 7;
+const savSt = SL.canvas($('#savCv'), () => { texture = null; });
+const popSt = SL.canvas($('#popCv'));
+const phSt = SL.canvas($('#phaseCv'));
+const gImg = document.createElement('canvas'); gImg.width = 96; gImg.height = 60;
+const gctx = gImg.getContext('2d'); const gdata = gctx.createImageData(96, 60);
+
+function logEv(msg) { const li = document.createElement('li'); li.innerHTML = `<b>Y${Math.floor(eco.day / 365) + 1} d${eco.day % 365}</b> ${msg}`; const ul = $('#log'); ul.prepend(li); while (ul.children.length > 30) ul.lastChild.remove(); }
+
+function reset(preset) {
+  preset = preset || $('#preset').value;
+  eco = makeEco(seedN++ * 7919);
+  const n = { balanced: [120, 160, 10, 7], nopred: [120, 160, 0, 0], predheavy: [90, 90, 30, 16], closed: [110, 140, 8, 6] }[preset];
+  for (let i = 0; i < n[0]; i++) eco.add('zebra'); for (let i = 0; i < n[1]; i++) eco.add('gazelle');
+  for (let i = 0; i < n[2]; i++) eco.add('lion'); for (let i = 0; i < n[3]; i++) eco.add('cheetah');
+  eco.animals.forEach(a => a.male = eco.rnd() < 0.5);
+  if (preset === 'closed') { $('#openT').checked = false; $('#fenceT').checked = true; }
+  else if (preset !== 'closed' && $('#fenceT').checked && !$('#openT').checked) { $('#openT').checked = true; $('#fenceT').checked = false; }
+  eco.P.open = $('#openT').checked; eco.P.fence = $('#fenceT').checked;
+  eco.P.regrowMul = +$('#regrow').value / 100; eco.P.rain = +$('#rainMul').value;
+  hist = []; phaseTrail = []; killDays = []; selected = null; acc = 0; poachDay = -1;
+  closedSince = 0; closedOk = !eco.P.open;
+  trees = []; for (let i = 0; i < 16; i++) trees.push({ x: 4 + eco.rnd() * 88, y: 3 + eco.rnd() * 54, s: 0.7 + eco.rnd() * 0.6 });
+  trees.sort((a, b) => a.y - b.y);
+  $('#log').innerHTML = ''; logEv('Simulation started: ' + $('#preset').selectedOptions[0].text.toLowerCase() + '.');
+  record(); updateStats(); drawCharts();
+}
+
+function record() {
+  const c = eco.count();
+  let g = 0; for (let i = 0; i < eco.grass.length; i++) g += eco.grass[i]; grassMean = g / eco.grass.length;
+  hist.push({ t: eco.day / 365, ...c, g: grassMean });
+  if (hist.length > 365 * 60) hist.splice(0, hist.length - 365 * 60);
+  if (eco.day % 5 === 0) { phaseTrail.push([c.zebra + c.gazelle, c.lion + c.cheetah + c.dog, eco.day]); if (phaseTrail.length > 2000) phaseTrail.shift(); }
+}
+
+function stepDay() {
+  const kb = eco.stats.kills;
+  eco.step();
+  for (let k = kb; k < eco.stats.kills; k++) killDays.push(eco.day);
+  while (killDays.length && killDays[0] < eco.day - 365) killDays.shift();
+  eco.animals.forEach(a => { if (a.male === undefined) a.male = eco.rnd() < 0.5; });
+  record();
+  const c = eco.count();
+  // extinction notices
+  for (const sp of ['zebra', 'gazelle', 'lion', 'cheetah', 'dog']) { const prev = hist.length > 1 ? hist[hist.length - 2][sp] : 0; if (prev > 0 && c[sp] === 0) logEv(`<span style="color:#f87171">${NAME[sp]} locally extinct.</span>`); }
+  if (eco.day === eco.P.droughtUntil) logEv('The drought breaks.');
+  // challenge 1: cascade after poaching
+  if (poachDay >= 0 && !chDone.ch1 && eco.day - poachDay <= 365 * 3 && grassMean < 0.35 && c.zebra + c.gazelle > poachHerb) done('ch1', 'Trophic cascade observed: fewer predators, more grazers, less grass.');
+  // challenge 2: closed reserve survival
+  if (!eco.P.open && closedOk) { if (!c.zebra || !c.gazelle || !c.lion || !c.cheetah) closedOk = false; else if (eco.day - closedSince >= 3650 && !chDone.ch2) done('ch2', 'All four species survived ten years in a closed reserve.'); }
+  if (selected && !eco.animals.includes(selected)) { $('#inspect').innerHTML = `<b style="color:var(--text)">${NAME[selected.sp]}</b> died (${selected.killedBy ? 'killed by a ' + NAME[selected.killedBy].toLowerCase() : selected.diedOf || 'unknown'}).`; selected = null; }
+}
+
+function seasonName(doy) { return doy < 59 ? 'Short dry season' : doy < 152 ? 'Long rains' : doy < 273 ? 'Long dry season' : 'Short rains'; }
+
+function updateStats() {
+  const c = eco.count();
+  $('#cZ').textContent = c.zebra; $('#cG').textContent = c.gazelle; $('#cL').textContent = c.lion; $('#cC').textContent = c.cheetah; $('#cD').textContent = c.dog;
+  $('#cGr').textContent = Math.round(grassMean * 100);
+  $('#cK').textContent = killDays.length;
+  const pr = c.lion + c.cheetah + c.dog; $('#cR').textContent = pr ? SL.fmt((c.zebra + c.gazelle) / pr, 1) + ' : 1' : '–';
+  $('#hYear').textContent = Math.floor(eco.day / 365) + 1; $('#hDay').textContent = eco.day % 365;
+  $('#hSeason').textContent = seasonName(eco.day % 365) + (eco.day < eco.P.droughtUntil ? ' · drought' : '');
+  $('#hRain').textContent = Math.round(eco.rainNow() / 1.1 * 100);
+  const chips = [];
+  if (eco.day < eco.P.droughtUntil) chips.push(`<span class="evchip">Drought · ${eco.P.droughtUntil - eco.day} d left</span>`);
+  const inf = eco.animals.filter(a => a.inf > 0).length; if (inf) chips.push(`<span class="evchip" style="border-color:#f87171;color:#fca5a5">Distemper · ${inf} infected</span>`);
+  if (eco.P.fence) chips.push('<span class="evchip blue">Fence</span>');
+  if (!eco.P.open) chips.push('<span class="evchip blue">Closed reserve</span>');
+  $('#evChips').innerHTML = chips.join('');
+  if (selected) showInspect(selected);
+}
+
+function showInspect(a) {
+  const d = eco.SP[a.sp];
+  const stage = a.age < d.mature ? 'juvenile' : 'adult';
+  const st = a.inf > 0 ? '<span style="color:#f87171">infected</span>' : a.imm ? 'recovered (immune)' : 'healthy';
+  $('#inspect').innerHTML = `<h4 style="color:var(--text);margin:0 0 4px">${NAME[a.sp]} #${a.id}</h4>
+    <div>Age <b style="color:var(--text)">${a.age}</b> days (${stage}, matures at ${d.mature} d)</div>
+    <div>Energy <b style="color:var(--text)">${Math.round(a.E / d.Emax * 100)}%</b> of store · cost ${d.cost}/day</div>
+    <div style="height:6px;background:var(--line2);border-radius:4px;margin:6px 0"><div style="height:100%;width:${clamp(a.E / d.Emax * 100, 0, 100)}%;background:${a.E / d.Emax < 0.25 ? '#f87171' : '#4ade80'};border-radius:4px"></div></div>
+    <div>Status: ${st}${a.migrant ? ' · arrived by migration' : ''}</div>`;
+}
+
+/* ---------- drawing ---------- */
+function makeTexture(w, h) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d');
+  let s = 99; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < w * h / 55; i++) { const px = r() * w, py = r() * h, l = 3 + r() * 5; x.strokeStyle = r() < 0.5 ? 'rgba(255,255,220,.10)' : 'rgba(0,30,0,.12)'; x.lineWidth = 1; x.beginPath(); x.moveTo(px, py); x.lineTo(px + (r() - 0.5) * 3, py - l); x.stroke(); }
+  const v = x.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.35)'); x.fillStyle = v; x.fillRect(0, 0, w, h);
+  return c;
+}
+function grassColour(g, wet) {
+  // soil -> straw -> green blend
+  const soil = [128, 98, 62], straw = [196, 170, 98], green = [78, 146, 56], lush = [46, 116, 46];
+  const a = clamp(g * 2.2, 0, 1), base = soil.map((v, i) => v + (straw[i] - v) * a);
+  const gw = clamp(wet * 1.3, 0, 1) * clamp(g * 1.6, 0, 1), col = base.map((v, i) => v + (green[i] - v) * gw);
+  const lu = clamp((g - 0.7) * 2.5, 0, 1) * gw; return col.map((v, i) => v + (lush[i] - v) * lu);
+}
+function drawTree(ctx, x, y, s) {
+  ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(x + 4 * s, y + 2 * s, 14 * s, 4 * s, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#4a3423'; ctx.lineWidth = 2.2 * s; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 1 * s, y - 9 * s); ctx.moveTo(x - 0.5 * s, y - 6 * s); ctx.lineTo(x + 5 * s, y - 11 * s); ctx.moveTo(x - 1 * s, y - 8 * s); ctx.lineTo(x - 6 * s, y - 11 * s); ctx.stroke();
+  const gr = ctx.createLinearGradient(0, y - 16 * s, 0, y - 9 * s); gr.addColorStop(0, '#5f8f3a'); gr.addColorStop(1, '#2f5a26');
+  ctx.fillStyle = gr; ctx.beginPath(); ctx.ellipse(x, y - 12.5 * s, 13 * s, 3.6 * s, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(160,200,90,.35)'; ctx.beginPath(); ctx.ellipse(x - 2 * s, y - 14 * s, 8 * s, 1.6 * s, 0, 0, 7); ctx.fill();
+}
+function drawAnimal(ctx, a, x, y, s, t) {
+  const f = Math.cos(a.dir) >= 0 ? 1 : -1;
+  const mv = Math.hypot(a.x - a.px, a.y - a.py) > 0.3;
+  const ph = mv ? Math.sin(t * 14 + a.id) : 0;
+  ctx.save(); ctx.translate(x, y); ctx.scale(f, 1);
+  ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(0, s * 0.36, s * 0.55, s * 0.12, 0, 0, 7); ctx.fill();
+  const legs = (col, lw) => { ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath(); for (const [lx, p] of [[-0.32, ph], [-0.22, -ph], [0.22, -ph], [0.32, ph]]) { ctx.moveTo(lx * s, 0.08 * s); ctx.lineTo(lx * s + p * 0.08 * s, 0.36 * s); } ctx.stroke(); };
+  const lw = Math.max(1, s * 0.07);
+  if (a.sp === 'zebra') {
+    legs('#d8d8d8', lw);
+    ctx.fillStyle = '#f4f4f4'; ctx.beginPath(); ctx.ellipse(0, 0, s * 0.42, s * 0.2, 0, 0, 7); ctx.fill();
+    ctx.save(); ctx.clip(); ctx.strokeStyle = '#111'; ctx.lineWidth = Math.max(0.8, s * 0.06);
+    for (let k = -3; k <= 3; k++) { ctx.beginPath(); ctx.moveTo(k * s * 0.11, -s * 0.22); ctx.quadraticCurveTo(k * s * 0.11 + s * 0.05, 0, k * s * 0.11 - s * 0.02, s * 0.22); ctx.stroke(); }
+    ctx.restore();
+    ctx.strokeStyle = '#f4f4f4'; ctx.lineWidth = s * 0.15; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(s * 0.3, -s * 0.06); ctx.lineTo(s * 0.48, -s * 0.32); ctx.stroke();
+    ctx.strokeStyle = '#111'; ctx.lineWidth = s * 0.05; ctx.beginPath(); ctx.moveTo(s * 0.26, -s * 0.14); ctx.lineTo(s * 0.43, -s * 0.38); ctx.stroke();
+    ctx.fillStyle = '#f4f4f4'; ctx.beginPath(); ctx.ellipse(s * 0.56, -s * 0.33, s * 0.14, s * 0.07, 0.5, 0, 7); ctx.fill();
+    ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(s * 0.66, -s * 0.28, s * 0.045, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#222'; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(-s * 0.42, -s * 0.05); ctx.lineTo(-s * 0.5, s * 0.15); ctx.stroke();
+  } else if (a.sp === 'gazelle') {
+    legs('#8a6239', lw * 0.8);
+    ctx.fillStyle = '#c9935a'; ctx.beginPath(); ctx.ellipse(0, 0, s * 0.38, s * 0.16, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#f3ead8'; ctx.beginPath(); ctx.ellipse(0, s * 0.07, s * 0.3, s * 0.08, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#2b1d10'; ctx.lineWidth = Math.max(0.8, s * 0.05); ctx.beginPath(); ctx.moveTo(-s * 0.28, s * 0.02); ctx.lineTo(s * 0.28, s * 0.02); ctx.stroke();
+    ctx.strokeStyle = '#c9935a'; ctx.lineWidth = s * 0.09; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(s * 0.28, -s * 0.05); ctx.lineTo(s * 0.42, -s * 0.3); ctx.stroke();
+    ctx.fillStyle = '#c9935a'; ctx.beginPath(); ctx.ellipse(s * 0.48, -s * 0.31, s * 0.1, s * 0.05, 0.4, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#3a2a1a'; ctx.lineWidth = Math.max(0.7, s * 0.035); ctx.beginPath(); ctx.moveTo(s * 0.43, -s * 0.35); ctx.quadraticCurveTo(s * 0.4, -s * 0.52, s * 0.33, -s * 0.56); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(-s * 0.38, -s * 0.02, s * 0.06, 0, 7); ctx.fill();
+  } else if (a.sp === 'lion') {
+    legs('#b37a35', lw * 1.2);
+    ctx.fillStyle = '#d39a4a'; ctx.beginPath(); ctx.ellipse(0, 0, s * 0.42, s * 0.19, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#d39a4a'; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(-s * 0.4, -s * 0.03); ctx.quadraticCurveTo(-s * 0.62, -s * 0.05, -s * 0.66, s * 0.15); ctx.stroke();
+    ctx.fillStyle = '#5a3416'; ctx.beginPath(); ctx.arc(-s * 0.66, s * 0.16, s * 0.05, 0, 7); ctx.fill();
+    if (a.male) { ctx.fillStyle = '#7a4a1f'; ctx.beginPath(); ctx.arc(s * 0.42, -s * 0.12, s * 0.23, 0, 7); ctx.fill(); }
+    ctx.fillStyle = '#dca456'; ctx.beginPath(); ctx.arc(s * 0.46, -s * 0.12, s * 0.14, 0, 7); ctx.fill();
+    ctx.fillStyle = '#3a220e'; ctx.beginPath(); ctx.arc(s * 0.58, -s * 0.1, s * 0.03, 0, 7); ctx.fill();
+  } else if (a.sp === 'cheetah') {
+    legs('#c9a45a', lw * 0.9);
+    ctx.fillStyle = '#ecc66f'; ctx.beginPath(); ctx.ellipse(0, 0, s * 0.42, s * 0.14, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#2a1c0c'; for (const [sx, sy] of [[-0.25, -0.05], [-0.1, 0.04], [0.05, -0.06], [0.2, 0.03], [-0.18, 0.06], [0.1, 0.08], [0.28, -0.05]]) { ctx.beginPath(); ctx.arc(sx * s, sy * s, Math.max(0.6, s * 0.03), 0, 7); ctx.fill(); }
+    ctx.strokeStyle = '#ecc66f'; ctx.lineWidth = lw * 0.9; ctx.beginPath(); ctx.moveTo(-s * 0.4, 0); ctx.quadraticCurveTo(-s * 0.7, s * 0.02, -s * 0.72, -s * 0.15); ctx.stroke();
+    ctx.fillStyle = '#ecc66f'; ctx.beginPath(); ctx.arc(s * 0.45, -s * 0.1, s * 0.11, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#2a1c0c'; ctx.lineWidth = Math.max(0.6, s * 0.025); ctx.beginPath(); ctx.moveTo(s * 0.5, -s * 0.1); ctx.lineTo(s * 0.52, -s * 0.02); ctx.stroke();
+  } else {
+    legs('#3d3226', lw * 0.9);
+    ctx.fillStyle = '#6b5a43'; ctx.beginPath(); ctx.ellipse(0, 0, s * 0.36, s * 0.16, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#e8dcc0'; ctx.beginPath(); ctx.arc(-s * 0.12, -s * 0.05, s * 0.07, 0, 7); ctx.arc(s * 0.12, s * 0.04, s * 0.06, 0, 7); ctx.fill();
+    ctx.fillStyle = '#1b1712'; ctx.beginPath(); ctx.arc(s * 0.02, -s * 0.06, s * 0.06, 0, 7); ctx.fill();
+    ctx.fillStyle = '#6b5a43'; ctx.beginPath(); ctx.arc(s * 0.4, -s * 0.12, s * 0.11, 0, 7); ctx.fill();
+    ctx.fillStyle = '#1b1712'; ctx.beginPath(); ctx.ellipse(s * 0.36, -s * 0.27, s * 0.05, s * 0.08, 0, 0, 7); ctx.ellipse(s * 0.46, -s * 0.27, s * 0.05, s * 0.08, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#3d3226'; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(-s * 0.35, -s * 0.03); ctx.lineTo(-s * 0.55, s * 0.1); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(-s * 0.56, s * 0.11, s * 0.04, 0, 7); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawSav(frac, t) {
+  const { ctx, w, h } = savSt, W = eco.W, H = eco.H, sx = w / W, sy = h / H;
+  const R = eco.rainNow(), wet = clamp(R / 0.9, 0, 1);
+  const d = gdata.data;
+  for (let i = 0; i < eco.grass.length; i++) { const c = grassColour(eco.grass[i], wet); d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = 255; }
+  gctx.putImageData(gdata, 0, 0);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(gImg, 0, 0, w, h);
+  if (!texture || texture.width !== w) texture = makeTexture(w, h);
+  ctx.drawImage(texture, 0, 0);
+  // waterhole
+  const wx = 0.73 * w, wy = 0.3 * h, wr = Math.min(w, h) * 0.06 * (0.6 + 0.4 * wet) * (eco.day < eco.P.droughtUntil ? 0.55 : 1);
+  ctx.fillStyle = 'rgba(80,60,35,.6)'; ctx.beginPath(); ctx.ellipse(wx, wy, wr * 1.5, wr * 0.75, 0, 0, 7); ctx.fill();
+  const wg = ctx.createRadialGradient(wx - wr * 0.3, wy - wr * 0.2, 1, wx, wy, wr * 1.3); wg.addColorStop(0, '#5fb7d6'); wg.addColorStop(1, '#22607d');
+  ctx.fillStyle = wg; ctx.beginPath(); ctx.ellipse(wx, wy, wr * 1.3, wr * 0.6, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(wx - wr * 0.2, wy - wr * 0.1, wr * 0.6 + Math.sin(t * 2) * 2, wr * 0.2, 0, 0, 7); ctx.stroke();
+  // fence
+  if (eco.P.fence) { const fx = w / 2; ctx.strokeStyle = 'rgba(60,40,20,.9)'; ctx.lineWidth = 1; for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.moveTo(fx - 1 + k, 0); ctx.lineTo(fx - 1 + k, h); ctx.stroke(); } ctx.fillStyle = '#5b4026'; for (let y = 4; y < h; y += 16) ctx.fillRect(fx - 2.5, y, 5, 6); }
+  // kill markers
+  const s0 = clamp(Math.min(sx, sy) * 1.7, 9, 17);
+  for (const e of eco.events) { const age = eco.day + frac - e.day; if (age > 25) continue; const a = 1 - age / 25; ctx.fillStyle = `rgba(185,28,28,${0.5 * a})`; ctx.beginPath(); ctx.ellipse(e.x * sx, e.y * sy, s0 * 0.6, s0 * 0.3, 0, 0, 7); ctx.fill(); if (age < 4) { ctx.strokeStyle = `rgba(255,120,80,${1 - age / 4})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x * sx, e.y * sy, s0 * (0.5 + age * 0.5), 0, 7); ctx.stroke(); } }
+  // depth-sorted trees + animals
+  const items = trees.map(tr => ({ y: tr.y, tree: tr })).concat(eco.animals.map(a => ({ y: a.py + (a.y - a.py) * frac, a })));
+  items.sort((p, q) => p.y - q.y);
+  const mul = { zebra: 1, gazelle: 0.78, lion: 1.05, cheetah: 0.95, dog: 0.8 };
+  for (const it of items) {
+    if (it.tree) { drawTree(ctx, it.tree.x * sx, it.tree.y * sy, it.tree.s * clamp(Math.min(sx, sy) / 8, 0.55, 1.25)); continue; }
+    const a = it.a, x = (a.px + (a.x - a.px) * frac) * sx, y = it.y * sy;
+    let s = s0 * mul[a.sp] * (a.age < eco.SP[a.sp].mature ? 0.68 : 1);
+    if (a.inf > 0) { ctx.strokeStyle = `rgba(248,113,113,${0.5 + 0.4 * Math.sin(t * 6)})`; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, s * 0.7, 0, 7); ctx.stroke(); }
+    drawAnimal(ctx, a, x, y, s, t);
+    if (a === selected) { ctx.strokeStyle = '#2dd4bf'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, s * 0.85 + Math.sin(t * 5) * 1.5, 0, 7); ctx.stroke(); }
+  }
+  // rain
+  if (R > 0.55 && eco.day >= eco.P.droughtUntil) {
+    const n = Math.floor((R - 0.55) * 260 * (w / 900));
+    ctx.strokeStyle = 'rgba(200,225,255,.35)'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let i = 0; i < n; i++) { const rx = ((i * 97.13 + t * 260) % (w + 40)) - 20, ry = ((i * 53.7 + t * 520 + i * i * 0.37) % (h + 20)) - 10; ctx.moveTo(rx, ry); ctx.lineTo(rx - 3, ry + 10); }
+    ctx.stroke();
+    ctx.fillStyle = `rgba(30,50,80,${(R - 0.55) * 0.35})`; ctx.fillRect(0, 0, w, h);
+  }
+  if (eco.day < eco.P.droughtUntil) { ctx.fillStyle = 'rgba(255,150,40,.12)'; ctx.fillRect(0, 0, w, h); }
+}
+
+function drawCharts() {
+  const step = Math.max(1, Math.floor(hist.length / 900));
+  const win = 12, t1 = hist.length ? hist[hist.length - 1].t : 0, t0 = Math.max(0, t1 - win);
+  const pts = sp => { const out = []; for (let i = 0; i < hist.length; i += step) if (hist[i].t >= t0) out.push([hist[i].t, hist[i][sp]]); return out; };
+  const s = [{ data: pts('zebra'), color: COL.zebra, label: 'Zebra' }, { data: pts('gazelle'), color: COL.gazelle, label: 'Gazelle' },
+    { data: pts('lion').map(p => [p[0], p[1] * 5]), color: COL.lion, label: 'Lion ×5' }, { data: pts('cheetah').map(p => [p[0], p[1] * 5]), color: COL.cheetah, label: 'Cheetah ×5' }];
+  if (hist.some(p => p.dog)) s.push({ data: pts('dog').map(p => [p[0], p[1] * 5]), color: COL.dog, label: 'Dog ×5' });
+  let ymax = 50; s.forEach(q => q.data.forEach(p => ymax = Math.max(ymax, p[1])));
+  const gser = { data: [], color: 'rgba(74,222,128,.7)', dash: [4, 3], width: 1.4, label: 'Grass' };
+  for (let i = 0; i < hist.length; i += step) if (hist[i].t >= t0) gser.data.push([hist[i].t, hist[i].g * ymax]);
+  plot(popSt, [gser, ...s], { xmin: t0, xmax: Math.max(t0 + 2, t1), ymin: 0, ymax: ymax * 1.08, pad: [26, 12, 26, 40], xlabel: 'years' });
+  // phase plane
+  const { ctx, w, h } = phSt;
+  let xm = 50, ym = 10; phaseTrail.forEach(p => { xm = Math.max(xm, p[0]); ym = Math.max(ym, p[1]); });
+  const P = plot(phSt, [], { xmin: 0, xmax: xm * 1.1, ymin: 0, ymax: ym * 1.15, pad: [24, 12, 28, 36], xlabel: 'grazers', ylabel: 'predators' });
+  const n = phaseTrail.length;
+  ctx.save(); ctx.beginPath(); ctx.rect(P.pl, P.pt, w - P.pl - P.pr, h - P.pt - P.pb); ctx.clip();
+  for (let i = 1; i < n; i++) { const a = phaseTrail[i - 1], b = phaseTrail[i]; const age = (n - i) / n; ctx.strokeStyle = `hsla(${180 - 150 * (1 - age)},80%,62%,${0.15 + 0.85 * (1 - age)})`; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(P.X(a[0]), P.Y(a[1])); ctx.lineTo(P.X(b[0]), P.Y(b[1])); ctx.stroke(); }
+  if (n) { const p = phaseTrail[n - 1]; ctx.fillStyle = '#2dd4bf'; ctx.shadowColor = '#2dd4bf'; ctx.shadowBlur = 12; ctx.beginPath(); ctx.arc(P.X(p[0]), P.Y(p[1]), 4.5, 0, 7); ctx.fill(); }
+  ctx.restore();
+}
+
+let frameN = 0;
+const savLoop = SL.loop((dt, t) => {
+  if (running) {
+    acc += dt * +$('#speed').value;
+    let n = 0; while (acc >= 1 && n < 10) { stepDay(); acc -= 1; n++; }
+    if (n === 10) acc = Math.min(acc, 1);
+  }
+  drawSav(running ? acc : 1, t);
+  if (++frameN % 4 === 0) { updateStats(); drawCharts(); }
+});
+
+/* controls */
+SL.bind('#speed', null, v => v + ' d/s');
+SL.bind('#regrow', v => { if (eco) eco.P.regrowMul = v / 100; }, v => v + '%');
+SL.bind('#rainMul', v => { if (eco) eco.P.rain = v; }, v => v.toFixed(2) + '×');
+$('#openT').onchange = e => { eco.P.open = e.target.checked; if (!eco.P.open) { closedSince = eco.day; closedOk = true; } logEv(eco.P.open ? 'Migration corridors opened.' : 'Reserve closed: no immigration.'); };
+$('#fenceT').onchange = e => { eco.P.fence = e.target.checked; logEv(eco.P.fence ? 'Fence built across the reserve.' : 'Fence removed.'); };
+$('#preset').onchange = () => reset();
+$('#savReset').onclick = () => reset();
+const setPlay = () => { $('#savPlay').innerHTML = `<i data-lucide="${running ? 'pause' : 'play'}"></i>`; $('#savPlay2').innerHTML = `<i data-lucide="${running ? 'pause' : 'play'}"></i> ${running ? 'Pause' : 'Play'}`; SL.refreshIcons($('#savPlay').parentElement); SL.refreshIcons($('#savPlay2').parentElement); };
+$('#savPlay').onclick = $('#savPlay2').onclick = () => { running = !running; setPlay(); };
+$('#savStep').onclick = () => { running = false; setPlay(); stepDay(); acc = 0; updateStats(); drawCharts(); };
+$$('#tools .btn').forEach(b => b.onclick = () => { tool = b.dataset.tool; $$('#tools .btn').forEach(x => x.classList.toggle('on', x === b)); });
+$('#savCv').addEventListener('pointerdown', e => {
+  const p = SL.ptr(e, $('#savCv')), x = p.x / savSt.w * eco.W, y = p.y / savSt.h * eco.H;
+  if (tool === 'inspect') {
+    let best = null, bd = 9; for (const a of eco.animals) { const d2 = (a.x - x) ** 2 + (a.y - y) ** 2; if (d2 < bd) { bd = d2; best = a; } }
+    selected = best; if (best) showInspect(best); else $('#inspect').textContent = 'No animal there. Click closer to an animal.';
+    return;
+  }
+  const n = { zebra: 5, gazelle: 5, lion: 2, cheetah: 2, dog: 4 }[tool];
+  for (let i = 0; i < n; i++) { const a = eco.add(tool, clamp(x + (eco.rnd() - 0.5) * 2, 0.3, eco.W - 0.3), clamp(y + (eco.rnd() - 0.5) * 2, 0.3, eco.H - 0.3), { age: eco.SP[tool].mature + 30 }); a.male = eco.rnd() < 0.5; a.E = eco.SP[tool].Emax * 0.8; }
+  logEv(`Released ${n} ${NAME[tool].toLowerCase()}${n > 1 ? 's' : ''}.`); updateStats();
+});
+$('#ivDrought').onclick = () => { eco.P.droughtUntil = eco.day + 300; logEv('<span style="color:#fbbf24">Drought: rainfall falls to 15% for 300 days.</span>'); SL.toast('Drought declared: watch grass cover, then grazer and predator numbers.', 'warn'); };
+$('#ivPoach').onclick = () => { let n = 0; eco.animals = eco.animals.filter(a => { if (eco.SP[a.sp].kind === 'pred' && eco.rnd() < 0.6) { n++; a.alive = false; return false; } return true; }); poachDay = eco.day; const c = eco.count(); poachHerb = c.zebra + c.gazelle; logEv(`<span style="color:#f87171">Poaching removed ${n} predators.</span>`); SL.toast(`${n} predators poached. Follow the grazers and the grass.`, 'bad'); updateStats(); };
+$('#ivCull').onclick = () => { let n = 0; eco.animals = eco.animals.filter(a => { if (eco.SP[a.sp].kind === 'herb' && eco.rnd() < 0.4) { n++; a.alive = false; return false; } return true; }); logEv(`Management cull removed ${n} grazers.`); SL.toast(`${n} grazers culled (40%).`, 'warn'); updateStats(); };
+$('#ivDisease').onclick = () => { const c = eco.animals.filter(a => (a.sp === 'lion' || a.sp === 'dog') && !a.imm); if (!c.length) { SL.toast('No susceptible lions or wild dogs to infect.', 'warn'); return; } for (let i = 0; i < Math.min(3, c.length); i++) c[Math.floor(eco.rnd() * c.length)].inf = 40; logEv('<span style="color:#f87171">Canine distemper reaches the lions.</span>'); SL.toast('Distemper outbreak: it spreads between nearby carnivores.', 'bad'); };
+$('#ivDogs').onclick = () => { const x = 10 + eco.rnd() * 76, y = 8 + eco.rnd() * 44; for (let i = 0; i < 10; i++) { const a = eco.add('dog', x + eco.rnd() * 3, y + eco.rnd() * 3, { age: 400 }); a.E = eco.SP.dog.Emax; } logEv('A pack of 10 African wild dogs released.'); SL.toast('Wild dog pack introduced. Pack hunting raises their success rate.', 'ok'); updateStats(); };
+
+/* =====================================================================
+   B. LOTKA–VOLTERRA ODE
+   ===================================================================== */
+const lv = { m: 'classic', a: 1, b: 0.02, g: 0.8, d: 0.01, K: 300, h: 0.2, Ex: 0, Ey: 0 };
+let lvReady = false, trajs = [], lvDirty = true;
+const lvSt = SL.canvas($('#lvCv'), () => lvDirty = true), lvTsSt = SL.canvas($('#lvTs'));
+let view = { xmax: 200, ymax: 120 }, eqm = null, hover = null;
+const TCOL = ['#2dd4bf', '#f472b6', '#facc15', '#60a5fa', '#a3e635', '#fb923c', '#c084fc', '#f87171'];
+function rhs(x, y) {
+  const K = lv.m === 'classic' ? Infinity : lv.K, h = lv.m === 'holling' ? lv.h : 0;
+  const den = 1 + lv.b * h * x;
+  return [lv.a * x * (1 - x / K) - lv.Ex * x - lv.b * x * y / den, lv.d * x * y / den - (lv.g + lv.Ey) * y];
+}
+function integrate(x0, y0, T, dt) {
+  const pts = [[0, x0, y0]]; let x = x0, y = y0;
+  for (let t = dt; t <= T + 1e-9; t += dt) {
+    const k1 = rhs(x, y), k2 = rhs(x + dt / 2 * k1[0], y + dt / 2 * k1[1]), k3 = rhs(x + dt / 2 * k2[0], y + dt / 2 * k2[1]), k4 = rhs(x + dt * k3[0], y + dt * k3[1]);
+    x += dt / 6 * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]); y += dt / 6 * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]);
+    x = Math.max(0, x); y = Math.max(0, y); if (!isFinite(x) || !isFinite(y) || x > 1e6 || y > 1e6) break;
+    pts.push([t, x, y]);
+  }
+  return pts;
+}
+function equilibrium() {
+  const gg = lv.g + lv.Ey, K = lv.m === 'classic' ? Infinity : lv.K, h = lv.m === 'holling' ? lv.h : 0;
+  const den = lv.d - gg * lv.b * h; if (den <= 0) return null;
+  const x = gg / den, y = (lv.a * (1 - x / K) - lv.Ex) * (1 + lv.b * h * x) / lv.b;
+  if (!(y > 0)) return null;
+  const e = 1e-5 * Math.max(1, x), f0 = rhs(x, y), fx = rhs(x + e, y), fy = rhs(x, y + e * Math.max(1, y) / Math.max(1, x));
+  const ey = e * Math.max(1, y) / Math.max(1, x);
+  const J = [[(fx[0] - f0[0]) / e, (fy[0] - f0[0]) / ey], [(fx[1] - f0[1]) / e, (fy[1] - f0[1]) / ey]];
+  const tr = J[0][0] + J[1][1], det = J[0][0] * J[1][1] - J[0][1] * J[1][0], disc = tr * tr / 4 - det;
+  return { x, y, J, tr, det, disc };
+}
+function lvAnalyse() {
+  eqm = equilibrium();
+  const fmtc = (re, im) => `${SL.fmt(re, 3)} ${im >= 0 ? '+' : '−'} ${SL.fmt(Math.abs(im), 3)}i`;
+  if (!eqm) { $('#lvX').textContent = '–'; $('#lvY').textContent = '0'; $('#lvEig').textContent = 'no coexistence equilibrium'; $('#lvType').textContent = 'Predator dies out'; $('#lvT').textContent = '–'; return; }
+  $('#lvX').textContent = SL.fmt(eqm.x, 1); $('#lvY').textContent = SL.fmt(eqm.y, 1);
+  let type, T = null; const tr = Math.abs(eqm.tr) < 1e-6 ? 0 : eqm.tr;
+  if (eqm.disc < 0) { const im = Math.sqrt(-eqm.disc); $('#lvEig').textContent = `λ = ${fmtc(tr / 2, im)},  ${fmtc(tr / 2, -im)}`; T = 2 * Math.PI / im; type = tr === 0 ? 'Centre (neutral cycles)' : tr < 0 ? 'Stable spiral' : 'Unstable spiral → limit cycle'; }
+  else { const s = Math.sqrt(eqm.disc); $('#lvEig').textContent = `λ = ${SL.fmt(tr / 2 + s, 3)},  ${SL.fmt(tr / 2 - s, 3)}`; type = eqm.det < 0 ? 'Saddle' : tr < 0 ? 'Stable node' : 'Unstable node'; }
+  $('#lvType').textContent = type; $('#lvT').textContent = T ? SL.fmt(T, 2) : '–';
+  // challenges
+  if (lv.m === 'classic' && T && Math.abs(T - 10) <= 0.2) done('ch3', 'Period tuned to 10 time units.');
+  if (lv.m === 'holling' && eqm.disc < 0 && tr > 1e-6) done('ch4', 'Paradox of enrichment: the equilibrium is unstable and a limit cycle appears.');
+  if (lv.m === 'classic' && lv.Ey >= 0.3 && eqm.x >= 1.3 * lv.g / lv.d - 1e-9 && Math.abs(eqm.y - (lv.a - lv.Ex) / lv.b) < 1e-6) done('ch5', "Volterra's principle: poaching predators raises the prey equilibrium.");
+}
+function lvView() {
+  const e = eqm, K = lv.m === 'classic' ? 0 : lv.K * (1 - lv.Ex / lv.a);
+  let xm = Math.max(e ? 2.4 * e.x : 0, K * 1.12, 100), ym = Math.max(e ? 2.6 * e.y : 0, 60);
+  trajs.forEach(tj => tj.pts.forEach(p => { if (p[1] < 6 * xm) xm = Math.max(xm, p[1] * 1.05); if (p[2] < 6 * ym) ym = Math.max(ym, p[2] * 1.05); }));
+  const nx = niceStep(xm, 5), ny = niceStep(ym, 5);
+  view = { xmax: Math.ceil(xm / nx) * nx, ymax: Math.ceil(ym / ny) * ny };
+}
+function recompute() { trajs.forEach(tj => { tj.pts = integrate(tj.x0, tj.y0, 80, 0.02); tj.head = Math.min(tj.head, tj.pts.length - 1); }); lvAnalyse(); lvView(); lvDirty = true; }
+function addTraj(x0, y0, keepHead) {
+  if (trajs.length >= 8) trajs.shift();
+  const tj = { x0, y0, pts: integrate(x0, y0, 80, 0.02), head: 0, col: TCOL[(addTraj.n = (addTraj.n || 0) + 1) % TCOL.length] };
+  trajs.push(tj); lvView(); return tj;
+}
+function lvGeom() { const { w, h } = lvSt, pad = [18, 16, 34, 48]; return { pad, X: x => pad[3] + x / view.xmax * (w - pad[3] - pad[1]), Y: y => h - pad[2] - y / view.ymax * (h - pad[0] - pad[2]), iX: px => (px - pad[3]) / (w - pad[3] - pad[1]) * view.xmax, iY: py => (h - pad[2] - py) / (h - pad[0] - pad[2]) * view.ymax }; }
+function drawLV() {
+  const { ctx, w, h } = lvSt, G = lvGeom(), { X, Y } = G;
+  plot(lvSt, [], { xmin: 0, xmax: view.xmax, ymin: 0, ymax: view.ymax, pad: G.pad, xlabel: 'prey x', ylabel: 'predators y' });
+  ctx.save(); ctx.beginPath(); ctx.rect(G.pad[3], G.pad[0], w - G.pad[3] - G.pad[1], h - G.pad[0] - G.pad[2]); ctx.clip();
+  // vector field
+  const nx = Math.max(10, Math.round((w - 60) / 38)), ny = Math.max(7, Math.round((h - 50) / 38));
+  for (let i = 0; i <= nx; i++) for (let j = 0; j <= ny; j++) {
+    const x = (i + 0.5) / (nx + 1) * view.xmax, y = (j + 0.5) / (ny + 1) * view.ymax, f = rhs(x, y);
+    const px = X(x), py = Y(y), vx = f[0] / view.xmax * (w - 64), vy = -f[1] / view.ymax * (h - 52), m = Math.hypot(vx, vy); if (m < 1e-9) continue;
+    const L = Math.min(14, 6 + Math.log10(1 + m) * 3), al = clamp(0.18 + Math.log10(1 + m) * 0.12, 0.18, 0.55);
+    SL.arrow(ctx, px - vx / m * L / 2, py - vy / m * L / 2, px + vx / m * L / 2, py + vy / m * L / 2, `rgba(147,161,189,${al})`, 1, 4);
+  }
+  // nullclines
+  const K = lv.m === 'classic' ? Infinity : lv.K, hh = lv.m === 'holling' ? lv.h : 0;
+  ctx.lineWidth = 2.5; ctx.strokeStyle = '#4ade80'; ctx.setLineDash([]); ctx.beginPath(); let first = true;
+  for (let i = 0; i <= 300; i++) { const x = i / 300 * view.xmax, y = (lv.a * (1 - x / K) - lv.Ex) * (1 + lv.b * hh * x) / lv.b; if (y < -view.ymax) { first = true; continue; } first ? ctx.moveTo(X(x), Y(y)) : ctx.lineTo(X(x), Y(y)); first = false; }
+  ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(X(0) + 1.5, Y(0)); ctx.lineTo(X(0) + 1.5, Y(view.ymax)); ctx.stroke();
+  const gg = lv.g + lv.Ey, den = lv.d - gg * lv.b * hh;
+  ctx.strokeStyle = '#fb923c'; if (den > 0) { const xs = gg / den; ctx.beginPath(); ctx.moveTo(X(xs), Y(0)); ctx.lineTo(X(xs), Y(view.ymax)); ctx.stroke(); }
+  ctx.beginPath(); ctx.moveTo(X(0), Y(0) - 1.5); ctx.lineTo(X(view.xmax), Y(0) - 1.5); ctx.stroke();
+  // trajectories
+  trajs.forEach((tj, k) => {
+    const pts = tj.pts, hd = tj.head;
+    ctx.strokeStyle = tj.col; ctx.globalAlpha = 0.28; ctx.lineWidth = 1.4; ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(X(p[1]), Y(p[2])) : ctx.moveTo(X(p[1]), Y(p[2]))); ctx.stroke();
+    ctx.globalAlpha = 1; ctx.lineWidth = 2.4; ctx.beginPath(); for (let i = 0; i <= hd; i += 2) { const p = pts[i]; i ? ctx.lineTo(X(p[1]), Y(p[2])) : ctx.moveTo(X(p[1]), Y(p[2])); } ctx.stroke();
+    const p = pts[hd]; ctx.fillStyle = tj.col; ctx.shadowColor = tj.col; ctx.shadowBlur = 14; ctx.beginPath(); ctx.arc(X(p[1]), Y(p[2]), 5, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(X(tj.x0), Y(tj.y0), 3.5, 0, 7); ctx.stroke();
+  });
+  // equilibria
+  const dot = (x, y, fill, lab) => { ctx.fillStyle = fill; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(X(x), Y(y), 6, 0, 7); ctx.fill(); ctx.stroke(); if (lab) { ctx.font = '600 11px Inter, sans-serif'; ctx.fillStyle = '#e6ecf7'; ctx.textAlign = 'left'; ctx.fillText(lab, X(x) + 9, Y(y) - 8); } };
+  if (eqm) dot(eqm.x, eqm.y, eqm.tr > 1e-6 ? '#0b1222' : '#2dd4bf', `(x*, y*) = (${SL.fmt(eqm.x, 1)}, ${SL.fmt(eqm.y, 1)})`);
+  if (K < Infinity && lv.Ex < lv.a) dot(K * (1 - lv.Ex / lv.a), 0, '#0b1222', 'prey only');
+  ctx.restore();
+  // legend
+  ctx.font = '11px Inter, sans-serif'; ctx.textAlign = 'left';
+  const lg = [['#4ade80', 'prey nullcline ẋ = 0'], ['#fb923c', 'predator nullcline ẏ = 0']];
+  let lx = w - 12; lg.reverse().forEach(([c, t]) => { const tw = ctx.measureText(t).width; lx -= tw + 22; ctx.fillStyle = c; ctx.fillRect(lx, 46, 12, 3); ctx.fillStyle = '#93a1bd'; ctx.fillText(t, lx + 16, 50); });
+  // time series of latest
+  const tj = trajs[trajs.length - 1];
+  if (tj) { const sub = tj.pts.slice(0, tj.head + 1).filter((_, i) => i % 3 === 0); plot(lvTsSt, [{ data: sub.map(p => [p[0], p[1]]), color: '#4ade80', label: 'prey x' }, { data: sub.map(p => [p[0], p[2]]), color: '#fb923c', label: 'predators y' }], { xmin: 0, xmax: 80, ymin: 0, ymax: Math.max(10, ...sub.map(p => Math.max(p[1], p[2]))) * 1.1, xlabel: 'time', pad: [26, 12, 26, 44] }); }
+  else plot(lvTsSt, [], { xmin: 0, xmax: 80, ymin: 0, ymax: 100, xlabel: 'time' });
+}
+const lvLoop = SL.loop(dt => { let moving = false; trajs.forEach(tj => { if (tj.head < tj.pts.length - 1) { tj.head = Math.min(tj.pts.length - 1, tj.head + Math.ceil(dt * 6 / 0.02)); moving = true; } }); if (moving || lvDirty) { drawLV(); lvDirty = false; } });
+function lvEqTex() {
+  const t = { classic: String.raw`\dot x=\alpha x-\beta xy,\quad \dot y=\delta xy-\gamma y`, logistic: String.raw`\dot x=\alpha x\left(1-\tfrac{x}{K}\right)-\beta xy,\quad \dot y=\delta xy-\gamma y`, holling: String.raw`\dot x=\alpha x\left(1-\tfrac{x}{K}\right)-\tfrac{\beta xy}{1+\beta hx},\quad \dot y=\tfrac{\delta xy}{1+\beta hx}-\gamma y` }[lv.m];
+  const harv = (lv.Ex || lv.Ey) ? String.raw`\;(-E_x x,\;-E_y y)` : '';
+  $('#rowK').style.display = lv.m === 'classic' ? 'none' : ''; $('#rowH').style.display = lv.m === 'holling' ? '' : 'none';
+  if (!window.katex) { setTimeout(lvEqTex, 200); return; }
+  SL.tex($('#lvEq'), t + harv, true);
+}
+[['#pa', 'a', 2], ['#pb', 'b', 3], ['#pg', 'g', 2], ['#pd', 'd', 4], ['#pK', 'K', 0], ['#ph', 'h', 2], ['#pEx', 'Ex', 2], ['#pEy', 'Ey', 2]].forEach(([sel, k, dp]) => SL.bind(sel, v => { lv[k] = v; if (lvReady) { lvEqTex(); recompute(); } }, v => v.toFixed(dp)));
+$$('#lvModel button').forEach(b => b.onclick = () => { lv.m = b.dataset.m; $$('#lvModel button').forEach(x => x.classList.toggle('on', x === b)); lvEqTex(); recompute(); });
+function setSlider(id, v) { const el = $(id); el.value = v; el.dispatchEvent(new Event('input')); }
+function seedTrajs() { trajs = []; lvAnalyse(); const e = eqm || { x: 80, y: 30 }; addTraj(e.x * 1.35, e.y); addTraj(e.x * 1.9, e.y * 0.9); addTraj(e.x * 0.5, e.y * 0.4); lvAnalyse(); lvView(); lvDirty = true; }
+$('#lvPreset').onchange = e => {
+  const P = { cycles: ['classic', 1, 0.02, 0.8, 0.01, 300, 0.2], damped: ['logistic', 1, 0.02, 0.8, 0.01, 300, 0.2], 'rm-stable': ['holling', 1, 0.02, 0.8, 0.01, 300, 0.2], enrich: ['holling', 1, 0.02, 0.8, 0.01, 800, 0.2], extinct: ['logistic', 1, 0.02, 1.6, 0.01, 140, 0.2] }[e.target.value];
+  if (!P) return; lvReady = false;
+  lv.m = P[0]; $$('#lvModel button').forEach(x => x.classList.toggle('on', x.dataset.m === lv.m));
+  setSlider('#pa', P[1]); setSlider('#pb', P[2]); setSlider('#pg', P[3]); setSlider('#pd', P[4]); setSlider('#pK', P[5]); setSlider('#ph', P[6]); setSlider('#pEx', 0); setSlider('#pEy', 0);
+  lvReady = true; lvEqTex(); seedTrajs(); e.target.value = '';
+};
+$('#lvCv').addEventListener('pointerdown', e => { const p = SL.ptr(e, $('#lvCv')), G = lvGeom(), x = G.iX(p.x), y = G.iY(p.y); if (x < 0 || y < 0 || x > view.xmax || y > view.ymax) return; addTraj(x, y); lvDirty = true; });
+$('#lvCv').addEventListener('pointermove', e => { const p = SL.ptr(e, $('#lvCv')), G = lvGeom(), x = G.iX(p.x), y = G.iY(p.y); if (x < 0 || y < 0) return; const f = rhs(x, y); $('#lvHover').textContent = `x = ${SL.fmt(x, 1)}, y = ${SL.fmt(y, 1)} · ẋ = ${SL.fmt(f[0], 1)}, ẏ = ${SL.fmt(f[1], 1)}`; });
+$('#lvClear').onclick = () => { trajs = []; lvView(); lvDirty = true; };
+const pulse = (fx, fy) => { const tj = trajs[trajs.length - 1]; if (!tj) { SL.toast('Launch a trajectory first by clicking the phase plane.', 'warn'); return; } const p = tj.pts[tj.head]; tj.pts = tj.pts.slice(0, tj.head + 1); addTraj(p[1] * fx, p[2] * fy); lvDirty = true; };
+$('#lvCullPrey').onclick = () => pulse(0.5, 1); $('#lvCullPred').onclick = () => pulse(1, 0.5);
+lvReady = true; lvEqTex(); seedTrajs();
+
+/* =====================================================================
+   C. FOOD WEB + ENERGY PYRAMID
+   ===================================================================== */
+const SPP = [
+  { id: 'grass', n: 'Grasses', g: 'prod', row: 0, eats: [], note: 'Red oat grass (Themeda triandra) and other tropical C4 grasses: the main energy source of the savannah. They regrow quickly after grazing and fire.' },
+  { id: 'acacia', n: 'Acacia trees', g: 'prod', row: 0, eats: [], note: 'Whistling-thorn and umbrella thorn acacias (now Vachellia). Browse for giraffes and elephants; thorns and ant partners defend them.' },
+  { id: 'forbs', n: 'Herbs & forbs', g: 'prod', row: 0, eats: [], note: 'Broad-leaved herbaceous plants, often more nutritious than grass.' },
+  { id: 'detritus', n: 'Dung & dead matter', g: 'det', row: 0, eats: [], note: 'Dead plants, dung and other organic matter. Every organism eventually feeds this pool; decomposers return its nutrients to the soil.' },
+  { id: 'zebra', n: 'Zebra', g: 'herb', row: 1, eats: ['grass'], note: 'Bulk grazer that tolerates coarse, tall grass.' },
+  { id: 'wildebeest', n: 'Wildebeest', g: 'herb', row: 1, eats: ['grass'], note: 'The dominant migratory grazer of the Serengeti–Mara.' },
+  { id: 'gazelle', n: "Thomson's gazelle", g: 'herb', row: 1, eats: ['grass', 'forbs'], note: 'Small, selective grazer of short green grass and herbs.' },
+  { id: 'impala', n: 'Impala', g: 'herb', row: 1, eats: ['grass', 'forbs', 'acacia'], note: 'Mixed feeder: grazes in the wet season and browses in the dry season.' },
+  { id: 'buffalo', n: 'Buffalo', g: 'herb', row: 1, eats: ['grass'], note: 'Large, water-dependent grazer.' },
+  { id: 'giraffe', n: 'Giraffe', g: 'herb', row: 1, eats: ['acacia'], note: 'Browser specialising in acacia foliage high in the canopy.' },
+  { id: 'elephant', n: 'Elephant', g: 'herb', row: 1, eats: ['grass', 'acacia', 'forbs'], note: 'Ecosystem engineer: pushes over trees and opens woodland into grassland.' },
+  { id: 'warthog', n: 'Warthog', g: 'herb', row: 1, eats: ['grass', 'forbs'], note: 'Grazes short grass and digs up roots and rhizomes.' },
+  { id: 'grasshopper', n: 'Grasshoppers', g: 'herb', row: 1, eats: ['grass', 'forbs'], note: 'Insect herbivores: individually tiny but collectively large consumers.' },
+  { id: 'termite', n: 'Termites', g: 'herb', row: 1, eats: ['grass', 'detritus'], note: 'Harvest dead grass and wood; their mounds are nutrient hot-spots.' },
+  { id: 'beetle', n: 'Dung beetles', g: 'herb', row: 1, eats: ['detritus'], note: 'Bury dung, recycling nutrients and reducing parasites.' },
+  { id: 'mongoose', n: 'Banded mongoose', g: 'small', row: 2, eats: ['grasshopper', 'termite', 'beetle'], note: 'Social insectivore that also takes eggs and small vertebrates.' },
+  { id: 'roller', n: 'Lilac-breasted roller', g: 'small', row: 2, eats: ['grasshopper', 'beetle'], note: 'Perch-hunting bird that drops onto insects and lizards.' },
+  { id: 'carcass', n: 'Carcasses', g: 'det', row: 2, eats: ['zebra', 'wildebeest', 'gazelle', 'impala', 'buffalo', 'giraffe', 'elephant', 'warthog'], carrion: true, note: 'Carrion from kills and natural deaths; a food source rather than an organism.' },
+  { id: 'lion', n: 'Lion', g: 'carn', row: 3, eats: ['zebra', 'wildebeest', 'buffalo', 'warthog', 'giraffe', 'impala', 'gazelle', 'carcass'], note: 'Apex predator hunting in prides; will also scavenge.' },
+  { id: 'leopard', n: 'Leopard', g: 'carn', row: 3, eats: ['impala', 'gazelle', 'warthog', 'mongoose'], note: 'Solitary ambush predator; caches kills in trees away from lions and hyenas.' },
+  { id: 'cheetah', n: 'Cheetah', g: 'carn', row: 3, eats: ['gazelle', 'impala'], note: 'Fastest land animal; specialist of gazelle-sized prey.' },
+  { id: 'wilddog', n: 'Wild dog', g: 'carn', row: 3, eats: ['impala', 'gazelle', 'wildebeest'], note: 'Endangered cooperative pack hunter.' },
+  { id: 'hyena', n: 'Spotted hyena', g: 'carn', row: 3, eats: ['wildebeest', 'zebra', 'gazelle', 'impala', 'carcass'], note: 'Efficient hunter and scavenger, not merely a scavenger.' },
+  { id: 'croc', n: 'Nile crocodile', g: 'carn', row: 3, eats: ['wildebeest', 'zebra', 'impala'], note: 'Ambushes migrating herds at river crossings such as the Mara River.' },
+  { id: 'vulture', n: 'Vultures', g: 'carn', row: 3, eats: ['carcass'], note: 'Obligate scavengers; they clean up carcasses and limit disease spread.' },
+  { id: 'eagle', n: 'Martial eagle', g: 'carn', row: 3, eats: ['mongoose', 'roller', 'gazelle'], note: "Africa's largest eagle; takes small mammals, birds and young antelope." },
+];
+const GCOL = { prod: '#4ade80', herb: '#60a5fa', small: '#c084fc', carn: '#f97316', det: '#a8a29e' };
+const byIdW = Object.fromEntries(SPP.map(s => [s.id, s]));
+let webSel = null, webTool = 'inspect', removed = new Set(), lostSec = new Set(), released = new Set(), webDirty = true, flash = 0;
+let pyrSt = null;
+const webSt = SL.canvas($('#webCv'), () => webDirty = true);
+pyrSt = SL.canvas($('#pyrCv'), () => { if (pyrSt) drawPyr(); });
+function alive(id) { return !removed.has(id) && !lostSec.has(id); }
+function eatsAlive(s) { return s.eats.filter(alive); }
+function eatenBy(id) { return SPP.filter(s => s.eats.includes(id) && alive(s.id)); }
+function TL() { // fractional trophic levels by iteration
+  const tl = {}; SPP.forEach(s => tl[s.id] = 1);
+  for (let it = 0; it < 30; it++) SPP.forEach(s => { const e = eatsAlive(s); if (!e.length) { tl[s.id] = 1; return; } const m = e.reduce((a, q) => a + tl[q], 0) / e.length; tl[s.id] = s.carrion ? m : 1 + m; });
+  return tl;
+}
+function cascade() {
+  let changed = true;
+  while (changed) { changed = false; for (const s of SPP) { if (!alive(s.id) || s.g === 'prod' || s.id === 'detritus') continue; if (!eatsAlive(s).length) { lostSec.add(s.id); changed = true; } } }
+}
+function webLayout() {
+  const { w, h } = webSt, rows = [[], [], [], []]; SPP.forEach(s => rows[s.row].push(s));
+  const yr = [h - 74, h * 0.6, h * 0.4, h * 0.19];
+  const pos = {};
+  rows.forEach((r, ri) => r.forEach((s, i) => { const x = (i + 0.5) / r.length * (w - 30) + 15; const stagger = (ri === 1 && w < 1100) || (ri === 3 && w < 760) ? (i % 2 ? 22 : -6) : 0; pos[s.id] = { x, y: yr[ri] + stagger }; }));
+  return pos;
+}
+function drawWeb(t) {
+  const { ctx, w, h } = webSt, pos = webLayout(), tl = TL();
+  ctx.clearRect(0, 0, w, h);
+  const bg = ctx.createLinearGradient(0, 0, 0, h); bg.addColorStop(0, '#0a1020'); bg.addColorStop(1, '#0d1a12'); ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+  ctx.font = '600 10px JetBrains Mono, monospace'; ctx.fillStyle = 'rgba(147,161,189,.45)'; ctx.textAlign = 'left';
+  [['PRODUCERS & DETRITUS', h - 74], ['PRIMARY CONSUMERS', h * 0.6], ['SECONDARY', h * 0.4], ['TOP CONSUMERS', h * 0.19]].forEach(([l, y]) => { ctx.fillText(l, 10, y - 26); ctx.strokeStyle = 'rgba(255,255,255,.04)'; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); });
+  const R = clamp(w / 70, 9, 15);
+  const hl = webSel ? new Set([webSel, ...byIdW[webSel].eats, ...SPP.filter(s => s.eats.includes(webSel)).map(s => s.id)]) : null;
+  // links
+  SPP.forEach(s => s.eats.forEach(p => {
+    const a = pos[p], b = pos[s.id]; const on = alive(s.id) && alive(p);
+    const isHl = hl && (s.id === webSel || p === webSel);
+    let col = on ? 'rgba(147,161,189,.20)' : 'rgba(239,68,68,.10)'; let lw = 1;
+    if (isHl) { col = s.id === webSel ? 'rgba(74,222,128,.9)' : 'rgba(248,113,113,.9)'; lw = 2; }
+    else if (hl) col = 'rgba(147,161,189,.06)';
+    const ang = Math.atan2(b.y - a.y, b.x - a.x);
+    const x2 = b.x - Math.cos(ang) * (R + 3), y2 = b.y - Math.sin(ang) * (R + 3), x1 = a.x + Math.cos(ang) * R, y1 = a.y + Math.sin(ang) * R;
+    SL.arrow(ctx, x1, y1, x2, y2, col, lw, isHl ? 7 : 5);
+    if (isHl && on) { const k = (t * 0.6 + (p.length + s.id.length) * 0.1) % 1; ctx.fillStyle = '#fde68a'; ctx.beginPath(); ctx.arc(x1 + (x2 - x1) * k, y1 + (y2 - y1) * k, 2.2, 0, 7); ctx.fill(); }
+  }));
+  // nodes
+  ctx.textAlign = 'center';
+  SPP.forEach(s => {
+    const p = pos[s.id], dead = !alive(s.id), dim = hl && !hl.has(s.id);
+    ctx.globalAlpha = dead ? 0.35 : dim ? 0.35 : 1;
+    const g = ctx.createRadialGradient(p.x - R * 0.3, p.y - R * 0.3, 1, p.x, p.y, R); g.addColorStop(0, '#fff'); g.addColorStop(0.15, GCOL[s.g]); g.addColorStop(1, 'rgba(0,0,0,.6)');
+    ctx.fillStyle = dead ? '#374151' : g; if (!dead && s.id === webSel) { ctx.shadowColor = GCOL[s.g]; ctx.shadowBlur = 20; }
+    ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.strokeStyle = s.id === webSel ? '#fff' : 'rgba(255,255,255,.25)'; ctx.lineWidth = s.id === webSel ? 2 : 1; ctx.stroke();
+    if (dead) { ctx.strokeStyle = removed.has(s.id) ? '#f87171' : '#fbbf24'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(p.x - R * 0.6, p.y - R * 0.6); ctx.lineTo(p.x + R * 0.6, p.y + R * 0.6); ctx.moveTo(p.x + R * 0.6, p.y - R * 0.6); ctx.lineTo(p.x - R * 0.6, p.y + R * 0.6); ctx.stroke(); }
+    if (released.has(s.id) && !dead) { ctx.fillStyle = '#4ade80'; ctx.beginPath(); ctx.moveTo(p.x + R + 2, p.y - 2); ctx.lineTo(p.x + R + 8, p.y - 2); ctx.lineTo(p.x + R + 5, p.y - 9); ctx.fill(); }
+    ctx.font = `${w < 560 ? 9 : 10.5}px Inter, sans-serif`; ctx.fillStyle = dead ? '#6b7280' : '#cbd5e1';
+    const label = w < 560 ? s.n.replace("Thomson's ", "T. ").replace('Lilac-breasted ', '').replace('Banded ', '').replace('Spotted ', '').replace('Nile ', '').replace('Martial ', '').replace('Dung & dead matter', 'Dead matter').replace('Herbs & forbs', 'Forbs').replace('Acacia trees', 'Acacia') : s.n;
+    ctx.fillText(label, p.x, p.y + R + 12);
+    ctx.globalAlpha = 1;
+  });
+}
+function webStats() {
+  const al = SPP.filter(s => alive(s.id) && !s.carrion && s.id !== 'detritus');
+  let L = 0; SPP.forEach(s => { if (alive(s.id)) L += eatsAlive(s).length; });
+  const S = SPP.filter(s => alive(s.id)).length;
+  $('#wS').textContent = al.length; $('#wL').textContent = L; $('#wC').textContent = SL.fmt(L / (S * S), 3); $('#wX').textContent = removed.size + lostSec.size;
+}
+function webInfo(id) {
+  const s = byIdW[id], tl = TL()[id];
+  const eats = s.eats.map(e => `<span style="color:${alive(e) ? 'var(--text)' : '#6b7280'}">${byIdW[e].n}</span>`).join(', ') || (s.g === 'prod' ? 'sunlight (photosynthesis), water, CO₂ and soil nutrients' : '–');
+  const by = SPP.filter(q => q.eats.includes(id)).map(q => `<span style="color:${alive(q.id) ? 'var(--text)' : '#6b7280'}">${q.n}</span>`).join(', ') || 'nothing in this web';
+  $('#webInfo').innerHTML = `<h4>${s.n}</h4><div class="tl">Trophic level ${SL.fmt(tl, 2)}${!alive(id) ? ' · <span style="color:#f87171">gone</span>' : ''}</div><p style="margin:6px 0">${s.note}</p><div><b style="color:#4ade80">Feeds on:</b> ${eats}</div><div><b style="color:#f87171">Eaten by:</b> ${by}</div>`;
+}
+$$('#webTool button').forEach(b => b.onclick = () => { webTool = b.dataset.t; $$('#webTool button').forEach(x => x.classList.toggle('on', x === b)); });
+$('#webCv').addEventListener('pointerdown', e => {
+  const p = SL.ptr(e, $('#webCv')), pos = webLayout(); let best = null, bd = 26 * 26;
+  for (const s of SPP) { const q = pos[s.id], d2 = (q.x - p.x) ** 2 + (q.y - p.y) ** 2; if (d2 < bd) { bd = d2; best = s.id; } }
+  if (!best) { webSel = null; webDirty = true; return; }
+  if (webTool === 'remove' && alive(best)) {
+    const before = new Set(lostSec); removed.add(best);
+    byIdW[best].eats.forEach(q => { if (alive(q)) released.add(q); });
+    cascade();
+    const newly = [...lostSec].filter(x => !before.has(x));
+    newly.forEach(x => byIdW[x].eats.forEach(q => { if (alive(q)) released.add(q); }));
+    SL.toast(newly.length ? `Removing <b>${byIdW[best].n}</b> caused ${newly.length} secondary extinction${newly.length > 1 ? 's' : ''}: ${newly.map(x => byIdW[x].n).join(', ')}.` : `<b>${byIdW[best].n}</b> removed. Every consumer still has another food source.`, newly.length ? 'bad' : 'warn', 5200);
+    if (newly.length >= 3) done('ch6', 'Keystone collapse: one removal triggered at least three secondary extinctions.');
+  }
+  webSel = best; webInfo(best); webStats(); webDirty = true;
+});
+$('#webReset').onclick = () => { removed.clear(); lostSec.clear(); released.clear(); webSel = null; $('#webInfo').innerHTML = 'Web restored. Click a species to explore it.'; webStats(); webDirty = true; };
+const webLoop = SL.loop((dt, t) => { if (webSel || webDirty) { drawWeb(t); webDirty = false; } });
+function drawPyr() {
+  const { ctx, w, h } = pyrSt, npp = +$('#npp').value, ef = +$('#eff').value / 100;
+  ctx.clearRect(0, 0, w, h);
+  const L = [['Producers', '#4ade80'], ['Herbivores', '#60a5fa'], ['Carnivores', '#f97316'], ['Top carnivores', '#f87171']];
+  const E = L.map((_, i) => npp * Math.pow(ef, i));
+  const lmin = 0, lmax = Math.log10(20000);
+  const bh = (h - 30) / 4 - 6;
+  L.forEach(([n, c], i) => {
+    const y = h - 10 - (i + 1) * (bh + 6) + 6, frac = clamp((Math.log10(E[i]) - lmin) / (lmax - lmin), 0.05, 1), bw = (w - 20) * frac;
+    const g = ctx.createLinearGradient(0, y, 0, y + bh); g.addColorStop(0, c); g.addColorStop(1, 'rgba(0,0,0,.35)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(w / 2 - bw / 2, y, bw, bh, 6) : ctx.rect(w / 2 - bw / 2, y, bw, bh); ctx.fill();
+    ctx.fillStyle = '#e6ecf7'; ctx.font = '600 11px Inter, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(`${n}: ${SL.fmt(E[i], E[i] < 10 ? 2 : 0)}`, w / 2, y + bh / 2 + 4);
+  });
+  ctx.fillStyle = '#93a1bd'; ctx.font = '10.5px Inter, sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(`${SL.fmt(100 * Math.pow(ef, 3), 3)}% of NPP reaches level 4`, 6, 12);
+}
+SL.bind('#npp', drawPyr, v => SL.fmt(v, 0) + ' kJ'); SL.bind('#eff', drawPyr, v => v + '%');
+webStats();
+
+/* ---------- challenges ---------- */
+function done(id, msg) { if (chDone[id]) return; chDone[id] = true; const el = document.getElementById(id); if (el) el.classList.add('on'); SL.toast('Challenge complete: ' + msg, 'ok', 5000); }
+
+/* ---------- quiz ---------- */
+SL.quiz('#quiz', [
+  { q: 'In the classic Lotka–Volterra model with α = 1.2, β = 0.03, γ = 0.6, δ = 0.012, what is the prey equilibrium x*?', options: ['40', '50', '20', '100'], answer: 1, why: 'x* = γ/δ = 0.6/0.012 = 50. The prey equilibrium depends only on the predator parameters.' },
+  { q: 'What do purely imaginary eigenvalues at the classic LV equilibrium imply?', options: ['A stable node', 'A saddle point', 'Neutral closed cycles (a centre)', 'Exponential growth of both species'], answer: 2, why: 'λ = ±i√(αγ): trajectories circle the equilibrium on closed orbits that neither grow nor decay.' },
+  { q: 'Why do predator peaks lag behind prey peaks?', options: ['Predators reproduce faster than prey', 'Predators increase only after prey are abundant, and keep increasing until prey fall below x*', 'Because β is larger than δ', 'They do not; peaks are simultaneous'], answer: 1, why: 'ẏ > 0 whenever x > x*, so predators keep rising while prey are already declining, giving roughly a quarter-cycle lag.' },
+  { q: 'Adding logistic growth (finite K) to the prey usually…', options: ['turns neutral cycles into damped oscillations towards a stable equilibrium', 'creates chaos', 'makes the predator go extinct always', 'has no effect on stability'], answer: 0, why: 'Self-limitation gives the Jacobian a negative trace, so the equilibrium becomes a stable spiral (or node).' },
+  { q: 'In the Rosenzweig–MacArthur model, increasing the prey carrying capacity K can destabilise the equilibrium. This is called…', options: ['the competitive exclusion principle', "Volterra's principle", 'the paradox of enrichment', 'the 10% rule'], answer: 2, why: 'Rosenzweig (1971): enrichment moves the equilibrium to the rising side of the hump-shaped prey nullcline, causing a Hopf bifurcation to a limit cycle.' },
+  { q: 'A Holling type II functional response means a predator\'s kill rate…', options: ['rises linearly with prey density forever', 'saturates at 1/h because of handling time', 'is independent of prey density', 'falls as prey density increases'], answer: 1, why: 'f(x) = βx/(1+βhx) → 1/h as x → ∞; time spent handling each kill limits the maximum rate.' },
+  { q: 'With 10% transfer efficiency and NPP of 8000 kJ m⁻² yr⁻¹, how much energy reaches secondary consumers?', options: ['800 kJ m⁻² yr⁻¹', '80 kJ m⁻² yr⁻¹', '8 kJ m⁻² yr⁻¹', '0.8 kJ m⁻² yr⁻¹'], answer: 1, why: 'Two transfers: 8000 × 0.1 × 0.1 = 80 kJ m⁻² yr⁻¹.' },
+  { q: 'Poaching removes most lions from a reserve. Which chain of effects is a trophic cascade?', options: ['Fewer lions → fewer zebras → more grass', 'Fewer lions → more zebras → less grass', 'Fewer lions → more grass → fewer zebras', 'Fewer lions → no change, because hyenas replace them instantly'], answer: 1, why: 'Removing a top predator releases its prey, which then suppress the vegetation: effects alternate in sign down the chain.' },
+  { q: 'Why can an agent-based model show extinctions that the LV equations never do?', options: ['Because ABMs ignore reproduction', 'Because populations are whole individuals subject to chance, so a low point in a cycle can hit zero', 'Because ODEs are always unstable', 'Because ABMs have no predators'], answer: 1, why: 'LV densities approach zero but never reach it. Real populations are integers: demographic stochasticity at the trough of a cycle can eliminate the last individuals.' },
+  { q: "Volterra's principle predicts that a moderate, indiscriminate harvest of both prey and predators will on average…", options: ['reduce both species', 'increase prey and decrease predators', 'increase predators and decrease prey', 'leave both unchanged'], answer: 1, why: 'x* = (γ+E_y)/δ rises and y* = (α−E_x)/β falls, as seen in Adriatic fisheries after the First World War.' },
+]);
+
+reset('balanced');
+setPlay();
+savLoop.start();
+window.EcoLab = { get eco() { return eco; }, lv, equilibrium, integrate, removeSpecies: id => { removed.add(id); cascade(); webStats(); return [...lostSec]; } };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crop &amp; Water Balance · Pentarch SimLab</title>
+<meta name="description" content="Plan a Kenyan growing season: daily FAO-56 soil water balance, irrigation scheduling, crop water stress and FAO-33 yield response, fertiliser, pests and profit in KES.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .col{display:flex;flex-direction:column;gap:14px;min-width:0}
+  .stage.farm{height:540px}
+  .chartbox{position:relative;background:#050913;border:1px solid var(--line);border-radius:var(--r);height:220px;overflow:hidden}
+  .chartbox canvas{display:block;width:100%;height:100%}
+  .chartrow{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  #statsF .stat .v{font-size:1rem}
+  .seg.full{display:flex;width:100%}.seg.full button{flex:1;text-align:center}
+  .ctl select{grid-column:1/-1}
+  .mini{font-size:.8rem;color:var(--dim)}
+  .stat .v.good{color:#4ade80}.stat .v.warn{color:#fbbf24}.stat .v.bad{color:#f87171}
+  .spray{position:absolute;left:50%;top:56px;transform:translateX(-50%);display:none;animation:pulse 1s infinite}
+  .spray.show{display:inline-flex}
+  @keyframes pulse{50%{box-shadow:0 0 0 6px rgba(239,68,68,.25)}}
+  .report table.data td{white-space:nowrap}
+  .report h4{margin:.4em 0}
+  .verdict{font:600 1.05rem var(--display);margin:0 0 6px}
+  .cl{display:flex;gap:10px;align-items:flex-start}.cl .led{margin-top:6px;flex:none}
+  .worked h4{margin-top:0}
+  .tablewrap{overflow-x:auto}
+  .csa{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+  .csa .impact{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .csa .impact h4{display:flex;gap:8px;align-items:center;font-size:.98rem}
+  .csa .impact h4 svg{width:18px;height:18px;color:var(--accent)}
+  .csa .impact p{font-size:.88rem;color:var(--muted);margin:0}
+  @media (max-width:980px){.chartrow{grid-template-columns:1fr}}
+  @media (max-width:600px){.stage.farm{height:440px}.chartbox{height:200px}.stage.farm .readout{font-size:.68rem;padding:4px 7px}}
+</style>
+</head>
+<body data-page="farm">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab wide-controls">
+    <div class="col">
+      <div class="stage farm">
+        <canvas id="fCv" aria-label="Farm plot and soil profile"></canvas>
+        <div class="hud">
+          <span class="readout"><b id="hDate">–</b></span>
+          <span class="readout">Day <b id="hDay">0</b> / <span id="hL">0</span></span>
+          <span class="readout" id="hStage">Not planted</span>
+          <span class="readout">K<sub>s</sub> <b id="hKs">1.00</b></span>
+        </div>
+        <button class="btn danger sm spray" id="sprayBtn"><i data-lucide="spray-can"></i> Pests! Spray now</button>
+        <div class="stage-toolbar">
+          <button class="btn sm primary" id="fPlay"><i data-lucide="play"></i> Plant &amp; run</button>
+          <button class="btn sm" id="fStep" aria-label="Advance one day"><i data-lucide="skip-forward"></i></button>
+          <button class="btn sm" id="fFinish" aria-label="Finish season"><i data-lucide="fast-forward"></i></button>
+        </div>
+      </div>
+      <div class="chartrow">
+        <div class="chartbox"><canvas id="wbCv"></canvas></div>
+        <div class="chartbox"><canvas id="etCv"></canvas></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="gauge"></i> Season so far</h3>
+        <div class="stats" id="statsF">
+          <div class="stat"><div class="k">ET₀ today</div><div class="v" id="sEt0">–</div></div>
+          <div class="stat"><div class="k">K<sub>c</sub> · ET<sub>c</sub></div><div class="v" id="sKc">–</div></div>
+          <div class="stat"><div class="k">Rain</div><div class="v" id="sP">–</div></div>
+          <div class="stat"><div class="k">Irrigation (gross)</div><div class="v" id="sI">–</div></div>
+          <div class="stat"><div class="k">Runoff · drainage</div><div class="v" id="sRD">–</div></div>
+          <div class="stat"><div class="k">ET<sub>a</sub> / ET<sub>m</sub></div><div class="v" id="sRat">–</div></div>
+          <div class="stat"><div class="k">Stress days</div><div class="v" id="sStress">–</div></div>
+          <div class="stat"><div class="k">Projected yield</div><div class="v" id="sY">–</div></div>
+          <div class="stat"><div class="k">Projected profit</div><div class="v" id="sProfit">–</div></div>
+        </div>
+      </div>
+      <div class="panel report" id="report" hidden></div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="calendar-days"></i> Plan the season</h3>
+        <div class="ctl"><label for="crop">Crop</label><span></span><select id="crop"><option value="maize">Maize</option><option value="beans">Beans (dry)</option><option value="tomato">Tomatoes</option><option value="sorghum">Sorghum</option><option value="tea">Tea (established, 6 months)</option></select></div>
+        <div class="ctl"><label for="site">Location</label><span></span><select id="site"><option value="machakos">Eastern semi-arid (Machakos-like)</option><option value="highland">Western highlands (Kericho-like)</option></select></div>
+        <div class="ctl"><label for="plant">Planting date</label><span></span><select id="plant">
+          <option value="59">1 March (early long rains)</option><option value="73" selected>15 March (long rains)</option><option value="90">1 April (late long rains)</option><option value="104">15 April (very late)</option>
+          <option value="273">1 October (early short rains)</option><option value="287">15 October (short rains)</option><option value="304">1 November (late short rains)</option></select></div>
+        <div class="ctl"><label for="scen">Rainfall year</label><span></span><select id="scen"><option value="normal">Normal year</option><option value="drought">Drought year</option><option value="elnino">El Niño year</option><option value="lanina">La Niña year</option></select></div>
+        <div class="ctl"><label for="soil">Soil</label><span></span><select id="soil"><option value="loam" selected>Loam (TAW 150 mm/m)</option><option value="sand">Sandy (TAW 80 mm/m)</option><option value="clay">Clay (TAW 160 mm/m)</option></select></div>
+        <div class="ctl"><label for="acres">Plot size</label><output></output><input type="range" id="acres" min="0.25" max="5" step="0.25" value="1"></div>
+        <div class="btn-row"><button class="btn sm" id="newWx"><i data-lucide="dices"></i> New weather</button><span class="mini" id="wxInfo" style="align-self:center"></span></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="droplets"></i> Irrigation</h3>
+        <div class="seg full" id="method"><button class="on" data-v="none">Rain-fed</button><button data-v="furrow">Furrow</button><button data-v="sprinkler">Sprinkler</button><button data-v="drip">Drip</button></div>
+        <div class="panel-title">Scheduling</div>
+        <div class="seg full" id="strat"><button class="on" data-v="auto">Refill at RAW</button><button data-v="deficit">Deficit (50%)</button><button data-v="manual">Manual</button></div>
+        <div class="ctl" style="margin-top:6px"><label for="allow">Pumped water allowance</label><output></output><input type="range" id="allow" min="0" max="600" step="10" value="300"></div>
+        <button class="btn sm" id="irrNow" style="margin-top:4px"><i data-lucide="droplet"></i> Irrigate 25 mm now</button>
+        <p class="mini" id="effInfo" style="margin:8px 0 0"></p>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="leaf"></i> Inputs &amp; climate-smart options</h3>
+        <div class="ctl"><label for="N">Nitrogen fertiliser</label><output></output><input type="range" id="N" min="0" max="200" step="5" value="50"></div>
+        <label class="toggle">Drought-tolerant / early variety<input type="checkbox" id="dt"></label>
+        <label class="toggle">Mulching (crop residue)<input type="checkbox" id="mulch"></label>
+        <label class="toggle">Conservation tillage<input type="checkbox" id="ctill"></label>
+        <label class="toggle">Water-harvesting pan (150 m³)<input type="checkbox" id="pan"></label>
+        <label class="toggle">Integrated pest management (scouting)<input type="checkbox" id="ipm"></label>
+        <p class="mini" style="margin:8px 0 0" id="nOpt"></p>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button><i data-lucide="sprout"></i> Climate-smart farming</button>
+      <button><i data-lucide="table"></i> Crop data</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. Reference evapotranspiration, ET₀</h3>
+      <p>Evapotranspiration (ET) is water lost from soil (evaporation) and through plants (transpiration). FAO Irrigation and Drainage Paper 56 (Allen et al., 1998) defines a <b>reference</b> rate ET₀ for a well-watered grass surface using the FAO Penman–Monteith equation:</p>
+      <div class="eq">$$ET_0=\frac{0.408\,\Delta\,(R_n-G)+\gamma\,\frac{900}{T+273}\,u_2\,(e_s-e_a)}{\Delta+\gamma\,(1+0.34\,u_2)}\quad[\text{mm day}^{-1}]$$</div>
+      <p>It combines energy (net radiation $R_n$, soil heat flux $G$) with the drying power of the air (wind speed $u_2$ and vapour pressure deficit $e_s-e_a$); $\Delta$ is the slope of the saturation vapour pressure curve and $\gamma$ the psychrometric constant. In Kenya ET₀ is typically 3–6 mm per day. The lab uses typical monthly ET₀ values for each location, reduced on rainy, cloudy days.</p>
+      <h3>2. Crop evapotranspiration and the crop coefficient</h3>
+      <div class="eq">$$ET_c=K_c\times ET_0$$</div>
+      <p>The crop coefficient $K_c$ changes with growth stage: low in the <b>initial</b> stage (mostly soil evaporation), rising through <b>development</b>, peaking in <b>mid-season</b> when the canopy is full, then falling in the <b>late</b> season as the crop matures and dries. Mulch reduces the soil-evaporation part, so it lowers $K_c$ most while the canopy is still open.</p>
+      <h3>3. The root-zone water balance</h3>
+      <p>FAO-56 tracks the <b>root-zone depletion</b> $D_r$: how far the soil water is below field capacity, in mm. Each day</p>
+      <div class="eq">$$D_{r,i}=D_{r,i-1}-(P_i-RO_i)-I_{\text{net},i}+ET_{c,\text{adj},i}+DP_i$$</div>
+      <p>where $P$ is rain, $RO$ runoff, $I_{\text{net}}$ the irrigation water that actually reaches the root zone, and $DP$ deep percolation: water that drains below the roots when the soil is already at field capacity ($D_r$ cannot go below 0).</p>
+      <h3>4. How much water can the soil store?</h3>
+      <div class="eq">$$TAW=1000\,(\theta_{FC}-\theta_{WP})\,Z_r,\qquad RAW=p\cdot TAW$$</div>
+      <p><b>Field capacity</b> $\theta_{FC}$ is the water content after free drainage; at the <b>wilting point</b> $\theta_{WP}$ roots can no longer extract water. TAW is the total available water in a root zone of depth $Z_r$ (m). Only the <b>readily available water</b> RAW, a fraction $p$ (≈0.4–0.6) of TAW, can be used without stress. FAO-56 adjusts $p$ for the evaporative demand: $p=p_{\text{table}}+0.04\,(5-ET_c)$.</p>
+      <h3>5. Water stress</h3>
+      <div class="eq">$$K_s=\begin{cases}1 & D_r\le RAW\\[2pt] \dfrac{TAW-D_r}{(1-p)\,TAW} & D_r&gt;RAW\end{cases},\qquad ET_{c,\text{adj}}=K_s\,K_c\,ET_0$$</div>
+      <h3>6. From water to yield: FAO-33</h3>
+      <p>Doorenbos and Kassam (FAO Paper 33, 1979) related relative yield loss to relative ET deficit through the <b>yield response factor</b> $K_y$:</p>
+      <div class="eq">$$1-\frac{Y_a}{Y_m}=K_y\left(1-\frac{ET_a}{ET_m}\right)$$</div>
+      <p>$K_y&gt;1$ (maize ≈1.25) means yield falls proportionally <i>faster</i> than water use, so the crop is drought sensitive; $K_y&lt;1$ (sorghum ≈0.9) means it is relatively tolerant. Stress at flowering is usually most damaging; the lab uses the seasonal $K_y$ for simplicity.</p>
+      <h3>7. Runoff: the SCS curve number</h3>
+      <div class="eq">$$RO=\frac{(P-0.2S)^2}{P+0.8S}\ \ (P&gt;0.2S),\qquad S=\frac{25400}{CN}-254\ \text{mm}$$</div>
+      <p>A higher curve number (clay, crusted or bare soil) means more runoff. Mulch and conservation tillage improve infiltration, lowering CN.</p>
+      <h3>8. Irrigation efficiency</h3>
+      <div class="eq">$$I_{\text{gross}}=\frac{I_{\text{net}}}{E_a}$$</div>
+      <p>Typical application efficiencies: furrow ≈ 60%, sprinkler ≈ 75%, drip ≈ 90%. The losses are evaporation, wind drift, runoff and deep percolation. The lab's <i>Refill at RAW</i> schedule irrigates when $D_r\ge RAW$ and refills to field capacity.</p>
+      <h3>9. Nitrogen: diminishing returns</h3>
+      <p>Yield response to nitrogen is modelled with a Mitscherlich curve: each extra kilogram adds less than the last.</p>
+      <div class="eq">$$f(N)=1-(1-f_0)\,e^{-cN},\qquad N^*_{\text{econ}}=\frac1c\ln\!\left(\frac{Y_m\,f_w\,p_{\text{crop}}\,(1-f_0)\,c}{p_N}\right)$$</div>
+      <p>$f_0$ is the relative yield without fertiliser (low on depleted soils, high for legumes that fix nitrogen). The economic optimum $N^*$ is where the value of the extra yield equals the price of nitrogen $p_N$; with water stress ($f_w&lt;1$) the optimum is lower.</p>
+      <div class="callout warn"><i data-lucide="info"></i><div><b>About the model.</b> Crop coefficients, stage lengths, rooting depths and $K_y$ follow FAO-56 and FAO-33 tables (tea's $K_y$ is an assumed value). Weather is generated randomly from typical monthly rainfall and ET₀ for each location. Prices and costs are round illustrative figures in KES and vary widely in practice.</div></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <div class="worked">
+        <h4>Example 1: Crop water demand at mid-season</h4>
+        <ol class="steps">
+          <li>Maize in mid-season: $K_c=1.20$. On a sunny April day in Machakos, $ET_0=5.0$ mm/day.</li>
+          <li>$ET_c=1.20\times5.0=6.0$ mm/day, i.e. $6.0\times10=60$ m³ per hectare per day (1 mm over 1 ha = 10 m³).</li>
+          <li>On a one-acre plot (0.405 ha): $60\times0.405=24$ m³ per day, about 1,200 twenty-litre jerricans.</li>
+        </ol>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 2: Available water and irrigation interval</h4>
+        <ol class="steps">
+          <li>Loam: $\theta_{FC}=0.27$, $\theta_{WP}=0.12$, so $1000\times0.15=150$ mm per metre of soil.</li>
+          <li>Full maize rooting depth $Z_r=1.0$ m: $TAW=150$ mm.</li>
+          <li>$p=0.55+0.04\,(5-6.0)=0.51$, so $RAW=0.51\times150=76.5$ mm.</li>
+          <li>With no rain, the crop uses RAW in $76.5/6.0\approx13$ days: the irrigation interval.</li>
+        </ol>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 3: Net and gross irrigation</h4>
+        <ol class="steps">
+          <li>Refill the RAW: net irrigation $I_{\text{net}}=76.5$ mm.</li>
+          <li>Drip ($E_a=0.90$): gross $=76.5/0.90=85$ mm. Furrow ($E_a=0.60$): $76.5/0.60=128$ mm.</li>
+          <li>For one acre, drip needs $85\times10\times0.405=344$ m³; furrow needs 517 m³. At KES 15 per m³ pumped, that is KES 5,200 versus KES 7,800 per irrigation.</li>
+        </ol>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 4: Yield loss from water stress</h4>
+        <ol class="steps">
+          <li>A rain-fed maize season ends with $ET_a=300$ mm and $ET_m=400$ mm: $ET_a/ET_m=0.75$.</li>
+          <li>$1-Y_a/Y_m=1.25\times(1-0.75)=0.3125$, so $Y_a/Y_m=0.69$.</li>
+          <li>With $Y_m=6.0$ t/ha and 50 kg N/ha ($f=1-0.6e^{-1.25}=0.83$): $Y_a=6.0\times0.69\times0.83=3.4$ t/ha.</li>
+          <li>Sorghum ($K_y=0.9$) with the same ET ratio would keep $1-0.9\times0.25=78\%$ of its potential.</li>
+        </ol>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 5: Economic optimum nitrogen for maize</h4>
+        <ol class="steps">
+          <li>$Y_m=6000$ kg/ha, price KES 45/kg, $f_0=0.40$, $c=0.025$, N at KES 150/kg, no water stress ($f_w=1$).</li>
+          <li>$N^*=\frac{1}{0.025}\ln\frac{6000\times45\times0.6\times0.025}{150}=40\ln 27=132$ kg N/ha.</li>
+          <li>In a dry season with $f_w=0.6$: $N^*=40\ln(16.2)=111$ kg N/ha. Less water, less fertiliser pays.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <ol class="steps">
+        <li><div class="cl"><span class="led" id="ch1"></span><div><b>Beat the drought.</b> Grow rain-fed maize (no irrigation, no pan) in a <i>Drought year</i> on the 15 March planting and still harvest at least 2.8 t/ha. Hint: combine climate-smart options. <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led" id="ch2"></span><div><b>Water productivity.</b> Achieve a water productivity of at least 1.4 kg of maize grain per m³ of crop evapotranspiration. <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led" id="ch3"></span><div><b>Profitable tomatoes.</b> Make a profit of at least KES 250,000 from one acre of tomatoes. <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led" id="ch4"></span><div><b>Stress-free season.</b> Finish any season with fewer than 5 water-stress days while using less than 250 mm of gross irrigation. <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led" id="ch5"></span><div><b>Pest response.</b> Spot a pest outbreak without IPM and spray within the 7-day window. <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led"></span><div><b>Planting date.</b> With maize in a normal year, compare planting on 1 March, 15 March and 15 April. Explain the yield differences from the depletion chart.</div></div></li>
+        <li><div class="cl"><span class="led"></span><div><b>Furrow vs drip.</b> Irrigate the same drought season with furrow and with drip. Compare gross water, deep percolation and profit. When is the cheaper system the better choice?</div></div></li>
+        <li><div class="cl"><span class="led"></span><div><b>Sand vs clay.</b> Why does sandy soil cause stress sooner but almost no runoff? Use TAW and the curve number in your answer.</div></div></li>
+      </ol>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Climate-smart agriculture (CSA)</h3>
+      <p>CSA aims at three things at once: higher productivity, better resilience to climate shocks, and lower emissions where possible. The options in the lab are widely promoted in Kenya:</p>
+      <div class="csa">
+        <div class="impact"><h4><i data-lucide="layers"></i> Mulching</h4><p>A layer of crop residue shades the soil, cutting evaporation while the canopy is open and reducing runoff and erosion. In the model it lowers the soil-evaporation part of $K_c$ and the curve number.</p></div>
+        <div class="impact"><h4><i data-lucide="shovel"></i> Conservation tillage</h4><p>Minimum tillage, ripping and planting basins (including zai pits) keep soil structure and organic matter, improving infiltration and water storage. The model raises TAW slightly and lowers runoff, and swaps ploughing costs for herbicide and labour.</p></div>
+        <div class="impact"><h4><i data-lucide="sprout"></i> Drought-tolerant varieties</h4><p>Early-maturing, drought-tolerant varieties escape end-of-season drought and lose less yield per unit of water deficit (lower $K_y$), at the cost of a slightly lower yield potential.</p></div>
+        <div class="impact"><h4><i data-lucide="waves"></i> Water-harvesting pans</h4><p>Lined farm ponds collect runoff from fields, roads and roofs during storms for supplementary irrigation in dry spells. A 150 m³ pan stores only about 37 mm over one acre, so it is best used for high-value crops or critical growth stages.</p></div>
+        <div class="impact"><h4><i data-lucide="bug"></i> Integrated pest management</h4><p>Regular scouting, early action, push–pull systems and targeted sprays reduce losses from pests such as fall armyworm, which reached Kenya in 2017, while limiting pesticide use.</p></div>
+        <div class="impact"><h4><i data-lucide="calendar-check"></i> Timely planting</h4><p>Planting at the onset of the rains lets the crop use the whole season. Late planting often pushes flowering into the dry spell at the end of the rains.</p></div>
+      </div>
+    </div>
+
+    <div class="tabpanel">
+      <div class="tablewrap"><table class="data" id="cropTable"></table></div>
+      <p class="mini" style="margin-top:10px">Stage lengths (days) are initial / development / mid-season / late. K<sub>c</sub>, rooting depth and p from FAO-56; K<sub>y</sub> from FAO-33 (tea assumed). Potential yields assume good management; Kenyan average smallholder yields are much lower (maize is often 1.5–2.5 t/ha).</p>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const clamp = SL.clamp, lerp = SL.lerp;
+const chDone = {};
+function done(id, msg) { if (chDone[id]) return; chDone[id] = true; const el = document.getElementById(id); if (el) el.classList.add('on'); SL.toast('Challenge complete: ' + msg, 'ok', 5000); }
+
+/* ---------- small plotting helper ---------- */
+function niceStep(range, n) { const raw = range / n, p = Math.pow(10, Math.floor(Math.log10(raw || 1))), f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
+function plot(st, series, o) {
+  const { ctx, w, h } = st; o = Object.assign({ pad: [24, 12, 28, 44] }, o || {});
+  const [pt, pr, pb, pl] = o.pad;
+  let xs = [], ys = []; series.forEach(s => s.data.forEach(p => { xs.push(p[0]); ys.push(p[1]); }));
+  const xmin = o.xmin ?? (xs.length ? Math.min(...xs) : 0), xmax = o.xmax ?? (xs.length ? Math.max(...xs) : 1);
+  let ymin = o.ymin ?? (ys.length ? Math.min(...ys) : 0), ymax = o.ymax ?? (ys.length ? Math.max(...ys) : 1);
+  if (ymax - ymin < 1e-9) ymax = ymin + 1;
+  const X = x => pl + (x - xmin) / ((xmax - xmin) || 1) * (w - pl - pr), Y = y => h - pb - (y - ymin) / (ymax - ymin) * (h - pt - pb);
+  ctx.clearRect(0, 0, w, h);
+  ctx.font = '10.5px JetBrains Mono, monospace'; ctx.lineWidth = 1;
+  const ys_ = niceStep(ymax - ymin, 4), xs_ = niceStep(xmax - xmin, Math.max(3, Math.floor((w - pl - pr) / 70)));
+  for (let v = Math.ceil(ymin / ys_) * ys_; v <= ymax + 1e-9; v += ys_) { const y = Y(v); ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(w - pr, y); ctx.stroke(); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'right'; ctx.fillText(SL.fmt(Math.abs(v) < 1e-9 ? 0 : v, 2), pl - 6, y + 3.5); }
+  const xlw = o.xlabel ? ctx.measureText(o.xlabel).width + 10 : 0;
+  for (let v = Math.ceil(xmin / xs_) * xs_; v <= xmax + 1e-9; v += xs_) { const x = X(v); if (o.xlabel && x + 14 > w - pr - xlw) continue; ctx.strokeStyle = 'rgba(255,255,255,.04)'; ctx.beginPath(); ctx.moveTo(x, pt); ctx.lineTo(x, h - pb); ctx.stroke(); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'center'; ctx.fillText(o.xfmt ? o.xfmt(v) : SL.fmt(v, 2), x, h - pb + 14); }
+  ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.beginPath(); ctx.moveTo(pl, pt); ctx.lineTo(pl, h - pb); ctx.lineTo(w - pr, h - pb); ctx.stroke();
+  if (o.xlabel) { ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'right'; ctx.fillText(o.xlabel, w - pr, h - pb + 14); }
+  if (o.ylabel) { ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'left'; ctx.fillText(o.ylabel, pl + 4, pt - 8); }
+  ctx.save(); ctx.beginPath(); ctx.rect(pl, pt - 2, w - pl - pr, h - pt - pb + 2); ctx.clip();
+  series.forEach(s => {
+    if (!s.data.length) return;
+    ctx.strokeStyle = s.color; ctx.lineWidth = s.width || 1.8; ctx.setLineDash(s.dash || []); ctx.lineJoin = 'round';
+    ctx.beginPath(); s.data.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))); ctx.stroke(); ctx.setLineDash([]);
+    if (s.fill) { ctx.lineTo(X(s.data[s.data.length - 1][0]), Y(ymin)); ctx.lineTo(X(s.data[0][0]), Y(ymin)); ctx.closePath(); ctx.fillStyle = s.fill; ctx.fill(); }
+  });
+  ctx.restore();
+  if (o.legend !== false) { let lx = pl + 6; ctx.textAlign = 'left'; let ly = pt - 8; series.filter(s => s.label).forEach(s => { const tw = ctx.measureText(s.label).width; if (lx + tw + 14 > w - pr && lx > pl + 6) { lx = pl + 6; ly += 13; } ctx.fillStyle = s.color; ctx.fillRect(lx, ly - 4, 10, 3); ctx.fillStyle = '#93a1bd'; ctx.fillText(s.label, lx + 13, ly); lx += tw + 26; }); }
+  return { X, Y, xmin, xmax, ymin, ymax, pl, pt, pr, pb };
+}
+
+// FAO-56 style daily soil-water balance + FAO-33 yield response + simple economics
+const CROPS = {
+  maize:   { name: 'Maize', L: [25, 40, 45, 30], Ldt: [20, 35, 40, 25], Kc: [0.30, 1.20, 0.35], Z: [0.3, 1.0], p: 0.55, Ky: 1.25, KyDT: 1.0, Ym: 6.0, YmDT: 5.4, price: 45, seed: 7000, seedDT: 8500, harv: 3, f0: 0.40, c: 0.025, pest: ['Fall armyworm', 0.45], spray: 4000, unit: 't/ha grain' },
+  beans:   { name: 'Beans', L: [20, 30, 40, 20], Ldt: [15, 25, 35, 15], Kc: [0.40, 1.15, 0.35], Z: [0.3, 0.7], p: 0.45, Ky: 1.15, KyDT: 0.95, Ym: 2.0, YmDT: 1.8, price: 110, seed: 9000, seedDT: 10000, harv: 6, f0: 0.75, c: 0.04, pest: ['Bean fly and aphids', 0.35], spray: 4000, unit: 't/ha dry beans' },
+  tomato:  { name: 'Tomato', L: [30, 40, 45, 30], Ldt: [25, 35, 40, 25], Kc: [0.60, 1.15, 0.80], Z: [0.25, 0.7], p: 0.40, Ky: 1.05, KyDT: 0.9, Ym: 40, YmDT: 36, price: 35, seed: 35000, seedDT: 40000, harv: 2, f0: 0.45, c: 0.02, pest: ['Tomato leafminer (Tuta absoluta)', 0.6], spray: 8000, unit: 't/ha fruit' },
+  tea:     { name: 'Tea', L: [10, 10, 150, 10], Ldt: [10, 10, 150, 10], Kc: [0.95, 1.0, 1.0], Z: [0.9, 0.9], p: 0.40, Ky: 0.9, KyDT: 0.8, Ym: 6.0, YmDT: 5.6, price: 30, seed: 0, seedDT: 0, harv: 10, f0: 0.55, c: 0.012, pest: ['Red spider mite', 0.15], spray: 5000, unit: 't/ha green leaf (6 months)', perennial: true },
+  sorghum: { name: 'Sorghum', L: [20, 35, 40, 30], Ldt: [15, 30, 35, 25], Kc: [0.30, 1.05, 0.55], Z: [0.3, 1.2], p: 0.55, Ky: 0.9, KyDT: 0.75, Ym: 4.0, YmDT: 3.7, price: 40, seed: 3000, seedDT: 3500, harv: 3, f0: 0.50, c: 0.025, pest: ['Quelea birds and stem borer', 0.35], spray: 4000, unit: 't/ha grain' },
+};
+const SITES = {
+  machakos: { name: 'Eastern semi-arid (Machakos-like)', rain: [45, 40, 90, 180, 120, 30, 15, 20, 25, 60, 150, 85], et0: [5.0, 5.4, 5.2, 4.3, 3.8, 3.4, 3.2, 3.6, 4.5, 5.0, 4.2, 4.6] },
+  highland: { name: 'Western highlands (Kericho-like)', rain: [80, 90, 140, 250, 230, 140, 120, 150, 140, 120, 110, 90], et0: [4.0, 4.3, 4.2, 3.6, 3.3, 3.0, 2.9, 3.1, 3.5, 3.7, 3.5, 3.7] },
+};
+const SOILS = { sand: { name: 'Sandy', fc: 0.12, wp: 0.04, cn: 70 }, loam: { name: 'Loam', fc: 0.27, wp: 0.12, cn: 80 }, clay: { name: 'Clay', fc: 0.38, wp: 0.22, cn: 87 } };
+const METHODS = { none: { name: 'Rain-fed', eff: 1, cost: 0 }, furrow: { name: 'Furrow', eff: 0.60, cost: 6000 }, sprinkler: { name: 'Sprinkler', eff: 0.75, cost: 15000 }, drip: { name: 'Drip', eff: 0.90, cost: 30000 } };
+const MDAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+function doyToMonth(d) { d = ((d % 365) + 365) % 365; let m = 0; while (d >= MDAYS[m]) { d -= MDAYS[m]; m++; } return m; }
+
+function makeFarm(cfg) {
+  const c = Object.assign({ crop: 'maize', dt: false, site: 'machakos', plant: 74, scen: 'normal', soil: 'loam', method: 'none', strat: 'auto', allow: 300, N: 50, ipm: false, mulch: false, ctill: false, pan: false, acres: 1, seed: 1 }, cfg);
+  const cr = CROPS[c.crop], site = SITES[c.site], soil = SOILS[c.soil], m = METHODS[c.method];
+  const L = c.dt ? cr.Ldt : cr.L, Ltot = L.reduce((a, b) => a + b, 0);
+  let s = (c.seed * 2654435761) >>> 0 || 1; const rnd = () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+  // weather for the season (+ a few days)
+  const scenF = (mo) => { const ond = mo >= 9, mam = mo >= 2 && mo <= 4; if (c.scen === 'drought') return 0.45; if (c.scen === 'elnino') return ond ? 1.8 : mam ? 1.05 : 1.15; if (c.scen === 'lanina') return ond ? 0.55 : 0.9; return 1; };
+  const wx = []; let wetPrev = false;
+  for (let i = 0; i < Ltot + 5; i++) {
+    const mo = doyToMonth(c.plant + i), mm = site.rain[mo] * scenF(mo) * (0.85 + 0.3 * rnd());
+    const pw = Math.min(0.75, Math.max(0.03, mm / 260));
+    const pr = wetPrev ? Math.min(0.92, pw * 1.45) : pw * 0.8;
+    const wet = rnd() < pr; wetPrev = wet;
+    const amt = wet ? -Math.log(1 - rnd() + 1e-9) * mm / (30 * pw) : 0;
+    let et0 = site.et0[mo] * (c.scen === 'drought' ? 1.12 : 1) * (wet ? 0.75 : 1) * (0.92 + 0.16 * rnd());
+    wx.push({ P: Math.round(amt * 10) / 10, et0 });
+  }
+  const pestDay = rnd() < cr.pest[1] ? Math.floor(L[0] + rnd() * (L[1] + L[2] * 0.6)) : -1;
+  const pestSev = 0.25 + 0.15 * rnd();
+  const taw1 = 1000 * (soil.fc - soil.wp) * (c.ctill ? 1.08 : 1);
+  const cn = Math.max(45, soil.cn - (c.mulch ? 5 : 0) - (c.ctill ? 6 : 0)), S = 25400 / cn - 254;
+  const ha = c.acres * 0.4047;
+  const panCap = c.pan ? 150 : 0; // m3
+  const st = { day: 0, Dr: 0, pan: c.pan ? 30 : 0, cum: { P: 0, RO: 0, DP: 0, Ig: 0, In: 0, ETa: 0, ETm: 0, panUse: 0, stress: 0, pumped: 0 }, log: [], pest: null, sprayed: 0, done: false, manual: 0 };
+  const Zr0 = cr.Z[0]; st.Dr = (c.scen === 'drought' ? 0.75 : 0.5) * taw1 * Zr0 * (cr.perennial ? 1.2 : 1);
+  function stage(d) { if (d < L[0]) return 0; if (d < L[0] + L[1]) return 1; if (d < L[0] + L[1] + L[2]) return 2; return 3; }
+  function kc(d) {
+    const [ki, km, ke] = cr.Kc; let k;
+    if (d < L[0]) k = ki; else if (d < L[0] + L[1]) k = ki + (km - ki) * (d - L[0]) / L[1]; else if (d < L[0] + L[1] + L[2]) k = km; else k = km + (ke - km) * (d - L[0] - L[1] - L[2]) / L[3];
+    return k;
+  }
+  function cover(d) { if (cr.perennial) return 0.9; if (d < L[0]) return 0.1 * d / L[0]; if (d < L[0] + L[1]) return 0.1 + 0.85 * (d - L[0]) / L[1]; if (d < L[0] + L[1] + L[2]) return 0.95; return 0.95 - 0.35 * (d - L[0] - L[1] - L[2]) / L[3]; }
+  function zr(d) { return cr.Z[0] + (cr.Z[1] - cr.Z[0]) * Math.min(1, d / (L[0] + L[1])); }
+  function step() {
+    if (st.done) return null;
+    const d = st.day, w = wx[d], k0 = kc(d), cv = cover(d);
+    const evap = (1 - cv) * 0.3; const k = Math.max(0.1, k0 - (c.mulch ? 0.5 * evap : 0));
+    const Zr = zr(d), TAW = taw1 * Zr;
+    const etc = k * w.et0;
+    let p = Math.min(0.8, Math.max(0.1, cr.p + (c.dt ? 0.05 : 0) + 0.04 * (5 - etc))); const RAW = p * TAW;
+    // runoff
+    const P = w.P, Ia = 0.2 * S, RO = P > Ia ? (P - Ia) ** 2 / (P - Ia + S) : 0;
+    // pan inflow: runoff from the field plus a small external catchment (roads, roofs)
+    if (c.pan) { st.pan = Math.min(panCap, st.pan + (RO * 10 * ha + P * 0.24)); st.pan = Math.max(0, st.pan - 0.15); }
+    // irrigation decision (before ET)
+    let Ig = 0, In = 0, src = '';
+    const eff = c.method === 'none' ? (c.pan ? 0.85 : 1) : m.eff;
+    const canIrr = c.method !== 'none' || c.pan;
+    const remain = () => Math.max(0, c.allow - st.cum.pumped) + (c.pan ? st.pan / (10 * ha) : 0);
+    if (canIrr && d < Ltot - 10) {
+      let want = 0;
+      if (st.manual > 0) { want = st.manual; st.manual = 0; }
+      else if (c.strat === 'auto' && st.Dr >= RAW) want = st.Dr / eff;
+      else if (c.strat === 'deficit' && st.Dr >= RAW) want = 0.5 * st.Dr / eff;
+      if (want > 0) {
+        Ig = Math.min(want, remain());
+        // take from pan first
+        if (c.pan && Ig > 0) { const fromPan = Math.min(st.pan, Ig * 10 * ha); st.pan -= fromPan; st.cum.panUse += fromPan / (10 * ha); const rest = Ig - fromPan / (10 * ha); if (c.method !== 'none') st.cum.pumped += rest; else Ig = fromPan / (10 * ha); }
+        else st.cum.pumped += Ig;
+        In = Ig * eff;
+      }
+    }
+    // stress coefficient
+    const Ks = st.Dr > RAW ? Math.max(0, (TAW - st.Dr) / (TAW - RAW)) : 1;
+    const ETa = Ks * etc;
+    let Dr = st.Dr - (P - RO) - In + ETa, DP = 0;
+    if (Dr < 0) { DP = -Dr; Dr = 0; }
+    Dr = Math.min(Dr, TAW);
+    st.Dr = Dr;
+    const cu = st.cum; cu.P += P; cu.RO += RO; cu.DP += DP; cu.Ig += Ig; cu.In += In; cu.ETa += ETa; cu.ETm += etc; if (Ks < 0.999) cu.stress++;
+    if (d === pestDay && !st.pest) st.pest = { day: d, sev: pestSev, name: cr.pest[0], ctrl: c.ipm };
+    const rec = { d, P, RO, DP, Ig, In, ETa, etc, Ks, Dr, TAW, RAW, Zr, k, cv, stage: stage(d), et0: w.et0, pan: st.pan };
+    st.log.push(rec); st.day++;
+    if (st.day >= Ltot) st.done = true;
+    return rec;
+  }
+  function spray() { if (st.pest && !st.pest.ctrl && st.day - st.pest.day <= 7) { st.pest.ctrl = true; st.sprayed++; return true; } return false; }
+  function report() {
+    const cu = st.cum, ratio = cu.ETm > 0 ? cu.ETa / cu.ETm : 1;
+    const Ky = c.dt ? cr.KyDT : cr.Ky, Ym = c.dt ? cr.YmDT : cr.Ym;
+    const fw = Math.max(0, 1 - Ky * (1 - ratio));
+    const fN = 1 - (1 - cr.f0) * Math.exp(-cr.c * c.N);
+    const pestLoss = st.pest ? (st.pest.ctrl ? 0.05 : st.pest.sev) : 0;
+    const Y = Ym * fw * fN * (1 - pestLoss); // t/ha
+    const kg = Y * 1000 * ha;
+    const rev = kg * cr.price;
+    const costs = {
+      'Seed / planting material': (c.dt ? cr.seedDT : cr.seed) * ha,
+      'Land preparation': (cr.perennial ? 4000 : c.ctill ? 7000 + 3000 : 12000) * ha,
+      'Weeding & general labour': 15000 * ha,
+      'Fertiliser N': c.N * 150 * ha,
+      'Harvest & handling': kg * cr.harv,
+      'Irrigation equipment': METHODS[c.method].cost * ha,
+      'Pumped water': cu.pumped * 10 * 15 * ha,
+      'Mulching': c.mulch ? 8000 * ha : 0,
+      'Water pan (seasonal share)': c.pan ? 12000 : 0,
+      'Pest control': (c.ipm ? cr.spray * 1.5 : st.sprayed * cr.spray) * ha,
+    };
+    const cost = Object.values(costs).reduce((a, b) => a + b, 0);
+    const WP = cu.ETa > 0 ? Y * 1000 / (cu.ETa * 10) : 0; // kg per m3 of ET
+    return { Y, kg, rev, costs, cost, profit: rev - cost, ratio, fw, fN, pestLoss, WP, Ky, Ym, ha };
+  }
+  return { c, cr, L, Ltot, wx, st, step, spray, report, stage, kc, cover, zr, taw1, cn, pestDay, panCap, ha };
+}
+
+const MONN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function dateStr(doy) { doy = ((doy % 365) + 365) % 365; let m = 0; while (doy >= MDAYS[m]) { doy -= MDAYS[m]; m++; } return `${doy + 1} ${MONN[m]}`; }
+const kes = v => 'KES ' + SL.fmt(Math.round(v), 0);
+let cfg = { crop: 'maize', dt: false, site: 'machakos', plant: 73, scen: 'normal', soil: 'loam', method: 'none', strat: 'auto', allow: 300, N: 50, ipm: false, mulch: false, ctill: false, pan: false, acres: 1, seed: 3 };
+let F = null, running = false, acc = 0, dirty = true, last = null, rain = [], reported = false;
+const fSt = SL.canvas($('#fCv'), () => dirty = true), wbSt = SL.canvas($('#wbCv'), () => dirty = true), etSt = SL.canvas($('#etCv'), () => dirty = true);
+const STAGES = ['Initial', 'Development', 'Mid-season', 'Late season'];
+
+function newSeason(msg) {
+  F = makeFarm(cfg); running = false; acc = 0; last = null; reported = false; setPlay();
+  $('#report').hidden = true; $('#sprayBtn').classList.remove('show');
+  $('#hL').textContent = F.Ltot; $('#hDate').textContent = dateStr(cfg.plant); $('#hDay').textContent = 0; $('#hStage').textContent = 'Ready to plant'; $('#hKs').textContent = '1.00';
+  $('#wxInfo').textContent = `weather #${cfg.seed}`;
+  const m = METHODS[cfg.method]; $('#effInfo').innerHTML = cfg.method === 'none' ? (cfg.pan ? 'Pan water is applied with a bucket drip kit (85% efficient).' : 'No irrigation: the crop depends on rain and stored soil water.') : `${m.name} application efficiency ${Math.round(m.eff * 100)}%: ${Math.round((1 - m.eff) * 100)}% of the water pumped is lost.`;
+  nOpt(); updStats(); dirty = true;
+  if (msg) SL.toast(msg, 'warn', 2600);
+}
+function nOpt() {
+  const cr = CROPS[cfg.crop], Ym = (cfg.dt ? cr.YmDT : cr.Ym) * 1000, fw = 0.8, arg = Ym * fw * cr.price * (1 - cr.f0) * cr.c / 150;
+  const n = arg > 1 ? Math.log(arg) / cr.c : 0;
+  $('#nOpt').innerHTML = `Economic optimum N for ${cr.name.toLowerCase()} with mild water stress (f<sub>w</sub> = 0.8): about <b>${Math.round(n)} kg N/ha</b> at KES 150/kg N.`;
+}
+function stepDay() {
+  if (!F || F.st.done) return;
+  const r = F.step(); last = r;
+  if (r.P > 0.5) rain.push({ t: 0, amt: r.P });
+  const p = F.st.pest;
+  if (p && p.day === r.d) { if (p.ctrl) SL.toast(`Scouting caught <b>${p.name}</b> early: controlled with a targeted spray.`, 'ok'); else { SL.toast(`<b>${p.name}</b> outbreak! Spray within 7 days to limit losses.`, 'bad', 5000); $('#sprayBtn').classList.add('show'); } }
+  if (p && !p.ctrl && F.st.day - p.day > 7) $('#sprayBtn').classList.remove('show');
+  if (F.st.done) finish();
+  dirty = true;
+}
+function finish() {
+  running = false; setPlay(); $('#sprayBtn').classList.remove('show');
+  if (reported) return; reported = true;
+  const R = F.report(), cu = F.st.cum, cr = F.cr;
+  const verdict = R.profit > 0 ? (R.Y / R.Ym > 0.7 ? 'A strong season.' : 'A profitable but stressed season.') : 'A loss-making season.';
+  const rows = Object.entries(R.costs).filter(([, v]) => v > 0).map(([k, v]) => `<tr><td>${k}</td><td class="num">${kes(v)}</td></tr>`).join('');
+  const html = `<h3 style="display:flex;gap:8px;align-items:center"><i data-lucide="clipboard-check"></i> Season report: ${cr.name}, ${dateStr(cfg.plant)} planting</h3>
+    <p class="verdict" style="color:${R.profit > 0 ? '#4ade80' : '#f87171'}">${verdict} Profit ${kes(R.profit)} on ${cfg.acres} acre${cfg.acres !== 1 ? 's' : ''}.</p>
+    <div class="grid2">
+      <div><h4>Yield</h4><table class="data">
+        <tr><td>Potential yield Y<sub>m</sub></td><td class="num">${SL.fmt(R.Ym, 1)} t/ha</td></tr>
+        <tr><td>Water factor 1 − K<sub>y</sub>(1 − ET<sub>a</sub>/ET<sub>m</sub>)</td><td class="num">${SL.fmt(R.fw * 100, 0)}%</td></tr>
+        <tr><td>Nitrogen factor f(N)</td><td class="num">${SL.fmt(R.fN * 100, 0)}%</td></tr>
+        <tr><td>Pest loss</td><td class="num">${SL.fmt(R.pestLoss * 100, 0)}%</td></tr>
+        <tr><td><b>Actual yield</b></td><td class="num"><b>${SL.fmt(R.Y, 2)} t/ha</b></td></tr>
+        <tr><td>Harvest from plot</td><td class="num">${SL.fmt(R.kg, 0)} kg</td></tr>
+        <tr><td>Water productivity</td><td class="num">${SL.fmt(R.WP, 2)} kg/m³</td></tr></table></div>
+      <div><h4>Water (mm)</h4><table class="data">
+        <tr><td>Rain</td><td class="num">${SL.fmt(cu.P, 0)}</td></tr><tr><td>Runoff</td><td class="num">${SL.fmt(cu.RO, 0)}</td></tr>
+        <tr><td>Deep percolation</td><td class="num">${SL.fmt(cu.DP, 0)}</td></tr><tr><td>Irrigation gross / net</td><td class="num">${SL.fmt(cu.Ig, 0)} / ${SL.fmt(cu.In, 0)}</td></tr>
+        <tr><td>ET<sub>a</sub> / ET<sub>m</sub></td><td class="num">${SL.fmt(cu.ETa, 0)} / ${SL.fmt(cu.ETm, 0)}</td></tr><tr><td>Water-stress days</td><td class="num">${cu.stress}</td></tr></table></div>
+    </div>
+    <div class="grid2" style="margin-top:10px">
+      <div><h4>Costs</h4><table class="data">${rows}<tr><td><b>Total costs</b></td><td class="num"><b>${kes(R.cost)}</b></td></tr></table></div>
+      <div><h4>Income</h4><table class="data"><tr><td>Price</td><td class="num">KES ${cr.price}/kg</td></tr><tr><td>Revenue</td><td class="num">${kes(R.rev)}</td></tr><tr><td><b>Profit</b></td><td class="num"><b style="color:${R.profit > 0 ? '#4ade80' : '#f87171'}">${kes(R.profit)}</b></td></tr><tr><td>Profit per acre</td><td class="num">${kes(R.profit / cfg.acres)}</td></tr></table></div>
+    </div>`;
+  const rep = $('#report'); rep.innerHTML = html; rep.hidden = false; SL.refreshIcons(rep);
+  SL.modal(html.replace('<h3', '<h3 id="mrep"'), { ok: 'Close report' });
+  // challenges
+  const noIrr = cfg.method === 'none' && !cfg.pan;
+  if (cfg.crop === 'maize' && cfg.scen === 'drought' && cfg.plant === 73 && noIrr && R.Y >= 2.8) done('ch1', `${SL.fmt(R.Y, 2)} t/ha of maize in a drought year without irrigation.`);
+  if (cfg.crop === 'maize' && R.WP >= 1.4) done('ch2', `water productivity ${SL.fmt(R.WP, 2)} kg/m³.`);
+  if (cfg.crop === 'tomato' && R.profit / cfg.acres >= 250000) done('ch3', `${kes(R.profit / cfg.acres)} profit per acre of tomatoes.`);
+  if (cu.stress < 5 && cu.Ig < 250) done('ch4', `only ${cu.stress} stress days with ${SL.fmt(cu.Ig, 0)} mm of irrigation.`);
+}
+function projected() {
+  if (!F || !F.st.day) return null;
+  const cu = F.st.cum, cr = F.cr, ratio = cu.ETa / cu.ETm, Ky = cfg.dt ? cr.KyDT : cr.Ky, Ym = cfg.dt ? cr.YmDT : cr.Ym;
+  const fw = Math.max(0, 1 - Ky * (1 - ratio)), fN = 1 - (1 - cr.f0) * Math.exp(-cr.c * cfg.N), pl = F.st.pest ? (F.st.pest.ctrl ? 0.05 : F.st.pest.sev) : 0;
+  return { Y: Ym * fw * fN * (1 - pl), ratio };
+}
+function updStats() {
+  const r = last, cu = F.st.cum;
+  $('#sEt0').innerHTML = r ? `${SL.fmt(r.et0, 1)}<small>mm/d</small>` : '–';
+  $('#sKc').innerHTML = r ? `${SL.fmt(r.k, 2)} · ${SL.fmt(r.etc, 1)}` : '–';
+  $('#sP').innerHTML = `${SL.fmt(cu.P, 0)}<small>mm</small>`; $('#sI').innerHTML = `${SL.fmt(cu.Ig, 0)}<small>mm</small>`;
+  $('#sRD').innerHTML = `${SL.fmt(cu.RO, 0)} · ${SL.fmt(cu.DP, 0)}<small>mm</small>`;
+  const pr = projected();
+  const rat = $('#sRat'); rat.innerHTML = pr ? `${SL.fmt(pr.ratio * 100, 0)}<small>%</small>` : '–'; rat.className = 'v ' + (!pr ? '' : pr.ratio > 0.9 ? 'good' : pr.ratio > 0.75 ? 'warn' : 'bad');
+  $('#sStress').textContent = cu.stress;
+  $('#sY').innerHTML = pr ? `${SL.fmt(pr.Y, 2)}<small>t/ha</small>` : '–';
+  if (pr) { const R = F.report(); const pf = $('#sProfit'); pf.innerHTML = `${SL.fmt(R.profit / 1000, 0)}k<small>KES</small>`; pf.className = 'v ' + (R.profit > 0 ? 'good' : 'bad'); } else $('#sProfit').textContent = '–';
+  if (r) { $('#hDay').textContent = F.st.day; $('#hDate').textContent = dateStr(cfg.plant + r.d); $('#hStage').textContent = STAGES[r.stage] + (F.st.done ? ' · harvested' : ''); const ks = $('#hKs'); ks.textContent = r.Ks.toFixed(2); ks.style.color = r.Ks > 0.95 ? '' : r.Ks > 0.6 ? '#fbbf24' : '#f87171'; }
+}
+
+/* ---------- drawing ---------- */
+function leafCol(ks, sen) { const g = [63, 157, 58], y = [181, 163, 58], b = [140, 110, 60]; const s = clamp((1 - ks) * 1.1, 0, 1); let c = g.map((v, i) => lerp(v, y[i], s)); c = c.map((v, i) => lerp(v, b[i], sen)); return `rgb(${c.map(Math.round).join(',')})`; }
+function drawPlant(ctx, crop, x, gy, H, g, stg, ks, sen, t, pest, i) {
+  const col = leafCol(ks, sen), droop = (1 - ks) * 0.9 + sen * 0.4, sway = Math.sin(t * 1.4 + i) * 0.04;
+  ctx.lineCap = 'round';
+  if (crop === 'maize' || crop === 'sorghum') {
+    const h = H * (crop === 'maize' ? 1 : 0.8) * Math.max(0.05, g);
+    ctx.strokeStyle = sen > 0.5 ? '#a08a52' : '#5f8f3a'; ctx.lineWidth = Math.max(1.5, H * 0.025);
+    ctx.beginPath(); ctx.moveTo(x, gy); ctx.quadraticCurveTo(x + sway * h, gy - h * 0.5, x + sway * h * 2, gy - h); ctx.stroke();
+    const nl = Math.max(2, Math.round(3 + g * 6));
+    ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.4, H * 0.022);
+    for (let k = 0; k < nl; k++) { const yy = gy - h * (0.15 + 0.8 * k / nl), dir = k % 2 ? 1 : -1, L = H * (0.18 + 0.12 * Math.sin(k / nl * 3.1)) * Math.min(1, g * 1.4); ctx.beginPath(); ctx.moveTo(x + sway * h * (1 - (gy - yy) / h), yy); ctx.quadraticCurveTo(x + dir * L * 0.6, yy - L * (0.35 - droop * 0.5), x + dir * L, yy + L * (droop * 0.8 - 0.05)); ctx.stroke(); }
+    if (stg >= 2 || (stg === 1 && g > 0.9)) {
+      if (crop === 'maize') { ctx.strokeStyle = '#d9c27a'; ctx.lineWidth = 1.2; for (let k = -2; k <= 2; k++) { ctx.beginPath(); ctx.moveTo(x + sway * h * 2, gy - h); ctx.lineTo(x + sway * h * 2 + k * 3, gy - h - H * 0.08); ctx.stroke(); }
+        ctx.fillStyle = sen > 0.4 ? '#c9a95a' : '#7fae4a'; ctx.beginPath(); ctx.ellipse(x + 4, gy - h * 0.5, H * 0.03, H * 0.08, 0.3, 0, 7); ctx.fill(); ctx.fillStyle = '#f2d36b'; ctx.beginPath(); ctx.ellipse(x + 5, gy - h * 0.5 - H * 0.06, H * 0.015, H * 0.025, 0.3, 0, 7); ctx.fill(); }
+      else { ctx.fillStyle = sen > 0.3 ? '#8b4a2b' : '#a7713a'; for (let k = 0; k < 12; k++) { ctx.beginPath(); ctx.arc(x + sway * h * 2 + Math.sin(k * 2.4) * H * 0.03, gy - h - H * 0.02 - (k / 12) * H * 0.1, H * 0.016, 0, 7); ctx.fill(); } }
+    }
+  } else if (crop === 'beans') {
+    const h = H * 0.42 * Math.max(0.08, g), n = Math.round(3 + g * 9);
+    ctx.strokeStyle = '#4f7f35'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x, gy); ctx.lineTo(x, gy - h * 0.7); ctx.stroke();
+    for (let k = 0; k < n; k++) { const a = -Math.PI / 2 + (k / n - 0.5) * 2.6, rr = h * (0.45 + 0.4 * ((k * 7) % 5) / 5), lx = x + Math.cos(a) * rr, ly = gy - h * 0.35 + Math.sin(a) * rr * 0.8 + droop * h * 0.15;
+      ctx.fillStyle = col; for (let q = 0; q < 3; q++) { ctx.beginPath(); ctx.ellipse(lx + (q - 1) * H * 0.025, ly + (q === 1 ? -H * 0.02 : 0), H * 0.028, H * 0.02 * (1 - droop * 0.4), 0, 0, 7); ctx.fill(); } }
+    if (stg >= 2) { ctx.strokeStyle = sen > 0.4 ? '#c8b07a' : '#6fae3e'; ctx.lineWidth = 2.2; for (let k = 0; k < 4; k++) { const px = x + (k - 1.5) * H * 0.05; ctx.beginPath(); ctx.moveTo(px, gy - h * 0.3); ctx.quadraticCurveTo(px + 3, gy - h * 0.15, px + 1, gy - h * 0.05); ctx.stroke(); } }
+  } else if (crop === 'tomato') {
+    const h = H * 0.75 * Math.max(0.06, g);
+    ctx.strokeStyle = '#8a6a43'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 4, gy); ctx.lineTo(x + 4, gy - H * 0.8); ctx.stroke();
+    ctx.strokeStyle = '#4c7d32'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(x, gy); for (let k = 1; k <= 6; k++) ctx.lineTo(x + (k % 2 ? 4 : -2), gy - h * k / 6); ctx.stroke();
+    ctx.fillStyle = col; for (let k = 0; k < Math.round(4 + g * 8); k++) { const yy = gy - h * (0.15 + 0.8 * ((k * 0.37) % 1)), dir = k % 2 ? 1 : -1; ctx.beginPath(); ctx.ellipse(x + dir * H * 0.07, yy + droop * 6, H * 0.06, H * 0.025, dir * (0.3 + droop), 0, 7); ctx.fill(); }
+    if (stg >= 2) { for (let k = 0; k < 5; k++) { const ripe = sen + (stg === 3 ? 0.5 : 0.1) > ((k * 0.29) % 1); ctx.fillStyle = ripe ? '#e0442f' : '#8fbf4a'; ctx.beginPath(); ctx.arc(x + (k % 2 ? 7 : -5), gy - h * (0.25 + 0.12 * k), H * 0.032, 0, 7); ctx.fill(); } }
+  } else if (crop === 'tea') {
+    const w = H * 0.32, h = H * 0.32;
+    ctx.fillStyle = '#2f5f2a'; ctx.beginPath(); ctx.moveTo(x - w, gy); ctx.quadraticCurveTo(x - w * 1.05, gy - h, x - w * 0.8, gy - h); ctx.lineTo(x + w * 0.8, gy - h); ctx.quadraticCurveTo(x + w * 1.05, gy - h, x + w, gy); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = col; ctx.globalAlpha = 0.9; for (let k = 0; k < 9; k++) { ctx.beginPath(); ctx.ellipse(x - w * 0.8 + k * w * 0.2, gy - h - 2 - g * 3 * Math.abs(Math.sin(k)), w * 0.12, 3 + 2 * ks, 0, 0, 7); ctx.fill(); } ctx.globalAlpha = 1;
+  }
+  if (pest) { ctx.fillStyle = '#1b1b1b'; for (let k = 0; k < 6; k++) { const a = t * 2 + k * 1.1 + i; ctx.beginPath(); ctx.arc(x + Math.cos(a) * H * 0.07, gy - H * 0.3 * Math.max(0.3, g) + Math.sin(a * 1.3) * H * 0.1, 1.6, 0, 7); ctx.fill(); } }
+}
+function drawFarm(t, dt) {
+  const { ctx, w, h } = fSt; ctx.clearRect(0, 0, w, h);
+  const r = last, narrow = w < 600;
+  const gy = Math.round(h * 0.5), maxD = 1.4, soilB = h - 8, dpx = (soilB - gy) / maxD;
+  const wet = r ? r.P > 0.5 : false;
+  // sky
+  const sky = ctx.createLinearGradient(0, 0, 0, gy); sky.addColorStop(0, wet ? '#41526b' : '#3b82c4'); sky.addColorStop(1, wet ? '#8796a8' : '#bfe3f5'); ctx.fillStyle = sky; ctx.fillRect(0, 0, w, gy);
+  if (!wet) { const sx = w * 0.12, sy = gy * 0.25, et = r ? r.et0 : 4.5; const g = ctx.createRadialGradient(sx, sy, 2, sx, sy, 30 + et * 8); g.addColorStop(0, 'rgba(255,250,220,1)'); g.addColorStop(0.3, 'rgba(253,224,71,.7)'); g.addColorStop(1, 'rgba(253,224,71,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy, 30 + et * 8, 0, 7); ctx.fill(); }
+  ctx.fillStyle = wet ? 'rgba(90,100,115,.9)' : 'rgba(255,255,255,.75)';
+  for (let k = 0; k < (wet ? 6 : 3); k++) { const cx = ((k * 0.37 + t * 0.01 * (k + 1)) % 1.2 - 0.1) * w, cy = gy * (0.15 + 0.1 * (k % 3)); for (let q = 0; q < 4; q++) { ctx.beginPath(); ctx.ellipse(cx + q * 22, cy + (q % 2) * 6, 30, 14, 0, 0, 7); ctx.fill(); } }
+  // distant hills
+  ctx.fillStyle = cfg.site === 'highland' ? '#2f6b3a' : '#7c8f52'; ctx.beginPath(); ctx.moveTo(0, gy); for (let x = 0; x <= w; x += 20) ctx.lineTo(x, gy - 30 - 18 * Math.sin(x / w * 5 + 1) - 10 * Math.sin(x / w * 13)); ctx.lineTo(w, gy); ctx.fill();
+  // soil profile
+  const bucketW = narrow ? 70 : 120, fieldW = w - bucketW - 24;
+  const TAW = r ? r.TAW : F.taw1 * F.zr(0), Dr = r ? r.Dr : F.st.Dr, Zr = r ? r.Zr : F.zr(0), frac = clamp(1 - Dr / Math.max(1, TAW), 0, 1);
+  const dryC = [176, 132, 82], wetC = [78, 52, 30];
+  for (let y = gy; y < soilB; y += 3) {
+    const depth = (y - gy) / dpx; let m = depth <= Zr ? frac : 0.55 + (r && r.DP > 0 ? 0.3 : 0);
+    if (cfg.soil === 'sand') m *= 0.85;
+    const c = dryC.map((v, i) => Math.round(lerp(v, wetC[i], m)));
+    ctx.fillStyle = `rgb(${c.join(',')})`; ctx.fillRect(0, y, fieldW + 12, 3);
+  }
+  ctx.fillStyle = 'rgba(0,0,0,.08)'; for (let k = 0; k < 220; k++) { const x = (k * 97.3) % (fieldW + 12), y = gy + ((k * 53.1) % (soilB - gy)); ctx.fillRect(x, y, 2, 2); }
+  // root-zone line
+  const rzY = gy + Zr * dpx; ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.moveTo(0, rzY); ctx.lineTo(fieldW + 12, rzY); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = '#f8fafc'; ctx.font = '600 10.5px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText(`root zone Zr = ${SL.fmt(Zr, 2)} m`, 8, rzY - 5);
+  [0.5, 1.0].forEach(d => { const y = gy + d * dpx; ctx.fillStyle = 'rgba(255,255,255,.45)'; ctx.textAlign = 'right'; ctx.fillText(`${d.toFixed(1)} m`, fieldW + 4, y + 3); ctx.fillRect(fieldW + 6, y, 6, 1); ctx.textAlign = 'left'; });
+  // drainage arrows
+  if (r && r.DP > 0.5) { for (let k = 0; k < 4; k++) { const x = fieldW * (0.2 + 0.2 * k), y = rzY + 8 + ((t * 30 + k * 13) % 24); SL.arrow(ctx, x, y, x, y + 10, 'rgba(96,165,250,.8)', 2, 5); } }
+  // surface + mulch
+  ctx.fillStyle = cfg.mulch ? '#b9975a' : '#6b4a2a'; ctx.fillRect(0, gy - 3, fieldW + 12, 6);
+  if (cfg.mulch) { ctx.strokeStyle = '#d6b779'; ctx.lineWidth = 1; for (let k = 0; k < fieldW / 4; k++) { const x = k * 4 + (k * 7) % 3; ctx.beginPath(); ctx.moveTo(x, gy - 1 - (k % 3)); ctx.lineTo(x + 6, gy - 3 + (k % 2) * 2); ctx.stroke(); } }
+  // pan
+  let panW = 0;
+  if (cfg.pan) { panW = narrow ? 50 : 80; const px = 8, fill = F.st.pan / F.panCap; ctx.fillStyle = '#3d2a16'; ctx.beginPath(); ctx.moveTo(px, gy - 2); ctx.lineTo(px + panW, gy - 2); ctx.lineTo(px + panW - 10, gy + 26); ctx.lineTo(px + 10, gy + 26); ctx.closePath(); ctx.fill(); const wy = gy + 26 - 26 * fill; ctx.fillStyle = '#2b7bb9'; ctx.beginPath(); ctx.moveTo(px + 10 - 10 * fill, wy); ctx.lineTo(px + panW - 10 + 10 * fill, wy); ctx.lineTo(px + panW - 10, gy + 26); ctx.lineTo(px + 10, gy + 26); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#e2e8f0'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.fillText(`pan ${Math.round(F.st.pan)} m³`, px, gy + 40); }
+  // crops
+  const n = narrow ? 6 : 10, x0 = panW + 30, span = fieldW - x0 - 10, H = Math.min(gy * 0.75, 220);
+  const planted = F.st.day > 0;
+  const d = r ? r.d : 0, stg = r ? r.stage : 0, L = F.L, g = planted ? (F.cr.perennial ? 1 : clamp(F.cover(d) / 0.95, 0, 1)) : 0;
+  const sen = stg === 3 ? (d - L[0] - L[1] - L[2]) / L[3] : 0, ks = r ? r.Ks : 1, pest = F.st.pest && F.st.day - F.st.pest.day < 20 && !F.st.pest.ctrl;
+  // roots
+  if (planted) { ctx.strokeStyle = 'rgba(240,230,200,.55)'; ctx.lineWidth = 1; for (let i = 0; i < n; i++) { const x = x0 + span * (i + 0.5) / n; for (let k = -2; k <= 2; k++) { ctx.beginPath(); ctx.moveTo(x, gy + 2); ctx.quadraticCurveTo(x + k * 6, gy + Zr * dpx * 0.5, x + k * 10, gy + Zr * dpx * (0.8 + 0.2 * Math.cos(k))); ctx.stroke(); } } }
+  // irrigation equipment
+  if (cfg.method === 'drip') { ctx.strokeStyle = '#111827'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x0 - 10, gy - 4); ctx.lineTo(x0 + span, gy - 4); ctx.stroke(); }
+  if (cfg.method === 'furrow') { ctx.fillStyle = r && r.Ig > 0 ? '#3b82f6' : '#5a3d22'; for (let i = 0; i <= n; i++) ctx.fillRect(x0 + span * i / n - 6, gy - 2, 12, 4); }
+  if (cfg.method === 'sprinkler') { for (let i = 1; i < n; i += 3) { const x = x0 + span * i / n; ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, gy); ctx.lineTo(x, gy - H * 1.05); ctx.stroke(); } }
+  for (let i = 0; i < n; i++) { const x = x0 + span * (i + 0.5) / n; if (planted) drawPlant(ctx, cfg.crop, x, gy - 2, H, g, stg, ks, clamp(sen, 0, 1), t, pest, i); else { ctx.fillStyle = '#4a321c'; ctx.beginPath(); ctx.ellipse(x, gy - 1, 6, 2, 0, 0, 7); ctx.fill(); } }
+  // irrigation animation
+  if (r && r.Ig > 0) {
+    ctx.fillStyle = 'rgba(147,197,253,.9)';
+    if (cfg.method === 'sprinkler') for (let i = 1; i < n; i += 3) { const x = x0 + span * i / n, top = gy - H * 1.05; for (let k = 0; k < 24; k++) { const a = (k / 24) * Math.PI, q = (t * 1.5 + k * 0.13) % 1, rr = q * H * 0.6; ctx.beginPath(); ctx.arc(x - Math.cos(a) * rr, top + Math.sin(q * Math.PI) * -18 + q * H * 0.9, 1.6, 0, 7); ctx.fill(); } }
+    else if (cfg.method === 'drip' || (cfg.method === 'none' && cfg.pan)) for (let i = 0; i < n; i++) { const x = x0 + span * (i + 0.5) / n, q = (t * 2 + i * 0.3) % 1; ctx.beginPath(); ctx.arc(x + 6, gy - 4 + q * 6, 2, 0, 7); ctx.fill(); }
+    ctx.fillStyle = 'rgba(59,130,246,.18)'; ctx.fillRect(0, gy + 3, fieldW + 12, 14);
+  }
+  // rain
+  if (wet) { const nd = Math.min(400, 40 + r.P * 12); ctx.strokeStyle = 'rgba(210,230,255,.55)'; ctx.lineWidth = 1; ctx.beginPath(); for (let k = 0; k < nd; k++) { const x = (k * 37.7 + t * 90) % (fieldW + 12), y = ((k * 91.3 + t * 600 + k * k) % gy); ctx.moveTo(x, y); ctx.lineTo(x - 2, y + 9); } ctx.stroke(); if (r.RO > 0.5) { ctx.fillStyle = 'rgba(96,165,250,.35)'; ctx.fillRect(0, gy - 5, fieldW + 12, 3); } }
+  // bucket gauge
+  const bx = w - bucketW - 10, by = 74, bh = h - by - 82, bw2 = bucketW - 34;
+  ctx.fillStyle = 'rgba(5,9,19,.85)'; ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx - 6, by - 30, bucketW + 2, bh + 50, 10) : ctx.rect(bx - 6, by - 30, bucketW + 2, bh + 50); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#e6ecf7'; ctx.font = `600 ${narrow ? 9.5 : 11}px Inter, sans-serif`; ctx.textAlign = 'center'; ctx.fillText('Root-zone store', bx + bw2 / 2 + 8, by - 14);
+  const pAdj = r ? r.RAW / r.TAW : F.cr.p, wl = bh * frac, rawY = by + bh * pAdj;
+  ctx.fillStyle = '#1e293b'; ctx.fillRect(bx, by, bw2, bh);
+  const wc = frac > 1 - pAdj ? ['#38bdf8', '#0369a1'] : ['#fbbf24', '#b45309']; const wg = ctx.createLinearGradient(0, by + bh - wl, 0, by + bh); wg.addColorStop(0, wc[0]); wg.addColorStop(1, wc[1]);
+  ctx.fillStyle = wg; ctx.fillRect(bx, by + bh - wl, bw2, wl);
+  ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(bx, by + bh - wl + Math.sin(t * 3) * 1.5, bw2, 2);
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.strokeRect(bx, by, bw2, bh);
+  ctx.setLineDash([4, 3]); ctx.strokeStyle = '#4ade80'; ctx.beginPath(); ctx.moveTo(bx - 3, rawY); ctx.lineTo(bx + bw2 + 3, rawY); ctx.stroke(); ctx.setLineDash([]);
+  ctx.font = `600 ${narrow ? 8.5 : 9.5}px JetBrains Mono, monospace`; ctx.textAlign = 'left'; ctx.fillStyle = '#cbd5e1';
+  ctx.fillText('FC', bx + bw2 + 4, by + 4); ctx.fillStyle = '#4ade80'; ctx.fillText('RAW', bx + bw2 + 4, rawY + 3); ctx.fillStyle = '#f87171'; ctx.fillText('WP', bx + bw2 + 4, by + bh);
+  ctx.fillStyle = '#e6ecf7'; ctx.textAlign = 'center'; ctx.font = `600 ${narrow ? 9 : 10.5}px JetBrains Mono, monospace`; ctx.fillText(`${Math.round(TAW - Dr)}/${Math.round(TAW)} mm`, bx + bw2 / 2 + 8, by + bh + 16);
+}
+function drawCharts() {
+  const log = F.st.log, Lt = F.Ltot;
+  // depletion chart (y inverted: 0 = field capacity at top)
+  const tawMax = Math.max(...(log.length ? log.map(r => r.TAW) : [F.taw1 * F.zr(Lt)]), F.taw1 * F.zr(Lt));
+  const P = plot(wbSt, [
+    { data: log.map(r => [r.d, -r.TAW]), color: '#f87171', width: 1.4, label: 'TAW (wilting point)' },
+    { data: log.map(r => [r.d, -r.RAW]), color: '#4ade80', width: 1.4, dash: [5, 4], label: 'RAW' },
+    { data: log.map(r => [r.d, -r.Dr]), color: '#38bdf8', width: 2.2, label: 'depletion Dr' },
+  ], { xmin: 0, xmax: Lt, ymin: -Math.ceil(tawMax / 20) * 20 - 10, ymax: 60, xlabel: 'day', pad: [28, 10, 26, 40] });
+  const { ctx } = wbSt;
+  log.forEach(r => { const x = P.X(r.d); if (r.P > 0) { ctx.fillStyle = 'rgba(96,165,250,.7)'; ctx.fillRect(x - 1.5, P.Y(0), 3, P.Y(Math.min(60, r.P)) - P.Y(0)); } if (r.Ig > 0) { ctx.fillStyle = 'rgba(45,212,191,.9)'; ctx.fillRect(x - 1.5, P.Y(0), 3, P.Y(Math.min(60, r.Ig)) - P.Y(0)); } });
+  ctx.fillStyle = '#93a1bd'; ctx.font = '10px Inter, sans-serif'; ctx.textAlign = 'right'; ctx.fillText(wbSt.w < 520 ? 'bars: rain/irrigation ↑  depletion ↓ (mm)' : 'rain / irrigation (mm) ↑   depletion below field capacity (mm) ↓', wbSt.w - 12, wbSt.h - P.pb - 8);
+  // ET chart
+  const kcs = []; for (let d = 0; d < Lt; d++) kcs.push([d, F.kc(d) * 5]);
+  plot(etSt, [
+    { data: kcs, color: 'rgba(250,204,21,.6)', dash: [4, 3], width: 1.3, label: 'Kc × 5' },
+    { data: log.map(r => [r.d, r.etc]), color: '#f97316', width: 1.6, label: 'ETc (no stress)' },
+    { data: log.map(r => [r.d, r.ETa]), color: '#4ade80', width: 2, label: 'ETa (actual)' },
+  ], { xmin: 0, xmax: Lt, ymin: 0, ymax: 8, xlabel: 'day', pad: [28, 10, 26, 34] });
+}
+let fr = 0;
+const loop = SL.loop((dt, t) => {
+  if (running && F && !F.st.done) { acc += dt * speed(); let k = 0; while (acc >= 1 && k < 10) { stepDay(); acc -= 1; k++; } }
+  drawFarm(t, dt);
+  if (dirty || ++fr % 10 === 0) { if (dirty) { updStats(); drawCharts(); } dirty = false; }
+});
+const speed = () => 7;
+function setPlay() { const b = $('#fPlay'); if (!F || (F.st.day === 0 && !running)) b.innerHTML = '<i data-lucide="play"></i> Plant &amp; run'; else if (F.st.done) b.innerHTML = '<i data-lucide="rotate-ccw"></i> New season'; else b.innerHTML = running ? '<i data-lucide="pause"></i> Pause' : '<i data-lucide="play"></i> Resume'; SL.refreshIcons(b.parentElement); }
+$('#fPlay').onclick = () => { if (F.st.done) { newSeason(); return; } running = !running; setPlay(); };
+$('#fStep').onclick = () => { running = false; stepDay(); setPlay(); };
+$('#fFinish').onclick = () => { running = false; while (!F.st.done) stepDay(); setPlay(); };
+$('#sprayBtn').onclick = () => { if (F.spray()) { $('#sprayBtn').classList.remove('show'); SL.toast('Sprayed in time: losses limited to about 5%.', 'ok'); done('ch5', 'pest outbreak controlled in time.'); } };
+$('#irrNow').onclick = () => { if (!F || F.st.done) return; if (cfg.method === 'none' && !cfg.pan) { SL.toast('Choose an irrigation method or add a water pan first.', 'warn'); return; } F.st.manual += 25; SL.toast('25 mm (gross) will be applied today.', 'ok', 1800); if (!running) stepDay(); };
+// plan controls: restart season
+const planChange = (k, v) => { cfg[k] = v; if (k === 'crop' && v === 'tea' && cfg.site !== 'highland') { cfg.site = 'highland'; $('#site').value = 'highland'; SL.toast('Tea is grown in the cool, wet highlands: location switched to Kericho-like.', 'ok'); } newSeason(F && F.st.day > 0 ? 'Plan changed: the season has been restarted.' : null); };
+['crop', 'site', 'scen', 'soil'].forEach(id => $('#' + id).onchange = e => planChange(id, e.target.value));
+$('#plant').onchange = e => planChange('plant', +e.target.value);
+$('#newWx').onclick = () => { cfg.seed++; newSeason(); };
+let acresReady = false;
+SL.bind('#acres', v => { if (acresReady) planChange('acres', v); else cfg.acres = v; }, v => v + (v === 1 ? ' acre' : ' acres') + ` (${SL.fmt(v * 0.4047, 2)} ha)`);
+SL.bind('#allow', v => { cfg.allow = v; if (F) F.c.allow = v; }, v => v + ' mm');
+SL.bind('#N', v => { cfg.N = v; if (F) F.c.N = v; dirty = true; }, v => v + ' kg/ha');
+['dt', 'mulch', 'ctill', 'pan'].forEach(id => $('#' + id).onchange = e => planChange(id, e.target.checked));
+$('#ipm').onchange = e => planChange('ipm', e.target.checked);
+$$('#method button').forEach(b => b.onclick = () => { $$('#method button').forEach(x => x.classList.toggle('on', x === b)); planChange('method', b.dataset.v); });
+$$('#strat button').forEach(b => b.onclick = () => { $$('#strat button').forEach(x => x.classList.toggle('on', x === b)); cfg.strat = b.dataset.v; if (F) F.c.strat = cfg.strat; });
+
+// crop table
+$('#cropTable').innerHTML = '<tr><th>Crop</th><th>Stages (d)</th><th>Season</th><th>K<sub>c</sub> ini / mid / end</th><th>Root depth (m)</th><th>p</th><th>K<sub>y</sub></th><th>Potential yield</th><th>Price</th></tr>' + Object.values(CROPS).map(c => `<tr><td>${c.name}</td><td class="num">${c.L.join(' / ')}</td><td class="num">${c.L.reduce((a, b) => a + b, 0)} d</td><td class="num">${c.Kc.join(' / ')}</td><td class="num">${c.Z.join('–')}</td><td class="num">${c.p}</td><td class="num">${c.Ky}</td><td class="num">${c.Ym} ${c.unit}</td><td class="num">KES ${c.price}/kg</td></tr>`).join('');
+
+SL.quiz('#quiz', [
+  { q: 'ET₀ is 4.5 mm/day and the crop coefficient is 1.15. What is the crop evapotranspiration ETc?', options: ['3.9 mm/day', '5.2 mm/day', '4.5 mm/day', '6.0 mm/day'], answer: 1, why: 'ETc = Kc × ET₀ = 1.15 × 4.5 = 5.2 mm/day.' },
+  { q: 'Why is Kc low in the initial stage?', options: ['The crop transpires more when young', 'Ground cover is small, so ET is mostly evaporation from the soil surface', 'Roots are deepest at planting', 'ET₀ is always low at planting'], answer: 1, why: 'With little canopy, only soil evaporation contributes, and it drops quickly as the surface dries.' },
+  { q: 'A clay loam has θFC = 0.32 and θWP = 0.17 with a 0.8 m root zone. What is TAW?', options: ['120 mm', '150 mm', '256 mm', '15 mm'], answer: 0, why: 'TAW = 1000 × (0.32 − 0.17) × 0.8 = 120 mm.' },
+  { q: 'When does water stress (Ks < 1) begin in the FAO-56 model?', options: ['As soon as depletion is above zero', 'When root-zone depletion exceeds the readily available water, RAW = p·TAW', 'Only at the wilting point', 'When it stops raining for one day'], answer: 1, why: 'Up to RAW the crop extracts water freely; beyond it, ET falls linearly to zero at TAW.' },
+  { q: 'Maize (Ky = 1.25) ends a season with ETa/ETm = 0.8. What fraction of potential yield remains?', options: ['80%', '75%', '100%', '62.5%'], answer: 1, why: '1 − Ya/Ym = 1.25 × 0.2 = 0.25, so Ya/Ym = 0.75.' },
+  { q: 'You need 60 mm of net irrigation. How much gross water is required with furrow irrigation at 60% efficiency?', options: ['36 mm', '60 mm', '100 mm', '160 mm'], answer: 2, why: 'Gross = net / efficiency = 60 / 0.6 = 100 mm.' },
+  { q: 'Which change lowers the SCS curve number and therefore runoff?', options: ['Compacting the soil', 'Mulching and conservation tillage', 'Removing crop residues', 'Switching from loam to clay'], answer: 1, why: 'Cover and improved structure increase infiltration, lowering CN.' },
+  { q: 'Why does the economic optimum nitrogen rate fall in a dry season?', options: ['Fertiliser becomes cheaper', 'Water stress lowers the attainable yield, so each kg of N earns less extra grain', 'Nitrogen evaporates faster', 'It does not change'], answer: 1, why: 'N* = (1/c) ln(Ym·fw·price·(1−f0)·c / pN): a smaller fw lowers the optimum.' },
+  { q: 'Sorghum has a lower Ky than maize. What does that imply?', options: ['Sorghum needs more water', 'Sorghum loses relatively less yield for the same relative water deficit', 'Sorghum cannot be irrigated', 'Sorghum always yields more'], answer: 1, why: 'Ky < 1 means yield declines less than proportionally with ET deficit: drought tolerance.' },
+]);
+
+acresReady = true;
+newSeason();
+loop.start();
+document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
+window.FarmLab = { get F() { return F; }, cfg, makeFarm, CROPS, newSeason };
+})();
+</script>
+</body>
+</html>

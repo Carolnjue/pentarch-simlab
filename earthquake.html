@@ -1,0 +1,921 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Earthquakes &amp; Seismic Waves · Pentarch SimLab</title>
+<meta name="description" content="Trace P and S waves through Earth's interior, read seismograms to triangulate an epicentre in the Kenyan Rift, compute Richter magnitude and energy, and shake buildings to explore resonance.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .labbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding-top:22px}
+  .labbar .seg button{display:inline-flex;align-items:center;gap:6px}
+  .labbar .seg svg{width:15px;height:15px}
+  .labbar .hint{font-size:.84rem;color:var(--muted)}
+  .lab[hidden]{display:none}
+  .col{display:flex;flex-direction:column;gap:14px;min-width:0}
+  .stage.earth{height:560px}
+  .stage.map{height:470px}
+  .stage.nomo{height:440px}
+  .stage.bld{height:500px}
+  .chartbox{position:relative;background:#050913;border:1px solid var(--line);border-radius:var(--r);height:240px;overflow:hidden}
+  .chartbox canvas{display:block;width:100%;height:100%}
+  .chartbox .cap{position:absolute;right:10px;top:8px;font:500 .7rem var(--mono);color:var(--dim);letter-spacing:.06em;text-transform:uppercase;pointer-events:none}
+  .chartbox.seis{height:330px;cursor:crosshair}
+  .locgrid{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:14px;min-width:0}
+  .locgrid .stage.map{height:560px}.locgrid .chartbox.seis{height:560px}
+  @media (max-width:700px){.locgrid{grid-template-columns:1fr}.locgrid .stage.map{height:440px}.locgrid .chartbox.seis{height:360px}}
+  .chartrow{display:grid;grid-template-columns:1.3fr 1fr;gap:14px}
+  .mini{font-size:.8rem;color:var(--dim)}
+  .seg.full{display:flex;width:100%}.seg.full button{flex:1;text-align:center}
+  table.st{width:100%;border-collapse:collapse;font-size:.82rem}
+  table.st th,table.st td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:right}
+  table.st th:first-child,table.st td:first-child{text-align:left}
+  table.st th{font:600 .66rem var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+  table.st input{width:62px;padding:4px 6px;font:500 .8rem var(--mono);text-align:right}
+  table.st td.num{font-family:var(--mono)}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
+  .cl{display:flex;gap:10px;align-items:flex-start}.cl .led{margin-top:6px;flex:none}
+  .worked h4{margin-top:0}
+  .examples{display:flex;flex-wrap:wrap;gap:6px}
+  .bstat{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+  .bstat .stat{padding:8px}
+  .bstat .stat .v{font-size:.95rem}
+  @media (max-width:980px){.chartrow{grid-template-columns:1fr}}
+  @media (max-width:700px){.chartbox:not(.seis) .cap{display:none}}
+  @media (max-width:600px){.stage.earth{height:420px}.stage.map{height:380px}.stage.nomo{height:400px}.stage.bld{height:420px}.chartbox{height:220px}.chartbox.seis{height:330px}.bstat{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body data-page="earthquake">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <div class="labbar">
+    <div class="seg" id="modeSeg">
+      <button class="on" data-mode="int"><i data-lucide="globe"></i> Earth's interior</button>
+      <button data-mode="loc"><i data-lucide="locate-fixed"></i> Locate an epicentre</button>
+      <button data-mode="mag"><i data-lucide="activity"></i> Magnitude &amp; energy</button>
+      <button data-mode="bld"><i data-lucide="building-2"></i> Building response</button>
+    </div>
+    <span class="hint" id="modeHint">Drag the earthquake around the surface and watch P and S waves travel through the planet.</span>
+  </div>
+
+  <!-- ===================== A. INTERIOR ===================== -->
+  <section class="lab" data-mode="int">
+    <div class="col">
+      <div class="stage earth">
+        <canvas id="eCv" aria-label="Earth cross-section with seismic rays"></canvas>
+        <div class="hud"><span class="readout">t = <b id="hT">0.0</b> min</span><span class="readout" id="hHover">Hover the planet for layer data</span></div>
+        <div class="stage-toolbar"><button class="btn sm" id="ePlay"><i data-lucide="play"></i> Release waves</button></div>
+      </div>
+      <div class="chartrow">
+        <div class="chartbox"><canvas id="ttCv"></canvas><span class="cap">Travel-time curves</span></div>
+        <div class="chartbox"><canvas id="ptCv"></canvas></div>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="waves"></i> Seismic rays</h3>
+        <label class="toggle">P waves (compressional)<input type="checkbox" id="showP" checked></label>
+        <label class="toggle">S waves (shear)<input type="checkbox" id="showS" checked></label>
+        <label class="toggle">Shade shadow zones<input type="checkbox" id="showShadow" checked></label>
+        <div class="ctl"><label for="rayN">Ray density</label><output></output><input type="range" id="rayN" min="1" max="3" step="1" value="2"></div>
+        <div class="ctl"><label for="tScrub">Time since earthquake</label><output></output><input type="range" id="tScrub" min="0" max="25" step="0.1" value="0"></div>
+        <p class="mini" style="margin:6px 0 0">Drag the red star to move the earthquake. Click anywhere on the surface to place a seismometer and read its arrival times.</p>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="radio-tower"></i> Seismometer</h3>
+        <div class="stats">
+          <div class="stat"><div class="k">Distance Δ</div><div class="v" id="sD">–</div></div>
+          <div class="stat"><div class="k">First P</div><div class="v" id="sP">–</div></div>
+          <div class="stat"><div class="k">First S</div><div class="v" id="sS">–</div></div>
+          <div class="stat"><div class="k">S − P</div><div class="v" id="sSP">–</div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="layers"></i> Plate boundaries</h3>
+        <div class="seg full" id="plateSeg" style="flex-wrap:wrap"><button class="on" data-v="div">Divergent</button><button data-v="conv">Convergent</button><button data-v="trans">Transform</button><button data-v="rift">E. African Rift</button></div>
+        <p class="mini" id="plateTxt" style="margin:8px 0 0"></p>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ===================== B. LOCATE ===================== -->
+  <section class="lab wide-controls" data-mode="loc" hidden>
+    <div class="locgrid">
+      <div class="stage map">
+        <canvas id="mCv" aria-label="Map of the central Kenyan Rift"></canvas>
+        <div class="hud hud-b"><span class="readout" id="mHud">Mystery earthquake: read the seismograms</span></div>
+      </div>
+      <div class="chartbox seis"><canvas id="sCv"></canvas><span class="cap" id="seisCap">Click to pick P, click again to pick S</span></div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="search"></i> Investigation</h3>
+        <div class="seg full" id="locMode"><button class="on" data-v="mystery">Mystery quake</button><button data-v="place">Place your own</button></div>
+        <div class="btn-row" style="margin-top:10px"><button class="btn sm primary" id="newQuake"><i data-lucide="refresh-cw"></i> New earthquake</button><button class="btn sm" id="clearPicks"><i data-lucide="eraser"></i> Clear picks</button></div>
+        <ol class="mini" style="padding-left:1.1em;margin:10px 0 0">
+          <li>On each seismogram, click the first P arrival, then the first S arrival.</li>
+          <li>Each S − P time gives a distance: $d\approx 8.2\,\text{km/s}\times\Delta t$. Circles appear on the map.</li>
+          <li>Click the map where the circles meet, then press <b>Check</b>.</li>
+        </ol>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="table"></i> Readings</h3>
+        <table class="st" id="stTable"></table>
+        <div class="btn-row" style="margin-top:10px"><button class="btn sm primary" id="checkBtn"><i data-lucide="check"></i> Check epicentre</button><button class="btn sm" id="revealBtn"><i data-lucide="eye"></i> Reveal</button></div>
+        <div class="stats" style="margin-top:10px">
+          <div class="stat"><div class="k">Your ML (mean)</div><div class="v" id="mlMean">–</div></div>
+          <div class="stat"><div class="k">Location error</div><div class="v" id="locErr">–</div></div>
+        </div>
+        <p class="mini" style="margin:8px 0 0">Enter the peak S-wave amplitude you read from each trace (in mm on a standard Wood–Anderson seismograph) to compute the local magnitude.</p>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ===================== C. MAGNITUDE ===================== -->
+  <section class="lab" data-mode="mag" hidden>
+    <div class="col">
+      <div class="stage nomo">
+        <canvas id="nCv" aria-label="Richter nomogram"></canvas>
+        <div class="hud"><span class="readout">Drag the dots on the outer scales</span></div>
+      </div>
+      <div class="chartbox" style="height:280px"><canvas id="enCv"></canvas></div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="activity"></i> Richter nomogram</h3>
+        <div class="stats">
+          <div class="stat"><div class="k">S − P time</div><div class="v" id="nDt">–</div></div>
+          <div class="stat"><div class="k">Distance</div><div class="v" id="nD">–</div></div>
+          <div class="stat"><div class="k">Amplitude</div><div class="v" id="nA">–</div></div>
+          <div class="stat"><div class="k">Local magnitude</div><div class="v" id="nM">–</div></div>
+        </div>
+        <div class="eq" style="font-size:.9rem;margin-top:10px">$$M_L=\log_{10}A+3\log_{10}(8\,\Delta t)-2.92$$</div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="zap"></i> Compare energies</h3>
+        <div class="ctl"><label for="m1">Earthquake A</label><output></output><input type="range" id="m1" min="1" max="9.5" step="0.1" value="5"></div>
+        <div class="ctl"><label for="m2">Earthquake B</label><output></output><input type="range" id="m2" min="1" max="9.5" step="0.1" value="6"></div>
+        <div class="examples">
+          <button class="btn sm" data-ex="6.9">1928 Subukia, Kenya ≈ 6.9</button>
+          <button class="btn sm" data-ex="9.1">2004 Sumatra 9.1</button>
+          <button class="btn sm" data-ex="9.5">1960 Chile 9.5</button>
+          <button class="btn sm" data-ex="7.8">2023 Türkiye 7.8</button>
+        </div>
+        <div class="stats" style="margin-top:10px">
+          <div class="stat"><div class="k">Amplitude ratio</div><div class="v" id="eAmp">–</div></div>
+          <div class="stat"><div class="k">Energy ratio</div><div class="v" id="eRat">–</div></div>
+          <div class="stat"><div class="k">Energy of B</div><div class="v" id="eB">–</div></div>
+          <div class="stat"><div class="k">TNT equivalent</div><div class="v" id="eTnt">–</div></div>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ===================== D. BUILDINGS ===================== -->
+  <section class="lab" data-mode="bld" hidden>
+    <div class="col">
+      <div class="stage bld">
+        <canvas id="bCv" aria-label="Buildings shaking"></canvas>
+        <div class="hud"><span class="readout">Ground <b id="hF">1.0</b> Hz · PGA <b id="hA">0.20</b> g</span><span class="readout">Deformation drawn ×<span id="hEx">20</span></span></div>
+        <div class="stage-toolbar" style="top:12px;bottom:auto"><button class="btn sm" id="bPlay" aria-label="Pause or resume shaking"><i data-lucide="pause"></i></button></div>
+      </div>
+      <div class="bstat" id="bStats"></div>
+      <div class="chartbox"><canvas id="frCv"></canvas><span class="cap">Drift amplification vs frequency</span></div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="activity"></i> Ground motion</h3>
+        <div class="seg full" id="gmType"><button class="on" data-v="sine">Steady shaking</button><button data-v="quake">Earthquake record</button></div>
+        <div class="ctl" style="margin-top:8px"><label for="gf">Frequency</label><output></output><input type="range" id="gf" min="-1" max="1" step="0.01" value="0"></div>
+        <div class="ctl"><label for="pga">Peak ground acceleration</label><output></output><input type="range" id="pga" min="0.05" max="0.6" step="0.01" value="0.2"></div>
+        <div class="ctl" id="rowSite" style="display:none"><label for="site">Site</label><span></span><select id="site"><option value="rock">Rock (short-period shaking)</option><option value="soft">Soft lake sediments (long-period)</option></select></div>
+        <div class="btn-row" style="margin-top:6px"><button class="btn sm" id="sweep"><i data-lucide="move-horizontal"></i> Sweep 0.1 → 10 Hz</button><button class="btn sm" id="replay" style="display:none"><i data-lucide="rotate-ccw"></i> Replay record</button></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="shield"></i> Protection</h3>
+        <div class="seg full" id="prot"><button class="on" data-v="fixed">Fixed base</button><button data-v="iso">Base isolation</button><button data-v="tmd">Tuned mass damper</button></div>
+        <div class="ctl" style="margin-top:8px"><label for="zeta">Structural damping ζ</label><output></output><input type="range" id="zeta" min="0.01" max="0.2" step="0.005" value="0.05"></div>
+        <p class="mini" id="protTxt" style="margin:6px 0 0"></p>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ===================== LEARNING TABS ===================== -->
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button><i data-lucide="mountain"></i> The East African Rift</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+    <div class="tabpanel prose">
+      <h3>1. Seismic waves</h3>
+      <p>An earthquake is sudden slip on a fault. The released strain energy radiates as elastic waves. <b>Body waves</b> travel through the interior:</p>
+      <ul>
+        <li><b>P (primary) waves</b> are compressional: particles move back and forth along the direction of travel. They are fastest and arrive first.</li>
+        <li><b>S (secondary) waves</b> are shear waves: particles move at right angles to the direction of travel. They are slower and cannot pass through liquids.</li>
+      </ul>
+      <div class="eq">$$v_P=\sqrt{\frac{K+\tfrac43\mu}{\rho}},\qquad v_S=\sqrt{\frac{\mu}{\rho}}$$</div>
+      <p>$K$ is the bulk modulus, $\mu$ the shear modulus and $\rho$ the density. A liquid has $\mu=0$, so $v_S=0$: shear waves cannot travel through it. For typical crustal rock $v_P\approx6$ km/s and $v_S\approx3.5$ km/s. <b>Surface waves</b> (Love and Rayleigh waves) travel along the surface more slowly, but often have the largest amplitudes and cause much of the damage.</p>
+      <h3>2. Rays bend: Snell's law in a sphere</h3>
+      <p>Seismic velocity generally increases with depth, so rays curve back up towards the surface. At a sharp boundary rays refract according to Snell's law; in a spherical Earth the conserved quantity along a ray is the <b>ray parameter</b>:</p>
+      <div class="eq">$$\frac{\sin\theta_1}{v_1}=\frac{\sin\theta_2}{v_2},\qquad p=\frac{r\,\sin i}{v(r)}=\text{constant along the ray}$$</div>
+      <h3>3. Shadow zones reveal the core</h3>
+      <p>At the core–mantle boundary (2891 km depth) the P-wave speed drops from about 13.7 to 8.1 km/s because the outer core is liquid iron alloy. P waves entering the core bend sharply towards the normal and emerge far beyond 140°, leaving a <b>P-wave shadow zone</b> between about 104° and 140° from the epicentre. S waves cannot cross the liquid outer core at all, so there is no direct S beyond about 104°: the <b>S-wave shadow zone</b>. Beno Gutenberg used the shadow to locate the core in 1914; in 1936 Inge Lehmann explained faint P arrivals inside the shadow zone by a solid <b>inner core</b>.</p>
+      <div class="callout warn"><i data-lucide="info"></i><div>The lab uses a smoothed, PREM-like velocity model without the crust and upper-mantle discontinuities. Its direct P and S rays reach about 96° and 100°; in the real Earth, waves diffracted along the core boundary extend the observed edge to about 104°.</div></div>
+      <h3>4. Locating an earthquake</h3>
+      <p>Both waves leave the hypocentre together, so the delay between their arrivals grows with distance $d$:</p>
+      <div class="eq">$$\Delta t=t_S-t_P=d\left(\frac1{v_S}-\frac1{v_P}\right)\quad\Rightarrow\quad d=\frac{v_Pv_S}{v_P-v_S}\,\Delta t\approx8.2\ \text{km s}^{-1}\times\Delta t$$</div>
+      <p>for $v_P=6.0$ km/s and $v_S=3.46$ km/s (a common rule of thumb is $d\approx8\Delta t$ for local earthquakes; it is only approximate because real velocities vary). One station gives a circle of possible epicentres; three stations fix the point where the circles meet: <b>trilateration</b>, often called triangulation. Strictly, $d$ is the distance to the hypocentre, so for a focus at depth $h$ the epicentral distance is $\sqrt{d^2-h^2}$; for shallow rift earthquakes the difference is small.</p>
+      <h3>5. Magnitude</h3>
+      <p>Charles Richter (1935) defined the local magnitude from the largest amplitude $A$ (mm) recorded on a Wood–Anderson seismograph, corrected for distance. A widely used nomogram form is</p>
+      <div class="eq">$$M_L=\log_{10}A+3\log_{10}(8\,\Delta t)-2.92$$</div>
+      <p>Magnitude is logarithmic: one unit means 10 times the amplitude. Modern catalogues use the <b>moment magnitude</b> $M_w=\tfrac23(\log_{10}M_0-9.1)$, where $M_0=\mu A_f\bar s$ (rigidity × fault area × average slip, in N m), because $M_L$ saturates for large earthquakes.</p>
+      <h3>6. Energy</h3>
+      <div class="eq">$$\log_{10}E\,[\text{J}]\approx1.5\,M+4.8\quad\Rightarrow\quad \frac{E_2}{E_1}=10^{1.5\,(M_2-M_1)}$$</div>
+      <p>Each step of one magnitude releases about $10^{1.5}\approx32$ times more energy; two steps, 1000 times. Magnitude measures the size of the earthquake; <b>intensity</b> (e.g. Modified Mercalli, I–XII) describes the shaking and damage at a particular place.</p>
+      <h3>7. Why some buildings suffer more</h3>
+      <p>A building behaves like a damped oscillator with a natural period that grows with height; a common rule of thumb is</p>
+      <div class="eq">$$T_n\approx0.1\,N\ \text{s}\quad(N=\text{number of storeys}),\qquad f_n=\frac1{T_n}$$</div>
+      <p>Under harmonic ground shaking at frequency $f$, the steady-state drift is amplified by</p>
+      <div class="eq">$$D(r)=\frac1{\sqrt{(1-r^2)^2+(2\zeta r)^2}},\qquad r=\frac{f}{f_n},\qquad D_{\max}\approx\frac1{2\zeta}\ \text{at resonance}$$</div>
+      <p>so with 5% damping a building in resonance moves about 10 times more than the static deflection. Soft sediments amplify long-period shaking, which is why tall buildings on the old lake bed of Mexico City were devastated in 1985 while low buildings nearby survived. Engineers respond with <b>base isolation</b> (flexible bearings that lengthen the period of the whole building to 2–3 s, away from typical ground-motion periods) and <b>tuned mass dampers</b> (a heavy pendulum or block tuned to the building's frequency, as in Taipei 101).</p>
+      <h3>8. Plate tectonics</h3>
+      <p>Most earthquakes occur at plate boundaries: <b>divergent</b> (plates move apart, e.g. mid-ocean ridges and continental rifts), <b>convergent</b> (one plate subducts beneath another, producing the largest earthquakes and volcanic arcs) and <b>transform</b> (plates slide past each other, e.g. the San Andreas Fault).</p>
+    </div>
+
+    <div class="tabpanel prose">
+      <div class="worked">
+        <h4>Example 1: Distance from S − P</h4>
+        <ol class="steps">
+          <li>A station in Nairobi records P at 10:14:06.2 and S at 10:14:18.6. $\Delta t=12.4$ s.</li>
+          <li>$\frac1{v_S}-\frac1{v_P}=\frac1{3.46}-\frac1{6.0}=0.2890-0.1667=0.1223$ s/km.</li>
+          <li>$d=12.4/0.1223=101$ km (rule of thumb: $8\times12.4\approx99$ km).</li>
+          <li>Origin time: $t_0=t_P-d/v_P=06.2-101/6.0=06.2-16.9$, i.e. 10:13:49.3.</li>
+        </ol>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 2: Local magnitude</h4>
+        <ol class="steps">
+          <li>Peak amplitude $A=8$ mm on the Wood–Anderson record; $\Delta t=12.4$ s.</li>
+          <li>$M_L=\log_{10}8+3\log_{10}(8\times12.4)-2.92=0.903+3\times1.997-2.92=3.97$.</li>
+          <li>A station twice as far away ($\Delta t=24.8$ s) would record an amplitude about $2^3=8$ times smaller (1 mm) for the same earthquake, because $3\log_{10}2=0.90$.</li>
+        </ol>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 3: How much bigger?</h4>
+        <ol class="steps">
+          <li>Compare M 5.0 and M 7.0: amplitude ratio $10^{2}=100$; energy ratio $10^{1.5\times2}=10^3=1000$.</li>
+          <li>Energy of M 7.0: $\log_{10}E=1.5\times7+4.8=15.3$, $E=2.0\times10^{15}$ J.</li>
+          <li>In tonnes of TNT ($4.184\times10^9$ J each): about 480,000 t, roughly 32 Hiroshima-sized bombs (≈15 kt each).</li>
+        </ol>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 4: Resonance in a 10-storey building</h4>
+        <ol class="steps">
+          <li>$T_n\approx0.1\times10=1.0$ s, so $f_n=1.0$ Hz, $\omega_n=2\pi$ rad/s.</li>
+          <li>Ground: PGA 0.2 g $=1.96$ m/s² at 1.0 Hz (resonance). Static drift $a/\omega_n^2=1.96/39.5=0.050$ m.</li>
+          <li>With $\zeta=0.05$: $D=1/(2\times0.05)=10$, so the roof moves about 0.50 m relative to the ground.</li>
+          <li>Height ≈ 30 m: drift ratio $0.50/30=1.7\%$, enough for serious structural damage. At 3 Hz instead, $r=3$ and $D=1/\sqrt{64+0.09}=0.125$: barely any motion.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <ol class="steps">
+        <li><div class="cl"><span class="led" id="ch1"></span><div><b>Find the shadow.</b> Place a seismometer in the P-wave shadow zone (between 104° and 140° from the epicentre). What arrives there, and why? <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led" id="ch2"></span><div><b>Pinpoint it.</b> Locate a mystery earthquake to within 15 km using your own picks. <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led" id="ch3"></span><div><b>Measure the magnitude.</b> Enter peak amplitudes for all three stations so that your mean M<sub>L</sub> is within 0.3 of the true value. <span class="mini">(auto-checked on Reveal or Check)</span></div></div></li>
+        <li><div class="cl"><span class="led" id="ch4"></span><div><b>Thirty-two times.</b> In the energy panel, set two earthquakes whose energy ratio is about 1000. <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led" id="ch5"></span><div><b>Resonance.</b> Make the 20-storey building reach a drift ratio above 2% with steady shaking of 0.15 g or less. <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led" id="ch6"></span><div><b>Engineer a fix.</b> With the same shaking, bring every building below 0.5% drift using a protection system. <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led"></span><div><b>Soft soil.</b> Play an earthquake record on rock and then on soft lake sediments. Which buildings suffer in each case, and why?</div></div></li>
+      </ol>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>A continent splitting apart</h3>
+      <p>The East African Rift System is the largest active continental rift on Earth, running from the Afar region of Ethiopia southwards for thousands of kilometres. Here the African continent is slowly splitting into the <b>Nubian</b> plate to the west and the <b>Somali</b> plate to the east, at rates of a few millimetres per year (faster in the north near Afar, slower further south).</p>
+      <p>In Kenya, the eastern branch (the <b>Gregory Rift</b> or Kenya Rift) forms a spectacular valley bounded by steep normal-fault escarpments such as the Mau and the Aberdares/Kikuyu escarpment. As the crust stretches, blocks drop down between faults to form a <b>graben</b>. Hot mantle rising beneath the rift feeds volcanoes such as Longonot, Suswa and Menengai, as well as the geothermal fields at Olkaria near Lake Naivasha that supply a large share of Kenya's electricity.</p>
+      <p>Most rift earthquakes are small and shallow, but larger events do occur. The 1928 Subukia earthquake (about magnitude 6.9) is among the largest recorded in Kenya. Ground cracks that open suddenly in the rift floor, such as the fissure near Mai Mahiu in 2018, are mostly linked to erosion of loose volcanic sediments along older lines of weakness after heavy rain, rather than to the rift "opening" overnight.</p>
+      <div class="callout"><i data-lucide="map"></i><div>The map in the <i>Locate an epicentre</i> lab is a simplified sketch of the central Kenya Rift: lakes Baringo, Bogoria, Nakuru, Elementaita, Naivasha and Magadi, the volcanoes Menengai, Longonot and Suswa, and seismometers at Nairobi, Nakuru and Narok. Positions are approximate.</div></div>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const clamp = SL.clamp;
+const chDone = {};
+function done(id, msg) { if (chDone[id]) return; chDone[id] = true; const el = document.getElementById(id); if (el) el.classList.add('on'); SL.toast('Challenge complete: ' + msg, 'ok', 5000); }
+
+/* ---------- small plotting helper ---------- */
+function niceStep(range, n) { const raw = range / n, p = Math.pow(10, Math.floor(Math.log10(raw || 1))), f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
+function plot(st, series, o) {
+  const { ctx, w, h } = st; o = Object.assign({ pad: [24, 12, 28, 44] }, o || {});
+  const [pt, pr, pb, pl] = o.pad;
+  let xs = [], ys = []; series.forEach(s => s.data.forEach(p => { xs.push(p[0]); ys.push(p[1]); }));
+  const xmin = o.xmin ?? (xs.length ? Math.min(...xs) : 0), xmax = o.xmax ?? (xs.length ? Math.max(...xs) : 1);
+  let ymin = o.ymin ?? (ys.length ? Math.min(...ys) : 0), ymax = o.ymax ?? (ys.length ? Math.max(...ys) : 1);
+  if (ymax - ymin < 1e-9) ymax = ymin + 1;
+  const X = x => pl + (x - xmin) / ((xmax - xmin) || 1) * (w - pl - pr), Y = y => h - pb - (y - ymin) / (ymax - ymin) * (h - pt - pb);
+  ctx.clearRect(0, 0, w, h);
+  ctx.font = '10.5px JetBrains Mono, monospace'; ctx.lineWidth = 1;
+  const ys_ = niceStep(ymax - ymin, 4), xs_ = niceStep(xmax - xmin, Math.max(3, Math.floor((w - pl - pr) / 70)));
+  for (let v = Math.ceil(ymin / ys_) * ys_; v <= ymax + 1e-9; v += ys_) { const y = Y(v); ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(w - pr, y); ctx.stroke(); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'right'; ctx.fillText(SL.fmt(Math.abs(v) < 1e-9 ? 0 : v, 2), pl - 6, y + 3.5); }
+  const xlw = o.xlabel ? ctx.measureText(o.xlabel).width + 10 : 0;
+  for (let v = Math.ceil(xmin / xs_) * xs_; v <= xmax + 1e-9; v += xs_) { const x = X(v); if (o.xlabel && x + 14 > w - pr - xlw) continue; ctx.strokeStyle = 'rgba(255,255,255,.04)'; ctx.beginPath(); ctx.moveTo(x, pt); ctx.lineTo(x, h - pb); ctx.stroke(); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'center'; ctx.fillText(o.xfmt ? o.xfmt(v) : SL.fmt(v, 2), x, h - pb + 14); }
+  ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.beginPath(); ctx.moveTo(pl, pt); ctx.lineTo(pl, h - pb); ctx.lineTo(w - pr, h - pb); ctx.stroke();
+  if (o.xlabel) { ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'right'; ctx.fillText(o.xlabel, w - pr, h - pb + 14); }
+  if (o.ylabel) { ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'left'; ctx.fillText(o.ylabel, pl + 4, pt - 8); }
+  ctx.save(); ctx.beginPath(); ctx.rect(pl, pt - 2, w - pl - pr, h - pt - pb + 2); ctx.clip();
+  series.forEach(s => {
+    if (!s.data.length) return;
+    ctx.strokeStyle = s.color; ctx.lineWidth = s.width || 1.8; ctx.setLineDash(s.dash || []); ctx.lineJoin = 'round';
+    ctx.beginPath(); s.data.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))); ctx.stroke(); ctx.setLineDash([]);
+    if (s.fill) { ctx.lineTo(X(s.data[s.data.length - 1][0]), Y(ymin)); ctx.lineTo(X(s.data[0][0]), Y(ymin)); ctx.closePath(); ctx.fillStyle = s.fill; ctx.fill(); }
+  });
+  ctx.restore();
+  if (o.legend !== false) { let lx = pl + 6; ctx.textAlign = 'left'; let ly = pt - 8; series.filter(s => s.label).forEach(s => { const tw = ctx.measureText(s.label).width; if (lx + tw + 14 > w - pr && lx > pl + 6) { lx = pl + 6; ly += 13; } ctx.fillStyle = s.color; ctx.fillRect(lx, ly - 4, 10, 3); ctx.fillStyle = '#93a1bd'; ctx.fillText(s.label, lx + 13, ly); lx += tw + 26; }); }
+  return { X, Y, xmin, xmax, ymin, ymax, pl, pt, pr, pb };
+}
+
+/* ---------- modes ---------- */
+const hints = { int: 'Drag the earthquake around the surface and watch P and S waves travel through the planet.', loc: 'Read three seismograms and trilaterate the epicentre in the central Kenya Rift.', mag: 'Turn amplitudes into magnitudes, and magnitudes into energy.', bld: 'Shake buildings of different heights and find their resonance.' };
+let mode = 'int', dirty = { int: true, loc: true, mag: true, bld: true };
+const loops = {};
+$$('#modeSeg button').forEach(b => b.onclick = () => {
+  mode = b.dataset.mode; $$('#modeSeg button').forEach(x => x.classList.toggle('on', x === b));
+  $$('section.lab').forEach(s => s.hidden = s.dataset.mode !== mode); $('#modeHint').textContent = hints[mode];
+  Object.values(loops).forEach(l => l.stop()); loops[mode].start(); dirty[mode] = true;
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden) loops[mode].stop(); else loops[mode].start(); });
+
+/* =====================================================================
+   A. EARTH'S INTERIOR
+   ===================================================================== */
+// Spherical-Earth seismic ray tracer with a simplified PREM-like velocity model
+const RE = 6371, RCMB = 3480, RICB = 1221.5;
+const VEL = { // [r, vp, vs] piecewise linear within each region (outer → inner)
+  mantle: [[3480, 13.72, 7.26], [3630, 13.68, 7.27], [4500, 12.25, 6.70], [5000, 11.60, 6.35], [5700, 10.50, 5.75], [5960, 9.30, 5.00], [6371, 8.00, 4.45]],
+  outer: [[1221.5, 10.36, 0], [3480, 8.06, 0]],
+  inner: [[0, 11.26, 3.67], [1221.5, 11.03, 3.50]],
+};
+function interp(tab, r, k) { if (r <= tab[0][0]) return tab[0][k]; for (let i = 1; i < tab.length; i++) if (r <= tab[i][0]) { const a = tab[i - 1], b = tab[i]; return a[k] + (b[k] - a[k]) * (r - a[0]) / (b[0] - a[0]); } return tab[tab.length - 1][k]; }
+function region(r) { return r > RCMB ? 'mantle' : r > RICB ? 'outer' : 'inner'; }
+function vel(r, wave) { const k = wave === 'P' ? 1 : 2; const reg = region(r); return interp(VEL[reg], r, k); }
+// smooth crust->mantle jump (Moho) as gradient: treat crust with own table, mantle starting at 6346
+function traceRay(theta0, wave, srcAng) {
+  // source at surface (r = RE - 1) at angle srcAng (radians, measured clockwise from +y/top); takeoff theta0 from downward vertical (signed)
+  const ds = 8; let r0 = RE - 2;
+  let x = r0 * Math.sin(srcAng), y = r0 * Math.cos(srcAng);
+  const down = [-Math.sin(srcAng), -Math.cos(srcAng)], tang = [Math.cos(srcAng), -Math.sin(srcAng)];
+  let d = [down[0] * Math.cos(theta0) + tang[0] * Math.sin(theta0), down[1] * Math.cos(theta0) + tang[1] * Math.sin(theta0)];
+  let t = 0, pts = [[x, y, 0]], stopped = null;
+  const dvdr = (r) => { const e = 0.5, tab = VEL[region(r)], k = wave === 'P' ? 1 : 2; return (interp(tab, r + e, k) - interp(tab, r - e, k)) / (2 * e); };
+  for (let i = 0; i < 6000; i++) {
+    const r = Math.hypot(x, y), v = vel(r, wave);
+    if (v <= 0) { stopped = 'liquid'; break; }
+    // bending: d/ds(n d) = grad n, n = 1/v, grad n = -(1/v^2) dv/dr rhat
+    const rh = [x / r, y / r], g = -dvdr(r) / (v * v), n = 1 / v;
+    const gd = g * (rh[0] * d[0] + rh[1] * d[1]);
+    d = [d[0] + ds * (g * rh[0] - gd * d[0]) / n, d[1] + ds * (g * rh[1] - gd * d[1]) / n];
+    const dl = Math.hypot(d[0], d[1]); d = [d[0] / dl, d[1] / dl];
+    let nx = x + d[0] * ds, ny = y + d[1] * ds, nr = Math.hypot(nx, ny);
+    // interfaces
+    let crossed = null;
+    for (const Ri of [RCMB, RICB]) if ((r - Ri) * (nr - Ri) < 0) crossed = Ri;
+    if (crossed) {
+      // find intersection by bisection
+      let lo = 0, hi = ds; for (let k = 0; k < 30; k++) { const m = (lo + hi) / 2, mr = Math.hypot(x + d[0] * m, y + d[1] * m); if ((r - crossed) * (mr - crossed) > 0) lo = m; else hi = m; }
+      const sx = x + d[0] * hi, sy = y + d[1] * hi; t += hi / v;
+      const inward = nr < r; const v1 = v, rIn = crossed + (inward ? -0.5 : 0.5);
+      const v2 = vel(rIn, wave);
+      if (v2 <= 0) { pts.push([sx, sy, t]); stopped = 'liquid'; break; }
+      const rh2 = [sx / crossed, sy / crossed], dn = d[0] * rh2[0] + d[1] * rh2[1];
+      const tv = [d[0] - dn * rh2[0], d[1] - dn * rh2[1]], s1 = Math.hypot(tv[0], tv[1]), s2 = v2 / v1 * s1;
+      if (s2 >= 1) { d = [d[0] - 2 * dn * rh2[0], d[1] - 2 * dn * rh2[1]]; x = sx + d[0] * 0.6; y = sy + d[1] * 0.6; }
+      else { const c2 = Math.sqrt(1 - s2 * s2), tu = s1 > 1e-12 ? [tv[0] / s1, tv[1] / s1] : [0, 0]; d = [Math.sign(dn) * c2 * rh2[0] + s2 * tu[0], Math.sign(dn) * c2 * rh2[1] + s2 * tu[1]]; x = sx + d[0] * 0.6; y = sy + d[1] * 0.6; }
+      pts.push([x, y, t]); continue;
+    }
+    t += ds / v; x = nx; y = ny;
+    if (nr >= RE) { const f = (RE - r) / (nr - r); x = pts[pts.length - 1][0] + (x - pts[pts.length - 1][0]) * f; y = pts[pts.length - 1][1] + (y - pts[pts.length - 1][1]) * f; pts.push([x, y, t]); stopped = 'surface'; break; }
+    if (i % 2 === 0) pts.push([x, y, t]);
+  }
+  let delta = null;
+  if (stopped === 'surface') { const a = Math.atan2(x, y); delta = ((a - srcAng) * 180 / Math.PI); delta = ((delta + 540) % 360) - 180; }
+  return { pts, t, stopped, delta, wave, theta0 };
+}
+let rays = { P: [], S: [] }, tt = { P: [], S: [] }, src = 0, waveT = 0, wavePlay = false, station = 60 * Math.PI / 180, dragSrc = false, plateT = 0, plate = 'div';
+function buildRays() {
+  const dens = +$('#rayN').value, angP = [], angS = [];
+  const stepC = [1.2, 0.6, 0.35][dens - 1], stepM = [3, 1.6, 1][dens - 1];
+  for (let a = 0.4; a < 18.6; a += stepC) angP.push(a);
+  for (let a = 18.75; a < 88; a += stepM * (a > 50 ? 2 : 1)) angP.push(a);
+  for (let a = 19.8; a < 88; a += stepM * (a > 50 ? 2 : 1)) angS.push(a);
+  const mk = (ang, w) => { const out = []; ang.forEach(a => { const r = traceRay(a * Math.PI / 180, w, 0); out.push(r); out.push({ ...r, pts: r.pts.map(p => [-p[0], p[1], p[2]]), delta: r.delta == null ? null : -r.delta, mirror: true }); }); return out; };
+  rays = { P: mk(angP, 'P'), S: mk(angS, 'S') };
+  // dense travel-time table for the seismometer & curves
+  tt = { P: [], S: [] };
+  for (let a = 0.1; a < 88.5; a += 0.1) { const r = traceRay(a * Math.PI / 180, 'P', 0); if (r.stopped === 'surface') tt.P.push({ d: r.delta, t: r.t, core: a < 18.6 }); }
+  for (let a = 19.5; a < 88.5; a += 0.15) { const r = traceRay(a * Math.PI / 180, 'S', 0); if (r.stopped === 'surface') tt.S.push({ d: r.delta, t: r.t }); }
+  tt.Pmax = Math.max(...tt.P.filter(q => !q.core).map(q => q.d)); tt.Smax = Math.max(...tt.S.map(q => q.d));
+  tt.PKPmin = Math.min(...tt.P.filter(q => q.core && q.d > 120).map(q => q.d));
+  dirty.int = true;
+}
+function firstArrival(w, D) { // D in degrees 0..180
+  let best = null; for (const q of tt[w]) { if (Math.abs(q.d - D) < 0.6 && (best == null || q.t < best)) best = q.t; } return best;
+}
+const eSt = SL.canvas($('#eCv'), () => dirty.int = true), ttSt = SL.canvas($('#ttCv'), () => dirty.int = true), ptSt = SL.canvas($('#ptCv'));
+function geom() { const { w, h } = eSt, R = Math.min(h / 2 - 26, w / 2 - 30), cx = w / 2, cy = h / 2 + 8; return { R, cx, cy, s: R / RE }; }
+function toScreen(x, y, G) { const c = Math.cos(src), sn = Math.sin(src), xr = x * c + y * sn, yr = -x * sn + y * c; return [G.cx + xr * G.s, G.cy - yr * G.s]; }
+function surfPt(ang, G, rr) { const r = (rr || RE); return [G.cx + Math.sin(ang) * r * G.s, G.cy - Math.cos(ang) * r * G.s]; }
+const LAYERS = [[RE, 'Mantle', 'solid silicate rock, flows slowly', '#b45309', '#7c2d12'], [RCMB, 'Outer core', 'liquid iron–nickel', '#f59e0b', '#c2410c'], [RICB, 'Inner core', 'solid iron–nickel', '#fde68a', '#f59e0b']];
+function drawEarth(t) {
+  const { ctx, w, h } = eSt, G = geom();
+  if (w < 40 || h < 40) return;
+  ctx.clearRect(0, 0, w, h);
+  const bg = ctx.createRadialGradient(G.cx, G.cy, G.R * 0.5, G.cx, G.cy, Math.max(w, h)); bg.addColorStop(0, '#0b1530'); bg.addColorStop(1, '#03060f'); ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+  // layers
+  LAYERS.forEach(([r, , , c1, c2]) => { const g = ctx.createRadialGradient(G.cx - r * G.s * 0.3, G.cy - r * G.s * 0.3, r * G.s * 0.1, G.cx, G.cy, r * G.s); g.addColorStop(0, c1); g.addColorStop(1, c2); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(G.cx, G.cy, r * G.s, 0, 7); ctx.fill(); });
+  ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.beginPath(); ctx.arc(G.cx, G.cy, RE * G.s, 0, 7); ctx.fill();
+  // crust ring and atmosphere glow
+  ctx.strokeStyle = '#6b8f5a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(G.cx, G.cy, RE * G.s - 1.5, 0, 7); ctx.stroke();
+  ctx.strokeStyle = 'rgba(96,165,250,.35)'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(G.cx, G.cy, RE * G.s + 4, 0, 7); ctx.stroke();
+  // shadow zones
+  if ($('#showShadow').checked) {
+    const arc = (a0, a1, col, rad) => { ctx.strokeStyle = col; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(G.cx, G.cy, rad, a0 - Math.PI / 2, a1 - Math.PI / 2); ctx.stroke(); };
+    const D = Math.PI / 180, r1 = RE * G.s + 13, r2 = RE * G.s + 23;
+    if ($('#showP').checked) { arc(src + 104 * D, src + 140 * D, 'rgba(56,189,248,.85)', r1); arc(src - 140 * D, src - 104 * D, 'rgba(56,189,248,.85)', r1); }
+    if ($('#showS').checked) arc(src + 104 * D, src + (360 - 104) * D, 'rgba(244,114,182,.75)', r2);
+    ctx.font = '600 10.5px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+    if (w > 520) { const lab = (a, txt, col, r) => { const p = surfPt(src + a * D, G, RE + r / G.s); ctx.fillStyle = col; ctx.fillText(txt, p[0], p[1]); }; if ($('#showP').checked) lab(122, 'P shadow', '#7dd3fc', 50); if ($('#showS').checked) lab(180, 'S shadow beyond 104°', '#f9a8d4', 44); }
+  }
+  // labels
+  ctx.font = '600 11px Inter, sans-serif'; ctx.textAlign = 'center';
+  const lbl = (txt, r, sub) => { const p = toScreen(0, -r, G); ctx.fillStyle = 'rgba(0,0,0,.45)'; const tw = ctx.measureText(txt).width + 10; ctx.fillRect(p[0] - tw / 2, p[1] - 12, tw, sub ? 28 : 17); ctx.fillStyle = '#fff'; ctx.fillText(txt, p[0], p[1] + 1); if (sub) { ctx.font = '10px Inter, sans-serif'; ctx.fillStyle = '#e2e8f0'; ctx.fillText(sub, p[0], p[1] + 13); ctx.font = '600 11px Inter, sans-serif'; } };
+  if (G.R > 150) { lbl('Mantle', 4700, '0–2891 km'); lbl('Outer core (liquid)', 2400, '2891–5150 km'); lbl('Inner core', 400, 'solid'); }
+  // rays
+  const drawSet = (set, col) => { ctx.strokeStyle = col; ctx.lineWidth = 1; set.forEach(r => { ctx.globalAlpha = r.stopped === 'liquid' ? 0.3 : 0.32; ctx.beginPath(); r.pts.forEach((p, i) => { const q = toScreen(p[0], p[1], G); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }); ctx.stroke(); }); ctx.globalAlpha = 1; };
+  if ($('#showP').checked) drawSet(rays.P, '#38bdf8');
+  if ($('#showS').checked) drawSet(rays.S, '#f472b6');
+  // wavefront dots
+  const T = waveT * 60;
+  const front = (set, col) => { ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 8; set.forEach(r => { const pts = r.pts; if (T > pts[pts.length - 1][2]) return; let lo = 0, hi = pts.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (pts[m][2] < T) lo = m; else hi = m; } const a = pts[lo], b = pts[hi], f = clamp((T - a[2]) / ((b[2] - a[2]) || 1), 0, 1); const q = toScreen(a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, G); ctx.beginPath(); ctx.arc(q[0], q[1], 2.6, 0, 7); ctx.fill(); }); ctx.shadowBlur = 0; };
+  if (T > 0) { if ($('#showP').checked) front(rays.P, '#e0f2fe'); if ($('#showS').checked) front(rays.S, '#fce7f3'); }
+  // source star
+  const sp = surfPt(src, G, RE + 60);
+  ctx.save(); ctx.translate(sp[0], sp[1]); ctx.fillStyle = '#ef4444'; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 16; ctx.beginPath(); for (let k = 0; k < 10; k++) { const rr = k % 2 ? 4.5 : 11, a = k * Math.PI / 5 - Math.PI / 2; ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); } ctx.closePath(); ctx.fill(); ctx.restore();
+  // station
+  if (station != null) {
+    const D = Math.abs(((station - src) * 180 / Math.PI + 540) % 360 - 180), tp = firstArrival('P', D), ts = firstArrival('S', D);
+    const p = surfPt(station, G, RE + 40); const hitP = tp != null && T >= tp, hitS = ts != null && T >= ts;
+    ctx.save(); ctx.translate(p[0], p[1]); ctx.rotate(station); ctx.fillStyle = hitS ? '#f472b6' : hitP ? '#38bdf8' : '#e2e8f0'; ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(7, 6); ctx.lineTo(-7, 6); ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+  $('#hT').textContent = waveT.toFixed(1);
+}
+function drawTT() {
+  if (ttSt.w < 40) return;
+  const P = tt.P.filter(q => q.d >= 0).map(q => [q.d, q.t / 60]), S = tt.S.filter(q => q.d >= 0).map(q => [q.d, q.t / 60]);
+  const sortD = a => a.sort((p, q) => p[0] - q[0]);
+  const direct = sortD(tt.P.filter(q => q.d >= 0 && !q.core).map(q => [q.d, q.t / 60])), core = sortD(tt.P.filter(q => q.d >= 0 && q.core).map(q => [q.d, q.t / 60]));
+  const G = plot(ttSt, [], { xmin: 0, xmax: 180, ymin: 0, ymax: 26, xlabel: 'Δ (°)', pad: [30, 12, 26, 34] });
+  const { ctx } = ttSt;
+  ctx.fillStyle = 'rgba(56,189,248,.08)'; ctx.fillRect(G.X(104), G.pt, G.X(140) - G.X(104), ttSt.h - G.pt - G.pb);
+  ctx.fillStyle = 'rgba(244,114,182,.06)'; ctx.fillRect(G.X(104), G.pt, G.X(180) - G.X(104), ttSt.h - G.pt - G.pb);
+  const dots = (arr, col) => { ctx.fillStyle = col; arr.forEach(p => { ctx.beginPath(); ctx.arc(G.X(p[0]), G.Y(p[1]), 1.4, 0, 7); ctx.fill(); }); };
+  dots(direct, '#38bdf8'); dots(core, '#a78bfa'); dots(sortD(S), '#f472b6');
+  ctx.font = '10px Inter, sans-serif'; ctx.textAlign = 'left'; let lx = G.pl + 4; [['P (mantle)', '#38bdf8'], ['PKP (core)', '#a78bfa'], ['S', '#f472b6'], ['minutes ↑', null]].forEach(([n, c]) => { if (c) { ctx.fillStyle = c; ctx.fillRect(lx, 10, 9, 9); lx += 13; } ctx.fillStyle = '#cbd5e1'; ctx.fillText(n, lx, 18); lx += ctx.measureText(n).width + 14; });
+  if (station != null) { const D = Math.abs(((station - src) * 180 / Math.PI + 540) % 360 - 180); ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(G.X(D), G.pt); ctx.lineTo(G.X(D), ttSt.h - G.pb); ctx.stroke(); ctx.setLineDash([]); }
+  if (waveT > 0) { ctx.strokeStyle = 'rgba(250,204,21,.6)'; ctx.beginPath(); ctx.moveTo(G.pl, G.Y(waveT)); ctx.lineTo(ttSt.w - G.pr, G.Y(waveT)); ctx.stroke(); }
+}
+function stationInfo() {
+  if (station == null) return;
+  const D = Math.abs(((station - src) * 180 / Math.PI + 540) % 360 - 180), tp = firstArrival('P', D), ts = firstArrival('S', D);
+  const mmss = s => s == null ? 'none' : `${Math.floor(s / 60)} min ${String(Math.round(s % 60)).padStart(2, '0')} s`;
+  $('#sD').innerHTML = `${SL.fmt(D, 1)}°<small>${SL.fmt(D * Math.PI / 180 * RE, 0)} km</small>`;
+  $('#sP').innerHTML = tp == null ? '<span style="color:#7dd3fc">shadow</span>' : mmss(tp) + (D > 100 && D < 143 ? '<small>weak, via inner core</small>' : D >= 143 ? '<small>PKP</small>' : '');
+  $('#sS').innerHTML = ts == null ? '<span style="color:#f9a8d4">none</span>' : mmss(ts);
+  $('#sSP').innerHTML = tp != null && ts != null ? mmss(ts - tp) : '–';
+  if (D >= 104 && D <= 140) done('ch1', `Δ = ${SL.fmt(D, 0)}°: no direct P or S arrive here; only weak waves refracted through the inner core.`);
+}
+const PLATE_TXT = { div: 'Divergent: plates pull apart, magma rises and new oceanic crust forms, recording reversals of Earth\'s magnetic field as stripes.', conv: 'Convergent: dense oceanic lithosphere sinks beneath a continent. Earthquakes deepen along the slab (a Wadati–Benioff zone) and melting feeds a volcanic arc.', trans: 'Transform: plates slide horizontally past each other. Crust is neither created nor destroyed, but friction builds strain that is released in earthquakes.', rift: 'East African Rift: the Somali plate moves away from the Nubian plate by a few mm per year. The crust thins, blocks drop along normal faults to form the rift valley, and rising magma feeds volcanoes.' };
+function drawPlate(t) {
+  const { ctx, w, h } = ptSt; ctx.clearRect(0, 0, w, h);
+  if (w < 40 || h < 40) return;
+  const sky = ctx.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#0b1730'); sky.addColorStop(1, '#050913'); ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
+  const s = (t * 6) % 40, sea = h * 0.38, lith = h * 0.62;
+  ctx.font = '600 10.5px Inter, sans-serif'; ctx.textAlign = 'center';
+  const arrowH = (x, y, dir) => SL.arrow(ctx, x, y, x + dir * 34, y, '#fde68a', 2.2, 7);
+  if (plate === 'div') {
+    ctx.fillStyle = '#1e3a5f'; ctx.fillRect(0, sea - 26, w, 26);
+    for (let x = -40; x < w / 2; x += 40) { const xx = w / 2 - 10 - (x + s); if (xx < 0) continue; ctx.fillStyle = Math.floor((x + s) / 40) % 2 ? '#475569' : '#334155'; ctx.fillRect(xx - 40, sea, 40, lith - sea); }
+    for (let x = -40; x < w / 2; x += 40) { const xx = w / 2 + 10 + (x + s); ctx.fillStyle = Math.floor((x + s) / 40) % 2 ? '#475569' : '#334155'; ctx.fillRect(xx, sea, 40, lith - sea); }
+    const mg = ctx.createLinearGradient(0, h, 0, sea); mg.addColorStop(0, '#7c2d12'); mg.addColorStop(1, '#f97316'); ctx.fillStyle = mg; ctx.beginPath(); ctx.moveTo(w / 2 - 60, h); ctx.quadraticCurveTo(w / 2 - 12, lith, w / 2 - 10, sea); ctx.lineTo(w / 2 + 10, sea); ctx.quadraticCurveTo(w / 2 + 12, lith, w / 2 + 60, h); ctx.fill();
+    ctx.fillStyle = '#7c2d12'; ctx.fillRect(0, lith, w / 2 - 60, h - lith); ctx.fillRect(w / 2 + 60, lith, w, h - lith);
+    arrowH(w * 0.2, sea + 20, -1); arrowH(w * 0.8, sea + 20, 1); ctx.fillStyle = '#e2e8f0'; ctx.fillText('Mid-ocean ridge', w / 2, sea - 32);
+  } else if (plate === 'conv') {
+    ctx.save(); ctx.translate(0, h * 0.12);
+    ctx.fillStyle = '#1e3a5f'; ctx.fillRect(0, sea - 26, w * 0.55, 26);
+    ctx.fillStyle = '#7c2d12'; ctx.fillRect(0, h * 0.75, w, h);
+    ctx.fillStyle = '#334155'; ctx.beginPath(); ctx.moveTo(0, sea); ctx.lineTo(w * 0.55, sea); ctx.quadraticCurveTo(w * 0.7, sea + 10, w * 0.85, h); ctx.lineTo(w * 0.72, h); ctx.quadraticCurveTo(w * 0.62, lith, w * 0.5, lith); ctx.lineTo(0, lith); ctx.fill();
+    ctx.fillStyle = '#78716c'; ctx.beginPath(); ctx.moveTo(w * 0.56, sea - 2); ctx.lineTo(w * 0.72, sea - 34); ctx.lineTo(w * 0.78, sea - 52); ctx.lineTo(w * 0.84, sea - 34); ctx.lineTo(w, sea - 30); ctx.lineTo(w, sea + 30); ctx.lineTo(w * 0.62, sea + 14); ctx.fill();
+    const er = (Math.sin(t * 3) + 1) / 2; ctx.fillStyle = `rgba(249,115,22,${0.5 + er * 0.5})`; ctx.beginPath(); ctx.arc(w * 0.78, sea - 56 - er * 6, 5 + er * 4, 0, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(148,163,184,.4)'; ctx.beginPath(); ctx.arc(w * 0.78 + 6, sea - 72 - er * 10, 8, 0, 7); ctx.fill();
+    for (let k = 0; k < 6; k++) { const q = (k / 6 + t * 0.05) % 1, x = w * (0.58 + 0.24 * q), y = sea + 6 + (h - sea) * q * 0.85; ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 7); ctx.fill(); }
+    arrowH(w * 0.2, sea + 20, 1); ctx.fillStyle = '#e2e8f0'; ctx.fillText('Trench', w * 0.55, sea - 32); ctx.fillText('Volcanic arc', w * 0.86, sea - 70);
+    ctx.restore();
+  } else if (plate === 'trans') {
+    ctx.fillStyle = '#334155'; ctx.fillRect(0, 20, w, h / 2 - 20); ctx.fillStyle = '#3f4a5e'; ctx.fillRect(0, h / 2, w, h / 2 - 10);
+    for (let x = -60; x < w + 60; x += 60) { ctx.strokeStyle = '#64748b'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(((x + s * 1.5) % (w + 120)) - 60, 26); ctx.lineTo(((x + s * 1.5) % (w + 120)) - 60, h / 2 - 4); ctx.stroke(); ctx.beginPath(); ctx.moveTo(((x - s * 1.5 + 1200) % (w + 120)) - 60, h / 2 + 4); ctx.lineTo(((x - s * 1.5 + 1200) % (w + 120)) - 60, h - 14); ctx.stroke(); }
+    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke();
+    if (Math.sin(t * 2.3) > 0.85) { const x = w * (0.3 + 0.4 * Math.abs(Math.sin(t))); ctx.fillStyle = '#fde047'; ctx.beginPath(); for (let k = 0; k < 10; k++) { const rr = k % 2 ? 4 : 10, a = k * Math.PI / 5; ctx.lineTo(x + Math.cos(a) * rr, h / 2 + Math.sin(a) * rr); } ctx.fill(); }
+    arrowH(w * 0.45, h * 0.3, 1); arrowH(w * 0.55, h * 0.72, -1); ctx.fillStyle = '#e2e8f0'; ctx.fillText('Map view: transform fault', w / 2, 14);
+  } else {
+    const open = 6 + 4 * Math.sin(t * 0.6);
+    ctx.fillStyle = '#7c2d12'; ctx.fillRect(0, lith + 10, w, h);
+    const mg = ctx.createRadialGradient(w / 2, h, 4, w / 2, h, h * 0.55); mg.addColorStop(0, '#f97316'); mg.addColorStop(1, 'rgba(249,115,22,0)'); ctx.fillStyle = mg; ctx.fillRect(0, sea, w, h);
+    ctx.fillStyle = '#57534e'; ctx.beginPath(); ctx.moveTo(0, sea - 10); ctx.lineTo(w * 0.33 - open, sea - 14); ctx.lineTo(w * 0.38 - open, lith - 6); ctx.lineTo(0, lith); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(w, sea - 10); ctx.lineTo(w * 0.67 + open, sea - 14); ctx.lineTo(w * 0.62 + open, lith - 6); ctx.lineTo(w, lith); ctx.fill();
+    ctx.fillStyle = '#78716c'; ctx.beginPath(); ctx.moveTo(w * 0.33 - open + 2, sea + 30); ctx.lineTo(w * 0.67 + open - 2, sea + 30); ctx.lineTo(w * 0.62 + open - 4, lith - 6); ctx.lineTo(w * 0.38 - open + 4, lith - 6); ctx.fill();
+    ctx.fillStyle = '#2563eb'; ctx.fillRect(w * 0.52, sea + 24, w * 0.08, 6);
+    ctx.fillStyle = '#44403c'; ctx.beginPath(); ctx.moveTo(w * 0.40, sea + 30); ctx.lineTo(w * 0.45, sea + 2); ctx.lineTo(w * 0.50, sea + 30); ctx.fill();
+    ctx.strokeStyle = '#fde047'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(w * 0.33 - open, sea - 14); ctx.lineTo(w * 0.38 - open, lith); ctx.moveTo(w * 0.67 + open, sea - 14); ctx.lineTo(w * 0.62 + open, lith); ctx.stroke(); ctx.setLineDash([]);
+    arrowH(w * 0.14, sea + 22, -1); arrowH(w * 0.86, sea + 22, 1);
+    ctx.fillStyle = '#e2e8f0'; ctx.fillText('Nubian plate', w * 0.15, sea - 22); ctx.fillText('Somali plate', w * 0.85, sea - 22); ctx.fillText('Rift valley (graben)', w / 2, sea - 22);
+    ctx.fillStyle = '#93a1bd'; ctx.font = '9.5px Inter, sans-serif'; ctx.fillText('volcano', w * 0.45, sea - 4); ctx.fillText('lake', w * 0.56, sea + 44); ctx.fillText('normal faults', w * 0.3, lith + 4);
+  }
+}
+let eFrame = 0;
+loops.int = SL.loop((dt, t) => {
+  if (wavePlay) { waveT += dt * 1.6; if (waveT >= 25) { waveT = 25; wavePlay = false; setEPlay(); } const sc = $('#tScrub'); sc.value = waveT; sc.dispatchEvent(new Event('input')); }
+  drawEarth(t); plateT = t; drawPlate(t);
+  if (dirty.int || wavePlay || ++eFrame % 30 === 0) { drawTT(); stationInfo(); dirty.int = false; }
+});
+function setEPlay() { $('#ePlay').innerHTML = wavePlay ? '<i data-lucide="pause"></i> Pause' : '<i data-lucide="play"></i> Release waves'; SL.refreshIcons($('#ePlay').parentElement); }
+$('#ePlay').onclick = () => { if (!wavePlay && waveT >= 25) waveT = 0; wavePlay = !wavePlay; setEPlay(); };
+SL.bind('#tScrub', v => { if (!wavePlay) waveT = v; dirty.int = true; }, v => v.toFixed(1) + ' min');
+SL.bind('#rayN', () => { if (typeof traceRay === 'function') buildRays(); }, v => ['sparse', 'medium', 'dense'][v - 1]);
+['#showP', '#showS', '#showShadow'].forEach(s => $(s).onchange = () => dirty.int = true);
+$$('#plateSeg button').forEach(b => b.onclick = () => { plate = b.dataset.v; $$('#plateSeg button').forEach(x => x.classList.toggle('on', x === b)); $('#plateTxt').textContent = PLATE_TXT[plate]; });
+$('#plateTxt').textContent = PLATE_TXT.div;
+function angAt(p) { const G = geom(); return Math.atan2(p.x - G.cx, -(p.y - G.cy)); }
+$('#eCv').addEventListener('pointerdown', e => {
+  const p = SL.ptr(e, $('#eCv')), G = geom(), r = Math.hypot(p.x - G.cx, p.y - G.cy), sp = surfPt(src, G, RE + 60);
+  if (Math.hypot(p.x - sp[0], p.y - sp[1]) < 24) { dragSrc = true; $('#eCv').setPointerCapture(e.pointerId); return; }
+  if (Math.abs(r - RE * G.s) < 40) { station = angAt(p); dirty.int = true; }
+});
+$('#eCv').addEventListener('pointermove', e => {
+  const p = SL.ptr(e, $('#eCv')), G = geom();
+  if (dragSrc) { src = angAt(p); waveT = 0; dirty.int = true; return; }
+  const r = Math.hypot(p.x - G.cx, p.y - G.cy) / G.s;
+  if (r > RE) { $('#hHover').textContent = 'Click the surface to place a seismometer'; return; }
+  const depth = RE - r, reg = region(r), vp = vel(r, 'P'), vs = vel(r, 'S');
+  $('#hHover').textContent = `${reg === 'mantle' ? 'Mantle' : reg === 'outer' ? 'Outer core (liquid)' : 'Inner core (solid)'} · depth ${SL.fmt(depth, 0)} km · vP ${vp.toFixed(1)} km/s · vS ${vs ? vs.toFixed(1) + ' km/s' : '0 (liquid)'}`;
+});
+$('#eCv').addEventListener('pointerup', () => dragSrc = false);
+
+/* =====================================================================
+   B. LOCATE AN EPICENTRE
+   ===================================================================== */
+const VP = 6.0, VS = 3.46, KSP = 1 / (1 / VS - 1 / VP);
+const LON0 = 34.9, LAT0 = 0.9, KX = 111.32 * Math.cos(0.4 * Math.PI / 180), KY = 110.57;
+const km = (lon, lat) => [(lon - LON0) * KX, (LAT0 - lat) * KY];
+const MAPW = (37.4 - LON0) * KX, MAPH = (LAT0 + 2.5) * KY;
+const STA = [{ id: 'NAI', name: 'Nairobi', ll: [36.82, -1.29], col: '#38bdf8' }, { id: 'NAK', name: 'Nakuru', ll: [36.07, -0.30], col: '#a3e635' }, { id: 'NAR', name: 'Narok', ll: [35.87, -1.08], col: '#f472b6' }];
+STA.forEach(s => s.p = km(...s.ll));
+const LAKES = [['Baringo', 36.08, 0.62, 7, 10], ['Bogoria', 36.10, 0.25, 2.5, 8], ['Nakuru', 36.09, -0.37, 4, 5.5], ['Elementaita', 36.24, -0.45, 2.5, 3], ['Naivasha', 36.35, -0.77, 7, 7.5], ['Magadi', 36.27, -1.88, 3.5, 11]];
+const VOLC = [['Menengai', 36.07, -0.20], ['Longonot', 36.45, -0.91], ['Suswa', 36.35, -1.16]];
+const RIFT_W = [[35.88, 0.9], [35.95, 0.2], [36.02, -0.2], [36.18, -0.65], [36.22, -1.2], [36.05, -1.9], [36.0, -2.5]], RIFT_E = [[36.3, 0.9], [36.3, 0.2], [36.45, -0.3], [36.63, -0.65], [36.62, -1.2], [36.5, -1.9], [36.45, -2.5]];
+let seedQ = 5; const rq = () => (seedQ = (seedQ * 16807) % 2147483647) / 2147483647;
+let Q = null, picks = {}, guess = null, revealed = false, locMode = 'mystery', traces = {}, wavefrontT = 0, ampIn = {};
+const mSt = SL.canvas($('#mCv'), () => dirty.loc = true), sSt = SL.canvas($('#sCv'), () => dirty.loc = true);
+function newQuake(at) {
+  if (at) Q = { x: at[0], y: at[1], h: 8, M: Q ? Q.M : 4.0, t0: 6 + rq() * 6 };
+  else {
+    let x, y; for (;;) { const lat = -2.2 + rq() * 2.9, lon = 35.4 + rq() * 1.7; [x, y] = km(lon, lat); const dmin = Math.min(...STA.map(s => Math.hypot(s.p[0] - x, s.p[1] - y))); if (dmin > 20 && Math.max(...STA.map(s => Math.hypot(s.p[0] - x, s.p[1] - y))) < 240) break; }
+    Q = { x, y, h: 5 + rq() * 10, M: Math.round((3.0 + rq() * 2) * 10) / 10, t0: 6 + rq() * 6 };
+  }
+  picks = {}; guess = null; revealed = locMode === 'place'; ampIn = {}; wavefrontT = 0;
+  STA.forEach(s => {
+    const d = Math.hypot(Math.hypot(s.p[0] - Q.x, s.p[1] - Q.y), Q.h), tp = Q.t0 + d / VP, ts = Q.t0 + d / VS, dt = ts - tp;
+    const A = Math.pow(10, Q.M - 3 * Math.log10(8 * dt) + 2.92); // mm, Wood–Anderson
+    const fs = 50, n = 90 * fs, y = new Float32Array(n); let ns = 7 + STA.indexOf(s) * 13 + Math.floor(Q.x * 3);
+    const rn = () => (ns = (ns * 16807) % 2147483647) / 2147483647 - 0.5;
+    const ph = [rn() * 6, rn() * 6, rn() * 6];
+    for (let i = 0; i < n; i++) {
+      const t = i / fs; let v = rn() * 0.04 * Math.max(0.3, A * 0.02) + rn() * 0.03;
+      if (t > tp) { const u = t - tp; v += 0.3 * A * Math.min(1, u / 0.15) * Math.exp(-u / 1.8) * Math.sin(2 * Math.PI * 6 * u + ph[0]) * (0.8 + 0.4 * Math.sin(u * 7)); v += 0.06 * A * Math.exp(-u / 8) * rn(); }
+      if (t > ts) { const u = t - ts; v += A * Math.min(1, u / 0.35) * Math.exp(-u / 3.2) * Math.sin(2 * Math.PI * 2.6 * u + ph[1]) * (0.85 + 0.15 * Math.sin(u * 3.1)); v += 0.25 * A * Math.exp(-u / 12) * rn() * Math.min(1, u / 2); }
+      y[i] = v;
+    }
+    let pk = 0; for (let i = Math.floor(ts * fs); i < n; i++) pk = Math.max(pk, Math.abs(y[i]));
+    const sc = A / pk; for (let i = 0; i < n; i++) y[i] *= sc; pk = A;
+    traces[s.id] = { y, fs, tp, ts, d, dt, A: pk };
+  });
+  $('#mHud').textContent = locMode === 'place' ? `Your earthquake: M ${Q.M.toFixed(1)}, depth ${SL.fmt(Q.h, 0)} km` : 'Mystery earthquake: read the seismograms';
+  $('#locErr').textContent = '–'; renderTable(); dirty.loc = true;
+}
+function renderTable() {
+  const rows = STA.map(s => {
+    const p = picks[s.id] || {}, dt = p.P != null && p.S != null ? p.S - p.P : null, d = dt != null ? KSP * dt : null, A = ampIn[s.id];
+    const ml = dt != null && dt > 0 && A > 0 ? Math.log10(A) + 3 * Math.log10(8 * dt) - 2.92 : null;
+    return `<tr><td><span class="dot" style="background:${s.col}"></span>${s.name}</td><td class="num">${dt != null ? dt.toFixed(1) + ' s' : '–'}</td><td class="num">${d != null ? SL.fmt(d, 0) + ' km' : '–'}</td><td><input type="number" min="0" step="0.1" data-amp="${s.id}" value="${A ?? ''}" placeholder="mm" aria-label="Peak amplitude at ${s.name} in mm"></td><td class="num">${ml != null ? ml.toFixed(2) : '–'}</td></tr>`;
+  }).join('');
+  $('#stTable').innerHTML = `<tr><th>Station</th><th>S − P</th><th>Dist.</th><th>A (mm)</th><th>M<sub>L</sub></th></tr>${rows}`;
+  $$('#stTable input').forEach(inp => inp.onchange = () => { const v = parseFloat(inp.value); ampIn[inp.dataset.amp] = v > 0 ? v : undefined; renderTable(); });
+  const mls = STA.map(s => { const p = picks[s.id] || {}, A = ampIn[s.id]; const dt = p.P != null && p.S != null ? p.S - p.P : null; return dt > 0 && A > 0 ? Math.log10(A) + 3 * Math.log10(8 * dt) - 2.92 : null; }).filter(v => v != null);
+  $('#mlMean').textContent = mls.length ? (mls.reduce((a, b) => a + b, 0) / mls.length).toFixed(2) + (revealed ? ` (true ${Q.M.toFixed(1)})` : '') : '–';
+  dirty.loc = true;
+}
+function mapGeom() { const { w, h } = mSt, s = Math.min((w - 20) / MAPW, (h - 20) / MAPH), ox = (w - MAPW * s) / 2, oy = (h - MAPH * s) / 2; return { s, ox, oy, X: x => ox + x * s, Y: y => oy + y * s }; }
+function drawMap(t) {
+  const { ctx, w, h } = mSt, G = mapGeom();
+  if (w < 40 || h < 40) return;
+  ctx.clearRect(0, 0, w, h); ctx.fillStyle = '#050913'; ctx.fillRect(0, 0, w, h);
+  const pl = (lon, lat) => { const p = km(lon, lat); return [G.X(p[0]), G.Y(p[1])]; };
+  // highlands background
+  const bg = ctx.createLinearGradient(G.ox, 0, G.ox + MAPW * G.s, 0); bg.addColorStop(0, '#355e3b'); bg.addColorStop(0.45, '#6b6a3a'); bg.addColorStop(1, '#4d6b3a');
+  ctx.fillStyle = bg; ctx.fillRect(G.ox, G.oy, MAPW * G.s, MAPH * G.s);
+  // rift floor
+  ctx.fillStyle = '#a58a5a'; ctx.beginPath(); RIFT_W.forEach((p, i) => { const q = pl(...p); i ? ctx.lineTo(...q) : ctx.moveTo(...q); }); RIFT_E.slice().reverse().forEach(p => ctx.lineTo(...pl(...p))); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#4a3a1e'; ctx.lineWidth = 2; [RIFT_W, RIFT_E].forEach(edge => { ctx.beginPath(); edge.forEach((p, i) => { const q = pl(...p); i ? ctx.lineTo(...q) : ctx.moveTo(...q); }); ctx.stroke(); edge.forEach((p, i) => { if (!i) return; const a = pl(...edge[i - 1]), b = pl(...p); for (let k = 0.2; k < 1; k += 0.3) { const x = a[0] + (b[0] - a[0]) * k, y = a[1] + (b[1] - a[1]) * k, dir = edge === RIFT_W ? 1 : -1; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + dir * 5, y); ctx.stroke(); } }); });
+  // lakes, volcanoes
+  LAKES.forEach(([n, lon, lat, rx, ry]) => { const p = pl(lon, lat); ctx.fillStyle = '#2b6ea6'; ctx.beginPath(); ctx.ellipse(p[0], p[1], rx * G.s, ry * G.s, 0, 0, 7); ctx.fill(); if (w > 300) { ctx.fillStyle = '#bfdbfe'; ctx.font = 'italic 9.5px Inter, sans-serif'; ctx.textAlign = 'left'; ctx.fillText('L. ' + n, p[0] + rx * G.s + 3, p[1] + 3); } });
+  VOLC.forEach(([n, lon, lat]) => { const p = pl(lon, lat); ctx.fillStyle = '#3f3f46'; ctx.beginPath(); ctx.moveTo(p[0] - 7, p[1] + 5); ctx.lineTo(p[0], p[1] - 7); ctx.lineTo(p[0] + 7, p[1] + 5); ctx.fill(); ctx.fillStyle = '#f97316'; ctx.fillRect(p[0] - 1.5, p[1] - 7, 3, 2); if (w > 300) { ctx.fillStyle = '#fed7aa'; ctx.font = '9.5px Inter, sans-serif'; ctx.textAlign = 'right'; ctx.fillText(n, p[0] - 9, p[1] + 4); } });
+  // scale bar & north
+  const sb = 50 * G.s; ctx.fillStyle = '#e2e8f0'; ctx.fillRect(G.ox + 12, G.oy + MAPH * G.s - 16, sb, 3); ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText('50 km', G.ox + 14 + sb, G.oy + MAPH * G.s - 12);
+  ctx.textAlign = 'center'; ctx.fillText('N', G.ox + MAPW * G.s - 16, G.oy + 18); SL.arrow(ctx, G.ox + MAPW * G.s - 16, G.oy + 40, G.ox + MAPW * G.s - 16, G.oy + 22, '#e2e8f0', 1.5, 6);
+  // wavefronts (place mode / revealed)
+  if (revealed && Q) { wavefrontT = (wavefrontT + 0.25) % 60; const tt2 = wavefrontT; [[VP, 'rgba(56,189,248,'], [VS, 'rgba(244,114,182,']].forEach(([v, c]) => { const r = v * tt2; ctx.strokeStyle = c + Math.max(0, 0.7 - tt2 / 60) + ')'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(G.X(Q.x), G.Y(Q.y), r * G.s, 0, 7); ctx.stroke(); }); }
+  // circles from picks
+  STA.forEach(s => { const p = picks[s.id]; if (p && p.P != null && p.S != null && p.S > p.P) { const r = KSP * (p.S - p.P); ctx.strokeStyle = s.col; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.beginPath(); ctx.arc(G.X(s.p[0]), G.Y(s.p[1]), r * G.s, 0, 7); ctx.stroke(); ctx.setLineDash([]); } });
+  // stations
+  STA.forEach(s => { const x = G.X(s.p[0]), y = G.Y(s.p[1]); ctx.fillStyle = s.col; ctx.beginPath(); ctx.moveTo(x, y - 9); ctx.lineTo(x + 8, y + 6); ctx.lineTo(x - 8, y + 6); ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = '600 11px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(s.name, x, y + 20); });
+  // guess & truth
+  const star = (x, y, col, r) => { ctx.fillStyle = col; ctx.beginPath(); for (let k = 0; k < 10; k++) { const rr = k % 2 ? r * 0.42 : r, a = k * Math.PI / 5 - Math.PI / 2; ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); } ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke(); };
+  if (guess) { ctx.strokeStyle = '#fde047'; ctx.lineWidth = 2; const x = G.X(guess[0]), y = G.Y(guess[1]); ctx.beginPath(); ctx.moveTo(x - 9, y); ctx.lineTo(x + 9, y); ctx.moveTo(x, y - 9); ctx.lineTo(x, y + 9); ctx.stroke(); ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.stroke(); }
+  if (revealed && Q) star(G.X(Q.x), G.Y(Q.y), '#ef4444', 11 + Math.sin(t * 4));
+}
+function seisGeom() { const { w, h } = sSt, pl = 44, pr = 12, top = 22, bot = 24, rowH = (h - top - bot) / 3, tmax = 90; return { pl, pr, top, bot, rowH, tmax, X: t => pl + t / tmax * (w - pl - pr), iX: x => (x - pl) / (w - pl - pr) * tmax }; }
+function drawSeis() {
+  const { ctx, w, h } = sSt, G = seisGeom();
+  if (w < 40 || h < 40) return;
+  ctx.clearRect(0, 0, w, h);
+  ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#5f6d8a';
+  for (let t = 0; t <= G.tmax; t += 10) { const x = G.X(t); ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.beginPath(); ctx.moveTo(x, G.top); ctx.lineTo(x, h - G.bot); ctx.stroke(); ctx.fillText(t + ' s', x, h - 8); }
+  STA.forEach((s, i) => {
+    const tr = traces[s.id]; if (!tr) return;
+    const y0 = G.top + G.rowH * (i + 0.5), half = G.rowH * 0.44;
+    const sc = Math.pow(10, Math.ceil(Math.log10(tr.A * 1.05))), sc2 = tr.A > sc / 2 ? sc : tr.A > sc / 5 ? sc / 2 : sc / 5;
+    ctx.strokeStyle = 'rgba(255,255,255,.08)'; [-1, 0, 1].forEach(k => { ctx.beginPath(); ctx.moveTo(G.pl, y0 - k * half); ctx.lineTo(w - G.pr, y0 - k * half); ctx.stroke(); });
+    ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'right'; ctx.fillText('+' + SL.fmt(sc2, 2), G.pl - 4, y0 - half + 4); ctx.fillText('0', G.pl - 4, y0 + 4); ctx.fillText('−' + SL.fmt(sc2, 2), G.pl - 4, y0 + half + 4);
+    ctx.fillStyle = s.col; ctx.textAlign = 'left'; ctx.font = '600 10.5px Inter, sans-serif'; ctx.fillText(`${s.name} (mm)`, G.pl + 4, y0 - half + 2); ctx.font = '10px JetBrains Mono, monospace';
+    // waveform: min/max per pixel column
+    ctx.strokeStyle = s.col; ctx.lineWidth = 1; ctx.beginPath();
+    const n = tr.y.length, cols = Math.floor(w - G.pl - G.pr);
+    for (let c = 0; c < cols; c++) { const i0 = Math.floor(c / cols * n), i1 = Math.floor((c + 1) / cols * n); let mn = 1e9, mx = -1e9; for (let k = i0; k < i1; k++) { const v = tr.y[k]; if (v < mn) mn = v; if (v > mx) mx = v; } const x = G.pl + c; ctx.moveTo(x, y0 - clamp(mx / sc2, -1.15, 1.15) * half); ctx.lineTo(x, y0 - clamp(mn / sc2, -1.15, 1.15) * half + 0.5); }
+    ctx.stroke();
+    const p = picks[s.id] || {};
+    [['P', p.P, '#38bdf8'], ['S', p.S, '#f472b6']].forEach(([lab, tv, col]) => { if (tv == null) return; const x = G.X(tv); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y0 - half - 2); ctx.lineTo(x, y0 + half + 2); ctx.stroke(); ctx.fillStyle = col; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(lab, x, y0 + half + 12 > y0 + G.rowH / 2 ? y0 - half - 4 : y0 + half + 12); ctx.font = '10px JetBrains Mono, monospace'; });
+    if (revealed) { ctx.setLineDash([2, 3]); [[tr.tp, '#38bdf8'], [tr.ts, '#f472b6']].forEach(([tv, col]) => { ctx.strokeStyle = col; ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.moveTo(G.X(tv), y0 - half); ctx.lineTo(G.X(tv), y0 + half); ctx.stroke(); }); ctx.setLineDash([]); ctx.globalAlpha = 1; }
+  });
+}
+let lastHover = null;
+$('#sCv').addEventListener('pointermove', e => { const p = SL.ptr(e, $('#sCv')), G = seisGeom(); const t = G.iX(p.x); if (t < 0 || t > G.tmax) return; const i = clamp(Math.floor((p.y - G.top) / G.rowH), 0, 2), s = STA[i], tr = traces[s.id]; if (!tr) return; const v = tr.y[clamp(Math.round(t * tr.fs), 0, tr.y.length - 1)]; $('#seisCap').textContent = `${s.name} · t = ${t.toFixed(2)} s · ${v >= 0 ? '+' : ''}${SL.fmt(v, 2)} mm`; });
+$('#sCv').addEventListener('pointerdown', e => {
+  const p = SL.ptr(e, $('#sCv')), G = seisGeom(), t = G.iX(p.x); if (t < 0 || t > G.tmax) return;
+  const i = clamp(Math.floor((p.y - G.top) / G.rowH), 0, 2), s = STA[i], pk = picks[s.id] || (picks[s.id] = {});
+  if (pk.P == null || (pk.P != null && pk.S != null)) { pk.P = Math.round(t * 10) / 10; pk.S = null; } else { pk.S = Math.round(t * 10) / 10; if (pk.S < pk.P) { const tmp = pk.P; pk.P = pk.S; pk.S = tmp; } }
+  renderTable();
+});
+$('#mCv').addEventListener('pointerdown', e => {
+  const p = SL.ptr(e, $('#mCv')), G = mapGeom(), x = (p.x - G.ox) / G.s, y = (p.y - G.oy) / G.s;
+  if (x < 0 || y < 0 || x > MAPW || y > MAPH) return;
+  if (locMode === 'place') { newQuake([x, y]); return; }
+  guess = [x, y]; dirty.loc = true;
+});
+function checkMag() { const mls = STA.map(s => { const p = picks[s.id] || {}, A = ampIn[s.id], dt = p.P != null && p.S != null ? p.S - p.P : null; return dt > 0 && A > 0 ? Math.log10(A) + 3 * Math.log10(8 * dt) - 2.92 : null; }); if (mls.every(v => v != null)) { const m = mls.reduce((a, b) => a + b, 0) / 3; if (Math.abs(m - Q.M) <= 0.3) done('ch3', `your M<sub>L</sub> ${m.toFixed(2)} vs true ${Q.M.toFixed(1)}.`); } }
+$('#checkBtn').onclick = () => {
+  if (!guess) { SL.toast('Click the map to mark where you think the epicentre is.', 'warn'); return; }
+  const err = Math.hypot(guess[0] - Q.x, guess[1] - Q.y); $('#locErr').innerHTML = `${SL.fmt(err, 1)}<small>km</small>`;
+  const nPicks = STA.filter(s => picks[s.id] && picks[s.id].P != null && picks[s.id].S != null).length;
+  if (err <= 15 && nPicks === 3 && locMode === 'mystery') { done('ch2', `epicentre located within ${SL.fmt(err, 1)} km.`); }
+  SL.toast(err <= 15 ? `Excellent: ${SL.fmt(err, 1)} km from the true epicentre.` : err <= 35 ? `Close: ${SL.fmt(err, 1)} km off. Refine your S − P picks.` : `${SL.fmt(err, 1)} km away. Check which arrival is P and which is S.`, err <= 15 ? 'ok' : 'warn');
+  checkMag();
+};
+$('#revealBtn').onclick = () => { revealed = true; renderTable(); checkMag(); dirty.loc = true; $('#mHud').textContent = `True epicentre: M ${Q.M.toFixed(1)}, depth ${SL.fmt(Q.h, 0)} km`; };
+$('#newQuake').onclick = () => newQuake();
+$('#clearPicks').onclick = () => { picks = {}; guess = null; renderTable(); };
+$$('#locMode button').forEach(b => b.onclick = () => { locMode = b.dataset.v; $$('#locMode button').forEach(x => x.classList.toggle('on', x === b)); newQuake(); if (locMode === 'place') SL.toast('Click anywhere on the map to set off an earthquake there.', 'ok'); });
+let mFrame = 0;
+loops.loc = SL.loop((dt, t) => { drawMap(t); if (dirty.loc || ++mFrame % 20 === 0) { drawSeis(); dirty.loc = false; } });
+
+/* =====================================================================
+   C. MAGNITUDE & ENERGY
+   ===================================================================== */
+const nSt = SL.canvas($('#nCv'), () => dirty.mag = true), enSt = SL.canvas($('#enCv'), () => dirty.mag = true);
+let nom = { dt: 12.4, A: 8 }, nDrag = null;
+const DTS = [1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 30, 40, 50], AMPS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100];
+function nomGeom() { const { w, h } = nSt, top = 46, bot = h - 34, xs = [w * 0.18, w * 0.5, w * 0.82];
+  // left axis u = 3log10(8dt) - 2.92 from dt=1..50 ; right v = log10 A from 0.1..100 ; middle M = u + v
+  const uMin = 3 * Math.log10(8) - 2.92, uMax = 3 * Math.log10(400) - 2.92, vMin = -1, vMax = 2;
+  const Yu = u => bot - (u - uMin) / (uMax - uMin) * (bot - top), Yv = v => bot - (v - vMin) / (vMax - vMin) * (bot - top);
+  // middle: y = (Yu(u)+Yv(v))/2 must be linear in M = u+v
+  const m1 = (bot - top) / (uMax - uMin), m2 = (bot - top) / (vMax - vMin), f = m1 / (m1 + m2), m3 = m1 * m2 / (m1 + m2);
+  xs[1] = xs[0] + f * (xs[2] - xs[0]);
+  return { top, bot, xs, Yu, Yv, uMin, uMax, vMin, vMax, f, m3, Ym: M => bot - m3 * (M - uMin - vMin) };
+}
+function drawNomo() {
+  const { ctx, w, h } = nSt, G = nomGeom(); ctx.clearRect(0, 0, w, h);
+  if (w < 40 || h < 40) return;
+  const u = 3 * Math.log10(8 * nom.dt) - 2.92, v = Math.log10(nom.A), M = u + v;
+  const yL = G.Yu(u), yR = G.Yv(v), yM = (1 - G.f) * yL + G.f * yR;
+  const axis = (x, title) => { ctx.strokeStyle = '#93a1bd'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, G.top); ctx.lineTo(x, G.bot); ctx.stroke(); ctx.fillStyle = '#e6ecf7'; ctx.font = '600 11.5px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(title, x, G.top - 18); };
+  axis(G.xs[0], 'S − P time (s) / distance'); axis(G.xs[1], 'Magnitude Mₗ'); axis(G.xs[2], 'Amplitude (mm)');
+  ctx.font = '10.5px JetBrains Mono, monospace';
+  DTS.forEach(d => { const y = G.Yu(3 * Math.log10(8 * d) - 2.92); ctx.strokeStyle = '#93a1bd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(G.xs[0] - 6, y); ctx.lineTo(G.xs[0], y); ctx.stroke(); ctx.fillStyle = '#cbd5e1'; ctx.textAlign = 'right'; ctx.fillText(`${d} s`, G.xs[0] - 9, y + 3.5); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'left'; ctx.fillText(`${Math.round(d * KSP)} km`, G.xs[0] + 6, y + 3.5); });
+  AMPS.forEach(a => { const y = G.Yv(Math.log10(a)); ctx.strokeStyle = '#93a1bd'; ctx.beginPath(); ctx.moveTo(G.xs[2], y); ctx.lineTo(G.xs[2] + 6, y); ctx.stroke(); ctx.fillStyle = '#cbd5e1'; ctx.textAlign = 'left'; ctx.fillText(SL.fmt(a, 1), G.xs[2] + 9, y + 3.5); });
+  for (let m = 0; m <= 7; m += 0.5) { const y = midY(m, G); if (y < G.top - 2 || y > G.bot + 2) continue; ctx.strokeStyle = '#93a1bd'; ctx.beginPath(); ctx.moveTo(G.xs[1] - (m % 1 ? 4 : 8), y); ctx.lineTo(G.xs[1] + (m % 1 ? 4 : 8), y); ctx.stroke(); if (m % 1 === 0) { ctx.fillStyle = '#cbd5e1'; ctx.textAlign = 'left'; ctx.fillText(m.toFixed(0), G.xs[1] + 11, y + 3.5); } }
+  // line
+  ctx.strokeStyle = '#fde047'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(G.xs[0], yL); ctx.lineTo(G.xs[2], yR); ctx.stroke();
+  [[G.xs[0], yL, '#38bdf8'], [G.xs[2], yR, '#f472b6']].forEach(([x, y, c]) => { ctx.fillStyle = c; ctx.shadowColor = c; ctx.shadowBlur = 12; ctx.beginPath(); ctx.arc(x, y, 8, 0, 7); ctx.fill(); ctx.shadowBlur = 0; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); });
+  ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(G.xs[1], yM, 6, 0, 7); ctx.fill();
+  ctx.font = '600 16px Space Grotesk, Inter, sans-serif'; ctx.textAlign = 'right'; ctx.fillText(`Mₗ = ${M.toFixed(1)}`, G.xs[1] - 14, yM - 8);
+  $('#nDt').innerHTML = `${nom.dt.toFixed(1)}<small>s</small>`; $('#nD').innerHTML = `${SL.fmt(nom.dt * KSP, 0)}<small>km</small>`; $('#nA').innerHTML = `${SL.fmt(nom.A, nom.A < 1 ? 2 : 1)}<small>mm</small>`; $('#nM').textContent = M.toFixed(2);
+}
+// Parallel-scale nomogram: with scale moduli m1, m2 the middle axis sits at m1/(m1+m2) of the way across and has modulus m1·m2/(m1+m2).
+function midY(m, G) { return G.Ym(m); }
+function nomoPick(p) { const G = nomGeom(); if (Math.abs(p.x - G.xs[0]) < 30) return 'L'; if (Math.abs(p.x - G.xs[2]) < 30) return 'R'; return null; }
+function nomoSet(side, y) { const G = nomGeom(); if (side === 'L') { const b = G.Yu(1) - G.Yu(0); const u = (y - G.Yu(0)) / b; nom.dt = clamp(Math.pow(10, (u + 2.92) / 3) / 8, 1, 50); } else { const b = G.Yv(1) - G.Yv(0); const v = (y - G.Yv(0)) / b; nom.A = clamp(Math.pow(10, v), 0.1, 100); } dirty.mag = true; }
+$('#nCv').addEventListener('pointerdown', e => { const p = SL.ptr(e, $('#nCv')); nDrag = nomoPick(p); if (nDrag) { $('#nCv').setPointerCapture(e.pointerId); nomoSet(nDrag, p.y); } });
+$('#nCv').addEventListener('pointermove', e => { if (!nDrag) return; nomoSet(nDrag, SL.ptr(e, $('#nCv')).y); });
+$('#nCv').addEventListener('pointerup', () => nDrag = null);
+function drawEnergy() {
+  const { ctx, w, h } = enSt; ctx.clearRect(0, 0, w, h);
+  if (w < 40 || h < 40) return;
+  const m1 = +$('#m1').value, m2 = +$('#m2').value, E = m => Math.pow(10, 1.5 * m + 4.8);
+  const rat = E(m2) / E(m1);
+  const big = Math.max(E(m1), E(m2)), side = m => clamp(Math.cbrt(E(m) / big) * (h - 70) / 1.4, 1.5, h);
+  const cube = (x, s, col, lab) => { const y = h - 30, d = s * 0.35; ctx.fillStyle = col; ctx.fillRect(x, y - s, s, s); ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.beginPath(); ctx.moveTo(x, y - s); ctx.lineTo(x + d, y - s - d); ctx.lineTo(x + s + d, y - s - d); ctx.lineTo(x + s, y - s); ctx.fill(); ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.moveTo(x + s, y - s); ctx.lineTo(x + s + d, y - s - d); ctx.lineTo(x + s + d, y - d); ctx.lineTo(x + s, y); ctx.fill(); ctx.fillStyle = '#e6ecf7'; ctx.font = '600 12px Inter, sans-serif'; ctx.textAlign = 'left'; ctx.fillText(lab, x, h - 12); };
+  const s1 = side(m1), s2 = side(m2);
+  cube(30, s1, '#38bdf8', `A: M ${m1.toFixed(1)}`); cube(Math.max(30 + s1 * 1.4 + 70, w * 0.4), s2, '#f472b6', `B: M ${m2.toFixed(1)}`);
+  ctx.fillStyle = '#93a1bd'; ctx.font = '11px Inter, sans-serif'; ctx.textAlign = 'right'; ctx.fillText('Cube volume ∝ energy released', w - 14, 20);
+  const SUP = '⁰¹²³⁴⁵⁶⁷⁸⁹', fmtE = v => { const e = Math.floor(Math.log10(v)); return `${(v / Math.pow(10, e)).toFixed(1)} × 10${String(e).split('').map(c => SUP[+c]).join('')}`; };
+  $('#eAmp').textContent = `×${SL.fmt(Math.pow(10, m2 - m1), Math.abs(m2 - m1) < 1 ? 2 : 0)}`;
+  $('#eRat').textContent = `×${rat >= 1 ? SL.fmt(rat, rat < 10 ? 2 : 0) : SL.fmt(rat, 4)}`;
+  $('#eB').innerHTML = `${fmtE(E(m2))}<small>J</small>`;
+  const tnt = E(m2) / 4.184e9; $('#eTnt').textContent = tnt >= 1e6 ? SL.fmt(tnt / 1e6, 1) + ' Mt' : tnt >= 1e3 ? SL.fmt(tnt / 1e3, 1) + ' kt' : SL.fmt(tnt, 1) + ' t';
+  if (rat >= 900 && rat <= 1120) done('ch4', `ΔM = ${(m2 - m1).toFixed(1)} gives about 1000 times the energy.`);
+}
+SL.bind('#m1', () => dirty.mag = true, v => 'M ' + v.toFixed(1)); SL.bind('#m2', () => dirty.mag = true, v => 'M ' + v.toFixed(1));
+$$('[data-ex]').forEach(b => b.onclick = () => { const el = $('#m2'); el.value = b.dataset.ex; el.dispatchEvent(new Event('input')); });
+loops.mag = SL.loop(() => { if (dirty.mag) { drawNomo(); drawEnergy(); dirty.mag = false; } });
+
+/* =====================================================================
+   D. BUILDING RESPONSE
+   ===================================================================== */
+const NST = [2, 5, 10, 20, 40];
+const bSt = SL.canvas($('#bCv'), () => dirty.bld = true), frSt = SL.canvas($('#frCv'), () => dirty.bld = true);
+let bld = NST.map(n => ({ n, x: [0, 0], v: [0, 0], peak: 0, hist: [] })), bt = 0, bRun = true, gm = 'sine', prot = 'fixed', sweep = null, quakeRec = null, gHist = [];
+const freq = () => Math.pow(10, +$('#gf').value), pga = () => +$('#pga').value * 9.81, zeta = () => +$('#zeta').value;
+function sysOf(b) { // returns 2-DOF matrices [m1,m2,k1,k2,c1,c2] and which coordinate is drift
+  const fn = 1 / (0.1 * b.n), wn = 2 * Math.PI * fn, z = zeta();
+  if (prot === 'iso') { const mb = 0.5, ms = 1, Tb = 2.5, wb = 2 * Math.PI / Tb, kb = (mb + ms) * wb * wb; return { m1: mb, m2: ms, k1: kb, k2: ms * wn * wn, c1: 2 * 0.15 * Math.sqrt(kb * (mb + ms)), c2: 2 * z * ms * wn, drift: x => x[1] - x[0], iso: true }; }
+  if (prot === 'tmd') { const mu = 0.05, md = mu, wd = wn / (1 + mu), zd = Math.sqrt(3 * mu / (8 * Math.pow(1 + mu, 3))); return { m1: 1, m2: md, k1: wn * wn, k2: md * wd * wd, c1: 2 * z * wn, c2: 2 * zd * md * wd, drift: x => x[0], tmd: true }; }
+  return { m1: 1, m2: 1e-6, k1: wn * wn, k2: 0, c1: 2 * z * wn, c2: 0, drift: x => x[0] };
+}
+function makeRecord() { // band-limited synthetic accelerogram, 30 s
+  let s = 9; const r = () => (s = (s * 16807) % 2147483647) / 2147483647; const soft = $('#site').value === 'soft';
+  const comps = []; for (let k = 0; k < 40; k++) { const f = Math.pow(10, -0.9 + 1.8 * k / 39); const fc = soft ? 0.5 : 2.5; const amp = (f / fc) ** 2 / (1 + (f / fc) ** 4); comps.push([f, amp, r() * 6.283]); }
+  const raw = t => comps.reduce((a, [f, A, p]) => a + A * Math.sin(2 * Math.PI * f * t + p), 0);
+  const env = t => t < 2 ? (t / 2) ** 2 : t < 10 ? 1 : Math.exp(-(t - 10) / 5);
+  let mx = 0; for (let t = 0; t < 30; t += 0.01) mx = Math.max(mx, Math.abs(raw(t) * env(t)));
+  return { f: t => t > 30 ? 0 : raw(t) * env(t) / mx, t0: bt };
+}
+function ag(t) { if (gm === 'quake') { if (!quakeRec) quakeRec = makeRecord(); return pga() * quakeRec.f(t - quakeRec.t0); } const ramp = Math.min(1, t / 3); return pga() * ramp * Math.sin(2 * Math.PI * freq() * t); }
+function bStep(dt) {
+  bld.forEach(b => { if (!b.S) b.S = sysOf(b); });
+  const sub = Math.ceil(dt / 0.0005), h = dt / sub;
+  for (let i = 0; i < sub; i++) {
+    bt += h; if (sweep) { const el = $('#gf'); const v = Math.min(1, -1 + (bt - sweep) / 40 * 2); el.value = v; if (v >= 1) { sweep = null; } }
+    const a = ag(bt);
+    bld.forEach(b => { const S = b.S || (b.S = sysOf(b)); const [x1, x2] = b.x, [v1, v2] = b.v;
+      const f1 = -S.k1 * x1 - S.c1 * v1 + S.k2 * (x2 - x1) + S.c2 * (v2 - v1) - S.m1 * a;
+      const f2 = -S.k2 * (x2 - x1) - S.c2 * (v2 - v1) - S.m2 * a;
+      const a1 = f1 / S.m1, a2 = f2 / S.m2;
+      b.v[0] += a1 * h; b.v[1] += a2 * h; b.x[0] += b.v[0] * h; b.x[1] += b.v[1] * h;
+      if (prot === 'fixed') { b.x[1] = b.x[0]; b.v[1] = b.v[0]; }
+    });
+  }
+  const tNow = bt;
+  bld.forEach(b => { const d = Math.abs(b.S.drift(b.x)); b.hist.push([tNow, d]); while (b.hist.length && b.hist[0][0] < tNow - 4) b.hist.shift(); b.peak = Math.max(...b.hist.map(q => q[1])); });
+  gHist.push([tNow, ag(tNow)]); while (gHist.length && gHist[0][0] < tNow - 6) gHist.shift();
+}
+function resetBld() { bld.forEach(b => { b.x = [0, 0]; b.v = [0, 0]; b.S = null; b.hist = []; b.peak = 0; }); bt = 0; gHist = []; if (gm === 'quake') quakeRec = makeRecord(); }
+function driftRatio(b) { return b.peak / (3 * b.n); }
+function drawBld(t) {
+  const { ctx, w, h } = bSt; ctx.clearRect(0, 0, w, h);
+  if (w < 40 || h < 40) return;
+  const sky = ctx.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#0d1b33'); sky.addColorStop(1, '#1a2c4a'); ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
+  const gy = h - 54, a = ag(bt), gx = gm === 'sine' ? clamp(-a / Math.pow(2 * Math.PI * freq(), 2) * 120, -10, 10) : clamp(a / 9.81 * 12, -8, 8);
+  const ex = 20; $('#hEx').textContent = ex;
+  ctx.fillStyle = '#3f2e1c'; ctx.fillRect(0, gy, w, h - gy); ctx.fillStyle = '#5b4228'; ctx.fillRect(gx - 20, gy, w + 40, 6);
+  const maxH = gy - 30, storeyPx = Math.min(maxH / 40, 10), colW = w / NST.length;
+  bld.forEach((b, i) => {
+    const x0 = colW * (i + 0.5) + gx, H = b.n * storeyPx, bw = clamp(colW * 0.42, 24, 70);
+    const S = b.S || sysOf(b), pxm = storeyPx / 3 * ex, base = S.iso ? b.x[0] * pxm * 0.5 : 0, drift = S.drift(b.x) * pxm;
+    const dr = driftRatio(b), col = dr > 0.025 ? '#ef4444' : dr > 0.015 ? '#f97316' : dr > 0.005 ? '#facc15' : '#4ade80';
+    const isoH = S.iso ? 8 : 0;
+    if (S.iso) { ctx.fillStyle = '#64748b'; for (let k = 0; k < 3; k++) { const bx = x0 - bw / 2 + 4 + k * (bw - 8) / 2; ctx.fillRect(bx - 4 + base * 0.5, gy - isoH, 8, isoH); } }
+    // building outline as stacked floors with first-mode shape (linear)
+    for (let k = 0; k < b.n; k++) {
+      const yb = gy - isoH - k * storeyPx, yt = yb - storeyPx, sb = base + drift * (k / b.n), st = base + drift * ((k + 1) / b.n);
+      ctx.fillStyle = k % 2 ? '#334155' : '#3b4a63'; ctx.beginPath(); ctx.moveTo(x0 - bw / 2 + sb, yb); ctx.lineTo(x0 + bw / 2 + sb, yb); ctx.lineTo(x0 + bw / 2 + st, yt); ctx.lineTo(x0 - bw / 2 + st, yt); ctx.closePath(); ctx.fill();
+      if (storeyPx > 5) { ctx.fillStyle = (k * 7 + i) % 5 ? 'rgba(253,224,71,.55)' : 'rgba(253,224,71,.15)'; for (let q = 0; q < 3; q++) { const wx = x0 - bw / 2 + 5 + q * (bw - 10) / 3 + (sb + st) / 2; ctx.fillRect(wx, yt + storeyPx * 0.3, (bw - 10) / 3 - 4, storeyPx * 0.45); } }
+    }
+    const top = gy - isoH - H, stp = base + drift;
+    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x0 - bw / 2 + base, gy - isoH); ctx.lineTo(x0 - bw / 2 + stp, top); ctx.lineTo(x0 + bw / 2 + stp, top); ctx.lineTo(x0 + bw / 2 + base, gy - isoH); ctx.stroke();
+    if (S.tmd) { const dm = (b.x[1] - b.x[0]) * pxm; ctx.fillStyle = '#a78bfa'; ctx.fillRect(x0 - 7 + stp + dm, top + 3, 14, Math.min(8, storeyPx * 1.5)); }
+    if (dr > 0.025) { ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x0 - 5, gy - isoH - H * 0.3); ctx.lineTo(x0 + 3, gy - isoH - H * 0.36); ctx.lineTo(x0 - 2, gy - isoH - H * 0.42); ctx.stroke(); }
+    ctx.fillStyle = '#e6ecf7'; ctx.font = `600 ${w < 520 ? 10 : 11.5}px Inter, sans-serif`; ctx.textAlign = 'center'; ctx.fillText(`${b.n} storeys`, colW * (i + 0.5), gy + 18); ctx.fillStyle = '#93a1bd'; ctx.font = `${w < 520 ? 9.5 : 10.5}px JetBrains Mono, monospace`; ctx.fillText(`T ≈ ${(0.1 * b.n).toFixed(1)} s`, colW * (i + 0.5), gy + 32);
+  });
+  // ground accel trace
+  if (gHist.length > 2) { const t1 = gHist[gHist.length - 1][0]; ctx.strokeStyle = 'rgba(250,204,21,.7)'; ctx.lineWidth = 1.2; ctx.beginPath(); gHist.forEach(([tt3, v], k) => { const x = 14 + w * 0.36 - (t1 - tt3) / 6 * (w * 0.36), y = 74 - v / (pga() || 1) * 14; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); ctx.fillStyle = '#93a1bd'; ctx.font = '10px Inter, sans-serif'; ctx.textAlign = 'left'; ctx.fillText('ground acceleration', 14, 102); }
+}
+function bStats() {
+  $('#bStats').innerHTML = bld.map(b => { const dr = driftRatio(b) * 100; const cls = dr > 2.5 ? 'bad' : dr > 0.5 ? 'warn' : 'good'; return `<div class="stat"><div class="k">${b.n} storeys</div><div class="v" style="color:${dr > 2.5 ? '#f87171' : dr > 1.5 ? '#fb923c' : dr > 0.5 ? '#fbbf24' : '#4ade80'}">${dr.toFixed(2)}<small>% drift</small></div></div>`; }).join('');
+  const b20 = bld[3]; if (gm === 'sine' && bt > 8 && driftRatio(b20) > 0.02 && +$('#pga').value <= 0.15) done('ch5', `the 20-storey building reached ${(driftRatio(b20) * 100).toFixed(1)}% drift at resonance.`);
+  if (bt > 10 && prot !== 'fixed' && bld.every(b => driftRatio(b) < 0.005) && chDone.ch5 && !sweep) done('ch6', `all buildings below 0.5% drift with ${prot === 'iso' ? 'base isolation' : 'tuned mass dampers'}.`);
+}
+function respAmp(b, f) { // steady-state |drift| per unit ground accel, times wn^2 → dimensionless amplification
+  const S = sysOf(b), w = 2 * Math.PI * f, wn = 2 * Math.PI / (0.1 * b.n);
+  // solve (K - w^2 M + i w C) X = -M*1 (unit accel)
+  const M = [[S.m1, 0], [0, S.m2]], K = [[S.k1 + S.k2, -S.k2], [-S.k2, S.k2]], C = [[S.c1 + S.c2, -S.c2], [-S.c2, S.c2]];
+  if (prot === 'fixed') { const r = f * 0.1 * b.n; return 1 / Math.sqrt((1 - r * r) ** 2 + (2 * zeta() * r) ** 2); }
+  const A = (i, j) => [K[i][j] - w * w * M[i][j], w * C[i][j]];
+  const a = A(0, 0), bb = A(0, 1), c = A(1, 0), d = A(1, 1);
+  const mul = (p, q) => [p[0] * q[0] - p[1] * q[1], p[0] * q[1] + p[1] * q[0]], sub = (p, q) => [p[0] - q[0], p[1] - q[1]], div = (p, q) => { const m = q[0] * q[0] + q[1] * q[1]; return [(p[0] * q[0] + p[1] * q[1]) / m, (p[1] * q[0] - p[0] * q[1]) / m]; };
+  const det = sub(mul(a, d), mul(bb, c)), r1 = [-S.m1, 0], r2 = [-S.m2, 0];
+  const X1 = div(sub(mul(r1, d), mul(bb, r2)), det), X2 = div(sub(mul(a, r2), mul(c, r1)), det);
+  const D = S.iso ? sub(X2, X1) : X1; return Math.hypot(D[0], D[1]) * wn * wn;
+}
+const BCOL = ['#4ade80', '#a3e635', '#facc15', '#fb923c', '#f87171'];
+function drawFR() {
+  if (frSt.w < 40) return;
+  const ser = bld.map((b, i) => { const d = []; for (let k = 0; k <= 160; k++) { const lf = -1 + 2 * k / 160; d.push([lf, Math.log10(Math.max(1e-3, respAmp(b, Math.pow(10, lf))))]); } return { data: d, color: BCOL[i], label: `${b.n}`, width: 1.8 }; });
+  const P = plot(frSt, ser, { xmin: -1, xmax: 1, ymin: -2, ymax: 1.5, pad: [28, 12, 26, 40], xlabel: 'ground frequency (Hz)', xfmt: v => SL.fmt(Math.pow(10, v), 2) });
+  const { ctx } = frSt; const x = P.X(+$('#gf').value); ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(x, P.pt); ctx.lineTo(x, frSt.h - P.pb); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = '#93a1bd'; ctx.font = '10px Inter, sans-serif'; ctx.textAlign = 'left'; ctx.fillText('log₁₀ amplification (storeys:)', P.pl + 4, P.pt + 12);
+}
+let bFrame = 0;
+loops.bld = SL.loop((dt, t) => { if (bRun) bStep(dt); drawBld(t); if (++bFrame % 10 === 0) bStats(); if (dirty.bld || sweep) { drawFR(); dirty.bld = false; } });
+SL.bind('#gf', () => { dirty.bld = true; $('#hF').textContent = SL.fmt(freq(), 2); }, () => SL.fmt(freq(), 2) + ' Hz');
+SL.bind('#pga', () => $('#hA').textContent = (+$('#pga').value).toFixed(2), v => v.toFixed(2) + ' g');
+SL.bind('#zeta', () => { bld.forEach(b => b.S = null); dirty.bld = true; }, v => (v * 100).toFixed(1) + '%');
+$('#site').onchange = () => { quakeRec = makeRecord(); resetBld(); };
+$$('#gmType button').forEach(b => b.onclick = () => { gm = b.dataset.v; $$('#gmType button').forEach(x => x.classList.toggle('on', x === b)); $('#rowSite').style.display = gm === 'quake' ? '' : 'none'; $('#replay').style.display = gm === 'quake' ? '' : 'none'; $('#sweep').style.display = gm === 'sine' ? '' : 'none'; resetBld(); });
+const PROT_TXT = { fixed: 'Each building is a damped oscillator fixed to the ground with natural period T ≈ 0.1 N seconds.', iso: 'Laminated rubber bearings give the whole building a period of about 2.5 s with 15% damping, so short-period shaking is filtered out; the bearings deform instead of the structure.', tmd: 'A mass of 5% of the building, tuned just below the building\'s frequency with optimal (Den Hartog) damping, swings out of phase and absorbs energy near resonance.' };
+$$('#prot button').forEach(b => b.onclick = () => { prot = b.dataset.v; $$('#prot button').forEach(x => x.classList.toggle('on', x === b)); $('#protTxt').textContent = PROT_TXT[prot]; bld.forEach(q => q.S = null); resetBld(); dirty.bld = true; });
+$('#protTxt').textContent = PROT_TXT.fixed;
+$('#sweep').onclick = () => { sweep = bt; SL.toast('Sweeping frequency from 0.1 to 10 Hz over 40 s: watch each building come into resonance in turn.', 'ok'); };
+$('#replay').onclick = () => resetBld();
+const setBPlay = () => { $('#bPlay').innerHTML = `<i data-lucide="${bRun ? 'pause' : 'play'}"></i>`; SL.refreshIcons($('#bPlay').parentElement); };
+$('#bPlay').onclick = () => { bRun = !bRun; setBPlay(); };
+
+/* ---------- quiz ---------- */
+SL.quiz('#quiz', [
+  { q: 'Why can S waves not travel through the outer core?', options: ['The outer core is too hot', 'The outer core is liquid, and liquids have zero shear modulus', 'S waves are absorbed by the mantle', 'S waves are too slow to reach it'], answer: 1, why: 'v_S = √(μ/ρ) and μ = 0 in a liquid, so shear waves cannot propagate.' },
+  { q: 'What causes the P-wave shadow zone between about 104° and 140°?', options: ['P waves are absorbed by the inner core', 'Refraction: P waves slow down sharply on entering the liquid outer core and bend away from that range', 'Reflection from the Moho', 'The curvature of the Earth hides them'], answer: 1, why: 'The velocity drop at the core–mantle boundary bends rays towards the normal, so they emerge beyond about 140°.' },
+  { q: 'A station records S − P = 15 s. Using d ≈ 8.2 km/s × Δt, the hypocentral distance is about…', options: ['55 km', '123 km', '90 km', '15 km'], answer: 1, why: '8.2 × 15 ≈ 123 km.' },
+  { q: 'Why are at least three stations needed to locate an epicentre?', options: ['One station gives only a distance (a circle); two circles meet at two points; a third resolves the ambiguity', 'Because seismometers only work in threes', 'To measure the magnitude', 'To find the depth only'], answer: 0, why: 'Each S − P time defines a circle of possible epicentres; three circles intersect at a single point.' },
+  { q: 'An earthquake of magnitude 6 releases roughly how much more energy than one of magnitude 4?', options: ['2 times', '100 times', 'About 1000 times', '20 times'], answer: 2, why: '10^(1.5×2) = 10³ = 1000.' },
+  { q: 'Using M_L = log₁₀A + 3log₁₀(8Δt) − 2.92 with A = 10 mm and Δt = 10 s, M_L is about…', options: ['4.8', '3.8', '5.8', '2.9'], answer: 1, why: 'log₁₀10 = 1 and 3 × log₁₀80 = 3 × 1.903 = 5.71, so M_L = 1 + 5.71 − 2.92 = 3.79.' },
+  { q: 'Which building is most at risk from steady shaking at 0.5 Hz?', options: ['2 storeys (T ≈ 0.2 s)', '5 storeys (T ≈ 0.5 s)', '20 storeys (T ≈ 2 s)', 'All equally'], answer: 2, why: '0.5 Hz means a 2 s period, matching the 20-storey building\'s natural period: resonance.' },
+  { q: 'How does base isolation protect a building?', options: ['By making the building stiffer', 'By lengthening the period of the whole structure (≈2–3 s) so typical short-period shaking is not amplified, with the bearings taking the deformation', 'By anchoring the building deeper', 'By adding weight to the roof'], answer: 1, why: 'Flexible bearings shift the fundamental period away from the dominant ground-motion periods and add damping.' },
+  { q: 'The Kenya Rift is an example of…', options: ['A convergent boundary with subduction', 'A transform fault', 'Continental rifting, where the Somali and Nubian plates are moving apart', 'A hotspot island chain'], answer: 2, why: 'The East African Rift is a divergent boundary within a continent, with normal faulting and volcanism.' },
+]);
+
+newQuake(); dirty.mag = true;
+loops.int.start();
+window.QuakeLab = { traceRay, vel, get tt() { return tt; }, firstArrival, get Q() { return Q; }, get traces() { return traces; }, STA, KSP, respAmp, bld, sysOf, setProt: v => { prot = v; bld.forEach(b => b.S = null); }, get picks() { return picks; } };
+})();
+</script>
+</body>
+</html>

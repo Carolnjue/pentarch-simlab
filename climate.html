@@ -1,0 +1,760 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Climate &amp; Carbon Budget · Pentarch SimLab</title>
+<meta name="description" content="Energy balance models, greenhouse forcing and feedbacks, and an emissions policy simulator to 2100 with carbon budgets, plus an East African rainfall lens.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .labbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding-top:22px}
+  .labbar .seg button{display:inline-flex;align-items:center;gap:6px}
+  .labbar .seg svg{width:15px;height:15px}
+  .labbar .hint{font-size:.84rem;color:var(--muted)}
+  .lab[hidden]{display:none}
+  .col{display:flex;flex-direction:column;gap:14px;min-width:0}
+  .stage.ebm{height:470px}
+  .stage.path{height:600px}
+  .stage.ea{height:470px}
+  .chartbox{position:relative;background:#050913;border:1px solid var(--line);border-radius:var(--r);height:220px;overflow:hidden}
+  .chartbox canvas{display:block;width:100%;height:100%}
+  .chartbox .cap{position:absolute;right:10px;top:8px;font:500 .7rem var(--mono);color:var(--dim);letter-spacing:.06em;text-transform:uppercase;pointer-events:none}
+  .chartrow{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .meter{position:relative;height:26px;border-radius:8px;background:var(--bg2);border:1px solid var(--line2);margin:30px 0 34px}
+  .meter .fill{border-radius:7px}
+  .meter .fill{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#22c55e,#f59e0b 55%,#ef4444);transition:width .3s}
+  .meter .mk{position:absolute;top:-22px;bottom:-24px;width:0;border-left:2px dashed rgba(255,255,255,.55)}
+  .meter .mk span{position:absolute;left:4px;white-space:nowrap;font:600 .66rem var(--mono);color:var(--muted)}
+  .meter .mk span.t{top:0}.meter .mk span.b{bottom:0}
+  .meter .val{position:absolute;right:8px;top:4px;font:600 .78rem var(--mono);color:#fff;text-shadow:0 1px 3px #000}
+  .presets{display:flex;flex-wrap:wrap;gap:6px}
+  .mini{font-size:.8rem;color:var(--dim)}
+  .stat .v.good{color:#4ade80}.stat .v.warn{color:#fbbf24}.stat .v.bad{color:#f87171}
+  .cl{display:flex;gap:10px;align-items:flex-start}.cl .led{margin-top:6px;flex:none}
+  .worked h4{margin-top:0}
+  .impact{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .impact h4{display:flex;align-items:center;gap:8px;font-size:.98rem}
+  .impact h4 svg{width:18px;height:18px;color:var(--accent)}
+  .impact p{font-size:.88rem;color:var(--muted);margin:0}
+  .tablewrap{overflow-x:auto}
+  @media (max-width:980px){.chartrow{grid-template-columns:1fr}}
+  @media (max-width:600px){.stage.ebm .hud{max-width:calc(100% - 64px)}.stage.ebm .readout{font-size:.68rem;padding:4px 7px}.stage.ebm .hud .yr{display:none}.stage.ebm{height:400px}.stage.path{height:640px}.stage.ea{height:520px}.chartbox{height:200px}}
+</style>
+</head>
+<body data-page="climate">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <div class="labbar">
+    <div class="seg" id="modeSeg">
+      <button class="on" data-mode="ebm"><i data-lucide="sun"></i> Energy balance</button>
+      <button data-mode="path"><i data-lucide="factory"></i> Emission pathways</button>
+      <button data-mode="ea"><i data-lucide="cloud-rain"></i> East Africa lens</button>
+    </div>
+    <span class="hint" id="modeHint">Sunlight in, infrared out: find the temperature where they balance.</span>
+  </div>
+
+  <!-- ===================== A. ENERGY BALANCE ===================== -->
+  <section class="lab" data-mode="ebm">
+    <div class="col">
+      <div class="stage ebm">
+        <canvas id="ebCv" aria-label="Radiation balance diagram"></canvas>
+        <div class="hud hud-b">
+          <span class="readout">T<sub>s</sub> <b id="hT">–</b></span>
+          <span class="readout">Imbalance N <b id="hN">–</b> W m⁻²</span>
+          <span class="readout yr">Year <b id="hYr">0</b></span>
+        </div>
+        <div class="stage-toolbar"><button class="btn sm" id="ebPlay" aria-label="Play or pause"><i data-lucide="pause"></i></button></div>
+      </div>
+      <div class="chartrow">
+        <div class="chartbox"><canvas id="ebTcv"></canvas></div>
+        <div class="chartbox"><canvas id="ebBcv"></canvas></div>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="sliders-horizontal"></i> Planet settings</h3>
+        <div class="seg" id="ebModel" style="margin-bottom:8px"><button class="on" data-m="zero">Zero-dimensional</button><button data-m="layer">Two-layer atmosphere</button></div>
+        <div class="ctl"><label for="S0">Solar constant S₀</label><output></output><input type="range" id="S0" min="900" max="1750" step="1" value="1361"></div>
+        <div class="ctl"><label for="alb">Planetary albedo α</label><output></output><input type="range" id="alb" min="0.05" max="0.8" step="0.01" value="0.3"></div>
+        <div class="ctl" id="rowEps"><label for="eps">Effective emissivity ε</label><output></output><input type="range" id="eps" min="0.4" max="1" step="0.002" value="0.612"></div>
+        <div class="ctl" id="rowEpsL" style="display:none"><label for="epsL">Layer IR absorptivity ε</label><output></output><input type="range" id="epsL" min="0" max="1" step="0.005" value="0.485"></div>
+        <div class="ctl"><label for="co2">CO₂ concentration</label><output></output><input type="range" id="co2" min="150" max="2000" step="5" value="280"></div>
+        <div class="ctl"><label for="bf">Fast feedbacks (water vapour, clouds…)</label><output></output><input type="range" id="bf" min="0" max="3" step="0.05" value="2.1"></div>
+        <p class="mini" style="margin:0 0 4px">Fast feedbacks act on departures of up to ±10 K from the pre-industrial climate.</p>
+        <label class="toggle">Ice–albedo feedback<input type="checkbox" id="iceT"></label>
+        <div class="ctl"><label for="depth">Ocean mixed-layer depth</label><output></output><input type="range" id="depth" min="10" max="300" step="5" value="70"></div>
+        <div class="ctl"><label for="ebSpeed">Speed</label><output></output><input type="range" id="ebSpeed" min="1" max="40" step="1" value="6"></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="zap"></i> Experiments</h3>
+        <div class="presets">
+          <button class="btn sm" id="bDouble"><i data-lucide="chevrons-up"></i> Double CO₂</button>
+          <button class="btn sm" id="bToday">Today: 420 ppm</button>
+          <button class="btn sm" id="bVolc"><i data-lucide="mountain"></i> Big eruption</button>
+          <button class="btn sm" id="bSnow"><i data-lucide="snowflake"></i> Snowball start</button>
+          <button class="btn sm" id="bReset"><i data-lucide="rotate-ccw"></i> Pre-industrial</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="gauge"></i> Diagnostics</h3>
+        <div class="stats">
+          <div class="stat"><div class="k">Equilibrium T</div><div class="v" id="sTeq">–</div></div>
+          <div class="stat"><div class="k">Greenhouse G</div><div class="v" id="sG">–</div></div>
+          <div class="stat"><div class="k">ΔF CO₂</div><div class="v" id="sF">–</div></div>
+          <div class="stat"><div class="k">Feedback λ</div><div class="v" id="sLam">–</div></div>
+          <div class="stat"><div class="k">ECS (2×CO₂)</div><div class="v" id="sECS">–</div></div>
+          <div class="stat"><div class="k">Response time τ</div><div class="v" id="sTau">–</div></div>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ===================== B. EMISSION PATHWAYS ===================== -->
+  <section class="lab wide-controls" data-mode="path" hidden>
+    <div class="col">
+      <div class="stage path">
+        <canvas id="pCv" aria-label="Emissions, concentration and warming to 2100"></canvas>
+      </div>
+      <div class="readout" id="pHover" style="align-self:flex-start;max-width:100%">Hover or tap a chart to read values for any year</div>
+      <div class="panel">
+        <h3><i data-lucide="hourglass"></i> Remaining carbon budget (CO₂ emitted since 1 January 2020)</h3>
+        <div class="meter" id="meter"><div class="fill" id="mFill"></div><span class="val" id="mVal"></span></div>
+        <p class="mini" style="margin:0">IPCC AR6 WGI budgets from 1 January 2020: <b>500 GtCO₂</b> for a 50% chance of limiting warming to 1.5 °C (400 for 67%), and <b>1150 GtCO₂</b> for a 67% chance of staying below 2 °C (1350 for 50%). These carry roughly ±220 GtCO₂ of uncertainty from non-CO₂ warming and Earth-system feedbacks. About 200 GtCO₂ was emitted in 2020–2024, and more recent assessments put the remaining 1.5 °C budget at only around 130–200 GtCO₂ from the start of 2024–2025.</p>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="landmark"></i> World policy settings</h3>
+        <div class="presets" style="margin-bottom:8px">
+          <button class="btn sm" data-p="current">Current policies</button>
+          <button class="btn sm" data-p="pledges">Pledges</button>
+          <button class="btn sm" data-p="nz">Rapid net zero</button>
+          <button class="btn sm" data-p="fossil">Fossil-fuelled</button>
+        </div>
+        <div class="ctl"><label for="pCoal">Coal power phase-out year</label><output></output><input type="range" id="pCoal" min="2030" max="2101" step="1" value="2101"></div>
+        <div class="ctl"><label for="pRe">Low-carbon electricity growth</label><output></output><input type="range" id="pRe" min="0" max="3.5" step="0.1" value="1"></div>
+        <div class="ctl"><label for="pEv">Electric vehicles, share of fleet in 2050</label><output></output><input type="range" id="pEv" min="0" max="100" step="1" value="40"></div>
+        <div class="ctl"><label for="pEff">Industry, buildings &amp; aviation intensity cut</label><output></output><input type="range" id="pEff" min="0" max="6" step="0.1" value="1.5"></div>
+        <div class="ctl"><label for="pDem">Energy demand growth</label><output></output><input type="range" id="pDem" min="0" max="2.5" step="0.1" value="1.2"></div>
+        <div class="ctl"><label for="pDef">Deforestation cut by 2040</label><output></output><input type="range" id="pDef" min="0" max="100" step="5" value="30"></div>
+        <div class="ctl"><label for="pRef">Reforestation (new forest per year)</label><output></output><input type="range" id="pRef" min="0" max="15" step="0.5" value="2"></div>
+        <div class="ctl"><label for="pCh4">Methane emission cut by 2050</label><output></output><input type="range" id="pCh4" min="0" max="80" step="5" value="10"></div>
+        <div class="ctl"><label for="pCcs">Carbon capture &amp; removal by 2050</label><output></output><input type="range" id="pCcs" min="0" max="15" step="0.5" value="1"></div>
+        <div class="ctl"><label for="pEcs">Climate sensitivity (ECS)</label><output></output><input type="range" id="pEcs" min="2" max="5" step="0.1" value="3"></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="thermometer"></i> Outcomes</h3>
+        <div class="stats">
+          <div class="stat"><div class="k">Warming 2100</div><div class="v" id="o2100">–</div></div>
+          <div class="stat"><div class="k">Peak warming</div><div class="v" id="oPeak">–</div></div>
+          <div class="stat"><div class="k">Net-zero CO₂</div><div class="v" id="oNZ">–</div></div>
+          <div class="stat"><div class="k">CO₂ in 2100</div><div class="v" id="oC">–</div></div>
+          <div class="stat"><div class="k">Emissions 2030</div><div class="v" id="o2030">–</div></div>
+          <div class="stat"><div class="k">1.5 °C budget gone</div><div class="v" id="oBud">–</div></div>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ===================== C. EAST AFRICA ===================== -->
+  <section class="lab" data-mode="ea" hidden>
+    <div class="col">
+      <div class="stage ea">
+        <canvas id="eaCv" aria-label="East African rainfall"></canvas>
+        <div class="hud"><span class="readout">Nairobi-like bimodal rainfall (illustrative)</span></div>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="waves"></i> Ocean drivers</h3>
+        <div class="panel-title" style="margin-top:0">El Niño–Southern Oscillation</div>
+        <div class="seg" id="enso"><button data-v="-1">La Niña</button><button class="on" data-v="0">Neutral</button><button data-v="1">El Niño</button></div>
+        <div class="ctl" style="margin-top:8px"><label for="iod">Indian Ocean Dipole index</label><output></output><input type="range" id="iod" min="-1" max="1.5" step="0.1" value="0"></div>
+        <div class="ctl"><label for="gw">Global warming level</label><output></output><input type="range" id="gw" min="1.2" max="4" step="0.1" value="1.3"></div>
+        <div class="btn-row" style="margin-top:6px"><button class="btn primary" id="eaSim"><i data-lucide="dices"></i> Simulate 40 short-rains seasons</button></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="gauge"></i> Short rains (Oct–Dec)</h3>
+        <div class="stats">
+          <div class="stat"><div class="k">Expected total</div><div class="v" id="eMean">–</div></div>
+          <div class="stat"><div class="k">vs normal</div><div class="v" id="ePct">–</div></div>
+          <div class="stat"><div class="k">Failed seasons</div><div class="v" id="eFail">–</div></div>
+          <div class="stat"><div class="k">Very wet seasons</div><div class="v" id="eWet">–</div></div>
+        </div>
+        <p class="mini" style="margin:10px 0 0">Failed: below 60% of normal. Very wet: above 160% of normal. The scaling factors are illustrative, chosen to reflect the direction and rough size of observed relationships, not a forecast.</p>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ===================== LEARNING TABS ===================== -->
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button><i data-lucide="map-pin"></i> East Africa</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. Radiation in, radiation out</h3>
+      <p>The Sun delivers the <b>solar constant</b> $S_0\approx1361$ W m⁻² to a surface facing it at Earth's distance. Earth intercepts sunlight on a disc of area $\pi R^2$ but radiates from a sphere of area $4\pi R^2$, so the average incoming flux is $S_0/4\approx340$ W m⁻². A fraction $\alpha\approx0.30$ (the planetary <b>albedo</b>: clouds, ice, deserts) is reflected straight back.</p>
+      <p>Every body emits thermal radiation. A perfect emitter (black body) obeys the <b>Stefan–Boltzmann law</b>, and real surfaces emit a fraction $\varepsilon$ (the emissivity):</p>
+      <div class="eq">$$F=\varepsilon\sigma T^4,\qquad \sigma=5.67\times10^{-8}\ \text{W m}^{-2}\text{K}^{-4}$$</div>
+      <h3>2. The zero-dimensional energy balance model</h3>
+      <p>Treat the whole planet as one point with a single temperature $T_s$ and heat capacity $C$ (mostly the upper ocean). The rate of warming equals the energy imbalance $N$:</p>
+      <div class="eq">$$C\frac{dT_s}{dt}=N=\underbrace{\frac{S_0}{4}(1-\alpha)}_{\text{absorbed sunlight}}-\underbrace{\varepsilon\sigma T_s^4}_{\text{outgoing longwave}}+\Delta F$$</div>
+      <p>Without an atmosphere ($\varepsilon=1$) the equilibrium is the <b>effective radiating temperature</b> $T_e=\left[\frac{S_0(1-\alpha)}{4\sigma}\right]^{1/4}\approx255$ K $=-18$ °C. The observed mean surface temperature is about 288 K (15 °C). The 33 K difference is the <b>natural greenhouse effect</b>: water vapour, CO₂, methane and clouds absorb infrared radiation from the surface and re-emit part of it back down. In the zero-D model this is captured by an effective emissivity $\varepsilon\approx0.61$. The greenhouse effect can be measured as a flux:</p>
+      <div class="eq">$$G=\sigma T_s^4-\text{OLR}\approx390-239\approx150\ \text{W m}^{-2}$$</div>
+      <h3>3. Layer models of the atmosphere</h3>
+      <p>A more physical picture places one or more atmospheric layers above the surface. Each layer is transparent to sunlight but absorbs a fraction $\varepsilon$ of the infrared passing through it (Kirchhoff's law: it emits with the same $\varepsilon$), radiating both up and down. With a single fully absorbing layer, $T_s=2^{1/4}T_e\approx303$ K; with two, $T_s=3^{1/4}T_e\approx335$ K. Partly absorbing layers ($\varepsilon\approx0.49$ for two layers) reproduce today's 288 K. Each layer is colder than the one below, so the planet radiates to space from cold upper levels: this is the essence of the greenhouse effect. Adding CO₂ raises the effective emission height to colder air, reducing outgoing radiation until the surface and troposphere warm.</p>
+      <h3>4. Radiative forcing from CO₂</h3>
+      <p>CO₂'s strongest absorption bands are nearly saturated, so its forcing grows with the <i>logarithm</i> of concentration (Myhre et al., 1998):</p>
+      <div class="eq">$$\Delta F_{\mathrm{CO_2}}=5.35\,\ln\frac{C}{C_0}\ \text{W m}^{-2},\qquad \Delta F_{2\times}=5.35\ln 2\approx3.7\ \text{W m}^{-2}$$</div>
+      <p>Every doubling adds the same forcing: going from 280 to 560 ppm matters as much as going from 560 to 1120 ppm.</p>
+      <h3>5. Feedbacks and climate sensitivity</h3>
+      <p>For small changes, linearise the outgoing radiation. The <b>climate feedback parameter</b> $\lambda$ (W m⁻² K⁻¹) says how much extra energy escapes per kelvin of warming:</p>
+      <div class="eq">$$C\frac{d\,\Delta T}{dt}=\Delta F-\lambda\,\Delta T,\qquad \lambda=\lambda_{\text{Planck}}-\sum_i b_i,\qquad \lambda_{\text{Planck}}=4\varepsilon\sigma T^3\approx3.3$$</div>
+      <p>The <b>Planck response</b> alone would give $\Delta T_{2\times}\approx3.7/3.3\approx1.1$ K. Amplifying feedbacks $b_i$ reduce $\lambda$: water vapour (a warmer atmosphere holds about 7% more vapour per kelvin), surface albedo (melting snow and ice), and clouds, partly offset by the lapse-rate feedback. The <b>equilibrium climate sensitivity</b></p>
+      <div class="eq">$$\text{ECS}=\frac{\Delta F_{2\times}}{\lambda}$$</div>
+      <p>is assessed by IPCC AR6 at a best estimate of 3 °C, likely range 2.5–4 °C. The sensitivity parameter is sometimes quoted instead as $1/\lambda$ in K per W m⁻² (about 0.8 for ECS ≈ 3 °C).</p>
+      <h3>6. Ocean heat capacity and response time</h3>
+      <p>The ocean's mixed layer (tens of metres deep) has heat capacity $C=\rho c_p h f_{\text{ocean}}\approx 1025\times3990\times h\times0.7$ J m⁻² K⁻¹. After a step in forcing, the linear model relaxes exponentially:</p>
+      <div class="eq">$$\Delta T(t)=\frac{\Delta F}{\lambda}\left(1-e^{-t/\tau}\right),\qquad \tau=\frac{C}{\lambda}$$</div>
+      <p>For $h=70$ m and $\lambda=1.2$, $\tau\approx5$ years. The deep ocean adds a much slower response (centuries), so today's warming is only part of the eventual equilibrium warming. The emissions tab uses a two-box model (mixed layer plus deep ocean) for this reason.</p>
+      <h3>7. Multiple equilibria: the snowball</h3>
+      <p>If albedo rises as the planet cools (more ice), the absorbed-sunlight curve becomes S-shaped and can cross the outgoing curve three times. The middle crossing is unstable; the outer two are stable, so the same sunlight can support a warm planet or a frozen one. Geological evidence suggests Earth went through "snowball" episodes in the Neoproterozoic, roughly 700 and 640 million years ago.</p>
+      <h3>8. The carbon cycle</h3>
+      <p>Carbon is exchanged between the atmosphere (about 870 GtC today, i.e. ~420 ppm, with 1 ppm ≈ 2.12 GtC ≈ 7.8 GtCO₂), land vegetation and soils (a few thousand GtC) and the ocean (roughly 38 000 GtC, mostly in the deep ocean). Of the CO₂ we emit, roughly 45% stays in the atmosphere (the <b>airborne fraction</b>); land and ocean sinks take the rest. A pulse of CO₂ decays on several timescales, which an impulse-response function captures:</p>
+      <div class="eq">$$C(t)=C_0+\frac{1}{2.124}\int_{-\infty}^{t}E(t')\,\Big[a_0+\sum_{i=1}^{3}a_ie^{-(t-t')/\tau_i}\Big]dt'$$</div>
+      <p>The $a_0$ term (about 20%) represents CO₂ that stays in the atmosphere for many millennia. That is why warming depends almost linearly on <b>cumulative</b> emissions: the transient climate response to cumulative emissions (TCRE) is about 0.45 °C per 1000 GtCO₂ (likely 0.27–0.63). A temperature limit therefore implies a finite <b>carbon budget</b>, and warming stops rising only once CO₂ emissions reach net zero.</p>
+      <h3>9. Methane and other forcings</h3>
+      <p>Methane is a much stronger absorber per molecule but has a perturbation lifetime of only about 12 years, so cutting methane slows warming quickly. Aerosols from burning coal and oil reflect sunlight and brighten clouds, masking part of the greenhouse warming (AR6: about −1.3 W m⁻² for 1750–2019). Cleaning up air pollution therefore removes some cooling, which the pathways model includes.</p>
+      <div class="callout warn"><i data-lucide="info"></i><div><b>About the models.</b> These are teaching models. The pathways tool uses round-number sector shares for 2024 (fossil CO₂ ≈ 37 GtCO₂, land-use ≈ 4 GtCO₂), a pulse-response carbon cycle based on Joos et al. (2013) with sink timescales tuned to reproduce the observed rise to about 422 ppm, a one-box methane model, simple aerosol and other-gas forcings, and a two-box ocean energy balance. It reproduces the observed scale of warming (about 1.3–1.4 °C by 2024) but it is not an Earth system model.</div></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <div class="worked">
+        <h4>Example 1: Earth's effective temperature</h4>
+        <ol class="steps">
+          <li>Absorbed sunlight: $\frac{S_0}{4}(1-\alpha)=\frac{1361}{4}\times0.70=238.2$ W m⁻².</li>
+          <li>Set equal to $\sigma T_e^4$: $T_e=\left(\frac{238.2}{5.67\times10^{-8}}\right)^{1/4}=(4.20\times10^{9})^{1/4}=254.6$ K.</li>
+          <li>That is −18.6 °C, about 33 K colder than the observed 288 K.</li>
+        </ol>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 2: What effective emissivity gives 288 K?</h4>
+        <ol class="steps">
+          <li>$\sigma T_s^4=5.67\times10^{-8}\times288^4=390.1$ W m⁻².</li>
+          <li>$\varepsilon=238.2/390.1=0.611$. The lab's default 0.612 gives 287.8 K (14.7 °C).</li>
+          <li>The greenhouse effect is $G=390.1-238.2\approx152$ W m⁻².</li>
+        </ol>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 3: Forcing and equilibrium warming for today's CO₂</h4>
+        <ol class="steps">
+          <li>$\Delta F=5.35\ln(420/280)=5.35\times0.405=2.17$ W m⁻².</li>
+          <li>Planck feedback at 288 K: $\lambda_P=4\varepsilon\sigma T^3=4\times0.612\times5.67\times10^{-8}\times288^3=3.31$ W m⁻² K⁻¹.</li>
+          <li>With fast feedbacks $b=2.1$: $\lambda=3.31-2.1=1.21$ W m⁻² K⁻¹.</li>
+          <li>Equilibrium warming: $\Delta T=2.17/1.21\approx1.8$ K; for doubled CO₂, $\text{ECS}=3.71/1.21=3.1$ K. Set the lab to 420 ppm and compare.</li>
+        </ol>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 4: How fast does the ocean respond?</h4>
+        <ol class="steps">
+          <li>Mixed layer $h=70$ m covering 70% of the globe: $C=1025\times3990\times70\times0.7=2.0\times10^8$ J m⁻² K⁻¹.</li>
+          <li>$\tau=C/\lambda=2.0\times10^8/1.21=1.66\times10^8$ s $=5.3$ years.</li>
+          <li>After one $\tau$ the planet has reached $1-e^{-1}=63\%$ of its equilibrium warming; after $3\tau\approx16$ years, 95%. A deeper mixed layer (try 200 m) slows the response proportionally.</li>
+        </ol>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 5: A carbon budget in years</h4>
+        <ol class="steps">
+          <li>AR6 1.5 °C budget (50%) from 2020: 500 GtCO₂. Emissions ≈ 40 GtCO₂ per year.</li>
+          <li>At constant emissions: $500/40=12.5$ years, i.e. exhausted around 2032.</li>
+          <li>With a straight-line decline to zero, the budget is the area of a triangle: $\tfrac12\times40\times T=500\Rightarrow T=25$ years, i.e. net zero by about 2045.</li>
+          <li>Using TCRE: 500 GtCO₂ × 0.45 °C/1000 GtCO₂ ≈ 0.23 °C of extra CO₂-driven warming.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <ol class="steps">
+        <li><div class="cl"><span class="led" id="ch1"></span><div><b>No greenhouse.</b> In the zero-D model set ε = 1 and switch feedbacks off. Confirm the equilibrium is about 255 K. <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led" id="ch2"></span><div><b>Measure ECS.</b> Starting from pre-industrial, press <i>Double CO₂</i> and run until the imbalance is below 0.05 W m⁻². Your warming should match the ECS readout. <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led" id="ch3"></span><div><b>Snowball and hysteresis.</b> Turn on the ice–albedo feedback and press <i>Snowball start</i>. Then raise S₀ and CO₂ until the planet thaws, and bring them back to today's values. Does it freeze again? How far above 1361 W m⁻² did you need to go? <span class="mini">(auto-checked on thaw)</span></div></div></li>
+        <li><div class="cl"><span class="led" id="ch4"></span><div><b>Hold 2 °C.</b> In the pathways model keep peak warming below 2.0 °C with an ECS of 3 °C. <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led" id="ch5"></span><div><b>Net zero by 2050.</b> Reach net-zero CO₂ by 2050 using no more than 5 GtCO₂ per year of carbon capture. <span class="mini">(auto-checked)</span></div></div></li>
+        <li><div class="cl"><span class="led"></span><div><b>Aerosol unmasking.</b> Choose <i>Rapid net zero</i> and look closely at warming in the 2030s. Why does it keep rising for a while even as emissions fall steeply? (Hint: what else does burning coal emit?)</div></div></li>
+        <li><div class="cl"><span class="led"></span><div><b>The value of methane.</b> From <i>Current policies</i>, compare the peak warming change from a 60% methane cut with that from a 60% deforestation cut. Which acts faster, and why?</div></div></li>
+        <li><div class="cl"><span class="led"></span><div><b>Two-layer model.</b> Set ε = 1 for both layers. Check that $T_s\approx3^{1/4}\times255\approx335$ K.</div></div></li>
+      </ol>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>Two rainy seasons, two oceans</h3>
+      <p>Much of Kenya, Uganda and Tanzania has a <b>bimodal</b> rainfall regime: the "long rains" around March–May and the "short rains" around October–December, as the tropical rain belt passes overhead twice a year. Large parts of northern and eastern Kenya are arid or semi-arid, so a single failed season can be devastating for pastoralists and rain-fed farmers.</p>
+      <p>The short rains are strongly linked to sea-surface temperatures. A positive <b>Indian Ocean Dipole</b> (warmer western Indian Ocean) and <b>El Niño</b> tend to bring wetter short rains, as in 1997, 2019 and 2023, when flooding was widespread. La Niña and a negative IOD tend to bring drier short rains; the 2020–2022 sequence of failed seasons during a long La Niña contributed to the worst drought in the Horn of Africa in decades.</p>
+      <div class="grid2">
+        <div class="impact"><h4><i data-lucide="thermometer-sun"></i> Heat</h4><p>East Africa is warming at roughly the global rate or a little faster over land. Higher temperatures raise evaporative demand, stress crops during flowering and livestock, and push some highland malaria transmission upslope.</p></div>
+        <div class="impact"><h4><i data-lucide="cloud-rain-wind"></i> Heavier downpours</h4><p>A warmer atmosphere holds about 7% more water vapour per °C, so the heaviest rainfall events tend to intensify even where total rainfall changes little, increasing flood and landslide risk.</p></div>
+        <div class="impact"><h4><i data-lucide="split"></i> The East African paradox</h4><p>Many climate models project wetter conditions, especially in the short rains, yet the long rains declined from the 1980s to the 2010s. Resolving this mismatch is an active research question, so projections should be read with care.</p></div>
+        <div class="impact"><h4><i data-lucide="wheat"></i> Food and water</h4><p>Most farming in the region is rain-fed. Variability matters as much as averages: a late onset or a dry spell at flowering can ruin a season. See the Crop &amp; Water Balance lab for adaptation options such as water harvesting and drought-tolerant varieties.</p></div>
+      </div>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const clamp = SL.clamp, SIG = 5.670374e-8;
+const chDone = {};
+function done(id, msg) { if (chDone[id]) return; chDone[id] = true; const el = document.getElementById(id); if (el) el.classList.add('on'); SL.toast('Challenge complete: ' + msg, 'ok', 5000); }
+
+/* ---------- small plotting helper ---------- */
+function niceStep(range, n) { const raw = range / n, p = Math.pow(10, Math.floor(Math.log10(raw || 1))), f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
+function plot(st, series, o) {
+  const { ctx, w, h } = st; o = Object.assign({ pad: [24, 12, 28, 44] }, o || {});
+  const [pt, pr, pb, pl] = o.pad;
+  let xs = [], ys = []; series.forEach(s => s.data.forEach(p => { xs.push(p[0]); ys.push(p[1]); }));
+  const xmin = o.xmin ?? (xs.length ? Math.min(...xs) : 0), xmax = o.xmax ?? (xs.length ? Math.max(...xs) : 1);
+  let ymin = o.ymin ?? (ys.length ? Math.min(...ys) : 0), ymax = o.ymax ?? (ys.length ? Math.max(...ys) : 1);
+  if (ymax - ymin < 1e-9) ymax = ymin + 1;
+  const X = x => pl + (x - xmin) / ((xmax - xmin) || 1) * (w - pl - pr), Y = y => h - pb - (y - ymin) / (ymax - ymin) * (h - pt - pb);
+  ctx.clearRect(0, 0, w, h);
+  ctx.font = '10.5px JetBrains Mono, monospace'; ctx.lineWidth = 1;
+  const ys_ = niceStep(ymax - ymin, 4), xs_ = niceStep(xmax - xmin, Math.max(3, Math.floor((w - pl - pr) / 70)));
+  for (let v = Math.ceil(ymin / ys_) * ys_; v <= ymax + 1e-9; v += ys_) { const y = Y(v); ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(w - pr, y); ctx.stroke(); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'right'; ctx.fillText(SL.fmt(Math.abs(v) < 1e-9 ? 0 : v, 2), pl - 6, y + 3.5); }
+  const xlw = o.xlabel ? ctx.measureText(o.xlabel).width + 10 : 0;
+  for (let v = Math.ceil(xmin / xs_) * xs_; v <= xmax + 1e-9; v += xs_) { const x = X(v); if (o.xlabel && x + 14 > w - pr - xlw) continue; ctx.strokeStyle = 'rgba(255,255,255,.04)'; ctx.beginPath(); ctx.moveTo(x, pt); ctx.lineTo(x, h - pb); ctx.stroke(); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'center'; ctx.fillText(o.xfmt ? o.xfmt(v) : SL.fmt(v, 2), x, h - pb + 14); }
+  ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.beginPath(); ctx.moveTo(pl, pt); ctx.lineTo(pl, h - pb); ctx.lineTo(w - pr, h - pb); ctx.stroke();
+  if (o.xlabel) { ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'right'; ctx.fillText(o.xlabel, w - pr, h - pb + 14); }
+  if (o.ylabel) { ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'left'; ctx.fillText(o.ylabel, pl + 4, pt - 8); }
+  ctx.save(); ctx.beginPath(); ctx.rect(pl, pt - 2, w - pl - pr, h - pt - pb + 2); ctx.clip();
+  series.forEach(s => {
+    if (!s.data.length) return;
+    ctx.strokeStyle = s.color; ctx.lineWidth = s.width || 1.8; ctx.setLineDash(s.dash || []); ctx.lineJoin = 'round';
+    ctx.beginPath(); s.data.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))); ctx.stroke(); ctx.setLineDash([]);
+    if (s.fill) { ctx.lineTo(X(s.data[s.data.length - 1][0]), Y(ymin)); ctx.lineTo(X(s.data[0][0]), Y(ymin)); ctx.closePath(); ctx.fillStyle = s.fill; ctx.fill(); }
+  });
+  ctx.restore();
+  if (o.legend !== false) { let lx = pl + 6; ctx.textAlign = 'left'; let ly = pt - 8; series.filter(s => s.label).forEach(s => { const tw = ctx.measureText(s.label).width; if (lx + tw + 14 > w - pr && lx > pl + 6) { lx = pl + 6; ly += 13; } ctx.fillStyle = s.color; ctx.fillRect(lx, ly - 4, 10, 3); ctx.fillStyle = '#93a1bd'; ctx.fillText(s.label, lx + 13, ly); lx += tw + 26; }); }
+  return { X, Y, xmin, xmax, ymin, ymax, pl, pt, pr, pb };
+}
+
+/* ---------- mode switching ---------- */
+const hints = { ebm: 'Sunlight in, infrared out: find the temperature where they balance.', path: 'Set world policies and see emissions, CO₂ and warming to 2100.', ea: 'How ocean patterns and warming shape East Africa’s two rainy seasons.' };
+let mode = 'ebm', ebDirty = true, pDirty = true, eaDirty = true;
+const loops = {};
+$$('#modeSeg button').forEach(b => b.onclick = () => {
+  mode = b.dataset.mode; $$('#modeSeg button').forEach(x => x.classList.toggle('on', x === b));
+  $$('section.lab').forEach(s => s.hidden = s.dataset.mode !== mode); $('#modeHint').textContent = hints[mode];
+  Object.values(loops).forEach(l => l.stop()); loops[mode].start(); pDirty = eaDirty = ebDirty = true;
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden) loops[mode].stop(); else loops[mode].start(); });
+
+/* =====================================================================
+   A. ENERGY BALANCE MODEL
+   ===================================================================== */
+const T0 = 287.83;
+const eb = { m: 'zero', S0: 1361, alb: 0.3, eps: 0.612, epsL: 0.485, co2: 280, bf: 2.1, ice: false, depth: 70, Ts: 287.83, yr: 0, Fv: 0, hist: [], running: true, eqHist: [] };
+const ebSt = SL.canvas($('#ebCv'), () => ebDirty = true), ebT = SL.canvas($('#ebTcv')), ebB = SL.canvas($('#ebBcv'));
+const heatCap = () => 1025 * 3990 * eb.depth * 0.7;
+function albedo(T) { if (!eb.ice) return eb.alb; const cold = clamp((278 - T) / 28, 0, 1), s = cold * cold * (3 - 2 * cold); return eb.alb + (0.62 - eb.alb) * s; }
+function iceFrac(T) { return eb.ice ? clamp((278 - T) / 28, 0, 1) : clamp((275 - T) / 40, 0, 1) * 0.6 + 0.04; }
+function layers(Ts) { const e = eb.epsL, U = SIG * Ts ** 4, a = e / 2, E2 = (a * (1 - e) * U + a * a * U) / (1 - a * a), E1 = a * (U + E2); return { U, E1, E2, down: E1 + (1 - e) * E2, olr: (1 - e) * ((1 - e) * U + E1) + E2, T1: e > 0 ? Math.pow(E1 / (e * SIG), 0.25) : 0, T2: e > 0 ? Math.pow(E2 / (e * SIG), 0.25) : 0 }; }
+const dF = () => 5.35 * Math.log(eb.co2 / 280);
+const fb = T => eb.bf * clamp(T - T0, -10, 10);
+function fluxes(T) {
+  const inc = eb.S0 / 4, a = albedo(T), asr = inc * (1 - a);
+  if (eb.m === 'zero') { const olr = eb.eps * SIG * T ** 4; return { inc, refl: inc * a, asr, U: SIG * T ** 4, olr, N: asr - olr + dF() + eb.Fv + fb(T), G: SIG * T ** 4 - olr }; }
+  const L = layers(T); return { inc, refl: inc * a, asr, U: L.U, olr: L.olr, N: asr + L.down - L.U + dF() + eb.Fv + fb(T), G: L.U - L.olr, L };
+}
+function netN(T) { return fluxes(T).N; }
+function equilibria() { const r = []; let prev = netN(150); for (let T = 151; T <= 420; T += 1) { const n = netN(T); if (prev > 0 && n <= 0 || prev < 0 && n >= 0) { let lo = T - 1, hi = T; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if ((netN(lo) > 0) === (netN(m) > 0)) lo = m; else hi = m; } r.push({ T: (lo + hi) / 2, stable: prev > 0 }); } prev = n; } return r; }
+function lamEff(T) { const e = 0.05; return -(netN(T + e) - netN(T - e)) / (2 * e); }
+function ebStep(years) {
+  const C = heatCap(), sub = Math.max(1, Math.ceil(years / 0.02)), dt = years / sub;
+  for (let i = 0; i < sub; i++) { eb.Ts += netN(eb.Ts) * dt * 3.156e7 / C; eb.Ts = clamp(eb.Ts, 120, 450); eb.Fv *= Math.exp(-dt / 1.0); }
+  eb.yr += years;
+  eb.hist.push([eb.yr, eb.Ts - 273.15]); if (eb.hist.length > 3000) eb.hist.shift();
+}
+let wasFrozen = false;
+function ebStats() {
+  const f = fluxes(eb.Ts), eqs = equilibria();
+  const toward = eqs.length ? eqs.filter(e => e.stable).sort((a, b) => Math.abs(a.T - eb.Ts) - Math.abs(b.T - eb.Ts))[0] : null;
+  // the stable equilibrium actually reached is the one on the same side of any unstable root
+  let target = null; if (eqs.length) { const uns = eqs.filter(e => !e.stable); const st = eqs.filter(e => e.stable); target = st.find(e => !uns.some(u => (u.T - eb.Ts) * (u.T - e.T) < 0)) || toward; }
+  eb.target = target;
+  $('#hT').textContent = `${SL.fmt(eb.Ts - 273.15, 1)} °C (${SL.fmt(eb.Ts, 1)} K)`;
+  $('#hN').textContent = (f.N >= 0.005 ? '+' : '') + (Math.abs(f.N) < 0.005 ? '0.00' : f.N.toFixed(2)); $('#hYr').textContent = Math.floor(eb.yr);
+  $('#sTeq').innerHTML = target ? `${SL.fmt(target.T - 273.15, 1)}<small>°C</small>` : '–';
+  $('#sG').innerHTML = `${SL.fmt(f.G, 0)}<small>W m⁻²</small>`;
+  $('#sF').innerHTML = `${SL.fmt(dF(), 2)}<small>W m⁻²</small>`;
+  const lam = lamEff(target ? target.T : eb.Ts); $('#sLam').innerHTML = `${SL.fmt(lam, 2)}<small>W m⁻² K⁻¹</small>`;
+  $('#sECS').innerHTML = lam > 0.05 ? `${SL.fmt(5.35 * Math.LN2 / lam, 2)}<small>K</small>` : 'runaway';
+  $('#sTau').innerHTML = lam > 0.05 ? `${SL.fmt(heatCap() / lam / 3.156e7, 1)}<small>yr</small>` : '–';
+  // challenges
+  if (eb.m === 'zero' && eb.eps >= 0.999 && eb.bf === 0 && target && Math.abs(target.T - 254.6) < 1.5) done('ch1', 'with no greenhouse effect Earth would be about 255 K (−18 °C).');
+  if (eb.dbl && Math.abs(f.N) < 0.05 && Math.abs(eb.co2 - 560) < 1) { const dT = eb.Ts - eb.dbl; const ecs = 5.35 * Math.LN2 / lam; if (Math.abs(dT - ecs) < 0.25) done('ch2', `warming of ${SL.fmt(dT, 2)} K matches the ECS.`); }
+  if (eb.Ts < 250) wasFrozen = true; if (wasFrozen && eb.ice && eb.Ts > 280) { done('ch3', `the planet thawed at S₀ = ${eb.S0} W m⁻² and ${eb.co2} ppm CO₂: hysteresis!`); wasFrozen = false; }
+}
+function drawEB(t) {
+  const { ctx, w, h } = ebSt, f = fluxes(eb.Ts);
+  ctx.clearRect(0, 0, w, h);
+  const sky = ctx.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#02040b'); sky.addColorStop(0.55, '#0a1630'); sky.addColorStop(1, '#13284a'); ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
+  let s = 7; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 90; i++) { const x = r() * w, y = r() * h * 0.35; ctx.fillStyle = `rgba(255,255,255,${0.2 + 0.6 * r() * (0.6 + 0.4 * Math.sin(t * 2 + i))})`; ctx.fillRect(x, y, 1.2, 1.2); }
+  const narrow = w < 640, dw = narrow ? w : w * 0.64, gy = h - 58;
+  // ground
+  const ice = iceFrac(eb.Ts), tc = clamp((eb.Ts - 250) / 60, 0, 1);
+  const gg = ctx.createLinearGradient(0, gy, 0, h); gg.addColorStop(0, `rgb(${60 + 40 * tc},${100 + 30 * (1 - Math.abs(tc - 0.5))},${70})`); gg.addColorStop(1, '#0b1a12');
+  ctx.fillStyle = gg; ctx.fillRect(0, gy, dw, h - gy);
+  ctx.fillStyle = '#1d4e7a'; ctx.fillRect(dw * 0.55, gy + 4, dw * 0.45, h - gy - 4);
+  if (ice > 0.05) { ctx.fillStyle = `rgba(235,245,255,${clamp(ice * 1.2, 0, 0.95)})`; ctx.fillRect(0, gy, dw * clamp(ice * 1.3, 0, 1), h - gy); }
+  ctx.fillStyle = '#cbd5e1'; ctx.font = '600 11px Inter, sans-serif'; ctx.textAlign = 'left'; ctx.textAlign = 'right'; ctx.fillText(`Surface  ${SL.fmt(eb.Ts - 273.15, 1)} °C`, dw - 10, h - 12); ctx.textAlign = 'left';
+  // atmosphere layers
+  const layersY = eb.m === 'zero' ? [h * 0.42] : [h * 0.52, h * 0.32];
+  const L = f.L;
+  layersY.forEach((ly, i) => {
+    const a = eb.m === 'zero' ? 1 - eb.eps + 0.25 : eb.epsL;
+    const g = ctx.createLinearGradient(0, ly - 22, 0, ly + 22); g.addColorStop(0, 'rgba(120,170,255,0)'); g.addColorStop(0.5, `rgba(120,170,255,${0.08 + 0.3 * a})`); g.addColorStop(1, 'rgba(120,170,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, ly - 22, dw, 44);
+    ctx.fillStyle = '#93c5fd'; ctx.font = '600 10.5px JetBrains Mono, monospace';
+    const lab = eb.m === 'zero' ? `Atmosphere ε = ${eb.eps.toFixed(3)}` : `Layer ${i + 1} · ε ${eb.epsL.toFixed(2)} · ${SL.fmt((i ? L.T2 : L.T1) - 273.15, 0)} °C`;
+    ctx.fillText(lab, 10, ly - 26);
+  });
+  // flux arrows (width ∝ flux)
+  const wpx = v => clamp(Math.abs(v) / 24, 1.5, 22);
+  const flow = (x1, y1, x2, y2, v, col, lab, side) => {
+    if (Math.abs(v) < 0.5) return;
+    const lw = wpx(v); ctx.save(); ctx.globalAlpha = 0.85; SL.arrow(ctx, x1, y1, x2, y2, col, lw, lw * 0.9 + 6); ctx.restore();
+    const n = Math.max(2, Math.round(Math.abs(v) / 40)), L2 = Math.hypot(x2 - x1, y2 - y1);
+    ctx.fillStyle = 'rgba(255,255,255,.85)';
+    for (let k = 0; k < n; k++) { const q = ((t * 70 / L2) + k / n) % 1; ctx.beginPath(); ctx.arc(x1 + (x2 - x1) * q, y1 + (y2 - y1) * q, 1.6, 0, 7); ctx.fill(); }
+    if (lab) { ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = side === 'l' ? 'right' : 'left'; ctx.fillStyle = '#e6ecf7'; const mx = (x1 + x2) / 2 + (side === 'l' ? -lw / 2 - 6 : lw / 2 + 6), my = (y1 + y2) / 2; ctx.fillText(lab, mx, my - 2); ctx.fillStyle = '#93a1bd'; ctx.font = '10px Inter, sans-serif'; ctx.fillText(SL.fmt(v, 0) + ' W m⁻²', mx, my + 11); }
+  };
+  const top = 26, xs = dw * 0.3, xr = dw * 0.44, xu = dw * 0.63, xo = dw * 0.9;
+  const nm = narrow ? ['Sun', 'Refl.', 'Surface', 'G', 'Back', 'OLR'] : ['Sunlight', 'Reflected', 'Surface IR σT⁴', 'Greenhouse G', 'Back radiation', 'Outgoing IR'];
+  const gx2 = narrow ? 36 : 50;
+  flow(xs, top, xs + 30, gy - 4, f.inc, '#fde047', nm[0], 'r');
+  flow(xr + 10, gy - 6, xr + 40, top + 10, f.refl, '#fef9c3', nm[1], 'r');
+  flow(xu, gy - 4, xu, layersY[0] + 18, f.U, '#fb923c', nm[2], 'l');
+  if (eb.m === 'zero') flow(xu + gx2, layersY[0] - 12, xu + gx2, gy - 4, f.G, '#f472b6', nm[3], 'r');
+  else { flow(xu + gx2, layersY[0] + 14, xu + gx2, gy - 4, L.down, '#f472b6', nm[4], 'r'); }
+  flow(xo, layersY[layersY.length - 1] - 16, xo, top, f.olr, '#ef4444', nm[5], 'l');
+  // sun
+  const sg = ctx.createRadialGradient(xs - 14, 6, 2, xs - 14, 6, 70); sg.addColorStop(0, 'rgba(255,240,180,1)'); sg.addColorStop(0.25, 'rgba(253,224,71,.6)'); sg.addColorStop(1, 'rgba(253,224,71,0)');
+  ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(xs - 14, 6, 70, 0, 7); ctx.fill();
+  // globe panel
+  if (narrow) return;
+  const gx = narrow ? w - 58 : dw + (w - dw) / 2, gy0 = narrow ? 92 : h * 0.43, R = narrow ? 40 : Math.min((w - dw) * 0.36, h * 0.27);
+  const og = ctx.createRadialGradient(gx - R * 0.4, gy0 - R * 0.4, R * 0.1, gx, gy0, R);
+  const hot = clamp((eb.Ts - 288) / 25, 0, 1);
+  og.addColorStop(0, `rgb(${80 + 120 * hot},${150 - 40 * hot},${220 - 120 * hot})`); og.addColorStop(1, '#0b2a4a');
+  ctx.save(); ctx.beginPath(); ctx.arc(gx, gy0, R, 0, 7); ctx.clip(); ctx.fillStyle = og; ctx.fillRect(gx - R, gy0 - R, 2 * R, 2 * R);
+  ctx.fillStyle = 'rgba(80,140,70,.85)'; for (const [cx, cy, rr] of [[-0.35, -0.1, 0.32], [0.25, 0.15, 0.28], [0.05, -0.45, 0.18], [0.4, -0.3, 0.14]]) { ctx.beginPath(); ctx.ellipse(gx + (cx + Math.sin(t * 0.15) * 0.05) * R, gy0 + cy * R, rr * R, rr * R * 0.7, 0.4, 0, 7); ctx.fill(); }
+  const capH = R * (0.12 + ice * 1.0); ctx.fillStyle = 'rgba(240,248,255,.95)'; ctx.fillRect(gx - R, gy0 - R, 2 * R, capH); ctx.fillRect(gx - R, gy0 + R - capH, 2 * R, capH);
+  ctx.fillStyle = 'rgba(255,255,255,.18)'; for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.ellipse(gx + Math.sin(t * 0.3 + k * 2) * R * 0.5, gy0 + (k - 1.5) * R * 0.4, R * 0.35, R * 0.07, 0, 0, 7); ctx.fill(); }
+  const sh = ctx.createLinearGradient(gx - R, 0, gx + R, 0); sh.addColorStop(0, 'rgba(0,0,0,0)'); sh.addColorStop(0.6, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(0,0,10,.75)'); ctx.fillStyle = sh; ctx.fillRect(gx - R, gy0 - R, 2 * R, 2 * R);
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(147,197,253,.5)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(gx, gy0, R + 3, 0, 7); ctx.stroke();
+  if (!narrow) {
+    ctx.textAlign = 'center'; ctx.fillStyle = '#e6ecf7'; ctx.font = '600 22px Space Grotesk, Inter, sans-serif'; ctx.fillText(`${SL.fmt(eb.Ts - 273.15, 1)} °C`, gx, gy0 + R + 36);
+    ctx.font = '11px Inter, sans-serif'; ctx.fillStyle = '#93a1bd'; ctx.fillText(`Global mean surface temperature`, gx, gy0 + R + 54);
+    const N = f.N, col = N > 0.05 ? '#f87171' : N < -0.05 ? '#60a5fa' : '#4ade80';
+    ctx.fillStyle = col; ctx.font = '600 12px JetBrains Mono, monospace'; ctx.fillText(Math.abs(N) < 0.05 ? 'In balance' : N > 0 ? `Warming (N = +${SL.fmt(N, 2)})` : `Cooling (N = ${SL.fmt(N, 2)})`, gx, gy0 + R + 74);
+    ctx.fillStyle = '#93a1bd'; ctx.font = '10.5px Inter, sans-serif'; ctx.fillText(`albedo now ${SL.fmt(albedo(eb.Ts), 2)} · CO₂ ${eb.co2} ppm`, gx, gy0 - R - 14);
+  }
+}
+function drawEBcharts() {
+  const tw = 120, t1 = eb.yr, t0 = Math.max(0, t1 - tw);
+  const data = eb.hist.filter(p => p[0] >= t0);
+  let lo = Math.min(...data.map(p => p[1]), eb.target ? eb.target.T - 273.15 : 14), hi = Math.max(...data.map(p => p[1]), eb.target ? eb.target.T - 273.15 : 15);
+  if (hi - lo < 2) { const m = (hi + lo) / 2; lo = m - 1; hi = m + 1; }
+  const ser = [{ data, color: '#f97316', label: 'surface temperature (°C)' }];
+  if (eb.target) ser.push({ data: [[t0, eb.target.T - 273.15], [Math.max(t0 + 20, t1), eb.target.T - 273.15]], color: 'rgba(74,222,128,.8)', dash: [5, 4], width: 1.4, label: 'equilibrium' });
+  plot(ebT, ser, { xmin: t0, xmax: Math.max(t0 + 20, t1), ymin: lo - (hi - lo) * 0.1, ymax: hi + (hi - lo) * 0.1, xlabel: 'years', pad: [28, 12, 26, 44] });
+  // Budyko-style diagram: ASR(T) and OLR_eff(T)
+  const Ts = [], A = [], O = [];
+  for (let T = 200; T <= 330; T += 1) { const fl = fluxes(T); const asr = fl.asr; const out = asr - fl.N; A.push([T - 273.15, asr]); O.push([T - 273.15, out]); }
+  const P = plot(ebB, [{ data: A, color: '#fde047', label: 'absorbed sunlight' }, { data: O, color: '#ef4444', label: 'net outgoing' }], { xmin: -73, xmax: 57, ymin: 50, ymax: 420, xlabel: '°C', pad: [28, 12, 26, 40] });
+  const { ctx } = ebB;
+  equilibria().forEach(e => { const x = P.X(e.T - 273.15), y = P.Y(fluxes(e.T).asr); ctx.fillStyle = e.stable ? '#4ade80' : '#0b1222'; ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 5, 0, 7); ctx.fill(); ctx.stroke(); });
+  const cx = P.X(eb.Ts - 273.15); ctx.strokeStyle = 'rgba(249,115,22,.7)'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(cx, P.pt); ctx.lineTo(cx, ebB.h - P.pb); ctx.stroke(); ctx.setLineDash([]);
+}
+let ebFrame = 0;
+loops.ebm = SL.loop((dt, t) => {
+  if (eb.running) ebStep(dt * +$('#ebSpeed').value);
+  drawEB(t);
+  if (++ebFrame % 3 === 0 || ebDirty) { ebStats(); drawEBcharts(); ebDirty = false; }
+});
+function ebSet(k, v) { eb[k] = v; ebDirty = true; }
+SL.bind('#S0', v => ebSet('S0', v), v => v + ' W m⁻²');
+SL.bind('#alb', v => ebSet('alb', v), v => v.toFixed(2));
+SL.bind('#eps', v => ebSet('eps', v), v => v.toFixed(3));
+SL.bind('#epsL', v => ebSet('epsL', v), v => v.toFixed(3));
+SL.bind('#co2', v => ebSet('co2', v), v => v + ' ppm');
+SL.bind('#bf', v => ebSet('bf', v), v => v.toFixed(2) + ' W m⁻² K⁻¹');
+SL.bind('#depth', v => ebSet('depth', v), v => v + ' m');
+SL.bind('#ebSpeed', null, v => v + ' yr/s');
+$('#iceT').onchange = e => ebSet('ice', e.target.checked);
+$$('#ebModel button').forEach(b => b.onclick = () => { eb.m = b.dataset.m; $$('#ebModel button').forEach(x => x.classList.toggle('on', x === b)); $('#rowEps').style.display = eb.m === 'zero' ? '' : 'none'; $('#rowEpsL').style.display = eb.m === 'layer' ? '' : 'none'; ebDirty = true; });
+function setR(id, v) { const el = $(id); el.value = v; el.dispatchEvent(new Event('input')); }
+$('#bDouble').onclick = () => { eb.dbl = eb.Ts; setR('#co2', Math.min(2000, eb.co2 * 2)); SL.toast(`CO₂ doubled to ${eb.co2} ppm: ΔF rises by ${SL.fmt(5.35 * Math.LN2, 2)} W m⁻².`, 'warn'); };
+$('#bToday').onclick = () => { setR('#co2', 420); };
+$('#bVolc').onclick = () => { eb.Fv = -3.5; SL.toast('A Pinatubo-sized eruption: about −3.5 W m⁻² of sulphate aerosol forcing that decays over about a year.', 'warn'); };
+$('#bSnow').onclick = () => { $('#iceT').checked = true; eb.ice = true; eb.Ts = 228; eb.hist = []; eb.yr = 0; ebDirty = true; SL.toast('Ice–albedo feedback on: the planet starts frozen solid.', 'warn'); };
+$('#bReset').onclick = () => { setR('#S0', 1361); setR('#alb', 0.3); setR('#eps', 0.612); setR('#epsL', 0.485); setR('#co2', 280); setR('#bf', 2.1); setR('#depth', 70); $('#iceT').checked = false; eb.ice = false; eb.Ts = 287.83; eb.Fv = 0; eb.hist = []; eb.yr = 0; eb.dbl = null; ebDirty = true; };
+const setEbPlay = () => { $('#ebPlay').innerHTML = `<i data-lucide="${eb.running ? 'pause' : 'play'}"></i>`; SL.refreshIcons($('#ebPlay').parentElement); };
+$('#ebPlay').onclick = () => { eb.running = !eb.running; setEbPlay(); };
+
+/* =====================================================================
+   B. EMISSION PATHWAYS
+   ===================================================================== */
+// Simple integrated climate model: emissions -> CO2 (Joos 2013 IRF), CH4 (one box) -> forcing -> two-box energy balance
+function climateModel(p) {
+  p = Object.assign({ coalYear: 2101, reGrowth: 1.0, ev2050: 40, defor: 30, refor: 2, ch4cut: 10, ccs: 1, effInd: 1.5, demand: 1.2, ecs: 3.0 }, p || {});
+  const lerpT = (tab, t) => { if (t <= tab[0][0]) return tab[0][1]; for (let i = 1; i < tab.length; i++) if (t <= tab[i][0]) { const [t0, v0] = tab[i - 1], [t1, v1] = tab[i]; return v0 + (v1 - v0) * (t - t0) / (t1 - t0); } return tab[tab.length - 1][1]; };
+  const FOS = [[1850, 0.2], [1900, 1.95], [1950, 6.0], [1970, 15.0], [1990, 22.7], [2000, 25.5], [2010, 33.5], [2019, 37.1], [2020, 35.3], [2024, 37.4]];
+  const LUC = [[1850, 2.6], [1900, 3.2], [1950, 5.6], [1970, 5.0], [1990, 5.1], [2000, 5.0], [2010, 4.8], [2024, 4.2]];
+  const CH4E = [[1850, 40], [1900, 80], [1950, 160], [1980, 300], [2000, 330], [2024, 390]];
+  const AER = [[1850, -0.05], [1900, -0.2], [1950, -0.55], [1980, -1.1], [2000, -1.2], [2019, -1.3], [2024, -1.25]];
+  const OTH = [[1850, 0], [1900, 0.05], [1950, 0.15], [1980, 0.55], [2000, 0.75], [2024, 0.9]];
+  const TS = p.tauScale || 0.3, a = [0.2173, 0.2240, 0.2824, 0.2763], tau = [Infinity, 394.4 * TS, 36.54 * TS, 4.304 * TS];
+  const box = [0, 0, 0, 0];
+  const C0 = 278, GtCperppm = 2.124, M0 = 721, tauM = 9.1, Enat = 218, TgPerppb = 2.75;
+  let M = M0, T = 0, Td = 0;
+  const Cu = 8.0, Cd = 100, gam = p.gam || 1.1, F2x = 5.35 * Math.LN2, lam = F2x / p.ecs;
+  let refArea = 0, cum2020 = 0, cum1850 = 0;
+  const out = [];
+  const g = p.demand / 100;
+  const ramp = (t, t0, t1) => Math.max(0, Math.min(1, (t - t0) / (t1 - t0)));
+  const evS = p.ev2050 / 100;
+  const ev = t => evS <= 0 ? 0 : evS >= 0.999 ? 1 / (1 + Math.exp(-0.28 * (t - 2038))) : 1 / (1 + Math.exp(-0.28 * (t - (2050 + Math.log(1 / evS - 1) / 0.28))));
+  for (let y = 1850; y <= 2100; y++) {
+    let fos, luc, sect = null, ch4e, removal = 0, ccsNow = 0;
+    if (y <= 2024) { fos = lerpT(FOS, y); luc = lerpT(LUC, y); ch4e = lerpT(CH4E, y); }
+    else {
+      const n = y - 2024, D = Math.pow(1 + g, n), De = Math.pow(1 + g + 0.01, n) * (1 + 0.10 * ev(y));
+      const lowc = Math.min(0.98, 0.41 + p.reGrowth / 100 * n);
+      const fossilGen = De * (1 - lowc) / 0.59;
+      const cf = p.coalYear > 2100 ? 0.59 : 0.59 * (1 - ramp(y, 2025, p.coalYear));
+      const inten = (cf + (1 - cf) * 0.45) / (0.59 + 0.41 * 0.45);
+      const effI = Math.pow(1 - p.effInd / 100, n);
+      sect = {
+        power: 15.0 * fossilGen * inten,
+        road: 6.0 * D * (1 - ev(y)) / (1 - ev(2024)),
+        otherTr: 2.2 * D * effI,
+        industry: 9.5 * D * effI,
+        buildings: 3.0 * D * effI,
+        other: 1.7 * D * effI,
+      };
+      ccsNow = p.ccs * ramp(y, 2030, 2050);
+      fos = Object.values(sect).reduce((s, v) => s + v, 0);
+      luc = 4.2 * (1 - p.defor / 100 * ramp(y, 2025, 2040));
+      refArea = Math.min(900, refArea + p.refor);
+      removal = refArea * 0.004;
+      ch4e = 390 * Math.pow(D, 0.4) * (1 - p.ch4cut / 100 * ramp(y, 2025, 2050));
+    }
+    const net = fos + luc - removal - ccsNow;
+    // carbon cycle
+    const EGtC = net / 3.664;
+    for (let k = 0; k < 4; k++) box[k] = box[k] * (k === 0 ? 1 : Math.exp(-1 / tau[k])) + a[k] * EGtC;
+    const C = C0 + box.reduce((s, v) => s + v, 0) / GtCperppm;
+    M += (Enat + ch4e) / TgPerppb - M / tauM;
+    const Fco2 = 5.35 * Math.log(C / C0);
+    const Fch4 = 1.4 * 0.036 * (Math.sqrt(M) - Math.sqrt(M0));
+    const Foth = lerpT(OTH, Math.min(y, 2024)) * (y > 2024 ? (1 - 0.3 * ramp(y, 2025, 2100)) : 1);
+    const fosRef = 37.1;
+    const Faer = y <= 2024 ? lerpT(AER, y) : -1.25 * Math.min(1.5, Math.max(fos + ccsNow, 0) / 37.4) * (1 - 0.5 * ramp(y, 2024, 2100));
+    const F = Fco2 + Fch4 + Foth + Faer;
+    // two-box energy balance (annual step)
+    const dT = (F - lam * T - gam * (T - Td)) / Cu, dTd = gam * (T - Td) / Cd;
+    T += dT; Td += dTd;
+    cum1850 += net; if (y >= 2020) cum2020 += net;
+    out.push({ y, fos, luc, removal, ccs: ccsNow, net, sect, C, M, Fco2, Fch4, Foth, Faer, F, T, cum2020, cum1850, ch4e });
+  }
+  return out;
+}
+const pol = { coalYear: 2101, reGrowth: 1, ev2050: 40, effInd: 1.5, demand: 1.2, defor: 30, refor: 2, ch4cut: 10, ccs: 1, ecs: 3 };
+const pSt = SL.canvas($('#pCv'), () => pDirty = true);
+let run = null, hoverY = null, panels = [];
+const SECT = [['power', 'Electricity & heat', '#f97316'], ['road', 'Road transport', '#facc15'], ['otherTr', 'Aviation, shipping, rail', '#a3e635'], ['industry', 'Industry & cement', '#60a5fa'], ['buildings', 'Buildings', '#c084fc'], ['other', 'Other energy', '#94a3b8'], ['luc', 'Land-use change', '#a16207']];
+function recalc() {
+  run = climateModel(pol);
+  const g = y => run.find(r => r.y === y), fut = run.filter(r => r.y >= 2024);
+  const peak = fut.reduce((a, r) => r.T > a.T ? r : a), nz = fut.find(r => r.net <= 0), bud = run.find(r => r.y >= 2020 && r.cum2020 >= 500);
+  const cls = (el, v, a, b) => { el.classList.remove('good', 'warn', 'bad'); el.classList.add(v <= a ? 'good' : v <= b ? 'warn' : 'bad'); };
+  $('#o2100').innerHTML = `${SL.fmt(g(2100).T, 2)}<small>°C</small>`; cls($('#o2100'), g(2100).T, 1.5, 2);
+  $('#oPeak').innerHTML = `${SL.fmt(peak.T, 2)}<small>°C ${peak.y}</small>`; cls($('#oPeak'), peak.T, 1.6, 2);
+  $('#oNZ').textContent = nz ? nz.y : 'not by 2100';
+  $('#oC').innerHTML = `${SL.fmt(g(2100).C, 0)}<small>ppm</small>`;
+  $('#o2030').innerHTML = `${SL.fmt(g(2030).net, 1)}<small>GtCO₂</small>`;
+  $('#oBud').textContent = bud ? bud.y : 'not exhausted';
+  // meter
+  const cum = g(2100).cum2020, peakCum = Math.max(...run.filter(r => r.y >= 2020).map(r => r.cum2020)), max = Math.max(2000, peakCum * 1.05);
+  $('#mFill').style.width = clamp(peakCum / max * 100, 0, 100) + '%';
+  $('#mVal').textContent = `peak ${SL.fmt(peakCum, 0)} GtCO₂ · ${SL.fmt(cum, 0)} by 2100`;
+  const meter = $('#meter'); meter.querySelectorAll('.mk').forEach(m => m.remove());
+  [[200, 'used 2020–24', ''], [500, '1.5 °C', '50%'], [1150, '2 °C', '67%'], [1350, '2 °C', '50%']].forEach(([v, a, b], i) => { const m = document.createElement('div'); m.className = 'mk'; m.style.left = (v / max * 100) + '%'; m.innerHTML = i % 2 ? `<span class="b">${a} ${b}</span>` : `<span class="t">${a} ${b}</span>`; meter.appendChild(m); });
+  if (pol.ecs === 3 && peak.T < 2.0) done('ch4', `peak warming ${SL.fmt(peak.T, 2)} °C stays below 2 °C.`);
+  if (nz && nz.y <= 2050 && pol.ccs <= 5) done('ch5', `net-zero CO₂ in ${nz.y} with ${pol.ccs} GtCO₂/yr of capture.`);
+  pDirty = true;
+}
+function drawPath() {
+  const { ctx, w, h } = pSt; ctx.clearRect(0, 0, w, h);
+  const narrow = w < 640, fut = run.filter(r => r.y >= 1990);
+  const boxes = narrow ? [[0, 0, w, h * 0.4], [0, h * 0.4, w, h * 0.27], [0, h * 0.67, w, h * 0.33]] : [[0, 0, w, h * 0.5], [0, h * 0.5, w * 0.5, h * 0.5], [w * 0.5, h * 0.5, w * 0.5, h * 0.5]];
+  panels = [];
+  const sub = (b) => { const c = { ctx, w: b[2], h: b[3] }; return c; };
+  // 1. stacked emissions
+  const b0 = boxes[0]; ctx.save(); ctx.translate(b0[0], b0[1]);
+  const st0 = sub(b0);
+  let ymax = 10, ymin = 0;
+  fut.forEach(r => { const pos = r.sect ? Object.values(r.sect).reduce((a, v) => a + v, 0) + r.luc : r.fos + r.luc; ymax = Math.max(ymax, pos); ymin = Math.min(ymin, -(r.removal + r.ccs), r.net); });
+  const P0 = plot(st0, [], { xmin: 1990, xmax: 2100, ymin: Math.floor(ymin / 10) * 10, ymax: Math.ceil(ymax * 1.05 / 10) * 10, pad: [narrow ? 66 : 52, 12, 24, 44], ylabel: 'CO₂ emissions (GtCO₂/yr)', xfmt: v => String(v) });
+  // stacks
+  let base = fut.map(() => 0);
+  const stackOf = (r, k) => r.sect ? (k === 'luc' ? r.luc : k === 'hist' ? 0 : r.sect[k]) : (k === 'luc' ? r.luc : k === 'hist' ? r.fos : 0);
+  [['hist', '', '#64748b'], ...SECT].forEach(([k, , col]) => {
+    ctx.beginPath(); fut.forEach((r, i) => { const v = base[i] + stackOf(r, k); i ? ctx.lineTo(P0.X(r.y), P0.Y(v)) : ctx.moveTo(P0.X(r.y), P0.Y(v)); });
+    for (let i = fut.length - 1; i >= 0; i--) ctx.lineTo(P0.X(fut[i].y), P0.Y(base[i]));
+    ctx.closePath(); ctx.fillStyle = col + 'cc'; ctx.fill();
+    base = base.map((b, i) => b + stackOf(fut[i], k));
+  });
+  ctx.beginPath(); fut.forEach((r, i) => { const v = -(r.removal + r.ccs); i ? ctx.lineTo(P0.X(r.y), P0.Y(v)) : ctx.moveTo(P0.X(r.y), P0.Y(v)); }); ctx.lineTo(P0.X(2100), P0.Y(0)); ctx.lineTo(P0.X(1990), P0.Y(0)); ctx.closePath(); ctx.fillStyle = 'rgba(45,212,191,.55)'; ctx.fill();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.2; ctx.beginPath(); fut.forEach((r, i) => i ? ctx.lineTo(P0.X(r.y), P0.Y(r.net)) : ctx.moveTo(P0.X(r.y), P0.Y(r.net))); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(P0.X(2024.5), P0.pt); ctx.lineTo(P0.X(2024.5), st0.h - P0.pb); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = '#93a1bd'; ctx.font = '10px Inter, sans-serif'; ctx.textAlign = 'left'; ctx.fillText('history ◂ ▸ scenario', P0.X(2024.5) - 50, P0.pt + 12);
+  // legend
+  ctx.font = '10px Inter, sans-serif'; let lx = P0.pl, ly = 14;
+  [['Fossil (history)', '#64748b'], ...SECT.map(s => [s[1], s[2]]), ['Removals & capture', '#2dd4bf'], ['Net emissions', '#ffffff']].forEach(([n, c]) => { const tw = ctx.measureText(n).width; if (lx + tw + 20 > st0.w - 8) { lx = P0.pl; ly += 13; } ctx.fillStyle = c; ctx.fillRect(lx, ly - 7, 9, 9); ctx.fillStyle = '#cbd5e1'; ctx.fillText(n, lx + 12, ly + 1); lx += tw + 22; });
+  ctx.restore(); panels.push({ b: b0, P: P0 });
+  // 2. concentration
+  const b1 = boxes[1]; ctx.save(); ctx.translate(b1[0], b1[1]);
+  const cd = run.filter(r => r.y >= 1850).map(r => [r.y, r.C]);
+  const P1 = plot(sub(b1), [{ data: cd, color: '#38bdf8', label: 'CO₂ (ppm)', width: 2.2 }, { data: [[1850, 280], [2100, 280]], color: 'rgba(255,255,255,.3)', dash: [4, 4], width: 1, label: 'pre-industrial' }], { xmin: 1850, xmax: 2100, ymin: 250, ymax: Math.max(500, Math.ceil(Math.max(...cd.map(p => p[1])) / 50) * 50 + 20), pad: [26, 12, 24, 44], xfmt: v => String(v) });
+  ctx.restore(); panels.push({ b: b1, P: P1 });
+  // 3. temperature
+  const b2 = boxes[2]; ctx.save(); ctx.translate(b2[0], b2[1]);
+  const td = run.map(r => [r.y, r.T]); const tmax = Math.max(2.6, Math.ceil(Math.max(...td.map(p => p[1])) * 2) / 2 + 0.3);
+  const P2 = plot(sub(b2), [{ data: [[1850, 1.5], [2100, 1.5]], color: 'rgba(251,191,36,.8)', dash: [6, 4], width: 1.3 }, { data: [[1850, 2], [2100, 2]], color: 'rgba(248,113,113,.85)', dash: [6, 4], width: 1.3 }, { data: td, color: '#f97316', width: 2.6, label: 'warming vs 1850–1900 (°C)' }], { xmin: 1850, xmax: 2100, ymin: -0.2, ymax: tmax, pad: [26, 12, 24, 40], xfmt: v => String(v) });
+  ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillStyle = '#fbbf24'; ctx.fillText('1.5 °C', P2.pl + 4, P2.Y(1.5) - 4); ctx.fillStyle = '#f87171'; ctx.fillText('2 °C', P2.pl + 4, P2.Y(2) - 4);
+  ctx.restore(); panels.push({ b: b2, P: P2 });
+  // hover crosshair
+  if (hoverY) { panels.forEach(({ b, P }) => { if (hoverY < P.xmin || hoverY > P.xmax) return; const x = b[0] + P.X(hoverY); ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, b[1] + P.pt); ctx.lineTo(x, b[1] + b[3] - P.pb); ctx.stroke(); }); }
+  // separators
+  ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); boxes.slice(1).forEach(b => { ctx.moveTo(b[0], b[1]); ctx.lineTo(b[0] + b[2], b[1]); if (b[0] > 0) { ctx.moveTo(b[0], b[1]); ctx.lineTo(b[0], b[1] + b[3]); } }); ctx.stroke();
+}
+loops.path = SL.loop(() => { if (pDirty) { drawPath(); pDirty = false; } });
+$('#pCv').addEventListener('pointermove', e => {
+  const p = SL.ptr(e, $('#pCv')); const pn = panels.find(({ b }) => p.x >= b[0] && p.x <= b[0] + b[2] && p.y >= b[1] && p.y <= b[1] + b[3]); if (!pn) return;
+  const yr = Math.round(pn.P.xmin + (p.x - pn.b[0] - pn.P.pl) / (pn.b[2] - pn.P.pl - pn.P.pr) * (pn.P.xmax - pn.P.xmin)); const r = run.find(q => q.y === yr); if (!r) return;
+  hoverY = yr; pDirty = true;
+  $('#pHover').innerHTML = `<b>${yr}</b> · net ${SL.fmt(r.net, 1)} GtCO₂ · ${SL.fmt(r.C, 0)} ppm · CH₄ ${SL.fmt(r.M, 0)} ppb · ${SL.fmt(r.T, 2)} °C · F ${SL.fmt(r.F, 2)} W m⁻²`;
+});
+$('#pCv').addEventListener('pointerleave', () => { hoverY = null; pDirty = true; });
+const pfmt = { pCoal: v => v > 2100 ? 'never' : v, pRe: v => '+' + v.toFixed(1) + ' pp/yr', pEv: v => v + '%', pEff: v => v.toFixed(1) + '%/yr', pDem: v => v.toFixed(1) + '%/yr', pDef: v => v + '%', pRef: v => v + ' Mha/yr', pCh4: v => v + '%', pCcs: v => v + ' GtCO₂/yr', pEcs: v => v.toFixed(1) + ' °C' };
+const pkey = { pCoal: 'coalYear', pRe: 'reGrowth', pEv: 'ev2050', pEff: 'effInd', pDem: 'demand', pDef: 'defor', pRef: 'refor', pCh4: 'ch4cut', pCcs: 'ccs', pEcs: 'ecs' };
+let pReady = false;
+Object.keys(pkey).forEach(id => SL.bind('#' + id, v => { pol[pkey[id]] = v; if (pReady) recalc(); }, pfmt[id]));
+const PRESETS = { current: { pCoal: 2101, pRe: 1, pEv: 40, pEff: 1.5, pDem: 1.2, pDef: 30, pRef: 2, pCh4: 10, pCcs: 1 }, pledges: { pCoal: 2050, pRe: 1.5, pEv: 60, pEff: 2, pDem: 1.2, pDef: 60, pRef: 4, pCh4: 30, pCcs: 3 }, nz: { pCoal: 2032, pRe: 3, pEv: 95, pEff: 5, pDem: 1.2, pDef: 100, pRef: 10, pCh4: 70, pCcs: 10 }, fossil: { pCoal: 2101, pRe: 0.3, pEv: 10, pEff: 0.5, pDem: 1.6, pDef: 0, pRef: 0, pCh4: 0, pCcs: 0 } };
+$$('[data-p]').forEach(b => b.onclick = () => { pReady = false; Object.entries(PRESETS[b.dataset.p]).forEach(([k, v]) => setR('#' + k, v)); pReady = true; recalc(); $$('[data-p]').forEach(x => x.classList.toggle('on', x === b)); });
+pReady = true; recalc();
+
+/* =====================================================================
+   C. EAST AFRICA LENS
+   ===================================================================== */
+const MON = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'], CLIM = [50, 45, 85, 190, 140, 35, 15, 20, 25, 55, 140, 80];
+const ea = { enso: 0, iod: 0, gw: 1.3, sims: [] };
+const eaSt = SL.canvas($('#eaCv'), () => eaDirty = true);
+let seedE = 11; const rndE = () => (seedE = (seedE * 16807) % 2147483647) / 2147483647;
+function gauss() { return Math.sqrt(-2 * Math.log(rndE() + 1e-12)) * Math.cos(2 * Math.PI * rndE()); }
+function gammaRand(k) { // Marsaglia–Tsang, mean k, theta 1
+  const d = k - 1 / 3, c = 1 / Math.sqrt(9 * d); for (;;) { let x, v; do { x = gauss(); v = 1 + c * x; } while (v <= 0); v = v * v * v; const u = rndE(); if (u < 1 - 0.0331 * x ** 4 || Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v; }
+}
+function ondFactor() { return (ea.enso > 0 ? 1.25 : ea.enso < 0 ? 0.78 : 1) * Math.max(0.3, 1 + 0.35 * ea.iod) * (1 + 0.03 * (ea.gw - 1.3)); }
+function mamFactor() { return (ea.enso > 0 ? 1.04 : 1) * (1 - 0.01 * (ea.gw - 1.3)); }
+function shapeK() { return Math.max(2.5, 7 * (1 - 0.08 * (ea.gw - 1.3))); }
+function eaSimulate() {
+  const k = shapeK(), m = ondFactor(); ea.sims = [];
+  for (let i = 0; i < 40; i++) ea.sims.push(100 * m * gammaRand(k) / k);
+  const fail = ea.sims.filter(v => v < 60).length, wet = ea.sims.filter(v => v > 160).length;
+  $('#eFail').innerHTML = `${fail}<small>/ 40</small>`; $('#eWet').innerHTML = `${wet}<small>/ 40</small>`;
+  eaDirty = true;
+}
+function eaStats() { const ond = (CLIM[9] + CLIM[10] + CLIM[11]) * ondFactor(); $('#eMean').innerHTML = `${SL.fmt(ond, 0)}<small>mm</small>`; $('#ePct').innerHTML = `${SL.fmt(ondFactor() * 100, 0)}<small>%</small>`; }
+function drawEA() {
+  const { ctx, w, h } = eaSt; ctx.clearRect(0, 0, w, h);
+  const narrow = w < 640, b1 = narrow ? [0, 34, w, h * 0.5] : [0, 34, w * 0.58, h - 34], b2 = narrow ? [0, h * 0.5 + 34, w, h * 0.5 - 34] : [w * 0.58, 34, w * 0.42, h - 34];
+  // monthly bars
+  ctx.save(); ctx.translate(b1[0], b1[1]);
+  const fac = CLIM.map((v, i) => i >= 9 ? ondFactor() : i >= 2 && i <= 4 ? mamFactor() : 1);
+  const P = plot({ ctx, w: b1[2], h: b1[3] }, [], { xmin: -0.5, xmax: 11.5, ymin: 0, ymax: 320, pad: [24, 10, 26, 40], ylabel: 'rainfall (mm/month)', legend: false });
+  ctx.clearRect(0, b1[3] - P.pb + 2, b1[2], P.pb);
+  [[2, 4, 'Long rains'], [9, 11, 'Short rains']].forEach(([a, b, l]) => { ctx.fillStyle = 'rgba(45,212,191,.07)'; ctx.fillRect(P.X(a - 0.5), P.pt, P.X(b + 0.5) - P.X(a - 0.5), b1[3] - P.pt - P.pb); ctx.fillStyle = '#5eead4'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(l.toUpperCase(), P.X((a + b) / 2), P.pt + 12); });
+  const bw = (P.X(1) - P.X(0)) * 0.36;
+  CLIM.forEach((v, i) => {
+    const x = P.X(i); ctx.fillStyle = 'rgba(147,161,189,.35)'; ctx.fillRect(x - bw - 1, P.Y(v), bw, P.Y(0) - P.Y(v));
+    const nv = v * fac[i], g = ctx.createLinearGradient(0, P.Y(nv), 0, P.Y(0)); g.addColorStop(0, fac[i] > 1.02 ? '#38bdf8' : fac[i] < 0.98 ? '#f59e0b' : '#2dd4bf'); g.addColorStop(1, 'rgba(0,0,0,.2)');
+    ctx.fillStyle = g; ctx.fillRect(x + 1, P.Y(nv), bw, P.Y(0) - P.Y(nv));
+    ctx.fillStyle = '#93a1bd'; ctx.font = '10.5px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(MON[i], x, b1[3] - P.pb + 14);
+  });
+  ctx.font = '10px Inter, sans-serif'; ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(147,161,189,.7)'; ctx.fillRect(P.pl + 8, P.pt + 22, 9, 9); ctx.fillStyle = '#cbd5e1'; ctx.fillText('long-term mean', P.pl + 21, P.pt + 30); ctx.fillStyle = '#2dd4bf'; ctx.fillRect(P.pl + 112, P.pt + 22, 9, 9); ctx.fillStyle = '#cbd5e1'; ctx.fillText('this scenario (expected)', P.pl + 125, P.pt + 30);
+  ctx.restore();
+  // histogram of simulated OND seasons
+  ctx.save(); ctx.translate(b2[0], b2[1]);
+  const bins = new Array(15).fill(0); ea.sims.forEach(v => bins[Math.min(14, Math.floor(v / 20))]++);
+  const P2 = plot({ ctx, w: b2[2], h: b2[3] }, [], { xmin: 0, xmax: 300, ymin: 0, ymax: Math.max(10, ...bins) + 2, pad: [24, 12, 26, 34], ylabel: 'seasons', xlabel: '% of normal OND rain', legend: false });
+  ctx.fillStyle = 'rgba(239,68,68,.08)'; ctx.fillRect(P2.X(0), P2.pt, P2.X(60) - P2.X(0), b2[3] - P2.pt - P2.pb);
+  ctx.fillStyle = 'rgba(56,189,248,.08)'; ctx.fillRect(P2.X(160), P2.pt, P2.X(300) - P2.X(160), b2[3] - P2.pt - P2.pb);
+  bins.forEach((n, i) => { if (!n) return; const x0 = P2.X(i * 20) + 1, x1 = P2.X(i * 20 + 20) - 1; ctx.fillStyle = i * 20 < 60 ? '#ef4444' : i * 20 >= 160 ? '#38bdf8' : '#2dd4bf'; ctx.fillRect(x0, P2.Y(n), x1 - x0, P2.Y(0) - P2.Y(n)); });
+  ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillStyle = '#f87171'; ctx.fillText('FAILED', P2.X(2), P2.pt + 12); ctx.fillStyle = '#7dd3fc'; ctx.textAlign = 'right'; ctx.fillText('VERY WET', P2.X(298), P2.pt + 12);
+  if (!ea.sims.length) { ctx.fillStyle = '#93a1bd'; ctx.font = '12px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('Press "Simulate 40 short-rains seasons"', b2[2] / 2, b2[3] / 2); }
+  ctx.restore();
+  ctx.fillStyle = '#e6ecf7'; ctx.font = '600 12px Inter, sans-serif'; ctx.textAlign = 'left';
+}
+loops.ea = SL.loop(() => { if (eaDirty) { drawEA(); eaDirty = false; } });
+$$('#enso button').forEach(b => b.onclick = () => { ea.enso = +b.dataset.v; $$('#enso button').forEach(x => x.classList.toggle('on', x === b)); eaStats(); eaSimulate(); });
+SL.bind('#iod', v => { ea.iod = v; eaStats(); eaDirty = true; }, v => (v > 0 ? '+' : '') + v.toFixed(1));
+SL.bind('#gw', v => { ea.gw = v; eaStats(); eaDirty = true; }, v => v.toFixed(1) + ' °C');
+$('#eaSim').onclick = eaSimulate;
+eaStats(); eaSimulate();
+
+/* ---------- quiz ---------- */
+SL.quiz('#quiz', [
+  { q: 'Why is the average incoming solar flux S₀/4 rather than S₀?', options: ['Because only a quarter of sunlight is visible', 'Because Earth intercepts sunlight on a disc (πR²) but has surface area 4πR²', 'Because the atmosphere absorbs three quarters', 'Because of the day–night cycle only'], answer: 1, why: 'The intercepted energy S₀πR² is spread over the whole sphere, 4πR².' },
+  { q: 'With S₀ = 1361 W m⁻² and α = 0.3, Earth\'s effective radiating temperature is about…', options: ['288 K', '255 K', '273 K', '303 K'], answer: 1, why: 'T = [1361 × 0.7 / (4σ)]^¼ ≈ 255 K, 33 K colder than the observed surface.' },
+  { q: 'What is the radiative forcing from raising CO₂ from 280 to 560 ppm?', options: ['5.35 W m⁻²', 'About 3.7 W m⁻²', 'About 1.5 W m⁻²', '280 W m⁻²'], answer: 1, why: 'ΔF = 5.35 ln 2 ≈ 3.71 W m⁻².' },
+  { q: 'If λ = 1.25 W m⁻² K⁻¹, the equilibrium climate sensitivity is about…', options: ['1.2 K', '3.0 K', '4.6 K', '0.34 K'], answer: 1, why: 'ECS = ΔF₂ₓ/λ = 3.71/1.25 ≈ 3.0 K.' },
+  { q: 'Doubling the ocean mixed-layer depth in the energy balance model will…', options: ['double the equilibrium warming', 'double the time taken to approach equilibrium, without changing the final warming', 'halve the equilibrium warming', 'make no difference at all'], answer: 1, why: 'τ = C/λ grows with C, but the equilibrium ΔF/λ does not depend on heat capacity.' },
+  { q: 'Which statement about the carbon budget is correct?', options: ['Warming depends mainly on the emission rate in the year of interest', 'Warming is roughly proportional to cumulative CO₂ emissions, so stopping warming requires net-zero CO₂', 'CO₂ leaves the atmosphere within about 12 years', 'Reforestation alone can offset current fossil emissions'], answer: 1, why: 'TCRE ≈ 0.45 °C per 1000 GtCO₂; a fraction of emitted CO₂ persists for millennia, so cumulative emissions set the warming.' },
+  { q: 'Why can cutting methane emissions reduce warming faster than equivalent CO₂ cuts?', options: ['Methane does not absorb infrared', 'Methane has a perturbation lifetime of about a decade, so its concentration falls quickly once emissions drop', 'Methane is removed by trees', 'Methane causes cooling'], answer: 1, why: 'A ~12-year lifetime means methane concentrations respond within decades, unlike CO₂.' },
+  { q: 'Phasing out coal quickly can cause a small temporary extra warming. Why?', options: ['Coal plants absorb heat', 'Coal combustion also emits sulphate aerosols that reflect sunlight; removing them unmasks warming', 'Renewables emit heat', 'Because CO₂ concentration rises when coal stops'], answer: 1, why: 'Aerosols exert a negative forcing (about −1.3 W m⁻²); cleaner air removes this cooling.' },
+  { q: 'In much of Kenya, the October–December "short rains" tend to be wetter during…', options: ['La Niña and a negative IOD', 'A positive Indian Ocean Dipole and El Niño', 'Volcanic eruptions only', 'The northern hemisphere summer'], answer: 1, why: 'Warm western Indian Ocean (positive IOD), often with El Niño, enhances the short rains, as in 1997, 2019 and 2023.' },
+  { q: 'With the ice–albedo feedback, a frozen planet can stay frozen even at today\'s solar constant. This is an example of…', options: ['a trophic cascade', 'hysteresis and multiple stable equilibria', 'the Planck feedback', 'radiative forcing'], answer: 1, why: 'The S-shaped absorbed-sunlight curve crosses the outgoing curve three times; which stable state you reach depends on history.' },
+]);
+
+ebStats(); drawEBcharts(); setEbPlay();
+loops.ebm.start();
+window.ClimateLab = { eb, fluxes, equilibria, lamEff, climateModel, pol, recalc, get run() { return run; }, ondFactor };
+})();
+</script>
+</body>
+</html>
