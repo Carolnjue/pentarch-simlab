@@ -1,0 +1,1154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Logic Circuit Builder · Pentarch SimLab</title>
+<meta name="description" content="Drag-and-drop digital logic editor with live event-driven simulation, truth tables, Boolean expressions, Karnaugh maps, latches, flip-flops, adders and auto-checked challenges.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .modes{margin:18px 0 0}
+  .modes>.tablist button{font-size:.95rem;padding:12px 18px}
+  .modes>.tabpanel{padding:0}
+  .lab>aside,.lab>.stage{min-width:0}
+  .stage.s-ed{height:600px}
+  .stage.s-km{height:520px}
+  @media (max-width:600px){.stage.s-ed{height:480px}.stage.s-km{height:400px}}
+  #cv{touch-action:none;cursor:default}
+  #kcv{touch-action:manipulation;cursor:pointer}
+  .parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px}
+  .part{all:unset;box-sizing:border-box;cursor:grab;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px 5px;border:1px solid var(--line2);border-radius:9px;background:var(--bg2);font:600 .68rem var(--mono);color:var(--muted);text-align:center;user-select:none;transition:.15s}
+  .part:hover{border-color:var(--accent);color:var(--text)}
+  .part svg{width:44px;height:26px}
+  .part.disabled{opacity:.25;pointer-events:none}
+  .panel-title:first-of-type{margin-top:0}
+  .field{display:flex;flex-direction:column;gap:5px;margin:6px 0 8px}
+  .field>label,.field>span.lbl{font-size:.86rem;color:var(--muted)}
+  .row{display:flex;gap:8px;align-items:center}
+  .row>*{flex:1}
+  .tt-wrap{max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+  table.tt{border-collapse:collapse;font:500 .8rem var(--mono);width:100%}
+  table.tt th,table.tt td{padding:4px 10px;text-align:center;border-bottom:1px solid var(--line)}
+  table.tt th{position:sticky;top:0;background:var(--panel2);color:var(--muted);font-weight:600}
+  table.tt td.o{color:var(--text);font-weight:600}
+  table.tt td.one{color:#4ade80}
+  table.tt td.sep,table.tt th.sep{border-left:2px solid var(--line2)}
+  table.tt tr.cur td{background:color-mix(in srgb,var(--accent) 18%,transparent)}
+  .expr{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0;overflow-x:auto}
+  .expr .k{font:600 .68rem var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:4px}
+  .banner{position:absolute;left:50%;top:12px;transform:translateX(-50%);display:none;align-items:center;gap:10px;background:rgba(5,9,19,.9);border:1px solid var(--accent);border-radius:12px;padding:8px 12px;font-size:.84rem;max-width:calc(100% - 24px);z-index:2;backdrop-filter:blur(6px)}
+  .banner.show{display:flex}
+  @media (max-width:600px){.banner{left:12px;right:12px;top:50px;transform:none;max-width:none;justify-content:space-between}.banner .btn{flex:none}}
+  .banner b{color:var(--accent)}
+  .stage .hud{z-index:1}
+  .stage-toolbar .btn{padding:7px 9px}
+  .stage-toolbar{flex-wrap:wrap;justify-content:flex-end;max-width:calc(100% - 24px)}
+  .chal{list-style:none;padding:0;margin:0}
+  .chal li{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
+  .chal li .led{margin-top:6px;flex:none}
+  .chal li>div{flex:1}
+  .chal li>div>b:first-child{display:block}
+  .chal li span.small{color:var(--muted)}
+  .pi-list{font:500 .8rem var(--mono);color:var(--muted);margin:6px 0 0;padding:0;list-style:none}
+  .pi-list li{display:flex;align-items:center;gap:8px;padding:2px 0}
+  .pi-list i{width:10px;height:10px;border-radius:3px;display:inline-block;flex:none}
+  .gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin:12px 0}
+  .gal .g{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+  .gal .g svg{width:70px;height:40px;display:block}
+  .gal .g b{font-family:var(--mono);font-size:.85rem}
+  .gal .g .tt-mini{font:500 .72rem/1.4 var(--mono);color:var(--muted)}
+  .savelist{display:flex;gap:6px;flex-wrap:wrap}
+  .kmhelp{font-size:.82rem;color:var(--muted)}
+  .stats .stat .v{font-size:1.05rem}
+</style>
+</head>
+<body data-page="logic-gates">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="tabs modes" data-tabs id="modes">
+    <div class="tablist">
+      <button><i data-lucide="cpu"></i> Circuit builder</button>
+      <button><i data-lucide="grid-2x2"></i> Karnaugh map</button>
+    </div>
+
+    <!-- ===== EDITOR ===== -->
+    <div class="tabpanel">
+      <div class="lab">
+        <div class="stage s-ed" id="stage">
+          <canvas id="cv"></canvas>
+          <div class="hud"><span class="readout" id="hudT">t = <b>0</b> gate delays</span><span class="readout" id="hudS"><span class="led on" style="width:8px;height:8px"></span> stable</span><span class="readout" id="hudHover" style="display:none"></span></div>
+          <div class="banner" id="banner"><span id="bannerTxt"></span><button class="btn sm" id="bannerCheck"><i data-lucide="check"></i> Check</button><button class="btn sm ghost" id="bannerExit" title="Leave challenge"><i data-lucide="x"></i></button></div>
+          <div class="stage-toolbar">
+            <button class="btn sm" id="tbUndo" title="Undo (Ctrl+Z)"><i data-lucide="undo-2"></i></button>
+            <button class="btn sm" id="tbDel" title="Delete selection (Del)"><i data-lucide="trash-2"></i></button>
+            <button class="btn sm" id="tbWire" title="Wire style"><i data-lucide="spline"></i></button>
+            <button class="btn sm" id="tbOut" title="Zoom out"><i data-lucide="zoom-out"></i></button>
+            <button class="btn sm" id="tbIn" title="Zoom in"><i data-lucide="zoom-in"></i></button>
+            <button class="btn sm" id="tbFit" title="Fit circuit"><i data-lucide="scan"></i></button>
+          </div>
+        </div>
+        <aside>
+          <div class="panel">
+            <h3><i data-lucide="blocks"></i> Parts <span class="small muted" style="margin-left:auto;font-weight:500">drag or tap</span></h3>
+            <div class="panel-title">Inputs</div><div class="parts" id="pIn"></div>
+            <div class="panel-title">Outputs</div><div class="parts" id="pOut"></div>
+            <div class="panel-title">Gates</div><div class="parts" id="pGate"></div>
+            <div class="panel-title">Building blocks</div><div class="parts" id="pBlk"></div>
+          </div>
+          <div class="panel" id="selPanel">
+            <h3><i data-lucide="mouse-pointer-2"></i> Selection</h3>
+            <div id="selBody"></div>
+          </div>
+          <div class="panel">
+            <h3><i data-lucide="activity"></i> Simulation</h3>
+            <label class="toggle">Slow motion (watch signals propagate) <input type="checkbox" id="slow"></label>
+            <div class="ctl" id="slowCtl"><label for="slowRate">Gate delays per second</label><output>4</output><input type="range" id="slowRate" min="1" max="30" step="1" value="4"></div>
+            <div class="btn-row" style="margin-top:6px"><button class="btn sm" id="simReset"><i data-lucide="rotate-ccw"></i> Reset state</button><button class="btn sm" id="clearAll"><i data-lucide="trash-2"></i> Clear circuit</button></div>
+            <div class="stats" style="margin-top:12px">
+              <div class="stat"><div class="k">Gates</div><div class="v" id="stG">0</div></div>
+              <div class="stat"><div class="k">Wires</div><div class="v" id="stW">0</div></div>
+              <div class="stat"><div class="k">Logic depth</div><div class="v" id="stD">0</div></div>
+              <div class="stat"><div class="k">Events / s</div><div class="v" id="stE">0</div></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h3><i data-lucide="folder-open"></i> Presets & saved circuits</h3>
+            <div class="field"><label for="preset">Load a preset</label>
+              <select id="preset">
+                <option value="">Choose a preset…</option>
+                <option value="half">Half adder</option>
+                <option value="full">Full adder (gates)</option>
+                <option value="rca">4-bit ripple-carry adder</option>
+                <option value="srnor">SR latch from NOR gates</option>
+                <option value="dlatch">Gated D latch</option>
+                <option value="counter">4-bit counter → hex display</option>
+                <option value="traffic">Traffic light controller</option>
+                <option value="mux">4:1 multiplexer demo</option>
+                <option value="ring">Ring oscillator (unstable)</option>
+              </select></div>
+            <div class="field"><label for="saveName">Save current circuit as</label>
+              <div class="row"><input type="text" id="saveName" maxlength="40" placeholder="my-circuit"><button class="btn sm" id="saveBtn" style="flex:none"><i data-lucide="save"></i> Save</button></div></div>
+            <div class="field"><label for="saved">Saved in this browser</label>
+              <div class="row"><select id="saved"></select><button class="btn sm" id="loadBtn" style="flex:none">Load</button><button class="btn sm" id="delSaveBtn" style="flex:none" title="Delete saved circuit"><i data-lucide="trash-2"></i></button></div></div>
+          </div>
+        </aside>
+      </div>
+      <div class="panel" style="margin-bottom:6px">
+        <h3><i data-lucide="table-2"></i> Truth table & Boolean expressions</h3>
+        <div class="grid2" style="align-items:start">
+          <div><div id="ttMsg" class="small muted" style="margin-bottom:8px"></div><div class="tt-wrap" id="ttWrap"></div></div>
+          <div id="exprs"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== K-MAP ===== -->
+    <div class="tabpanel">
+      <div class="lab">
+        <div class="stage s-km"><canvas id="kcv"></canvas>
+          <div class="hud hud-b"><span class="readout">click a cell: 0 → 1 → X (don't care)</span></div></div>
+        <aside>
+          <div class="panel">
+            <h3><i data-lucide="grid-2x2"></i> Karnaugh map</h3>
+            <div class="field"><span class="lbl">Variables</span>
+              <div class="seg" id="kn"><button data-v="2">2</button><button data-v="3">3</button><button data-v="4" class="on">4</button></div></div>
+            <div class="btn-row">
+              <button class="btn sm" id="kClear"><i data-lucide="eraser"></i> Clear</button>
+              <button class="btn sm" id="kRand"><i data-lucide="dices"></i> Random</button>
+              <button class="btn sm" id="kEx"><i data-lucide="sparkles"></i> Example</button>
+            </div>
+            <label class="toggle" style="margin-top:8px">Show prime implicant groups <input type="checkbox" id="kShow" checked></label>
+            <div class="field"><label for="kFrom">Load from circuit output</label>
+              <div class="row"><select id="kFrom"></select><button class="btn sm" id="kLoad" style="flex:none">Load</button></div></div>
+            <button class="btn primary" id="kBuild" style="width:100%"><i data-lucide="cpu"></i> Build circuit from minimal SOP</button>
+          </div>
+          <div class="panel">
+            <h3><i data-lucide="sigma"></i> Result</h3>
+            <div class="expr"><div class="k">Minterms</div><div id="kM" class="mono small"></div></div>
+            <div class="expr"><div class="k">Minimal sum of products</div><div id="kSop"></div></div>
+            <div class="expr"><div class="k">Minimal product of sums</div><div id="kPos"></div></div>
+            <div class="k panel-title">Prime implicants</div>
+            <ul class="pi-list" id="kPI"></ul>
+            <p class="kmhelp" style="margin:8px 0 0">★ = essential prime implicant (the only one covering some 1). Cost: <span id="kCost" class="mono"></span></p>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <section class="tabs" data-tabs style="margin-top:28px" id="learn">
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+      <button><i data-lucide="binary"></i> Number systems</button>
+    </div>
+    <div class="tabpanel prose">
+      <h3>Logic levels and gates</h3>
+      <p>Digital circuits represent information with two voltage levels: <b>high</b> (logic 1, e.g. near 3.3 V or 5 V) and <b>low</b> (logic 0, near 0 V). A gate computes a Boolean function of its inputs. In the editor, high wires glow green and low wires are dark.</p>
+      <div class="gal" id="gal"></div>
+      <h3>Boolean algebra</h3>
+      <p>Write AND as a product $AB$, OR as a sum $A+B$, NOT as $\overline{A}$ and XOR as $A\oplus B$. For any variables:</p>
+      <table class="data">
+        <tr><th>Law</th><th>AND form</th><th>OR form</th></tr>
+        <tr><td>Identity</td><td>$A\cdot 1 = A$</td><td>$A + 0 = A$</td></tr>
+        <tr><td>Null (annihilator)</td><td>$A\cdot 0 = 0$</td><td>$A + 1 = 1$</td></tr>
+        <tr><td>Idempotent</td><td>$AA = A$</td><td>$A + A = A$</td></tr>
+        <tr><td>Complement</td><td>$A\overline{A} = 0$</td><td>$A + \overline{A} = 1$</td></tr>
+        <tr><td>Involution</td><td colspan="2">$\overline{\overline{A}} = A$</td></tr>
+        <tr><td>Commutative</td><td>$AB = BA$</td><td>$A+B = B+A$</td></tr>
+        <tr><td>Associative</td><td>$(AB)C = A(BC)$</td><td>$(A+B)+C = A+(B+C)$</td></tr>
+        <tr><td>Distributive</td><td>$A(B+C) = AB + AC$</td><td>$A + BC = (A+B)(A+C)$</td></tr>
+        <tr><td>Absorption</td><td>$A(A+B) = A$</td><td>$A + AB = A$</td></tr>
+        <tr><td>De Morgan</td><td>$\overline{AB} = \overline{A} + \overline{B}$</td><td>$\overline{A+B} = \overline{A}\,\overline{B}$</td></tr>
+      </table>
+      <p>De Morgan's laws explain why a NAND is an OR with inverted inputs, and why NAND (or NOR) alone is <b>functionally complete</b>: $\overline{A} = \overline{AA}$, $AB = \overline{\overline{AB}}$, $A+B = \overline{\overline{A}\,\overline{B}}$.</p>
+
+      <h3>Sum of products and Karnaugh maps</h3>
+      <p>Any function can be written as the OR of its <b>minterms</b>, the input rows where it equals 1: $F = \sum m(\dots)$. Adjacent minterms that differ in one variable merge: $AB + A\overline{B} = A$. A Karnaugh map orders rows and columns in <b>Gray code</b> (00, 01, 11, 10) so logically adjacent cells are physically adjacent, including wrap-around at the edges. Group 1s in rectangles of 1, 2, 4, 8 or 16 cells; each group of $2^k$ cells eliminates $k$ variables. The largest possible groups are <b>prime implicants</b>; the minimal SOP picks the fewest of them that cover every 1. Don't-care cells (X) may be included in a group if it helps, but need not be covered. The lab uses the Quine–McCluskey method, which finds exactly the same prime implicants algorithmically.</p>
+
+      <h3>Arithmetic: adders</h3>
+      <div class="eq">$$\text{Half adder: } S = A\oplus B,\quad C = AB \qquad \text{Full adder: } S = A\oplus B\oplus C_{in},\quad C_{out} = AB + C_{in}(A\oplus B)$$</div>
+      <p>A $n$-bit <b>ripple-carry adder</b> chains $n$ full adders. The carry must ripple through every stage, and each stage adds about 2 gate delays to the carry path, so the worst-case delay grows as $O(n)$, roughly $2n$ gate delays. Carry-lookahead adders compute carries in parallel to reach $O(\log n)$.</p>
+
+      <h3>Memory: latches and flip-flops</h3>
+      <p>Feedback creates memory. Two cross-coupled NOR gates form an <b>SR latch</b>: $Q = \overline{R + \overline{Q}}$, $\overline{Q} = \overline{S + Q}$. With $S=R=0$ the latch holds its state; $S=1$ sets $Q=1$; $R=1$ resets it. $S=R=1$ forces both outputs to 0, which is not a valid memory state, and releasing both together causes a race. A <b>gated D latch</b> removes the forbidden input by deriving $S = D\cdot EN$ and $R = \overline{D}\cdot EN$; it is <b>transparent</b> while $EN = 1$. An <b>edge-triggered D flip-flop</b> samples $D$ only at the rising clock edge: $Q_{next} = D$. A <b>JK flip-flop</b> holds (00), resets (01), sets (10) or toggles (11) at each edge:</p>
+      <div class="eq">$$Q_{next} = J\overline{Q} + \overline{K}Q$$</div>
+      <p>A toggling flip-flop divides the clock frequency by 2, so $n$ cascaded toggles count from 0 to $2^n-1$.</p>
+      <div class="callout"><i data-lucide="info"></i><div><b>About the simulator.</b> It is event-driven: when a signal changes, every gate it feeds is re-evaluated and its new output is scheduled one gate delay later (blocks take 2). Delays differ by a few per cent between gates, and a pending change is cancelled if the input changes back first (an <i>inertial</i> delay). This is how real gates resolve races such as the power-up of an SR latch. Timing is in abstract gate delays, not nanoseconds, and analogue effects such as metastability are not modelled.</div></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. Simplify with a K-map</h3>
+      <div class="worked">
+        <p>$F(A,B,C,D) = \sum m(0, 2, 5, 7, 8, 10, 13, 15)$. Press <b>Example</b> on the Karnaugh map tab to load it.</p>
+        <ol>
+          <li>The four corners $m_0, m_2, m_8, m_{10}$ are adjacent through wrap-around. In all four, $B=0$ and $D=0$, so they form $\overline{B}\,\overline{D}$.</li>
+          <li>The centre square $m_5, m_7, m_{13}, m_{15}$ has $B=1, D=1$: the term $BD$.</li>
+          <li>Both groups are essential, so $F = \overline{B}\,\overline{D} + BD = \overline{B \oplus D}$: an XNOR of $B$ and $D$. Eight minterms of 4 literals each (32 literals) collapse to 4 literals.</li>
+        </ol>
+      </div>
+      <h3>2. One row of a full adder</h3>
+      <div class="worked">
+        <p>Load the <b>Full adder</b> preset and set $A=1$, $B=1$, $C_{in}=1$.</p>
+        <ul>
+          <li>First XOR: $A\oplus B = 0$. Second XOR: $0 \oplus 1 = 1$, so $S = 1$.</li>
+          <li>$AB = 1$ and $C_{in}(A\oplus B) = 0$, so $C_{out} = 1 + 0 = 1$.</li>
+        </ul>
+        <p>Check: $1+1+1 = 3 = 11_2$, so carry 1 and sum 1. The highlighted row of the truth table matches.</p>
+      </div>
+      <h3>3. Four-bit addition</h3>
+      <div class="worked">
+        <p>On the <b>4-bit ripple-carry adder</b>, set $A = 0110_2 = 6$ (A2 and A1 on) and $B = 0111_2 = 7$ (B2, B1, B0 on).</p>
+        <table class="data" style="max-width:420px"><tr><th>Bit</th><th>A</th><th>B</th><th>C<sub>in</sub></th><th>S</th><th>C<sub>out</sub></th></tr>
+          <tr><td>0</td><td>0</td><td>1</td><td>0</td><td>1</td><td>0</td></tr>
+          <tr><td>1</td><td>1</td><td>1</td><td>0</td><td>0</td><td>1</td></tr>
+          <tr><td>2</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td></tr>
+          <tr><td>3</td><td>0</td><td>0</td><td>1</td><td>1</td><td>0</td></tr></table>
+        <p>$S = 1101_2 = 13$ and the hex display shows <b>d</b>. Turn on slow motion and flip B0 to watch the carry ripple from stage 0 to stage 3.</p>
+      </div>
+      <h3>4. XOR from four NANDs</h3>
+      <div class="worked">
+        <p>Let $N = \overline{AB}$. Then $\overline{A N} = \overline{A\,\overline{AB}}$ and $\overline{B N}$, and finally</p>
+        <div class="eq">$$Y = \overline{\overline{AN}\cdot\overline{BN}} = AN + BN = (A+B)\,\overline{AB} = A\overline{B} + \overline{A}B = A\oplus B.$$</div>
+        <p>That is the NAND-only XOR challenge: 4 gates, the minimum possible.</p>
+      </div>
+      <h3>5. Counter frequency</h3>
+      <div class="worked">
+        <p>The <b>4-bit counter</b> preset has a 2 Hz clock. Each JK flip-flop toggles on a rising edge of the previous stage, halving the frequency: $Q_0$ runs at 1 Hz, $Q_1$ at 0.5 Hz, $Q_2$ at 0.25 Hz, $Q_3$ at 0.125 Hz. A full count 0 → F takes $16 / 2\,\text{Hz} = 8$ s.</p>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <p>Press <b>Start</b> to load a challenge into the builder. Inputs and outputs are placed for you and only the allowed parts are enabled. Your circuit is checked against the required truth table automatically as you wire it.</p>
+      <ul class="chal" id="chal"></ul>
+      <h3>Guided experiments</h3>
+      <ol class="steps">
+        <li>Load <b>SR latch from NOR gates</b>. Pulse S on and off, then R. Note that the LEDs remember the last pulse. Now turn S and R on together and release them both: which state does the latch fall into?</li>
+        <li>Load <b>Gated D latch</b>. With EN = 1, toggle D: Q follows (transparent). Set EN = 0 and toggle D: Q holds.</li>
+        <li>Load the <b>4-bit ripple-carry adder</b> and set A = 1111, B = 0000. Turn on slow motion at 2 gate delays per second, then switch B0 on and count the delays until Cout lights.</li>
+        <li>Load the <b>Ring oscillator</b>. Why does a loop of three inverters never settle, while a loop of two (a latch) does?</li>
+        <li>Build any 3-input function, then open it in the Karnaugh map tab and press <b>Build circuit from minimal SOP</b>. Compare the gate count with your design.</li>
+      </ol>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+
+    <div class="tabpanel prose">
+      <h3>Binary, hexadecimal and decimal</h3>
+      <p>A binary number $b_{n-1}\dots b_1 b_0$ has the value $\sum_i b_i 2^i$. Four bits make one hexadecimal digit (0–9, A–F), which is why the hex display takes four inputs weighted 1, 2, 4, 8.</p>
+      <div class="eq">$$1101_2 = 1\cdot8 + 1\cdot4 + 0\cdot2 + 1\cdot1 = 13_{10} = \mathrm{D}_{16}$$</div>
+      <div class="panel" style="max-width:640px">
+        <div class="row" style="flex-wrap:wrap"><div class="field" style="min-width:150px"><label for="nsDec">Decimal (0–255)</label><input type="number" id="nsDec" min="0" max="255" value="173"></div><div class="field" style="min-width:150px"><label>Two's complement (8-bit)</label><div class="mono" id="nsSigned" style="padding:8px 0"></div></div></div>
+        <div id="nsBits" style="display:flex;gap:4px;flex-wrap:wrap;margin:6px 0"></div>
+        <p class="mono small" id="nsOut" style="margin:6px 0 0"></p>
+      </div>
+      <h3>Two's complement</h3>
+      <p>Signed integers are stored in two's complement: the most significant bit has weight $-2^{n-1}$. To negate, invert every bit and add 1. In 8 bits, $-5 = \overline{00000101} + 1 = 11111011_2$. The same adder hardware then performs both addition and subtraction ($A - B = A + \overline{B} + 1$, with $C_{in} = 1$).</p>
+      <p>Click the bits above to toggle them.</p>
+    </div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = s => document.querySelector(s);
+  const MONO = '"JetBrains Mono", ui-monospace, monospace';
+  const HI = '#4ade80', LO = '#3a4a68', ACC = '#60a5fa';
+  const rnd = n => Math.floor(Math.random() * n);
+  const TEX = (el, src, d) => { if (window.katex) SL.tex(el, src, d); else { el.textContent = ''; setTimeout(() => TEX(el, src, d), 120); } };
+  const seg = (sel, cb) => { const el = $(sel); el.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; el.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); cb(b.dataset.v); }); };
+
+  /* =====================================================================
+     COMPONENT DEFINITIONS
+     ===================================================================== */
+  const GATES = ['AND', 'OR', 'NAND', 'NOR', 'XOR', 'XNOR', 'NOT', 'BUF'];
+  const BUBBLE = { NAND: 1, NOR: 1, XNOR: 1, NOT: 1 };
+  const SEQ = { SR: 1, DFF: 1, JK: 1, REG4: 1, CLOCK: 1 };
+  const SEGS = [0x7E, 0x30, 0x6D, 0x79, 0x33, 0x5B, 0x5F, 0x70, 0x7F, 0x7B, 0x77, 0x1F, 0x4E, 0x3D, 0x4F, 0x47]; // bits a..g = 6..0
+  const parity = a => a.reduce((s, v) => s ^ v, 0);
+  const DEF = {
+    SWITCH: { cat: 'in', name: 'Switch', nin: 0, nout: 1 },
+    BUTTON: { cat: 'in', name: 'Button', nin: 0, nout: 1 },
+    CLOCK: { cat: 'in', name: 'Clock', nin: 0, nout: 1 },
+    HIGH: { cat: 'in', name: 'High (1)', nin: 0, nout: 1 },
+    LOW: { cat: 'in', name: 'Low (0)', nin: 0, nout: 1 },
+    LED: { cat: 'out', name: 'LED', nin: 1, nout: 0 },
+    SEG7: { cat: 'out', name: '7-segment', nin: 7, nout: 0, pins: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] },
+    HEX: { cat: 'out', name: 'Hex display', nin: 4, nout: 0, pins: ['1', '2', '4', '8'] },
+    AND: { cat: 'gate', ev: i => [i.every(x => x) ? 1 : 0] },
+    OR: { cat: 'gate', ev: i => [i.some(x => x) ? 1 : 0] },
+    NAND: { cat: 'gate', ev: i => [i.every(x => x) ? 0 : 1] },
+    NOR: { cat: 'gate', ev: i => [i.some(x => x) ? 0 : 1] },
+    XOR: { cat: 'gate', ev: i => [parity(i)] },
+    XNOR: { cat: 'gate', ev: i => [1 - parity(i)] },
+    NOT: { cat: 'gate', ev: i => [i[0] ? 0 : 1] },
+    BUF: { cat: 'gate', ev: i => [i[0] ? 1 : 0] },
+    HA: { cat: 'blk', name: 'Half adder', ins: ['A', 'B'], outs: ['S', 'C'], ev: ([a, b]) => [a ^ b, a & b], w: 1 },
+    FA: { cat: 'blk', name: 'Full adder', ins: ['A', 'B', 'Cin'], outs: ['S', 'Cout'], ev: ([a, b, c]) => [a ^ b ^ c, (a & b) | (c & (a ^ b))], w: 2 },
+    MUX: { cat: 'blk', name: 'Multiplexer', ev: (i, c) => c.n === 4 ? [i[i[4] + 2 * i[5]]] : [i[2] ? i[1] : i[0]], w: 2 },
+    DEC: { cat: 'blk', name: '2→4 decoder', ins: ['A0', 'A1'], outs: ['Y0', 'Y1', 'Y2', 'Y3'], ev: ([a, b]) => { const k = a + 2 * b; return [0, 1, 2, 3].map(j => j === k ? 1 : 0); }, w: 1 },
+    SR: { cat: 'blk', name: 'SR latch', ins: ['S', 'R'], outs: ['Q', 'Q̄'], ev: ([s, r], c) => { if (s && r) { c.state.inv = 1; return [0, 0]; } c.state.inv = 0; if (s) c.state.q = 1; else if (r) c.state.q = 0; const q = c.state.q | 0; return [q, 1 - q]; } },
+    DFF: { cat: 'blk', name: 'D flip-flop', ins: ['D', '▷'], outs: ['Q', 'Q̄'], ev: ([d, k], c) => { if (k && !c.state.pk) c.state.q = d; c.state.pk = k; const q = c.state.q | 0; return [q, 1 - q]; } },
+    JK: { cat: 'blk', name: 'JK flip-flop', ins: ['J', '▷', 'K'], outs: ['Q', 'Q̄'], ev: ([j, k, kk], c) => { if (k && !c.state.pk) { const q = c.state.q | 0; c.state.q = j && kk ? 1 - q : j ? 1 : kk ? 0 : q; } c.state.pk = k; const q = c.state.q | 0; return [q, 1 - q]; } },
+    REG4: { cat: 'blk', name: '4-bit register', ins: ['D0', 'D1', 'D2', 'D3', '▷'], outs: ['Q0', 'Q1', 'Q2', 'Q3'], ev: (i, c) => { if (i[4] && !c.state.pk) c.state.r = i.slice(0, 4); c.state.pk = i[4]; return (c.state.r || [0, 0, 0, 0]).slice(); } },
+  };
+  GATES.forEach(g => { DEF[g].name = g; DEF[g].nout = 1; });
+  const isGate = t => GATES.includes(t);
+  const nIns = c => { const d = DEF[c.type]; if (isGate(c.type)) return (c.type === 'NOT' || c.type === 'BUF') ? 1 : c.n; if (c.type === 'MUX') return c.n === 4 ? 6 : 3; return d.ins ? d.ins.length : d.nin; };
+  const nOuts = c => { const d = DEF[c.type]; return d.outs ? d.outs.length : d.nout; };
+  const inNames = c => { const d = DEF[c.type]; if (c.type === 'MUX') return c.n === 4 ? ['I0', 'I1', 'I2', 'I3', 'S0', 'S1'] : ['I0', 'I1', 'S']; return d.ins || d.pins || Array.from({ length: nIns(c) }, (_, i) => 'in' + i); };
+  const outNames = c => { const d = DEF[c.type]; if (c.type === 'MUX') return ['Y']; return d.outs || ['out']; };
+
+  function geom(c) {
+    if (c._g) return c._g;
+    const t = c.type, ni = nIns(c), no = nOuts(c); let w, h, ins = [], outs = [];
+    if (isGate(t)) {
+      const one = t === 'NOT' || t === 'BUF'; w = one ? 40 : 50; h = Math.max(40, ni * 20);
+      for (let i = 0; i < ni; i++) ins.push({ x: -10, y: one ? 20 : h / 2 + (i - (ni - 1) / 2) * 20 });
+      outs.push({ x: w + (BUBBLE[t] ? 20 : 10), y: h / 2 });
+    } else if (DEF[t].cat === 'blk') {
+      w = 80; const rows = Math.max(ni, no); h = rows * 20 + 20;
+      for (let i = 0; i < ni; i++) ins.push({ x: -10, y: 20 + i * 20 + (rows - ni) * 10 });
+      for (let i = 0; i < no; i++) outs.push({ x: w + 10, y: 20 + i * 20 + (rows - no) * 10 });
+    } else if (t === 'LED') { w = 40; h = 40; ins.push({ x: -10, y: 20 }); }
+    else if (t === 'SEG7') { w = 80; h = 160; for (let i = 0; i < 7; i++) ins.push({ x: -10, y: 20 + i * 20 }); }
+    else if (t === 'HEX') { w = 70; h = 100; for (let i = 0; i < 4; i++) ins.push({ x: -10, y: 20 + i * 20 }); }
+    else if (t === 'CLOCK') { w = 50; h = 40; outs.push({ x: 60, y: 20 }); }
+    else if (t === 'HIGH' || t === 'LOW') { w = 30; h = 40; outs.push({ x: 40, y: 20 }); }
+    else { w = 40; h = 40; outs.push({ x: 50, y: 20 }); }
+    const n1 = inNames(c), n2 = outNames(c);
+    ins.forEach((p, i) => p.name = n1[i]); outs.forEach((p, i) => p.name = n2[i]);
+    return (c._g = { w, h, ins, outs });
+  }
+
+  /* =====================================================================
+     CIRCUIT MODEL
+     ===================================================================== */
+  let comps = [], wires = [], nextId = 1;
+  const byId = new Map();
+  let inMap = new Map(), outMap = new Map();
+  function rebuildIndex() {
+    inMap = new Map(); outMap = new Map();
+    for (const w of wires) {
+      if (!inMap.has(w.to)) inMap.set(w.to, []); inMap.get(w.to)[w.tp] = w;
+      if (!outMap.has(w.from)) outMap.set(w.from, []); const o = outMap.get(w.from); (o[w.fp] = o[w.fp] || []).push(w);
+    }
+  }
+  const IN_LABELS = 'ABCDEFGHJKLMNPRSTUVW'.split(''), OUT_LABELS = ['Y', 'Z', 'X', 'W', 'V', 'U', 'Q', 'P'];
+  function autoLabel(c) {
+    const used = new Set(comps.filter(x => x !== c).map(x => x.label));
+    const pick = list => { for (const l of list) if (!used.has(l)) return l; let k = 1; while (used.has(list[0] + k)) k++; return list[0] + k; };
+    if (c.type === 'SWITCH' || c.type === 'BUTTON') c.label = pick(IN_LABELS);
+    else if (c.type === 'LED') c.label = pick(OUT_LABELS);
+    else if (c.type === 'CLOCK') c.label = pick(['CLK']);
+  }
+  function addComp(type, x, y, props) {
+    const c = { id: nextId++, type, x: Math.round(x / 10) * 10, y: Math.round(y / 10) * 10, n: 2, label: '', hz: 1, color: 'red', on: 0, pressed: 0, out: [], pend: [], state: {} };
+    if (type === 'MUX') c.n = 2;
+    Object.assign(c, props || {});
+    c.out = new Array(nOuts(c)).fill(0); c.pend = new Array(nOuts(c)).fill(null);
+    comps.push(c); byId.set(c.id, c);
+    if (!c.label) autoLabel(c);
+    return c;
+  }
+  function addWire(from, fp, to, tp) {
+    wires = wires.filter(w => !(w.to === to && w.tp === tp));
+    const w = { id: nextId++, from, fp, to, tp }; wires.push(w); return w;
+  }
+  function removeComp(c) {
+    const fed = wires.filter(w => w.from === c.id).map(w => byId.get(w.to));
+    wires = wires.filter(w => w.from !== c.id && w.to !== c.id);
+    comps = comps.filter(x => x !== c); byId.delete(c.id);
+    rebuildIndex(); fed.forEach(f => f && f !== c && evalComp(f, SIM.t));
+  }
+  function removeWire(w) { wires = wires.filter(x => x !== w); rebuildIndex(); const t = byId.get(w.to); if (t) evalComp(t, SIM.t); }
+
+  function serialize() { return { v: 1, comps: comps.map(c => ({ id: c.id, type: c.type, x: c.x, y: c.y, n: c.n, label: c.label, hz: c.hz, color: c.color, on: c.on })), wires: wires.map(w => ({ from: w.from, fp: w.fp, to: w.to, tp: w.tp })) }; }
+  function load(data, keepView) {
+    comps = []; wires = []; byId.clear(); nextId = 1; sel = null;
+    for (const s of data.comps || []) { if (!DEF[s.type]) continue; const c = addComp(s.type, s.x, s.y, { n: s.n || 2, label: s.label || '', hz: s.hz || 1, color: s.color || 'red', on: s.on || 0 }); c._old = s.id; }
+    const map = new Map(comps.map(c => [c._old, c.id]));
+    for (const w of data.wires || []) { const a = map.get(w.from), b = map.get(w.to); if (a && b) wires.push({ id: nextId++, from: a, fp: w.fp, to: b, tp: w.tp }); }
+    comps.forEach(c => { delete c._old; c._g = null; });
+    rebuildIndex(); resetSim(); if (!keepView) fitView(); changed(); renderSel();
+  }
+
+  // undo
+  const undoStack = [];
+  function pushUndo() { undoStack.push(JSON.stringify(serialize())); if (undoStack.length > 60) undoStack.shift(); }
+  function undo() { const s = undoStack.pop(); if (!s) { SL.toast('Nothing to undo', 'warn', 1500); return; } load(JSON.parse(s), true); }
+
+  /* =====================================================================
+     EVENT-DRIVEN SIMULATOR (inertial delays)
+     ===================================================================== */
+  const SIM = { t: 0, heap: [], seq: 0, osc: 0, evCount: 0, evRate: 0, evT: 0 };
+  const hlt = (a, b) => a[0] !== b[0] ? a[0] < b[0] : a[1] < b[1];
+  function hpush(x) { const a = SIM.heap; a.push(x); let i = a.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (hlt(a[i], a[p])) { [a[i], a[p]] = [a[p], a[i]]; i = p; } else break; } }
+  function hpop() { const a = SIM.heap, top = a[0], last = a.pop(); if (a.length) { a[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < a.length && hlt(a[l], a[m])) m = l; if (r < a.length && hlt(a[r], a[m])) m = r; if (m === i) break; [a[i], a[m]] = [a[m], a[i]]; i = m; } } return top; }
+  const delayOf = c => (DEF[c.type].cat === 'blk' ? 2 : 1) * (1 + ((c.id * 0.6180339887) % 1) * 0.12);
+  function schedule(c, k, v, t) { const id = ++SIM.seq; c.pend[k] = { v, id }; hpush([t, id, c, k, v]); }
+  function readIns(c) { const ws = inMap.get(c.id) || [], n = nIns(c), r = new Array(n); for (let i = 0; i < n; i++) { const w = ws[i]; if (w) { const s = byId.get(w.from); r[i] = s ? (s.out[w.fp] | 0) : 0; } else r[i] = 0; } return r; }
+  function sourceVal(c) { return c.type === 'SWITCH' ? c.on : c.type === 'BUTTON' ? c.pressed : c.type === 'HIGH' ? 1 : c.type === 'LOW' ? 0 : c.type === 'CLOCK' ? (c.state.v | 0) : 0; }
+  function evalComp(c, t) {
+    const d = DEF[c.type]; if (!d.ev) { if (d.cat === 'in') setSource(c, sourceVal(c)); return; }
+    const outs = d.ev(readIns(c), c);
+    for (let k = 0; k < outs.length; k++) {
+      const nv = outs[k], target = c.pend[k] ? c.pend[k].v : c.out[k];
+      if (nv === target) continue;
+      if (c.pend[k]) c.pend[k] = null; // inertial cancel: the pending pulse is swallowed
+      else schedule(c, k, nv, t + delayOf(c));
+    }
+  }
+  function setSource(c, v) { const target = c.pend[0] ? c.pend[0].v : c.out[0]; if (v !== target) schedule(c, 0, v, SIM.t); }
+  function processUntil(tEnd, limit) {
+    let n = 0;
+    while (SIM.heap.length && SIM.heap[0][0] <= tEnd && n < limit) {
+      const [t, id, c, k, v] = hpop();
+      if (!byId.has(c.id) || !c.pend[k] || c.pend[k].id !== id) continue;
+      c.pend[k] = null; n++; if (t > SIM.t) SIM.t = t;
+      if (c.out[k] !== v) { c.out[k] = v; const o = outMap.get(c.id); if (o && o[k]) for (const w of o[k]) { const tc = byId.get(w.to); if (tc) evalComp(tc, t); } }
+    }
+    return n;
+  }
+  function resetSim() {
+    SIM.heap = []; SIM.t = 0; SIM.osc = 0;
+    comps.forEach(c => { c.out = new Array(nOuts(c)).fill(0); c.pend = new Array(nOuts(c)).fill(null); c.state = c.type === 'CLOCK' ? { v: 0, acc: 0 } : {}; c.pressed = 0; if (SEQ[c.type] && c.type !== 'CLOCK' && c.type !== 'REG4') c.out = [0, 1]; });
+    // stored-state blocks power up already showing Q = 0, Q̄ = 1, so no spurious clock edges ripple through at reset
+    comps.forEach(c => evalComp(c, 0));
+  }
+  let slow = false, slowRate = 4;
+  function stepSim(dt) {
+    for (const c of comps) if (c.type === 'CLOCK') { c.state.acc = (c.state.acc || 0) + dt * c.hz * 2; while (c.state.acc >= 1) { c.state.acc -= 1; c.state.v = c.state.v ? 0 : 1; setSource(c, c.state.v); } }
+    let n;
+    if (slow) { const tEnd = SIM.t + slowRate * dt; n = processUntil(tEnd, 5000); if (!SIM.heap.length || SIM.heap[0][0] > tEnd) SIM.t = tEnd; }
+    else { n = processUntil(Infinity, 6000); SIM.osc = n >= 6000 ? 1 : Math.max(0, SIM.osc - dt * 2); }
+    SIM.evCount += n;
+  }
+
+  /* =====================================================================
+     VIEW + RENDERING
+     ===================================================================== */
+  const cvEl = $('#cv');
+  const view = { z: 1, ox: 40, oy: 40 };
+  const st = SL.canvas(cvEl, () => setTimeout(() => { if (!fitted && comps.length) fitView(); }));
+  let fitted = false, wireStyle = 'curve', sel = null, hover = null, drag = null, tmp = null;
+  const toWorld = (sx, sy) => ({ x: (sx - view.ox) / view.z, y: (sy - view.oy) / view.z });
+  function fitView() {
+    const { w, h } = st; if (w < 50 || !comps.length) return;
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    comps.forEach(c => { const g = geom(c); x0 = Math.min(x0, c.x - 20); y0 = Math.min(y0, c.y - 24); x1 = Math.max(x1, c.x + g.w + 30); y1 = Math.max(y1, c.y + g.h + 24); });
+    const padTop = 50, padB = 56;
+    view.z = SL.clamp(Math.min((w - 40) / (x1 - x0), (h - padTop - padB) / (y1 - y0)), 0.35, 1.6);
+    view.ox = (w - (x1 - x0) * view.z) / 2 - x0 * view.z; view.oy = padTop + (h - padTop - padB - (y1 - y0) * view.z) / 2 - y0 * view.z;
+    fitted = true;
+  }
+  function zoomAt(f, sx, sy) { const p = toWorld(sx, sy); view.z = SL.clamp(view.z * f, 0.3, 2.5); view.ox = sx - p.x * view.z; view.oy = sy - p.y * view.z; }
+
+  const pinPos = (c, kind, k) => { const g = geom(c), p = kind === 'in' ? g.ins[k] : g.outs[k]; return { x: c.x + p.x, y: c.y + p.y }; };
+  function wirePts(a, b) {
+    if (wireStyle === 'curve') { const dx = Math.max(40, Math.abs(b.x - a.x) * 0.5); return { type: 'c', a, b, c1: { x: a.x + dx, y: a.y }, c2: { x: b.x - dx, y: b.y } }; }
+    let pts;
+    if (b.x - a.x >= 30) { const mx = Math.round((a.x + b.x) / 20) * 10; pts = [a, { x: mx, y: a.y }, { x: mx, y: b.y }, b]; }
+    else { const my = (a.y + b.y) / 2 + (Math.abs(a.y - b.y) < 30 ? 50 : 0); pts = [a, { x: a.x + 20, y: a.y }, { x: a.x + 20, y: my }, { x: b.x - 20, y: my }, { x: b.x - 20, y: b.y }, b]; }
+    return { type: 'o', pts };
+  }
+  function tracePath(ctx, P) {
+    ctx.beginPath();
+    if (P.type === 'c') { ctx.moveTo(P.a.x, P.a.y); ctx.bezierCurveTo(P.c1.x, P.c1.y, P.c2.x, P.c2.y, P.b.x, P.b.y); }
+    else { const p = P.pts; ctx.moveTo(p[0].x, p[0].y); for (let i = 1; i < p.length - 1; i++) ctx.arcTo(p[i].x, p[i].y, p[i + 1].x, p[i + 1].y, 8); ctx.lineTo(p[p.length - 1].x, p[p.length - 1].y); }
+  }
+  function samplePath(P) {
+    if (P.type === 'o') return P.pts;
+    const out = []; for (let i = 0; i <= 24; i++) { const t = i / 24, u = 1 - t; out.push({ x: u * u * u * P.a.x + 3 * u * u * t * P.c1.x + 3 * u * t * t * P.c2.x + t * t * t * P.b.x, y: u * u * u * P.a.y + 3 * u * u * t * P.c1.y + 3 * u * t * t * P.c2.y + t * t * t * P.b.y }); } return out;
+  }
+  const wireVal = w => { const s = byId.get(w.from); return s ? s.out[w.fp] | 0 : 0; };
+
+  function gatePath(ctx, t, W, H) {
+    ctx.beginPath();
+    if (t === 'AND' || t === 'NAND') { ctx.moveTo(0, 0); ctx.lineTo(W * 0.45, 0); ctx.ellipse(W * 0.45, H / 2, W * 0.55, H / 2, 0, -Math.PI / 2, Math.PI / 2); ctx.lineTo(0, H); ctx.closePath(); }
+    else if (t === 'OR' || t === 'NOR' || t === 'XOR' || t === 'XNOR') { const x0 = (t === 'XOR' || t === 'XNOR') ? 7 : 0; ctx.moveTo(x0, 0); ctx.quadraticCurveTo(x0 + (W - x0) * 0.6, 0, W, H / 2); ctx.quadraticCurveTo(x0 + (W - x0) * 0.6, H, x0, H); ctx.quadraticCurveTo(x0 + W * 0.28, H / 2, x0, 0); ctx.closePath(); }
+    else { ctx.moveTo(0, 2); ctx.lineTo(W, H / 2); ctx.lineTo(0, H - 2); ctx.closePath(); }
+  }
+  const LEDC = { red: '#ef4444', green: '#22c55e', amber: '#f59e0b', blue: '#3b82f6', white: '#e2e8f0' };
+  function drawDigit(ctx, x, y, w, h, bits, col) {
+    const t = Math.max(3, w * 0.13), g = 1.5;
+    const segs = [[x + t, y, w - 2 * t, t, 0], [x + w - t, y + t, t, h / 2 - 1.5 * t, 1], [x + w - t, y + h / 2 + t / 2, t, h / 2 - 1.5 * t, 1], [x + t, y + h - t, w - 2 * t, t, 0], [x, y + h / 2 + t / 2, t, h / 2 - 1.5 * t, 1], [x, y + t, t, h / 2 - 1.5 * t, 1], [x + t, y + h / 2 - t / 2, w - 2 * t, t, 0]];
+    segs.forEach((s, i) => { const on = bits[i]; ctx.fillStyle = on ? col : 'rgba(255,255,255,.05)'; ctx.shadowColor = col; ctx.shadowBlur = on ? 10 : 0; ctx.beginPath(); ctx.roundRect(s[0] + g, s[1] + g, s[2] - 2 * g, s[3] - 2 * g, t / 2); ctx.fill(); });
+    ctx.shadowBlur = 0;
+  }
+  function drawComp(ctx, c, now) {
+    const g = geom(c), t = c.type, d = DEF[t], selected = sel && sel.c === c;
+    const ins = readIns(c);
+    ctx.save(); ctx.translate(c.x, c.y);
+    // pin stubs
+    ctx.lineWidth = 2;
+    g.ins.forEach((p, i) => { ctx.strokeStyle = ins[i] ? HI : LO; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(isGate(t) ? (t.includes('OR') ? 12 : 2) : 0, p.y); ctx.stroke(); });
+    g.outs.forEach((p, i) => { ctx.strokeStyle = c.out[i] ? HI : LO; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(isGate(t) ? g.w + (BUBBLE[t] ? 8 : 0) : g.w, p.y); ctx.stroke(); });
+    const bodyFill = '#111b31', stroke = selected ? ACC : '#7c8db5';
+    ctx.lineWidth = selected ? 2.4 : 1.6;
+    if (isGate(t)) {
+      if (selected) { ctx.shadowColor = ACC; ctx.shadowBlur = 14; }
+      gatePath(ctx, t, g.w, g.h); ctx.fillStyle = bodyFill; ctx.fill(); ctx.strokeStyle = stroke; ctx.stroke(); ctx.shadowBlur = 0;
+      if (t === 'XOR' || t === 'XNOR') { ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(g.w * 0.28, g.h / 2, 0, g.h); ctx.stroke(); }
+      if (BUBBLE[t]) { ctx.beginPath(); ctx.arc(g.w + 4, g.h / 2, 4, 0, 7); ctx.fillStyle = bodyFill; ctx.fill(); ctx.stroke(); }
+      ctx.fillStyle = '#5f6d8a'; ctx.font = `600 8px ${MONO}`; ctx.textAlign = 'center';
+      ctx.fillText(t, t === 'NOT' || t === 'BUF' ? g.w * 0.36 : g.w * 0.5, g.h / 2 + 3);
+    } else if (d.cat === 'blk') {
+      if (selected) { ctx.shadowColor = ACC; ctx.shadowBlur = 14; }
+      ctx.fillStyle = bodyFill; ctx.strokeStyle = stroke; ctx.beginPath(); ctx.roundRect(0, 0, g.w, g.h, 8); ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0;
+      ctx.fillStyle = '#c7d2fe'; ctx.font = `700 9.5px ${MONO}`; ctx.textAlign = 'center';
+      const title = t === 'MUX' ? `MUX ${c.n}:1` : t === 'SR' ? 'SR LATCH' : t === 'DFF' ? 'D FF' : t === 'JK' ? 'JK FF' : t === 'REG4' ? 'REG 4' : t === 'DEC' ? 'DEC 2:4' : t;
+      ctx.fillText(title, g.w / 2, 12);
+      ctx.font = `500 8.5px ${MONO}`; ctx.fillStyle = '#93a1bd';
+      const lbl = (txt, x, y, al) => { const bar = txt.endsWith('\u0304'); const t2 = bar ? txt.slice(0, -1) : txt; ctx.textAlign = al; ctx.fillText(t2, x, y); if (bar) { const tw = ctx.measureText(t2).width, x0 = al === 'right' ? x - tw : x; ctx.fillRect(x0, y - 8.5, tw, 0.9); } };
+      g.ins.forEach(p => lbl(p.name, 5, p.y + 3, 'left'));
+      g.outs.forEach(p => lbl(p.name, g.w - 5, p.y + 3, 'right'));
+      if (t === 'SR' && c.state.inv) { ctx.fillStyle = '#f59e0b'; ctx.textAlign = 'center'; ctx.fillText('S=R=1!', g.w / 2, g.h - 5); }
+    } else if (t === 'SWITCH' || t === 'BUTTON') {
+      const on = t === 'SWITCH' ? c.on : c.pressed;
+      ctx.fillStyle = bodyFill; ctx.strokeStyle = stroke; ctx.beginPath(); ctx.roundRect(0, 4, g.w, 32, 8); ctx.fill(); ctx.stroke();
+      if (t === 'SWITCH') { ctx.fillStyle = on ? 'rgba(74,222,128,.35)' : 'rgba(255,255,255,.07)'; ctx.beginPath(); ctx.roundRect(6, 12, 28, 16, 8); ctx.fill(); ctx.fillStyle = on ? HI : '#94a3b8'; ctx.shadowColor = HI; ctx.shadowBlur = on ? 10 : 0; ctx.beginPath(); ctx.arc(on ? 26 : 14, 20, 6, 0, 7); ctx.fill(); ctx.shadowBlur = 0; }
+      else { ctx.fillStyle = on ? HI : '#334155'; ctx.shadowColor = HI; ctx.shadowBlur = on ? 12 : 0; ctx.beginPath(); ctx.arc(20, 20, on ? 9 : 10, 0, 7); ctx.fill(); ctx.shadowBlur = 0; ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1.2; ctx.stroke(); }
+      ctx.fillStyle = '#e6ecf7'; ctx.font = `700 11px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText(c.label, g.w / 2, -3);
+      ctx.fillStyle = on ? HI : '#5f6d8a'; ctx.font = `600 8px ${MONO}`; ctx.fillText(on ? '1' : '0', g.w / 2, g.h + 8);
+    } else if (t === 'CLOCK') {
+      ctx.fillStyle = bodyFill; ctx.strokeStyle = stroke; ctx.beginPath(); ctx.roundRect(0, 2, g.w, 36, 8); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = c.out[0] ? HI : '#94a3b8'; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(8, 26); ctx.lineTo(15, 26); ctx.lineTo(15, 14); ctx.lineTo(25, 14); ctx.lineTo(25, 26); ctx.lineTo(35, 26); ctx.lineTo(35, 14); ctx.lineTo(42, 14); ctx.stroke();
+      ctx.fillStyle = '#e6ecf7'; ctx.font = `700 10px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText(c.label, g.w / 2, -3);
+      ctx.fillStyle = '#93a1bd'; ctx.font = `500 8.5px ${MONO}`; ctx.fillText(SL.fmt(c.hz, 2) + ' Hz', g.w / 2, g.h + 9);
+    } else if (t === 'HIGH' || t === 'LOW') {
+      ctx.fillStyle = bodyFill; ctx.strokeStyle = stroke; ctx.beginPath(); ctx.roundRect(0, 8, g.w, 24, 6); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = t === 'HIGH' ? HI : '#94a3b8'; ctx.font = `700 12px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText(t === 'HIGH' ? '1' : '0', g.w / 2, 24);
+    } else if (t === 'LED') {
+      const on = ins[0], col = LEDC[c.color] || LEDC.red;
+      ctx.beginPath(); ctx.arc(20, 20, 15, 0, 7); ctx.fillStyle = bodyFill; ctx.fill(); ctx.strokeStyle = stroke; ctx.lineWidth = selected ? 2.4 : 1.4; ctx.stroke();
+      const gr = ctx.createRadialGradient(17, 17, 2, 20, 20, 12); gr.addColorStop(0, on ? '#fff' : col + '55'); gr.addColorStop(.35, on ? col : col + '33'); gr.addColorStop(1, on ? col : col + '22');
+      ctx.fillStyle = gr; ctx.shadowColor = col; ctx.shadowBlur = on ? 26 : 0; ctx.beginPath(); ctx.arc(20, 20, 11, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+      ctx.fillStyle = '#e6ecf7'; ctx.font = `700 11px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText(c.label, 20, 50);
+    } else if (t === 'SEG7' || t === 'HEX') {
+      ctx.fillStyle = '#070b14'; ctx.strokeStyle = stroke; ctx.lineWidth = selected ? 2.4 : 1.4; ctx.beginPath(); ctx.roundRect(0, 0, g.w, g.h, 8); ctx.fill(); ctx.stroke();
+      let bits;
+      if (t === 'SEG7') bits = ins.slice(0, 7);
+      else { const v = ins[0] + 2 * ins[1] + 4 * ins[2] + 8 * ins[3]; bits = [6, 5, 4, 3, 2, 1, 0].map(b => (SEGS[v] >> b) & 1); }
+      if (t === 'SEG7') { drawDigit(ctx, 26, 18, 40, 120, bits, '#f43f5e'); ctx.fillStyle = '#5f6d8a'; ctx.font = `500 8px ${MONO}`; ctx.textAlign = 'left'; g.ins.forEach(p => ctx.fillText(p.name, 4, p.y + 3)); }
+      else { drawDigit(ctx, 24, 14, 36, 72, bits, '#f43f5e'); ctx.fillStyle = '#5f6d8a'; ctx.font = `500 8px ${MONO}`; ctx.textAlign = 'left'; g.ins.forEach(p => ctx.fillText(p.name, 4, p.y + 3)); }
+    }
+    // pins
+    const hp = hover && hover.pin;
+    g.ins.forEach((p, i) => { const connected = !!(inMap.get(c.id) || [])[i]; const hv = hp && hover.c === c && hover.kind === 'in' && hover.k === i; ctx.beginPath(); ctx.arc(p.x, p.y, hv ? 5 : 3.2, 0, 7); ctx.fillStyle = connected ? (ins[i] ? HI : '#64748b') : '#050913'; ctx.strokeStyle = hv ? '#fff' : ins[i] ? HI : '#64748b'; ctx.lineWidth = 1.4; ctx.fill(); ctx.stroke(); });
+    g.outs.forEach((p, i) => { const hv = hp && hover.c === c && hover.kind === 'out' && hover.k === i; ctx.beginPath(); ctx.arc(p.x, p.y, hv ? 5 : 3.6, 0, 7); ctx.fillStyle = c.out[i] ? HI : '#64748b'; ctx.fill(); if (hv) { ctx.strokeStyle = '#fff'; ctx.stroke(); } });
+    ctx.restore();
+  }
+  function draw(now) {
+    const { ctx, w, h, dpr } = st; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+    // dot grid
+    const gs = 20 * view.z; if (gs > 6) { ctx.fillStyle = 'rgba(148,163,184,.13)'; const x0 = ((view.ox % gs) + gs) % gs, y0 = ((view.oy % gs) + gs) % gs; for (let x = x0; x < w; x += gs) for (let y = y0; y < h; y += gs) ctx.fillRect(x - .75, y - .75, 1.5, 1.5); }
+    ctx.setTransform(dpr * view.z, 0, 0, dpr * view.z, dpr * view.ox, dpr * view.oy);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const wr of wires) {
+      const a = byId.get(wr.from), b = byId.get(wr.to); if (!a || !b) continue;
+      const P = wirePts(pinPos(a, 'out', wr.fp), pinPos(b, 'in', wr.tp)); const v = wireVal(wr), s = sel && sel.w === wr;
+      tracePath(ctx, P);
+      if (s) { ctx.strokeStyle = ACC; ctx.lineWidth = 6; ctx.globalAlpha = .45; ctx.stroke(); ctx.globalAlpha = 1; }
+      ctx.strokeStyle = v ? HI : LO; ctx.lineWidth = v ? 2.6 : 2.2; ctx.shadowColor = HI; ctx.shadowBlur = v ? 8 : 0; ctx.stroke(); ctx.shadowBlur = 0;
+      if (v) { ctx.setLineDash([3, 11]); ctx.lineDashOffset = -now * 40; ctx.strokeStyle = 'rgba(220,255,230,.85)'; ctx.lineWidth = 1.6; ctx.stroke(); ctx.setLineDash([]); }
+    }
+    for (const c of comps) drawComp(ctx, c, now);
+    if (tmp) {
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
+      const P = tmp.fromOut ? wirePts(tmp.a, tmp.b) : wirePts(tmp.b, tmp.a); tracePath(ctx, P); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (!comps.length) { ctx.fillStyle = '#5f6d8a'; ctx.font = `14px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText('Drag parts here, or load a preset', w / 2, h / 2); }
+  }
+
+  /* =====================================================================
+     HIT TESTING + POINTER INTERACTION
+     ===================================================================== */
+  function hitTest(p, touch) {
+    const R = (touch ? 16 : 9) / view.z;
+    let best = null, bd = R;
+    for (const c of comps) { const g = geom(c); g.outs.forEach((q, k) => { const d = Math.hypot(c.x + q.x - p.x, c.y + q.y - p.y); if (d < bd) { bd = d; best = { pin: 1, c, kind: 'out', k }; } }); g.ins.forEach((q, k) => { const d = Math.hypot(c.x + q.x - p.x, c.y + q.y - p.y); if (d < bd) { bd = d; best = { pin: 1, c, kind: 'in', k }; } }); }
+    if (best) return best;
+    for (let i = comps.length - 1; i >= 0; i--) { const c = comps[i], g = geom(c); if (p.x >= c.x - 2 && p.x <= c.x + g.w + 2 && p.y >= c.y - 2 && p.y <= c.y + g.h + 2) return { c }; }
+    for (const wr of wires) { const a = byId.get(wr.from), b = byId.get(wr.to); if (!a || !b) continue; const pts = samplePath(wirePts(pinPos(a, 'out', wr.fp), pinPos(b, 'in', wr.tp))); for (let i = 1; i < pts.length; i++) if (segDist(p, pts[i - 1], pts[i]) < 6 / view.z) return { w: wr }; }
+    return null;
+  }
+  function segDist(p, a, b) { const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy || 1; const t = SL.clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / L, 0, 1); return Math.hypot(a.x + t * dx - p.x, a.y + t * dy - p.y); }
+  const local = e => { const r = cvEl.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+
+  cvEl.addEventListener('pointerdown', e => {
+    const s = local(e), p = toWorld(s.x, s.y), touch = e.pointerType === 'touch';
+    const hit = hitTest(p, touch);
+    cvEl.setPointerCapture(e.pointerId);
+    if (hit && hit.pin) {
+      if (hit.kind === 'out') { drag = { kind: 'wire' }; tmp = { fromOut: true, src: hit, a: pinPos(hit.c, 'out', hit.k), b: p }; }
+      else {
+        const ex = (inMap.get(hit.c.id) || [])[hit.k];
+        if (ex) { pushUndo(); const src = byId.get(ex.from); removeWire(ex); drag = { kind: 'wire', undone: true }; tmp = { fromOut: true, src: { c: src, kind: 'out', k: ex.fp }, a: pinPos(src, 'out', ex.fp), b: p }; changed(); }
+        else { drag = { kind: 'wire' }; tmp = { fromOut: false, src: hit, a: pinPos(hit.c, 'in', hit.k), b: p }; }
+      }
+      return;
+    }
+    if (hit && hit.c) {
+      sel = { c: hit.c }; renderSel();
+      drag = { kind: 'move', c: hit.c, dx: p.x - hit.c.x, dy: hit.c.y - p.y, sx: s.x, sy: s.y, moved: false };
+      if (hit.c.type === 'BUTTON') { hit.c.pressed = 1; setSource(hit.c, 1); }
+      return;
+    }
+    if (hit && hit.w) { sel = { w: hit.w }; renderSel(); drag = null; return; }
+    sel = null; renderSel();
+    drag = { kind: 'pan', sx: s.x, sy: s.y, ox: view.ox, oy: view.oy };
+  });
+  cvEl.addEventListener('pointermove', e => {
+    const s = local(e), p = toWorld(s.x, s.y);
+    if (!drag) { const hh = hitTest(p, e.pointerType === 'touch'); hover = hh && hh.pin ? hh : null; showHover(); return; }
+    if (drag.kind === 'pan') { view.ox = drag.ox + s.x - drag.sx; view.oy = drag.oy + s.y - drag.sy; }
+    else if (drag.kind === 'move') {
+      if (!drag.moved && Math.hypot(s.x - drag.sx, s.y - drag.sy) > 4) { drag.moved = true; pushUndo(); }
+      if (drag.moved) { drag.c.x = Math.round((p.x - drag.dx) / 10) * 10; drag.c.y = Math.round((p.y + drag.dy) / 10) * 10; }
+    } else if (drag.kind === 'wire') { tmp.b = p; const hh = hitTest(p, e.pointerType === 'touch'); hover = hh && hh.pin && hh.kind !== tmp.src.kind ? hh : null; }
+  });
+  function endPointer(e) {
+    if (!drag) return;
+    if (drag.kind === 'move') {
+      const c = drag.c;
+      if (!drag.moved && c.type === 'SWITCH') { c.on = c.on ? 0 : 1; setSource(c, c.on); renderSel(); updateRowHighlight(); }
+      if (c.type === 'BUTTON') { c.pressed = 0; setSource(c, 0); }
+    } else if (drag.kind === 'wire' && e) {
+      const s = local(e), p = toWorld(s.x, s.y), hh = hitTest(p, e.pointerType === 'touch');
+      if (hh && hh.pin && hh.kind !== tmp.src.kind) {
+        const o = tmp.src.kind === 'out' ? tmp.src : hh, i = tmp.src.kind === 'out' ? hh : tmp.src;
+        if (!drag.undone) pushUndo();
+        addWire(o.c.id, o.k, i.c.id, i.k); rebuildIndex(); evalComp(i.c, SIM.t); changed();
+      } else if (drag.undone) changed();
+    }
+    drag = null; tmp = null; hover = null;
+  }
+  cvEl.addEventListener('pointerup', endPointer);
+  cvEl.addEventListener('pointercancel', () => { if (drag && drag.kind === 'move' && drag.c.type === 'BUTTON') { drag.c.pressed = 0; setSource(drag.c, 0); } drag = null; tmp = null; });
+  cvEl.addEventListener('pointerleave', () => { if (!drag) { hover = null; showHover(); } });
+  cvEl.addEventListener('wheel', e => { e.preventDefault(); const s = local(e); zoomAt(Math.exp(-e.deltaY * 0.0015), s.x, s.y); }, { passive: false });
+  function showHover() {
+    const el = $('#hudHover');
+    if (hover && hover.pin) { const c = hover.c, g = geom(c), nm = hover.kind === 'in' ? g.ins[hover.k].name : g.outs[hover.k].name; const v = hover.kind === 'in' ? readIns(c)[hover.k] : c.out[hover.k]; el.style.display = ''; el.innerHTML = `${DEF[c.type].name || c.type}${c.label ? ' ' + c.label : ''} · ${hover.kind === 'in' ? 'input' : 'output'} ${nm} = <b>${v}</b>`; }
+    else el.style.display = 'none';
+  }
+  function deleteSel() {
+    if (!sel) return; pushUndo();
+    if (sel.c) { if (challenge && sel.c.locked) { SL.toast('Challenge inputs and outputs cannot be deleted.', 'warn'); undoStack.pop(); return; } removeComp(sel.c); }
+    else if (sel.w) removeWire(sel.w);
+    sel = null; renderSel(); changed();
+  }
+  document.addEventListener('keydown', e => {
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); deleteSel(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+  });
+  $('#tbDel').onclick = deleteSel; $('#tbUndo').onclick = undo;
+  $('#tbIn').onclick = () => zoomAt(1.2, st.w / 2, st.h / 2); $('#tbOut').onclick = () => zoomAt(1 / 1.2, st.w / 2, st.h / 2); $('#tbFit').onclick = fitView;
+  $('#tbWire').onclick = () => { wireStyle = wireStyle === 'curve' ? 'ortho' : 'curve'; SL.toast(wireStyle === 'curve' ? 'Curved wires' : 'Orthogonal wires', '', 1200); };
+
+  /* =====================================================================
+     PALETTE (tap to add, or drag onto the canvas)
+     ===================================================================== */
+  function gateSVG(t) {
+    const st = 'fill="#111b31" stroke="#9fb0d6" stroke-width="1.6"', ln = 'stroke="#9fb0d6" stroke-width="1.6"';
+    let body = '';
+    const bub = BUBBLE[t] ? `<circle cx="35" cy="13" r="3" ${st}/>` : '';
+    const outX = BUBBLE[t] ? 38 : 32;
+    if (t === 'AND' || t === 'NAND') body = `<path d="M10 3 H20 A10 10 0 0 1 20 23 H10 Z" ${st}/>`;
+    else if (t === 'OR' || t === 'NOR') body = `<path d="M9 3 Q24 3 32 13 Q24 23 9 23 Q14 13 9 3 Z" ${st}/>`;
+    else if (t === 'XOR' || t === 'XNOR') body = `<path d="M12 3 Q25 3 32 13 Q25 23 12 23 Q17 13 12 3 Z" ${st}/><path d="M8 3 Q13 13 8 23" fill="none" ${ln}/>`;
+    else body = `<path d="M10 4 L31 13 L10 22 Z" ${st}/>`;
+    const one = t === 'NOT' || t === 'BUF';
+    const inl = one ? `<line x1="2" y1="13" x2="10" y2="13" ${ln}/>` : `<line x1="2" y1="8" x2="12" y2="8" ${ln}/><line x1="2" y1="18" x2="12" y2="18" ${ln}/>`;
+    return `<svg viewBox="0 0 44 26">${inl}<line x1="${outX}" y1="13" x2="43" y2="13" ${ln}/>${body}${bub}</svg>`;
+  }
+  const ICON = {
+    SWITCH: '<svg viewBox="0 0 44 26"><rect x="8" y="6" width="28" height="14" rx="7" fill="rgba(74,222,128,.3)" stroke="#9fb0d6"/><circle cx="29" cy="13" r="5" fill="#4ade80"/></svg>',
+    BUTTON: '<svg viewBox="0 0 44 26"><circle cx="22" cy="13" r="9" fill="#334155" stroke="#9fb0d6" stroke-width="1.5"/></svg>',
+    CLOCK: '<svg viewBox="0 0 44 26"><path d="M4 19 H11 V7 H21 V19 H31 V7 H40" fill="none" stroke="#4ade80" stroke-width="1.8"/></svg>',
+    HIGH: '<svg viewBox="0 0 44 26"><rect x="12" y="4" width="20" height="18" rx="4" fill="#111b31" stroke="#9fb0d6"/><text x="22" y="17.5" text-anchor="middle" font-size="11" font-family="monospace" fill="#4ade80" font-weight="700">1</text></svg>',
+    LOW: '<svg viewBox="0 0 44 26"><rect x="12" y="4" width="20" height="18" rx="4" fill="#111b31" stroke="#9fb0d6"/><text x="22" y="17.5" text-anchor="middle" font-size="11" font-family="monospace" fill="#94a3b8" font-weight="700">0</text></svg>',
+    LED: '<svg viewBox="0 0 44 26"><circle cx="22" cy="13" r="9" fill="#ef4444" stroke="#9fb0d6"/><circle cx="19" cy="10" r="3" fill="#fff" opacity=".7"/></svg>',
+    SEG7: '<svg viewBox="0 0 44 26"><rect x="13" y="1" width="18" height="24" rx="3" fill="#070b14" stroke="#9fb0d6"/><path d="M17 4 H27 M28 5 V12 M28 14 V21 M17 22 H27 M16 14 V21 M16 5 V12 M17 13 H27" stroke="#f43f5e" stroke-width="2"/></svg>',
+    HEX: '<svg viewBox="0 0 44 26"><rect x="13" y="1" width="18" height="24" rx="3" fill="#070b14" stroke="#9fb0d6"/><text x="22" y="18" text-anchor="middle" font-size="13" font-family="monospace" fill="#f43f5e" font-weight="700">F</text></svg>',
+  };
+  const blkSVG = (a, b) => `<svg viewBox="0 0 44 26"><rect x="9" y="2" width="26" height="22" rx="4" fill="#111b31" stroke="#9fb0d6" stroke-width="1.4"/><text x="22" y="16.5" text-anchor="middle" font-size="${a.length > 3 ? 7 : 8.5}" font-family="monospace" fill="#c7d2fe" font-weight="700">${a}</text></svg>`;
+  const BLKICON = { HA: 'HA', FA: 'FA', MUX: 'MUX', DEC: 'DEC', SR: 'SR', DFF: 'D', JK: 'JK', REG4: 'REG' };
+  const PARTS = { pIn: ['SWITCH', 'BUTTON', 'CLOCK', 'HIGH', 'LOW'], pOut: ['LED', 'SEG7', 'HEX'], pGate: GATES, pBlk: ['HA', 'FA', 'MUX', 'DEC', 'SR', 'DFF', 'JK', 'REG4'] };
+  Object.entries(PARTS).forEach(([el, list]) => { $('#' + el).innerHTML = list.map(t => `<button class="part" data-t="${t}" title="${DEF[t].name}">${ICON[t] || (isGate(t) ? gateSVG(t) : blkSVG(BLKICON[t]))}<span>${(DEF[t].name || t).replace(' flip-flop', ' FF').replace('Multiplexer', 'MUX').replace('Hex display', 'Hex').replace('7-segment', '7-seg').replace(' latch', '').replace('2→4 decoder', 'Decoder').replace('4-bit register', 'Register')}</span></button>`).join(''); });
+
+  let addCount = 0, palDrag = null;
+  function placeNew(t, wx, wy) {
+    pushUndo(); const c = addComp(t, wx, wy); const g = geom(c); c.x = Math.round((wx - g.w / 2) / 10) * 10; c.y = Math.round((wy - g.h / 2) / 10) * 10;
+    evalComp(c, SIM.t); sel = { c }; renderSel(); changed(); return c;
+  }
+  document.querySelectorAll('.part').forEach(b => {
+    b.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') return; palDrag = { t: b.dataset.t, c: null }; e.preventDefault(); });
+    b.addEventListener('click', () => {
+      if (palDrag && palDrag.placed) { palDrag = null; return; } palDrag = null;
+      const p = toWorld(st.w / 2, st.h / 2); addCount = (addCount + 1) % 6; placeNew(b.dataset.t, p.x + addCount * 20 - 50, p.y + addCount * 20 - 50);
+      if (window.innerWidth < 980) $('#stage').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
+  window.addEventListener('pointermove', e => {
+    if (!palDrag) return; const r = cvEl.getBoundingClientRect();
+    const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    const p = toWorld(e.clientX - r.left, e.clientY - r.top);
+    if (inside && !palDrag.c) { palDrag.c = placeNew(palDrag.t, p.x, p.y); palDrag.placed = true; }
+    if (palDrag.c) { const g = geom(palDrag.c); palDrag.c.x = Math.round((p.x - g.w / 2) / 10) * 10; palDrag.c.y = Math.round((p.y - g.h / 2) / 10) * 10; }
+  });
+  window.addEventListener('pointerup', () => { if (palDrag && palDrag.c) setTimeout(() => { palDrag = null; }, 0); else if (palDrag && !palDrag.placed) { /* click handler adds it */ } });
+
+  /* =====================================================================
+     SELECTION PANEL
+     ===================================================================== */
+  function renderSel() {
+    const el = $('#selBody');
+    if (!sel) { el.innerHTML = `<p class="small muted" style="margin:0">Tap a part to select it; tap a switch to toggle it. Drag from an output pin (right side) to an input pin (left side) to connect a wire. Drag from a connected input to re-route its wire. Drag empty space to pan; scroll or use the buttons to zoom.</p>`; return; }
+    if (sel.w) { const a = byId.get(sel.w.from), b = byId.get(sel.w.to); el.innerHTML = `<p class="small" style="margin:0 0 8px">Wire from <b>${nameOf(a)}</b>.${geom(a).outs[sel.w.fp].name} to <b>${nameOf(b)}</b>.${geom(b).ins[sel.w.tp].name}, carrying <b class="mono">${wireVal(sel.w)}</b>.</p><button class="btn sm danger" id="sDel"><i data-lucide="trash-2"></i> Delete wire</button>`; SL.refreshIcons(el); $('#sDel').onclick = deleteSel; return; }
+    const c = sel.c, t = c.type; let h = `<p class="small" style="margin:0 0 6px"><b>${DEF[t].name || t}</b>${c.label ? ' · ' + c.label : ''} <span class="muted">(${nIns(c)} in, ${nOuts(c)} out)</span></p>`;
+    if (['SWITCH', 'BUTTON', 'LED', 'CLOCK'].includes(t)) h += `<div class="field"><label for="sLabel">Label</label><input type="text" id="sLabel" maxlength="6" value="${c.label}" ${c.locked ? 'disabled' : ''}></div>`;
+    if (isGate(t) && t !== 'NOT' && t !== 'BUF') h += `<div class="ctl"><label for="sN">Number of inputs</label><output>${c.n}</output><input type="range" id="sN" min="2" max="8" step="1" value="${c.n}"></div>`;
+    if (t === 'MUX') h += `<div class="field"><span class="lbl">Size</span><div class="seg" id="sMux"><button data-v="2" class="${c.n === 2 ? 'on' : ''}">2:1</button><button data-v="4" class="${c.n === 4 ? 'on' : ''}">4:1</button></div></div>`;
+    if (t === 'CLOCK') h += `<div class="ctl"><label for="sHz">Frequency</label><output>${c.hz} Hz</output><input type="range" id="sHz" min="0.25" max="8" step="0.25" value="${c.hz}"></div>`;
+    if (t === 'LED') h += `<div class="field"><span class="lbl">Colour</span><div class="seg" id="sCol">${Object.keys(LEDC).map(k => `<button data-v="${k}" class="${c.color === k ? 'on' : ''}">${k}</button>`).join('')}</div></div>`;
+    if (t === 'SWITCH') h += `<button class="btn sm" id="sTog"><i data-lucide="toggle-left"></i> Toggle (now ${c.on})</button> `;
+    if (DEF[t].ev && !isGate(t)) h += `<p class="small muted" style="margin:6px 0">Outputs: ${geom(c).outs.map((p, i) => `${p.name}=<b class="mono">${c.out[i]}</b>`).join(', ')}</p>`;
+    h += `<button class="btn sm danger" id="sDel" ${c.locked ? 'disabled' : ''}><i data-lucide="trash-2"></i> Delete</button>`;
+    el.innerHTML = h; SL.refreshIcons(el);
+    $('#sDel').onclick = deleteSel;
+    const lab = $('#sLabel'); if (lab) lab.addEventListener('change', () => { pushUndo(); c.label = lab.value.replace(/[^A-Za-z0-9_]/g, '').slice(0, 6) || c.label; changed(); });
+    const sn = $('#sN'); if (sn) { sn.addEventListener('pointerdown', pushUndo, { once: true }); SL.bind(sn, v => { if (v !== c.n) { setInputs(c, v); } }); }
+    const sh = $('#sHz'); if (sh) SL.bind(sh, v => { c.hz = v; }, v => v + ' Hz');
+    const sm = $('#sMux'); if (sm) seg('#sMux', v => { pushUndo(); setInputs(c, +v); renderSel(); });
+    const sc = $('#sCol'); if (sc) seg('#sCol', v => { c.color = v; });
+    const tg = $('#sTog'); if (tg) tg.onclick = () => { c.on = c.on ? 0 : 1; setSource(c, c.on); renderSel(); updateRowHighlight(); };
+    document.querySelectorAll('#selBody input[type=range]').forEach(r => r.dispatchEvent(new Event('input')));
+  }
+  function setInputs(c, n) { c.n = n; c._g = null; const ni = nIns(c); wires = wires.filter(w => !(w.to === c.id && w.tp >= ni)); rebuildIndex(); evalComp(c, SIM.t); changed(); }
+  const nameOf = c => c ? (c.label || DEF[c.type].name || c.type) : '?';
+
+  /* =====================================================================
+     ANALYSIS: truth table, SOP, logic depth
+     ===================================================================== */
+  const natCmp = (a, b) => a.localeCompare(b, 'en', { numeric: true });
+  function staticEval(assign) {
+    const memo = new Map(), stack = new Set();
+    const val = (c, k) => {
+      const key = c.id * 16 + k; if (memo.has(key)) return memo.get(key);
+      const t = c.type;
+      if (SEQ[t]) throw new Error('seq');
+      if (t === 'SWITCH' || t === 'BUTTON') return assign.get(c.id) | 0;
+      if (t === 'HIGH') return 1; if (t === 'LOW') return 0;
+      if (stack.has(c.id)) throw new Error('cycle');
+      stack.add(c.id);
+      const ws = inMap.get(c.id) || [], ins = [];
+      for (let i = 0; i < nIns(c); i++) { const w = ws[i]; ins.push(w && byId.get(w.from) ? val(byId.get(w.from), w.fp) : 0); }
+      stack.delete(c.id);
+      const r = DEF[t].ev(ins, { n: c.n, state: {} })[k]; memo.set(key, r); return r;
+    };
+    return val;
+  }
+  function ledInput(val, led) { const w = (inMap.get(led.id) || [])[0]; return w && byId.get(w.from) ? val(byId.get(w.from), w.fp) : 0; }
+  let TT = null;
+  function analyse() {
+    const ins = comps.filter(c => c.type === 'SWITCH' || c.type === 'BUTTON').sort((a, b) => natCmp(a.label, b.label));
+    const outs = comps.filter(c => c.type === 'LED').sort((a, b) => natCmp(a.label, b.label));
+    TT = { ins, outs, rows: null, err: '' };
+    if (comps.some(c => SEQ[c.type])) { TT.err = 'This circuit contains clocks, latches or flip-flops, so its outputs depend on stored state as well as on the inputs. Truth tables describe combinational circuits only; use the live simulation instead.'; return; }
+    if (!ins.length || !outs.length) { TT.err = 'Add at least one switch and one LED to generate a truth table.'; return; }
+    if (ins.length > 8) { TT.err = `${ins.length} inputs would need ${2 ** ins.length} rows; the table is limited to 8 inputs.`; return; }
+    const rows = [];
+    try {
+      for (let m = 0; m < 2 ** ins.length; m++) {
+        const assign = new Map(); ins.forEach((c, i) => assign.set(c.id, (m >> (ins.length - 1 - i)) & 1));
+        const val = staticEval(assign); rows.push({ m, out: outs.map(l => ledInput(val, l)) });
+      }
+    } catch (e) { TT.err = e.message === 'cycle' ? 'This circuit has a feedback loop (an output feeds back into its own input), so it can store state. Truth tables apply to loop-free combinational logic; explore it with the live simulation.' : 'Analysis failed.'; return; }
+    TT.rows = rows;
+  }
+  function logicDepth() {
+    const memo = new Map(), stack = new Set(); let cyc = false;
+    const wt = c => isGate(c.type) ? 1 : (DEF[c.type].w || 1);
+    const dep = c => { if (memo.has(c.id)) return memo.get(c.id); const d = DEF[c.type]; if (d.cat === 'in' || SEQ[c.type]) return 0; if (stack.has(c.id)) { cyc = true; return 0; } stack.add(c.id); let m = 0; for (const w of inMap.get(c.id) || []) if (w && byId.get(w.from)) m = Math.max(m, dep(byId.get(w.from))); stack.delete(c.id); const r = m + (d.cat === 'out' ? 0 : wt(c)); memo.set(c.id, r); return r; };
+    let best = 0; comps.forEach(c => { best = Math.max(best, dep(c)); });
+    return cyc ? '∞' : best;
+  }
+  const texVar = s => /^[A-Za-z]$/.test(s) ? s : /^([A-Za-z])(\d+)$/.test(s) ? s.replace(/^([A-Za-z])(\d+)$/, '$1_{$2}') : `\\mathrm{${s.replace(/_/g, '\\_')}}`;
+  function renderTT() {
+    analyse();
+    const w = $('#ttWrap'), msg = $('#ttMsg'), ex = $('#exprs');
+    $('#kFrom').innerHTML = '';
+    if (TT.err) { msg.textContent = TT.err; w.innerHTML = ''; w.style.display = 'none'; ex.innerHTML = ''; return; }
+    w.style.display = '';
+    msg.textContent = `${TT.ins.length} input${TT.ins.length > 1 ? 's' : ''}, ${TT.outs.length} output${TT.outs.length > 1 ? 's' : ''}, ${TT.rows.length} rows. The highlighted row matches the current switch positions.`;
+    w.innerHTML = `<table class="tt"><thead><tr><th>#</th>${TT.ins.map(c => `<th>${c.label}</th>`).join('')}${TT.outs.map((c, i) => `<th class="${i ? '' : 'sep'}">${c.label}</th>`).join('')}</tr></thead><tbody>${TT.rows.map(r => `<tr data-m="${r.m}"><td class="dim">${r.m}</td>${TT.ins.map((c, i) => `<td>${(r.m >> (TT.ins.length - 1 - i)) & 1}</td>`).join('')}${r.out.map((v, i) => `<td class="o ${v ? 'one' : ''} ${i ? '' : 'sep'}">${v}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    const nv = TT.ins.length, names = TT.ins.map(c => c.label);
+    let h = '';
+    TT.outs.forEach((o, k) => {
+      const ones = TT.rows.filter(r => r.out[k]).map(r => r.m);
+      const mlist = ones.length > 24 ? ones.slice(0, 24).join(', ') + `, … (${ones.length} minterms)` : (ones.join(', ') || '–');
+      const minTex = nv <= 6 ? `<div data-tex="${encodeURIComponent(texVar(o.label) + ' = ' + sopTex(nv, minimise(nv, ones, []).cover, names))}"></div>` : `<p class="small muted" style="margin:0">Minimal SOP is shown for up to 6 inputs; with ${nv} inputs the expression is too large to be useful. Adders are better described stage by stage.</p>`;
+      h += `<div class="expr"><div class="k">${o.label}</div><div class="mono small muted" style="margin-bottom:6px">${o.label} = Σm(${mlist})</div>${minTex}${nv <= 4 ? `<button class="btn sm" data-km="${k}" style="margin-top:8px"><i data-lucide="grid-2x2"></i> Open in Karnaugh map</button>` : ''}</div>`;
+      if (nv <= 4) $('#kFrom').add(new Option(o.label, k));
+    });
+    ex.innerHTML = `<p class="small muted" style="margin:0 0 4px">Canonical sum of minterms and the minimal sum of products (Quine–McCluskey):</p>` + h;
+    ex.querySelectorAll('[data-tex]').forEach(d => TEX(d, decodeURIComponent(d.dataset.tex), true));
+    ex.querySelectorAll('[data-km]').forEach(b => b.onclick = () => { kmFromCircuit(+b.dataset.km); document.querySelector('#modes .tablist button:nth-child(2)').click(); $('#modes').scrollIntoView({ behavior: 'smooth' }); });
+    SL.refreshIcons(ex); updateRowHighlight();
+  }
+  function updateRowHighlight() {
+    if (!TT || !TT.rows) return;
+    let m = 0; TT.ins.forEach((c, i) => { if (c.type === 'SWITCH' ? c.on : c.pressed) m |= 1 << (TT.ins.length - 1 - i); });
+    document.querySelectorAll('#ttWrap tr.cur').forEach(r => r.classList.remove('cur'));
+    const r = document.querySelector(`#ttWrap tr[data-m="${m}"]`); if (r) r.classList.add('cur');
+  }
+  let changeT = 0;
+  function changed() {
+    $('#stG').textContent = comps.filter(c => isGate(c.type) || DEF[c.type].cat === 'blk').length; $('#stW').textContent = wires.length; $('#stD').textContent = logicDepth();
+    clearTimeout(changeT); changeT = setTimeout(() => { renderTT(); checkChallenge(false); }, 120);
+  }
+
+  /* =====================================================================
+     QUINE–McCLUSKEY MINIMISATION
+     ===================================================================== */
+  const pop = x => { let n = 0; while (x) { n += x & 1; x >>= 1; } return n; };
+  function primes(nv, ones, dcs) {
+    let cur = [...new Set(ones.concat(dcs))].map(v => ({ v, m: 0 }));
+    const out = [];
+    while (cur.length) {
+      const next = new Map(), used = new Set();
+      for (let i = 0; i < cur.length; i++) for (let j = i + 1; j < cur.length; j++) {
+        const a = cur[i], b = cur[j]; if (a.m !== b.m) continue; const d = a.v ^ b.v; if (pop(d) !== 1) continue;
+        const v = a.v & ~d, m = a.m | d; next.set(v + ':' + m, { v, m }); used.add(i); used.add(j);
+      }
+      cur.forEach((t, i) => { if (!used.has(i)) out.push(t); });
+      cur = [...next.values()];
+    }
+    const seen = new Set(); return out.filter(p => { const k = p.v + ':' + p.m; if (seen.has(k)) return false; seen.add(k); return true; });
+  }
+  const covers = (p, m) => (m & ~p.m) === p.v;
+  const lits = (nv, p) => nv - pop(p.m);
+  function minimise(nv, ones, dcs) {
+    if (!ones.length) return { pis: [], cover: [], ess: [] };
+    const pis = primes(nv, ones, dcs);
+    const ess = new Set();
+    for (const m of ones) { const c = pis.filter(p => covers(p, m)); if (c.length === 1) ess.add(c[0]); }
+    let cover = [...ess];
+    let rest = ones.filter(m => !cover.some(p => covers(p, m)));
+    if (rest.length) {
+      const cand = pis.filter(p => !ess.has(p) && rest.some(m => covers(p, m)));
+      let best = null;
+      if (cand.length <= 16) {
+        for (let mask = 1; mask < (1 << cand.length); mask++) {
+          const pick = cand.filter((_, i) => mask >> i & 1);
+          if (best && pick.length > best.length) continue;
+          if (!rest.every(m => pick.some(p => covers(p, m)))) continue;
+          const cost = pick.reduce((s, p) => s + lits(nv, p), 0);
+          if (!best || pick.length < best.length || (pick.length === best.length && cost < best.cost)) { best = pick; best.cost = cost; }
+        }
+      } else { best = []; let r = rest.slice(); while (r.length) { cand.sort((a, b) => r.filter(m => covers(b, m)).length - r.filter(m => covers(a, m)).length || lits(nv, a) - lits(nv, b)); const p = cand.shift(); best.push(p); r = r.filter(m => !covers(p, m)); } }
+      cover = cover.concat(best);
+    }
+    cover.sort((a, b) => lits(nv, a) - lits(nv, b) || b.v - a.v);
+    return { pis, cover, ess: [...ess] };
+  }
+  function termTex(nv, p, names) {
+    if (p.m === (1 << nv) - 1) return '1';
+    let s = ''; for (let i = 0; i < nv; i++) { const b = 1 << (nv - 1 - i); if (p.m & b) continue; s += (p.v & b) ? texVar(names[i]) : `\\overline{${texVar(names[i])}}`; } return s;
+  }
+  const sopTex = (nv, cover, names) => cover.length ? cover.map(p => termTex(nv, p, names)).join(' + ') : '0';
+  function posTex(nv, cover, names) {
+    if (!cover.length) return '1';
+    return cover.map(p => { if (p.m === (1 << nv) - 1) return '0'; const ls = []; for (let i = 0; i < nv; i++) { const b = 1 << (nv - 1 - i); if (p.m & b) continue; ls.push((p.v & b) ? `\\overline{${texVar(names[i])}}` : texVar(names[i])); } return ls.length > 1 ? `(${ls.join(' + ')})` : ls[0]; }).join('');
+  }
+
+  /* =====================================================================
+     KARNAUGH MAP
+     ===================================================================== */
+  const KM = { nv: 4, cells: new Array(16).fill(0), names: ['A', 'B', 'C', 'D'], res: null, show: true };
+  const GRAY = [0, 1, 3, 2];
+  const kcvEl = $('#kcv'); const kst = SL.canvas(kcvEl, () => setTimeout(drawKM));
+  const KCOL = ['#60a5fa', '#f472b6', '#34d399', '#f59e0b', '#a78bfa', '#22d3ee', '#fb7185', '#a3e635'];
+  function kDims() { const nv = KM.nv; return nv === 4 ? { R: 4, C: 4, rv: 2, cv: 2 } : nv === 3 ? { R: 2, C: 4, rv: 1, cv: 2 } : { R: 2, C: 2, rv: 1, cv: 1 }; }
+  function kMinterm(r, c) { const d = kDims(); const rg = d.R === 4 ? GRAY[r] : r, cg = d.C === 4 ? GRAY[c] : c; return (rg << d.cv) | cg; }
+  function kLayout() { const { w, h } = kst, d = kDims(); const cs = Math.min((w - 110) / d.C, (h - 110) / d.R, 96); const x0 = (w - cs * d.C) / 2 + 26, y0 = (h - cs * d.R) / 2 + 22; return { cs, x0, y0, d }; }
+  function solveKM() {
+    const n = 1 << KM.nv, ones = [], dcs = [];
+    for (let m = 0; m < n; m++) { if (KM.cells[m] === 1) ones.push(m); if (KM.cells[m] === 2) dcs.push(m); }
+    const zeros = []; for (let m = 0; m < n; m++) if (KM.cells[m] === 0) zeros.push(m);
+    KM.res = minimise(KM.nv, ones, dcs); KM.res.ones = ones; KM.res.dcs = dcs;
+    const posRes = minimise(KM.nv, zeros, dcs);
+    const names = KM.names.slice(0, KM.nv);
+    $('#kM').innerHTML = `F = Σm(${ones.join(', ') || '–'})${dcs.length ? ` + d(${dcs.join(', ')})` : ''}`;
+    TEX($('#kSop'), 'F = ' + sopTex(KM.nv, KM.res.cover, names), true);
+    TEX($('#kPos'), 'F = ' + (zeros.length ? posTex(KM.nv, posRes.cover, names) : '1'), true);
+    const inCover = new Set(KM.res.cover);
+    $('#kPI').innerHTML = KM.res.pis.length ? KM.res.pis.map((p, i) => { const ci = KM.res.cover.indexOf(p); return `<li><i style="background:${ci >= 0 ? KCOL[ci % KCOL.length] : 'transparent'};border:1px solid ${ci >= 0 ? 'transparent' : '#475569'}"></i><span data-t="${encodeURIComponent(termTex(KM.nv, p, names))}"></span>${KM.res.ess.includes(p) ? ' ★' : ''}${inCover.has(p) ? '' : ' <span class="dim">(not needed)</span>'}</li>`; }).join('') : '<li class="dim">none (F = 0)</li>';
+    $('#kPI').querySelectorAll('[data-t]').forEach(s => TEX(s, decodeURIComponent(s.dataset.t)));
+    const L = KM.res.cover.reduce((s, p) => s + lits(KM.nv, p), 0);
+    $('#kCost').textContent = `${KM.res.cover.length} terms, ${L} literals (canonical form: ${ones.length} terms, ${ones.length * KM.nv} literals)`;
+    drawKM();
+  }
+  function runs(set, N) {
+    const s = [...set].sort((a, b) => a - b); if (s.length === N) return [[0, N - 1]];
+    const out = []; let st0 = s[0], prev = s[0];
+    for (let i = 1; i < s.length; i++) { if (s[i] === prev + 1) prev = s[i]; else { out.push([st0, prev]); st0 = prev = s[i]; } } out.push([st0, prev]);
+    return out;
+  }
+  function drawKM() {
+    const { ctx, w, h } = kst; if (w < 50) return; ctx.clearRect(0, 0, w, h);
+    const { cs, x0, y0, d } = kLayout(), nv = KM.nv, nm = KM.names;
+    const rowVars = nm.slice(0, d.rv).join(''), colVars = nm.slice(d.rv, nv).join('');
+    // headers
+    ctx.font = `600 13px ${MONO}`; ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'center';
+    for (let c = 0; c < d.C; c++) { const g = d.C === 4 ? GRAY[c] : c; ctx.fillText(g.toString(2).padStart(d.cv, '0'), x0 + (c + .5) * cs, y0 - 10); }
+    ctx.textAlign = 'right';
+    for (let r = 0; r < d.R; r++) { const g = d.R === 4 ? GRAY[r] : r; ctx.fillText(g.toString(2).padStart(d.rv, '0'), x0 - 10, y0 + (r + .5) * cs + 5); }
+    ctx.strokeStyle = '#475569'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0 - 46, y0 - 36); ctx.lineTo(x0, y0); ctx.stroke();
+    ctx.fillStyle = ACC; ctx.font = `700 13px ${MONO}`; ctx.textAlign = 'left'; ctx.fillText(colVars, x0 - 18, y0 - 32);
+    ctx.textAlign = 'right'; ctx.fillText(rowVars, x0 - 26, y0 - 6);
+    // cells
+    for (let r = 0; r < d.R; r++) for (let c = 0; c < d.C; c++) {
+      const m = kMinterm(r, c), v = KM.cells[m], x = x0 + c * cs, y = y0 + r * cs;
+      ctx.fillStyle = v === 1 ? 'rgba(96,165,250,.16)' : v === 2 ? 'rgba(245,158,11,.10)' : '#0b1222'; ctx.strokeStyle = '#2a3a5c'; ctx.lineWidth = 1.2;
+      ctx.fillRect(x, y, cs, cs); ctx.strokeRect(x + .5, y + .5, cs, cs);
+      ctx.fillStyle = v === 1 ? '#fff' : v === 2 ? '#f59e0b' : '#3b4763'; ctx.font = `700 ${Math.round(cs * .3)}px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText(v === 2 ? 'X' : v, x + cs / 2, y + cs / 2 + cs * .1);
+      ctx.fillStyle = '#4b5878'; ctx.font = `500 ${Math.max(9, Math.round(cs * .13))}px ${MONO}`; ctx.textAlign = 'right'; ctx.fillText('m' + m, x + cs - 5, y + cs - 6);
+    }
+    // groups
+    if (KM.show && KM.res) KM.res.cover.forEach((p, gi) => {
+      const rows = new Set(), cols = new Set();
+      for (let r = 0; r < d.R; r++) for (let c = 0; c < d.C; c++) if (covers(p, kMinterm(r, c))) { rows.add(r); cols.add(c); }
+      const col = KCOL[gi % KCOL.length], ins = 5 + (gi % 4) * 4;
+      ctx.strokeStyle = col; ctx.lineWidth = 2.6; ctx.shadowColor = col; ctx.shadowBlur = 8; ctx.fillStyle = col + '1f';
+      for (const rr of runs(rows, d.R)) for (const cc of runs(cols, d.C)) { const x = x0 + cc[0] * cs + ins, y = y0 + rr[0] * cs + ins, ww = (cc[1] - cc[0] + 1) * cs - 2 * ins, hh = (rr[1] - rr[0] + 1) * cs - 2 * ins; ctx.beginPath(); ctx.roundRect(x, y, ww, hh, Math.min(16, cs * .25)); ctx.fill(); ctx.stroke(); }
+      ctx.shadowBlur = 0;
+    });
+  }
+  kcvEl.addEventListener('click', e => {
+    const p = SL.ptr(e, kcvEl), { cs, x0, y0, d } = kLayout(); const c = Math.floor((p.x - x0) / cs), r = Math.floor((p.y - y0) / cs);
+    if (c < 0 || r < 0 || c >= d.C || r >= d.R) return; const m = kMinterm(r, c); KM.cells[m] = (KM.cells[m] + 1) % 3; solveKM();
+  });
+  function setNV(n) { KM.nv = n; KM.cells = new Array(1 << n).fill(0); KM.names = ['A', 'B', 'C', 'D']; document.querySelectorAll('#kn button').forEach(b => b.classList.toggle('on', +b.dataset.v === n)); solveKM(); }
+  seg('#kn', v => setNV(+v));
+  $('#kClear').onclick = () => { KM.cells.fill(0); solveKM(); };
+  $('#kRand').onclick = () => { KM.cells = KM.cells.map(() => { const r = Math.random(); return r < .45 ? 1 : r < .53 ? 2 : 0; }); solveKM(); };
+  $('#kEx').onclick = () => { setNV(4); [0, 2, 5, 7, 8, 10, 13, 15].forEach(m => KM.cells[m] = 1); solveKM(); };
+  $('#kShow').onchange = e => { KM.show = e.target.checked; drawKM(); };
+  function kmFromCircuit(k) {
+    if (!TT || !TT.rows || TT.ins.length > 4) return;
+    const nv = TT.ins.length; if (nv < 2) { SL.toast('The K-map needs 2 to 4 inputs.', 'warn'); return; }
+    setNV(nv); KM.names = TT.ins.map(c => c.label); TT.rows.forEach(r => KM.cells[r.m] = r.out[k]); solveKM();
+  }
+  $('#kLoad').onclick = () => { const v = $('#kFrom').value; if (v === '') { SL.toast('Build a combinational circuit with 2–4 switches and an LED first.', 'warn'); return; } kmFromCircuit(+v); };
+  $('#kBuild').onclick = () => {
+    const nv = KM.nv, names = KM.names.slice(0, nv), cover = KM.res.cover;
+    pushUndo(); comps = []; wires = []; byId.clear();
+    const sw = names.map((n, i) => addComp('SWITCH', 0, 40 + i * 80, { label: n }));
+    const needNot = new Set(); cover.forEach(p => { for (let i = 0; i < nv; i++) { const b = 1 << (nv - 1 - i); if (!(p.m & b) && !(p.v & b)) needNot.add(i); } });
+    const nots = {}; [...needNot].forEach(i => { nots[i] = addComp('NOT', 120, 40 + i * 80 + 30); addWire(sw[i].id, 0, nots[i].id, 0); });
+    const led = addComp('LED', 560, 40 + Math.max(0, (nv * 80 - 40) / 2), { label: 'F' });
+    if (!cover.length || (cover.length === 1 && cover[0].m === (1 << nv) - 1)) { const k = addComp(cover.length ? 'HIGH' : 'LOW', 440, led.y); addWire(k.id, 0, led.id, 0); }
+    else {
+      const termOuts = [];
+      cover.forEach((p, ti) => {
+        const lit = []; for (let i = 0; i < nv; i++) { const b = 1 << (nv - 1 - i); if (p.m & b) continue; lit.push((p.v & b) ? [sw[i], 0] : [nots[i], 0]); }
+        if (lit.length === 1) termOuts.push(lit[0]);
+        else { const g = addComp('AND', 280, 20 + ti * Math.max(60, lit.length * 20 + 20), { n: lit.length }); lit.forEach(([c, k], j) => addWire(c.id, k, g.id, j)); termOuts.push([g, 0]); }
+      });
+      if (termOuts.length === 1) addWire(termOuts[0][0].id, 0, led.id, 0);
+      else { const o = addComp('OR', 430, led.y - (termOuts.length * 20 - 40) / 2, { n: Math.min(8, termOuts.length) }); termOuts.slice(0, 8).forEach(([c, k], j) => addWire(c.id, k, o.id, j)); addWire(o.id, 0, led.id, 0); }
+    }
+    rebuildIndex(); resetSim(); exitChallenge(true);
+    document.querySelector('#modes .tablist button:nth-child(1)').click();
+    setTimeout(() => { fitView(); changed(); }, 60);
+    SL.toast(`Built F from ${cover.length} product term${cover.length === 1 ? '' : 's'}.`, 'ok');
+  };
+
+  /* =====================================================================
+     PRESETS
+     ===================================================================== */
+  function build(fn) { comps = []; wires = []; byId.clear(); nextId = 1; sel = null; const A = (t, x, y, p) => addComp(t, x, y, p); const W = (a, ap, b, bp) => addWire(a.id, ap, b.id, bp); fn(A, W); rebuildIndex(); resetSim(); fitted = false; fitView(); changed(); renderSel(); }
+  const PRESETS = {
+    half: (A, W) => { const a = A('SWITCH', 40, 60, { label: 'A' }), b = A('SWITCH', 40, 160, { label: 'B' }); const x = A('XOR', 200, 50), n = A('AND', 200, 150); const s = A('LED', 340, 50, { label: 'S', color: 'green' }), c = A('LED', 340, 150, { label: 'C', color: 'amber' }); W(a, 0, x, 0); W(b, 0, x, 1); W(a, 0, n, 0); W(b, 0, n, 1); W(x, 0, s, 0); W(n, 0, c, 0); },
+    full: (A, W) => { const a = A('SWITCH', 40, 40, { label: 'A' }), b = A('SWITCH', 40, 130, { label: 'B' }), ci = A('SWITCH', 40, 240, { label: 'Cin' }); const x1 = A('XOR', 180, 60), x2 = A('XOR', 330, 100), a1 = A('AND', 180, 190), a2 = A('AND', 330, 220), o = A('OR', 470, 200); const s = A('LED', 600, 100, { label: 'S', color: 'green' }), co = A('LED', 600, 200, { label: 'Cout', color: 'amber' }); W(a, 0, x1, 0); W(b, 0, x1, 1); W(x1, 0, x2, 0); W(ci, 0, x2, 1); W(x2, 0, s, 0); W(a, 0, a1, 0); W(b, 0, a1, 1); W(x1, 0, a2, 0); W(ci, 0, a2, 1); W(a1, 0, o, 0); W(a2, 0, o, 1); W(o, 0, co, 0); },
+    rca: (A, W) => { let prev = null; const sums = []; for (let i = 0; i < 4; i++) { const y = 40 + i * 130; const a = A('SWITCH', 40, y, { label: 'A' + i }), b = A('SWITCH', 40, y + 50, { label: 'B' + i }); const f = A('FA', 240, y); W(a, 0, f, 0); W(b, 0, f, 1); if (prev) W(prev, 1, f, 2); else { const lo = A('LOW', 150, y + 50); W(lo, 0, f, 2); } const s = A('LED', 420, y + 10, { label: 'S' + i, color: 'green' }); W(f, 0, s, 0); sums.push(f); prev = f; } const co = A('LED', 420, 40 + 3 * 130 + 70, { label: 'Cout', color: 'amber' }); W(prev, 1, co, 0); const hx = A('HEX', 560, 200); sums.forEach((f, i) => W(f, 0, hx, i)); },
+    srnor: (A, W) => { const r = A('SWITCH', 40, 40, { label: 'R' }), s = A('SWITCH', 40, 240, { label: 'S' }); const n1 = A('NOR', 210, 60), n2 = A('NOR', 210, 200); const q = A('LED', 380, 60, { label: 'Q', color: 'green' }), qb = A('LED', 380, 200, { label: 'Qn', color: 'red' }); W(r, 0, n1, 0); W(n2, 0, n1, 1); W(n1, 0, n2, 0); W(s, 0, n2, 1); W(n1, 0, q, 0); W(n2, 0, qb, 0); },
+    dlatch: (A, W) => { const d = A('SWITCH', 40, 40, { label: 'D' }), en = A('SWITCH', 40, 150, { label: 'EN' }); const nt = A('NOT', 130, 40); const ar = A('AND', 250, 40), as = A('AND', 250, 200); const nq = A('NOR', 400, 40), nqb = A('NOR', 400, 200); const q = A('LED', 560, 40, { label: 'Q', color: 'green' }), qb = A('LED', 560, 200, { label: 'Qn' }); W(d, 0, nt, 0); W(nt, 0, ar, 0); W(en, 0, ar, 1); W(d, 0, as, 0); W(en, 0, as, 1); W(ar, 0, nq, 0); W(nqb, 0, nq, 1); W(as, 0, nqb, 0); W(nq, 0, nqb, 1); W(nq, 0, q, 0); W(nqb, 0, qb, 0); },
+    counter: (A, W) => { const clk = A('CLOCK', 30, 120, { hz: 2 }); let prev = null; const ffs = []; for (let i = 0; i < 4; i++) { const x = 180 + i * 190; const f = A('JK', x, 100); const hi = A('HIGH', x - 80, 90); W(hi, 0, f, 0); W(hi, 0, f, 2); W(prev ? prev : clk, prev ? 1 : 0, f, 1); ffs.push(f); prev = f; } const hx = A('HEX', 480, 260); ffs.forEach((f, i) => W(f, 0, hx, i)); ffs.forEach((f, i) => { const l = A('LED', 180 + i * 190 + 100, 20, { label: 'Q' + i, color: 'blue' }); W(f, 0, l, 0); }); },
+    traffic: (A, W) => { const clk = A('CLOCK', 30, 100, { hz: 1 }); const j0 = A('JK', 180, 80), j1 = A('JK', 370, 80); const h0 = A('HIGH', 100, 60), h1 = A('HIGH', 290, 60); W(h0, 0, j0, 0); W(h0, 0, j0, 2); W(h1, 0, j1, 0); W(h1, 0, j1, 2); W(clk, 0, j0, 1); W(j0, 1, j1, 1); const dec = A('DEC', 560, 60); W(j0, 0, dec, 0); W(j1, 0, dec, 1); const or1 = A('OR', 740, 30), or2 = A('OR', 740, 170); W(dec, 0, or1, 0); W(dec, 1, or1, 1); W(dec, 1, or2, 0); W(dec, 3, or2, 1); const r = A('LED', 880, 30, { label: 'RED', color: 'red' }), am = A('LED', 880, 100, { label: 'AMBER', color: 'amber' }), g = A('LED', 880, 170, { label: 'GREEN', color: 'green' }); W(or1, 0, r, 0); W(or2, 0, am, 0); W(dec, 2, g, 0); },
+    mux: (A, W) => { const ins = [0, 1, 2, 3].map(i => A('SWITCH', 40, 20 + i * 60, { label: 'I' + i })); const s0 = A('SWITCH', 40, 280, { label: 'S0' }), s1 = A('SWITCH', 40, 340, { label: 'S1' }); const m = A('MUX', 260, 110, { n: 4 }); ins.forEach((c, i) => W(c, 0, m, i)); W(s0, 0, m, 4); W(s1, 0, m, 5); const y = A('LED', 440, 150, { label: 'Y', color: 'green' }); W(m, 0, y, 0); },
+    ring: (A, W) => { const n1 = A('NOT', 100, 60), n2 = A('NOT', 240, 60), n3 = A('NOT', 380, 60); W(n1, 0, n2, 0); W(n2, 0, n3, 0); W(n3, 0, n1, 0); const l = A('LED', 500, 160, { label: 'Y', color: 'amber' }); W(n3, 0, l, 0); },
+  };
+  $('#preset').onchange = e => { const k = e.target.value; if (!k) return; exitChallenge(true); pushUndo(); build(PRESETS[k]); e.target.value = ''; if (k === 'ring') { slow = true; $('#slow').checked = true; SL.toast('Slow motion is on so you can see the oscillation.', '', 2500); } };
+
+  /* =====================================================================
+     SAVE / LOAD (localStorage, guarded)
+     ===================================================================== */
+  const KEY = 'simlab.logic.saves';
+  function readSaves() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function writeSaves(o) { try { localStorage.setItem(KEY, JSON.stringify(o)); return true; } catch (e) { SL.toast('Saving is not available in this browser (storage blocked).', 'warn'); return false; } }
+  function renderSaves() { const s = readSaves(), sel2 = $('#saved'); const names = Object.keys(s); sel2.innerHTML = names.length ? names.map(n => `<option>${n.replace(/</g, '&lt;')}</option>`).join('') : '<option value="">(none yet)</option>'; }
+  $('#saveBtn').onclick = () => { const n = ($('#saveName').value || 'circuit').trim().slice(0, 40); if (!comps.length) { SL.toast('The circuit is empty.', 'warn'); return; } const s = readSaves(); s[n] = serialize(); if (writeSaves(s)) { SL.toast(`Saved “${n.replace(/</g, '&lt;')}”.`, 'ok'); renderSaves(); $('#saved').value = n; } };
+  $('#loadBtn').onclick = () => { const n = $('#saved').value; const s = readSaves(); if (!n || !s[n]) return; exitChallenge(true); pushUndo(); load(s[n]); };
+  $('#delSaveBtn').onclick = () => { const n = $('#saved').value; const s = readSaves(); if (!n || !s[n]) return; delete s[n]; writeSaves(s); renderSaves(); };
+  renderSaves();
+
+  /* =====================================================================
+     CHALLENGES
+     ===================================================================== */
+  const BASIC = ['AND', 'OR', 'NOT', 'NAND', 'NOR', 'XOR', 'XNOR', 'BUF'];
+  const CH = [
+    { id: 'xor_nand', title: 'XOR from NAND only', desc: 'Build Y = A ⊕ B using only NAND gates. Four is the minimum.', ins: ['A', 'B'], outs: ['Y'], allow: ['NAND'], f: v => ({ Y: v.A ^ v.B }) },
+    { id: 'not_nor', title: 'NOT from NOR', desc: 'Make an inverter using a single NOR gate.', ins: ['A'], outs: ['Y'], allow: ['NOR'], f: v => ({ Y: 1 - v.A }) },
+    { id: 'and_nor', title: 'AND from NOR only', desc: 'Build Y = AB with NOR gates only (hint: De Morgan).', ins: ['A', 'B'], outs: ['Y'], allow: ['NOR'], f: v => ({ Y: v.A & v.B }) },
+    { id: 'or_nand', title: 'OR from NAND only', desc: 'Build Y = A + B with NAND gates only.', ins: ['A', 'B'], outs: ['Y'], allow: ['NAND'], f: v => ({ Y: v.A | v.B }) },
+    { id: 'maj', title: 'Majority vote', desc: 'Three committee members vote. Y = 1 when at least two vote yes.', ins: ['A', 'B', 'C'], outs: ['Y'], allow: BASIC, f: v => ({ Y: (v.A + v.B + v.C) >= 2 ? 1 : 0 }) },
+    { id: 'mux2', title: '2:1 multiplexer from gates', desc: 'Y = A when S = 0 and Y = B when S = 1, using AND, OR and NOT.', ins: ['A', 'B', 'S'], outs: ['Y'], allow: ['AND', 'OR', 'NOT'], f: v => ({ Y: v.S ? v.B : v.A }) },
+    { id: 'eq2', title: '2-bit equality comparator', desc: 'EQ = 1 when the 2-bit numbers A1A0 and B1B0 are equal. Any basic gates.', ins: ['A0', 'A1', 'B0', 'B1'], outs: ['EQ'], allow: BASIC, f: v => ({ EQ: v.A0 === v.B0 && v.A1 === v.B1 ? 1 : 0 }) },
+    { id: 'parity', title: 'Odd-parity generator', desc: 'P = 1 when an odd number of A, B, C, D are 1. Use XOR, XNOR or NOT.', ins: ['A', 'B', 'C', 'D'], outs: ['P'], allow: ['XOR', 'XNOR', 'NOT'], f: v => ({ P: v.A ^ v.B ^ v.C ^ v.D }) },
+    { id: 'fa_ha', title: 'Full adder from half adders', desc: 'Build S and Cout from two half-adder blocks and one OR gate.', ins: ['A', 'B', 'Cin'], outs: ['S', 'Cout'], allow: ['HA', 'OR'], f: v => ({ S: v.A ^ v.B ^ v.Cin, Cout: (v.A + v.B + v.Cin) >= 2 ? 1 : 0 }) },
+  ];
+  const ALWAYS = ['SWITCH', 'LED', 'HIGH', 'LOW'];
+  let challenge = null; const solved = new Set();
+  $('#chal').innerHTML = CH.map(c => `<li data-k="${c.id}"><span class="led"></span><div><b>${c.title}</b><span class="small">${c.desc} <span class="dim">Allowed: ${c.allow.join(', ')}.</span></span></div><button class="btn sm" data-start="${c.id}"><i data-lucide="play"></i> Start</button></li>`).join('');
+  $('#chal').addEventListener('click', e => { const b = e.target.closest('[data-start]'); if (b) startChallenge(b.dataset.start); });
+  function startChallenge(id) {
+    const ch = CH.find(c => c.id === id); challenge = ch;
+    build((A) => { ch.ins.forEach((n, i) => { const c = A('SWITCH', 40, 40 + i * 80, { label: n }); c.locked = true; }); ch.outs.forEach((n, i) => { const c = A('LED', 480, 60 + i * 120, { label: n, color: 'green' }); c.locked = true; }); });
+    document.querySelectorAll('.part').forEach(p => p.classList.toggle('disabled', !(ch.allow.includes(p.dataset.t) || ALWAYS.includes(p.dataset.t))));
+    $('#bannerTxt').innerHTML = `<b>Challenge:</b> ${ch.title}`; $('#banner').classList.add('show');
+    document.querySelector('#modes .tablist button:nth-child(1)').click();
+    $('#modes').scrollIntoView({ behavior: 'smooth' });
+  }
+  function exitChallenge(silent) { challenge = null; $('#banner').classList.remove('show'); document.querySelectorAll('.part').forEach(p => p.classList.remove('disabled')); comps.forEach(c => c.locked = false); }
+  function checkChallenge(verbose) {
+    const ch = challenge; if (!ch) return;
+    const say = (m, t) => verbose && SL.toast(m, t || 'warn');
+    const bad = comps.find(c => !(ch.allow.includes(c.type) || ALWAYS.includes(c.type))); if (bad) return say(`${DEF[bad.type].name || bad.type} is not allowed in this challenge.`);
+    if (!TT || !TT.rows) return say(TT ? TT.err : 'Wire up the circuit first.');
+    const inL = TT.ins.map(c => c.label), outL = TT.outs.map(c => c.label);
+    if (inL.join() !== [...ch.ins].sort(natCmp).join() || outL.join() !== [...ch.outs].sort(natCmp).join()) return say('Keep exactly the given inputs and outputs.');
+    let wrong = 0, first = null;
+    TT.rows.forEach(r => { const v = {}; inL.forEach((n, i) => v[n] = (r.m >> (inL.length - 1 - i)) & 1); const exp = ch.f(v); outL.forEach((n, k) => { if (exp[n] !== r.out[k]) { wrong++; if (!first) first = Object.entries(v).map(([a, b]) => a + '=' + b).join(' '); } }); });
+    if (wrong) return say(`Not yet: ${wrong} truth-table entr${wrong === 1 ? 'y is' : 'ies are'} wrong (first at ${first}).`);
+    const gates = comps.filter(c => !ALWAYS.includes(c.type)).length;
+    if (!solved.has(ch.id)) { solved.add(ch.id); const li = document.querySelector(`#chal li[data-k="${ch.id}"] .led`); if (li) li.classList.add('on'); SL.toast(`<b>Challenge complete:</b> ${ch.title} with ${gates} part${gates === 1 ? '' : 's'}. (${solved.size}/${CH.length})`, 'ok', 5000); }
+    else if (verbose) SL.toast('Correct!', 'ok');
+  }
+  $('#bannerCheck').onclick = () => { renderTT(); checkChallenge(true); };
+  $('#bannerExit').onclick = () => exitChallenge(false);
+
+  /* =====================================================================
+     MAIN LOOP + MISC UI
+     ===================================================================== */
+  $('#slow').onchange = e => { slow = e.target.checked; };
+  SL.bind('#slowRate', v => { slowRate = v; });
+  $('#simReset').onclick = () => { resetSim(); SL.toast('State reset: all outputs re-evaluated from 0.', '', 1800); };
+  $('#clearAll').onclick = () => { if (!comps.length) return; pushUndo(); exitChallenge(true); comps = []; wires = []; byId.clear(); sel = null; rebuildIndex(); resetSim(); changed(); renderSel(); };
+  let lastSelRefresh = 0;
+  SL.loop((dt, t) => {
+    if (document.hidden) return;
+    stepSim(dt);
+    if (cvEl.offsetParent !== null) draw(t);
+    const now = performance.now();
+    if (now - SIM.evT > 500) { SIM.evRate = SIM.evCount * 1000 / (now - SIM.evT || 1); SIM.evCount = 0; SIM.evT = now; $('#stE').textContent = Math.round(SIM.evRate); }
+    $('#hudT').innerHTML = `t = <b>${SL.fmt(SIM.t, 1)}</b> gate delays`;
+    $('#hudS').innerHTML = SIM.osc > 0.3 ? '<span class="led bad" style="width:8px;height:8px"></span> oscillating: unstable feedback' : SIM.heap.length ? '<span class="led warn" style="width:8px;height:8px"></span> settling…' : '<span class="led on" style="width:8px;height:8px"></span> stable';
+    if (sel && sel.c && DEF[sel.c.type].ev && !isGate(sel.c.type) && now - lastSelRefresh > 300 && !document.activeElement.closest('#selBody')) { lastSelRefresh = now; renderSel(); }
+  }).start();
+
+  // gate gallery in theory
+  const GDESC = { AND: ['Y = AB', '1 only if all inputs are 1'], OR: ['Y = A + B', '1 if any input is 1'], NOT: ['Y = Ā', 'inverts'], NAND: ['Y = (AB)‾', 'NOT-AND; universal'], NOR: ['Y = (A+B)‾', 'NOT-OR; universal'], XOR: ['Y = A ⊕ B', '1 if inputs differ (odd parity)'], XNOR: ['Y = (A ⊕ B)‾', '1 if inputs are equal'], BUF: ['Y = A', 'buffer: restores signal strength'] };
+  $('#gal').innerHTML = ['AND', 'OR', 'NOT', 'NAND', 'NOR', 'XOR', 'XNOR', 'BUF'].map(g => { const one = g === 'NOT' || g === 'BUF'; const rows = one ? [0, 1].map(a => `${a} → ${DEF[g].ev([a])[0]}`) : [[0, 0], [0, 1], [1, 0], [1, 1]].map(([a, b]) => `${a}${b} → ${DEF[g].ev([a, b])[0]}`); return `<div class="g">${gateSVG(g)}<b>${g}</b> <span class="small muted">${GDESC[g][0]}</span><div class="tt-mini">${rows.join(' · ')}</div><div class="small muted">${GDESC[g][1]}</div></div>`; }).join('');
+
+  // number systems widget
+  function renderNS(v) {
+    v = SL.clamp(Math.round(v) || 0, 0, 255); $('#nsDec').value = v;
+    $('#nsBits').innerHTML = [7, 6, 5, 4, 3, 2, 1, 0].map(b => `<button class="btn sm ${(v >> b) & 1 ? 'on' : ''}" data-b="${b}" style="min-width:38px;flex-direction:column;gap:0;padding:6px 8px"><span class="mono" style="font-size:1rem">${(v >> b) & 1}</span><span class="small dim">2<sup>${b}</sup></span></button>`).join('');
+    $('#nsOut').innerHTML = `binary ${v.toString(2).padStart(8, '0')} · hex 0x${v.toString(16).toUpperCase().padStart(2, '0')} · octal ${v.toString(8)}`;
+    $('#nsSigned').textContent = (v > 127 ? v - 256 : v) + (v > 127 ? '  (MSB weight −128)' : '');
+  }
+  $('#nsBits').addEventListener('click', e => { const b = e.target.closest('[data-b]'); if (!b) return; renderNS((+$('#nsDec').value) ^ (1 << +b.dataset.b)); });
+  $('#nsDec').addEventListener('input', e => renderNS(+e.target.value));
+  renderNS(173);
+
+  SL.quiz('#quiz', [
+    { q: 'Which single gate type is enough to build any Boolean function?', options: ['XOR', 'NAND', 'AND', 'BUF'], answer: 1, why: 'NAND is functionally complete: NOT A = A NAND A, AND = NOT(NAND), OR follows from De Morgan. NOR is the other universal gate.' },
+    { q: 'By De Morgan’s law, $\\overline{A + B}$ equals…', options: ['$\\overline{A} + \\overline{B}$', '$\\overline{A}\\,\\overline{B}$', '$AB$', '$A \\oplus B$'], answer: 1, why: 'The complement of an OR is the AND of the complements.' },
+    { q: 'A full adder receives A = 1, B = 0, Cin = 1. What are S and Cout?', options: ['S = 0, Cout = 1', 'S = 1, Cout = 0', 'S = 1, Cout = 1', 'S = 0, Cout = 0'], answer: 0, why: '1 + 0 + 1 = 2 = 10₂, so the sum bit is 0 and the carry is 1.' },
+    { q: 'In a K-map, a group of 4 adjacent 1s in a 4-variable map produces a product term with how many literals?', options: ['4', '3', '2', '1'], answer: 2, why: 'A group of 2ᵏ cells eliminates k variables: 4 = 2², so 4 − 2 = 2 literals remain.' },
+    { q: 'Why are K-map rows and columns ordered 00, 01, 11, 10?', options: ['It is the binary counting order', 'Adjacent cells then differ in exactly one variable (Gray code)', 'It makes the map symmetric', 'It is required for don’t-cares'], answer: 1, why: 'Gray code ordering makes logically adjacent minterms physically adjacent, so they can be grouped visually.' },
+    { q: 'An SR latch built from NOR gates has S = 0 and R = 0. What does it do?', options: ['Sets Q = 1', 'Resets Q = 0', 'Holds its previous state', 'Oscillates'], answer: 2, why: 'With both inputs low, each NOR acts as an inverter of the other’s output, so the loop keeps whatever state it was in.' },
+    { q: 'A JK flip-flop with J = K = 1 is clocked by a 4 Hz square wave. What is the frequency of Q?', options: ['8 Hz', '4 Hz', '2 Hz', '1 Hz'], answer: 2, why: 'J = K = 1 toggles Q on every active edge, so Q completes one cycle every two clock cycles: a divide-by-2.' },
+    { q: 'Roughly how does the worst-case delay of an n-bit ripple-carry adder grow?', options: ['Constant', 'O(log n)', 'O(n)', 'O(n²)'], answer: 2, why: 'The carry must pass through each full adder in turn, adding about 2 gate delays per bit.' },
+    { q: 'The 8-bit two’s-complement pattern 11111011 represents…', options: ['251', '−5', '−4', '−123'], answer: 1, why: 'The MSB has weight −128: −128 + 64 + 32 + 16 + 8 + 2 + 1 = −5. Equivalently, invert (00000100) and add 1 → 5.' },
+    { q: 'What is the minimal SOP of $F = \\sum m(1,3,5,7)$ for variables A, B, C?', options: ['$C$', '$A + C$', '$\\overline{A}C$', '$BC$'], answer: 0, why: 'Minterms 1, 3, 5, 7 are exactly the rows where C = 1, so all four cells form one group and F = C.' },
+  ]);
+
+  // first load: show the full adder
+  build(PRESETS.full);
+  setNV(4); $('#kEx').click();
+  window.__logic = { view, geom, pinPos, comps: () => comps, wires: () => wires, PRESETS, build, analyse: () => { analyse(); return TT; }, minimise, primes, stepSim, SIM, startChallenge, CH, byId, addComp, addWire, rebuildIndex, resetSim, changed, KM, solveKM, setSource, serialize, load };
+})();
+</script>
+</body>
+</html>

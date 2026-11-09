@@ -1,0 +1,943 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Networks & Packets · Pentarch SimLab</title>
+<meta name="description" content="Build a network, follow a web request through ARP, DNS, TCP, TLS and HTTP, inspect encapsulated headers, route with Dijkstra, watch TCP retransmissions and subnet IPv4 addresses.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .modes{margin:18px 0 0}
+  .modes>.tablist button{font-size:.95rem;padding:12px 18px}
+  .modes>.tabpanel{padding:0}
+  .lab>aside,.lab>.stage{min-width:0}
+  .stage.s-net{height:560px}
+  .stage.s-rt{height:520px}
+  .stage.s-tcp{height:500px}
+  @media (max-width:600px){.stage.s-net{height:620px}.stage.s-rt{height:560px}.stage.s-tcp{height:440px}}
+  #netCv,#rtCv,#tcpCv{touch-action:none}
+  .field{display:flex;flex-direction:column;gap:5px;margin:6px 0 8px}
+  .field>label,.field>span.lbl{font-size:.86rem;color:var(--muted)}
+  .row{display:flex;gap:8px;align-items:center}.row>*{flex:1}
+  .steplog{list-style:none;margin:0;padding:0;max-height:300px;overflow:auto;font-size:.82rem}
+  .steplog li{display:flex;gap:8px;align-items:flex-start;padding:6px 8px;border-radius:8px;cursor:pointer;color:var(--muted);border:1px solid transparent}
+  .steplog li:hover{border-color:var(--line2)}
+  .steplog li.cur{background:color-mix(in srgb,var(--accent) 14%,transparent);color:#fff;border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
+  .steplog li.done{color:var(--text)}
+  .proto{flex:none;font:700 .64rem var(--mono);letter-spacing:.06em;padding:2px 6px;border-radius:5px;color:#06101f;min-width:44px;text-align:center}
+  .addbar{display:flex;flex-wrap:wrap;gap:6px}
+  /* encapsulation inspector */
+  .encap{font:500 .78rem var(--mono)}
+  .layer{border:1.5px solid var(--lc);border-radius:12px;padding:8px 10px 10px;background:color-mix(in srgb,var(--lc) 7%,transparent);margin-top:8px}
+  .layer>.lh{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;color:var(--lc);font-weight:700;font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
+  .layer>.lh span:last-child{color:var(--dim);font-weight:500}
+  .fields{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}
+  .fields div{background:rgba(5,9,19,.7);border:1px solid var(--line2);border-radius:7px;padding:3px 7px;line-height:1.3}
+  .fields div small{display:block;color:var(--dim);font-size:.62rem;text-transform:uppercase;letter-spacing:.06em}
+  .fields div.chg{border-color:#f59e0b;box-shadow:0 0 0 1px rgba(245,158,11,.35)}
+  .payload{background:rgba(5,9,19,.75);border:1px dashed var(--line2);border-radius:8px;padding:8px 10px;white-space:pre-wrap;color:#cbd5e1;word-break:break-word}
+  .hopbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0}
+  .bits{display:flex;flex-wrap:wrap;gap:10px;font:600 1rem var(--mono)}
+  .bits .oct{display:flex;gap:2px}
+  .bits .b{width:22px;height:30px;display:grid;place-items:center;border-radius:5px;background:var(--bg2);border:1px solid var(--line)}
+  .bits .b.n{background:color-mix(in srgb,var(--accent) 22%,var(--bg2));border-color:color-mix(in srgb,var(--accent) 60%,transparent);color:#fff}
+  .bits .b.h{color:#f59e0b}
+  @media (max-width:600px){.bits .b{width:17px;height:26px;font-size:.82rem}.bits{gap:6px}}
+  .bitrow{margin:10px 0 16px}
+  .bitrow .t{font:600 .7rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:4px}
+  .subgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+  .chal{list-style:none;padding:0;margin:0}
+  .chal li{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
+  .chal li .led{margin-top:6px;flex:none}
+  .chal li>div>b:first-child{display:block}
+  .chal li span.small{color:var(--muted)}
+  .tblwrap{overflow-x:auto}
+  .stage.html{padding:18px;overflow:auto;height:auto;min-height:0}
+  table.data.sm td,table.data.sm th{padding:5px 7px;font-size:.8rem}
+  .osi td:first-child{font-family:var(--mono);font-weight:700}
+</style>
+</head>
+<body data-page="networking">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="tabs modes" data-tabs id="modes">
+    <div class="tablist">
+      <button><i data-lucide="send"></i> Packet journey</button>
+      <button><i data-lucide="waypoints"></i> Routing</button>
+      <button><i data-lucide="repeat"></i> Reliability (TCP)</button>
+      <button><i data-lucide="binary"></i> Subnetting</button>
+    </div>
+
+    <!-- ===== JOURNEY ===== -->
+    <div class="tabpanel">
+      <div class="lab">
+        <div class="stage s-net">
+          <canvas id="netCv"></canvas>
+          <div class="hud"><span class="readout" id="netHud">Press <b>Open website</b> to send a request</span></div>
+          <div class="stage-toolbar"><button class="btn sm" id="nLink" title="Link tool: drag from one device to another"><i data-lucide="cable"></i> Link tool</button><button class="btn sm" id="nDel" title="Delete selected"><i data-lucide="trash-2"></i></button></div>
+        </div>
+        <aside>
+          <div class="panel">
+            <h3><i data-lucide="globe"></i> Send a request</h3>
+            <div class="field"><label for="client">From</label><select id="client"></select></div>
+            <div class="field"><label for="server">Open website</label><select id="server"></select></div>
+            <label class="toggle">Use HTTPS (TLS 1.3) <input type="checkbox" id="tls" checked></label>
+            <label class="toggle">ARP cache already has the gateway <input type="checkbox" id="arpC"></label>
+            <label class="toggle">DNS answer already cached <input type="checkbox" id="dnsC"></label>
+            <div class="ctl"><label for="pspd">Packet speed</label><output>1×</output><input type="range" id="pspd" min="0.25" max="4" step="0.25" value="1"></div>
+            <div class="btn-row" style="margin-top:6px">
+              <button class="btn primary" id="go"><i data-lucide="play"></i> Open website</button>
+              <button class="btn" id="stepB" title="Next packet"><i data-lucide="step-forward"></i> Step</button>
+            </div>
+          </div>
+          <div class="panel">
+            <h3><i data-lucide="list-ordered"></i> Packet sequence</h3>
+            <ul class="steplog" id="log"><li class="muted">No packets yet.</li></ul>
+          </div>
+          <div class="panel">
+            <h3><i data-lucide="plus"></i> Add devices</h3>
+            <div class="addbar" id="addbar"></div>
+            <p class="small muted" style="margin:8px 0 0">Drag devices to move them. With the link tool on, drag from one device to another to cable them. Tap a device or link, then the bin, to delete it.</p>
+          </div>
+        </aside>
+      </div>
+      <div class="panel" id="inspector" style="margin-bottom:6px">
+        <h3><i data-lucide="scan-search"></i> Packet inspector <span class="small muted" style="margin-left:auto;font-weight:500">tap a moving packet or a step in the sequence</span></h3>
+        <div id="insp" class="muted small">No packet selected.</div>
+      </div>
+    </div>
+
+    <!-- ===== ROUTING ===== -->
+    <div class="tabpanel">
+      <div class="lab">
+        <div class="stage s-rt"><canvas id="rtCv"></canvas>
+          <div class="hud"><span class="readout" id="rtHud">Tap a router to make it the source; tap a link to edit it</span></div></div>
+        <aside>
+          <div class="panel">
+            <h3><i data-lucide="waypoints"></i> Link-state routing</h3>
+            <div class="row"><div class="field"><label for="rSrc">Source</label><select id="rSrc"></select></div><div class="field"><label for="rDst">Destination</label><select id="rDst"></select></div></div>
+            <div class="btn-row"><button class="btn primary" id="rSend"><i data-lucide="send"></i> Send packet</button><button class="btn" id="rStep"><i data-lucide="step-forward"></i> Dijkstra step</button><button class="btn" id="rReset"><i data-lucide="rotate-ccw"></i> Reset network</button></div>
+            <div id="linkPanel" style="margin-top:12px"></div>
+          </div>
+          <div class="panel">
+            <h3><i data-lucide="table-2"></i> Routing table of <span id="rtName" class="mono">R1</span></h3>
+            <div class="tblwrap"><table class="data sm" id="rtTable"></table></div>
+          </div>
+        </aside>
+      </div>
+      <div class="panel" style="margin-bottom:6px">
+        <h3><i data-lucide="list-ordered"></i> Dijkstra iterations from <span id="djName" class="mono">R1</span></h3>
+        <div style="overflow-x:auto"><table class="data sm" id="djTable"></table></div>
+        <p class="small muted" style="margin:8px 0 0">Each row adds the closest unvisited router to the set N′ and relaxes its links. Entries are “cost, previous hop”; ∞ means not yet reachable. Bold marks the router chosen in that step.</p>
+      </div>
+    </div>
+
+    <!-- ===== RELIABILITY ===== -->
+    <div class="tabpanel">
+      <div class="lab">
+        <div class="stage s-tcp"><canvas id="tcpCv"></canvas>
+          <div class="hud hud-r"><span class="readout">tap a flying packet to drop it</span></div></div>
+        <aside>
+          <div class="panel">
+            <h3><i data-lucide="repeat"></i> Sliding window</h3>
+            <div class="field"><span class="lbl">Protocol</span>
+              <div class="seg" id="proto"><button data-v="gbn">Go-Back-N</button><button data-v="sr">Selective Repeat</button><button data-v="tcp" class="on">TCP-style</button></div></div>
+            <div class="ctl"><label for="win">Window size W (segments)</label><output>6</output><input type="range" id="win" min="1" max="16" step="1" value="6"></div>
+            <div class="ctl"><label for="loss">Packet loss probability</label><output>10%</output><input type="range" id="loss" min="0" max="50" step="1" value="10"></div>
+            <div class="ctl"><label for="rto">Retransmission timeout</label><output>1.5 × RTT</output><input type="range" id="rto" min="1.1" max="4" step="0.1" value="1.5"></div>
+            <div class="ctl"><label for="tspd">Animation speed</label><output>1×</output><input type="range" id="tspd" min="0.25" max="4" step="0.25" value="1"></div>
+            <div class="btn-row" style="margin-top:6px"><button class="btn primary" id="tPlay"><i data-lucide="pause"></i> Pause</button><button class="btn" id="tReset"><i data-lucide="rotate-ccw"></i> Restart</button></div>
+          </div>
+          <div class="panel">
+            <h3><i data-lucide="gauge"></i> Transfer statistics</h3>
+            <div class="stats">
+              <div class="stat"><div class="k">Delivered</div><div class="v" id="tsD">0<small>/ 60</small></div></div>
+              <div class="stat"><div class="k">Segments sent</div><div class="v" id="tsS">0</div></div>
+              <div class="stat"><div class="k">Retransmits</div><div class="v" id="tsR">0</div></div>
+              <div class="stat"><div class="k">Lost</div><div class="v" id="tsL">0</div></div>
+              <div class="stat"><div class="k">Goodput (2·RTT avg)</div><div class="v" id="tsG">0<small>seg/s</small></div></div>
+              <div class="stat"><div class="k">Ideal (no loss)</div><div class="v" id="tsI">0<small>seg/s</small></div></div>
+            </div>
+            <canvas id="thrCv" style="width:100%;height:150px;display:block;margin-top:10px"></canvas>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- ===== SUBNETTING ===== -->
+    <div class="tabpanel">
+      <div class="lab">
+        <div class="stage html" id="subStage">
+          <div class="bitrow"><div class="t">IP address</div><div class="bits" id="bIp"></div></div>
+          <div class="bitrow"><div class="t">Subnet mask</div><div class="bits" id="bMask"></div></div>
+          <div class="bitrow"><div class="t">Network address (IP AND mask)</div><div class="bits" id="bNet"></div></div>
+          <div class="bitrow"><div class="t">Broadcast address (network OR NOT mask)</div><div class="bits" id="bBc"></div></div>
+          <p class="small muted" style="margin:0"><span class="chip" style="color:#fff;background:color-mix(in srgb,var(--accent) 22%,var(--bg2))">network bits</span> <span class="chip" style="color:#f59e0b">host bits</span> Drag the prefix slider and watch the boundary move.</p>
+          <h4 style="margin-top:18px">Split into subnets</h4>
+          <div class="ctl" style="max-width:420px"><label for="split">Borrow host bits</label><output>2 → 4 subnets</output><input type="range" id="split" min="0" max="6" step="1" value="2"></div>
+          <div class="tblwrap"><table class="data sm" id="subTable"></table></div>
+        </div>
+        <aside>
+          <div class="panel">
+            <h3><i data-lucide="binary"></i> IPv4 subnet calculator</h3>
+            <div class="field"><label for="ipIn">Address / prefix (CIDR)</label><input type="text" id="ipIn" value="192.168.10.77/26" spellcheck="false" autocomplete="off"></div>
+            <div class="ctl"><label for="pfx">Prefix length</label><output>/26</output><input type="range" id="pfx" min="0" max="32" step="1" value="26"></div>
+            <div id="ipErr" class="small" style="color:var(--bad)"></div>
+            <table class="data sm" id="subRes"></table>
+          </div>
+          <div class="panel">
+            <h3><i data-lucide="network"></i> Same subnet?</h3>
+            <div class="field"><label for="ip2">Second address</label><input type="text" id="ip2" value="192.168.10.130" spellcheck="false"></div>
+            <p class="small" id="sameRes" style="margin:0"></p>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <section class="tabs" data-tabs style="margin-top:28px" id="learn">
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+      <button><i data-lucide="book-a"></i> Glossary</button>
+    </div>
+    <div class="tabpanel prose">
+      <h3>Layers and encapsulation</h3>
+      <p>Networking is organised in layers. Each layer adds its own header around the data from the layer above (<b>encapsulation</b>) and the receiver strips them off in reverse. The packet inspector draws exactly this nesting.</p>
+      <div style="overflow-x:auto"><table class="data osi">
+        <tr><th>OSI layer</th><th>Name</th><th>TCP/IP model</th><th>Unit (PDU)</th><th>Examples</th><th>Device</th></tr>
+        <tr><td>7</td><td>Application</td><td rowspan="3">Application</td><td rowspan="3">Message</td><td>HTTP, DNS, SMTP</td><td rowspan="3">Hosts</td></tr>
+        <tr><td>6</td><td>Presentation</td><td>TLS encryption, character encoding</td></tr>
+        <tr><td>5</td><td>Session</td><td>Session set-up and resumption</td></tr>
+        <tr><td>4</td><td>Transport</td><td>Transport</td><td>Segment / datagram</td><td>TCP, UDP (ports)</td><td>Hosts, firewalls</td></tr>
+        <tr><td>3</td><td>Network</td><td>Internet</td><td>Packet</td><td>IPv4, IPv6, ICMP</td><td>Router</td></tr>
+        <tr><td>2</td><td>Data link</td><td rowspan="2">Link</td><td>Frame</td><td>Ethernet, Wi-Fi (802.11), ARP</td><td>Switch, access point</td></tr>
+        <tr><td>1</td><td>Physical</td><td>Bits / symbols</td><td>Copper, fibre, radio</td><td>Cable, hub, radio</td></tr>
+      </table></div>
+      <p>A switch reads only the Ethernet header (MAC addresses) and forwards the frame unchanged. A router removes the frame, decrements the IP <b>TTL</b>, chooses the next hop from its routing table and builds a <i>new</i> frame for the next link. That is why the MAC addresses change hop by hop while the IP addresses stay end to end (except where NAT rewrites them).</p>
+
+      <h3>Opening a website, step by step</h3>
+      <ol>
+        <li><b>ARP</b>: the laptop knows the gateway's IP (192.168.1.1) but needs its MAC address to build a frame. It broadcasts “Who has 192.168.1.1?” to ff:ff:ff:ff:ff:ff; the router replies with its MAC.</li>
+        <li><b>DNS</b>: a UDP query to port 53 turns the name into an IP address (an A record).</li>
+        <li><b>TCP three-way handshake</b>: SYN (seq = $x$), SYN-ACK (seq = $y$, ack = $x+1$), ACK (ack = $y+1$). Both sides now know each other's starting sequence numbers.</li>
+        <li><b>TLS 1.3</b> (HTTPS): ClientHello and ServerHello agree keys in one round trip; the server proves its identity with a certificate. Everything after is encrypted.</li>
+        <li><b>HTTP</b>: GET request, 200 OK response with the page, and an ACK.</li>
+      </ol>
+      <p>Each TCP byte has a sequence number; the acknowledgement number is the <i>next byte expected</i>, so after receiving bytes $x+1 \dots x+n$ the receiver sends ack $= x+n+1$. SYN and FIN each consume one sequence number.</p>
+
+      <h3>TCP versus UDP</h3>
+      <table class="data">
+        <tr><th></th><th>TCP</th><th>UDP</th></tr>
+        <tr><td>Connection</td><td>Handshake before data</td><td>None (connectionless)</td></tr>
+        <tr><td>Reliability</td><td>ACKs, retransmission, in-order delivery</td><td>Best effort; may lose or reorder</td></tr>
+        <tr><td>Flow / congestion control</td><td>Sliding window, congestion window</td><td>None</td></tr>
+        <tr><td>Header</td><td>20–60 bytes</td><td>8 bytes</td></tr>
+        <tr><td>Used by</td><td>Web, email, file transfer</td><td>DNS, voice/video calls, games, QUIC (HTTP/3)</td></tr>
+      </table>
+
+      <h3>Reliability and throughput</h3>
+      <p>With window $W$ segments of size MSS and round-trip time RTT, at most $W$ segments can be unacknowledged, so</p>
+      <div class="eq">$$\text{throughput} \le \frac{W \cdot \text{MSS}}{\text{RTT}}$$</div>
+      <p>The window must cover the <b>bandwidth–delay product</b> to keep the link busy. When a segment is lost, the sender notices either by a <b>timeout</b> (no ACK within the retransmission timeout, RTO) or by <b>three duplicate ACKs</b> (fast retransmit). <b>Go-Back-N</b> resends everything after the loss; <b>Selective Repeat</b> resends only the missing segment but needs per-segment ACKs and receiver buffering. Real TCP uses cumulative ACKs, buffers out-of-order data, fast retransmit and (with SACK) selective acknowledgement. Under random loss $p$, standard TCP's throughput falls roughly as $\text{MSS}/(\text{RTT}\sqrt{p})$ (the Mathis formula), because the congestion window halves on every loss; the lab keeps the window fixed to isolate retransmission behaviour.</p>
+
+      <h3>IPv4 addressing and subnets</h3>
+      <p>An IPv4 address is 32 bits, written as four decimal octets. A prefix length $/p$ says the first $p$ bits identify the network and the remaining $32-p$ bits identify the host:</p>
+      <div class="eq">$$\text{network} = \text{IP} \wedge \text{mask}, \qquad \text{broadcast} = \text{network} \vee \overline{\text{mask}}, \qquad \text{usable hosts} = 2^{32-p} - 2$$</div>
+      <p>The two subtracted addresses are the network and broadcast addresses (a /31 point-to-point link uses both, RFC 3021; a /32 is a single host). Private ranges (RFC 1918) are 10.0.0.0/8, 172.16.0.0/12 and 192.168.0.0/16; they are not routed on the public Internet.</p>
+
+      <h3>NAT and DNS</h3>
+      <p><b>Network address translation</b> lets a whole campus share one public address. The router rewrites the private source address and port (192.168.1.23:52814) to its public address and a unique port (198.51.100.7:40123), remembers the mapping, and reverses it for replies. <b>DNS</b> is a distributed, cached database: a stub resolver asks a recursive resolver, which asks root, top-level-domain (.ke) and authoritative servers, then caches the answer for its TTL.</p>
+
+      <h3>Routing</h3>
+      <p>In <b>link-state</b> routing (OSPF, IS-IS) every router floods link-state advertisements (LSAs) so all routers share the same map, then each runs Dijkstra's algorithm to build a shortest-path tree and a forwarding table of <i>next hops</i>. When a link fails, the adjacent routers flood new LSAs and everyone recomputes: the network <b>converges</b> on new routes. Distance-vector protocols (RIP) instead exchange distance tables with neighbours using the Bellman–Ford equation $D_x(y) = \min_v \{c(x,v) + D_v(y)\}$.</p>
+      <div class="callout"><i data-lucide="info"></i><div>Simplifications: the Internet cloud stands for several routers (it lowers the TTL by 6), sequence numbers start from small round values instead of random 32-bit ones, the TLS handshake is shown as three flights, and addresses come from the documentation ranges 192.0.2.0/24, 198.51.100.0/24 and 203.0.113.0/24.</div></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. Subnetting 192.168.10.77/26</h3>
+      <div class="worked">
+        <ol>
+          <li>Mask: 26 ones then 6 zeros = 11111111.11111111.11111111.11000000 = <b>255.255.255.192</b>.</li>
+          <li>The last octet 77 = 01001101. AND with 11000000 gives 01000000 = 64, so the network is <b>192.168.10.64</b>.</li>
+          <li>Set the 6 host bits to 1: 01111111 = 127, so the broadcast address is <b>192.168.10.127</b>.</li>
+          <li>Usable hosts: $2^{6} - 2 = 62$, from 192.168.10.65 to 192.168.10.126.</li>
+          <li>192.168.10.130 lies in a different /26 (128–191), so the two hosts need a router to talk.</li>
+        </ol>
+        <p>These are the defaults in the Subnetting tab.</p>
+      </div>
+      <h3>2. Sequence and acknowledgement numbers</h3>
+      <div class="worked">
+        <p>The client picks ISN 1000 and the server 5000 (as in the lab).</p>
+        <ul>
+          <li>SYN: seq 1000. SYN-ACK: seq 5000, ack 1001 (the SYN used one number). ACK: seq 1001, ack 5001.</li>
+          <li>Without TLS, the GET carries 96 bytes at seq 1001, so the server's ACK is 1097. The 200 OK carries 1200 bytes at seq 5001; the client acknowledges 6201.</li>
+        </ul>
+      </div>
+      <h3>3. TTL along the path</h3>
+      <div class="worked">
+        <p>The laptop sends with TTL 64. The campus router decrements it to 63; the Internet cloud (about 6 routers) brings it to 57 at the web server. Open the inspector on the GET request and step through its hops to watch the TTL field change while the IP addresses stay put, except at NAT.</p>
+      </div>
+      <h3>4. Dijkstra on the default routing network</h3>
+      <div class="worked">
+        <p>From R1 the iterations table shows R2 (cost 2) and R4 (cost 1) as immediate neighbours. R4 is closest, so it joins first and its links lower R5 to $1+1 = 2$ and R3 to $1+3=4$. Continuing, the shortest route R1 → R6 is R1 → R4 → R5 → R6 with cost $1 + 1 + 2 = 4$. Take the R4–R5 link down and the route becomes R1 → R2 → R3 → R6 at cost $2+3+5 = 10$, or via R4–R3 at $1+3+5=9$: the table chooses 9.</p>
+      </div>
+      <h3>5. Window and throughput</h3>
+      <div class="worked">
+        <p>In the reliability lab the one-way delay is 1 s and the sender emits one segment every 0.25 s, so a segment's ACK returns after RTT = 2 s plus 0.25 s of transmission. With $W = 6$ the ideal rate is $W / (\text{RTT} + t_{tx}) = 6 / 2.25 \approx 2.67$ segments per second; at $W \ge 9$ the window covers the round trip and the sender is limited to $1/t_{tx} = 4$ segments per second. The “Ideal” statistic shows this bound for the current window.</p>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <p>Challenges complete automatically when you achieve them in the labs above.</p>
+      <ul class="chal" id="chal"></ul>
+      <h3>Guided experiments</h3>
+      <ol class="steps">
+        <li>Run the request twice. The second time ARP and DNS are cached: how many fewer packets are sent, and how much sooner does the page arrive?</li>
+        <li>Inspect the same packet on the LAN and on the Internet side of the router. Which fields change (highlighted in amber) and why?</li>
+        <li>Add a second switch between the laptop and the router. Does the ARP request still reach the router? Does the TTL change?</li>
+        <li>In the reliability lab set loss to 25 % and compare Go-Back-N with Selective Repeat at W = 8. Count retransmissions.</li>
+        <li>Set loss to 0 % and increase W from 1 to 16. Where does goodput stop increasing, and why?</li>
+      </ol>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+
+    <div class="tabpanel prose">
+      <dl>
+        <dt><b>MAC address</b></dt><dd>48-bit link-layer address of a network interface, e.g. 3c:22:fb:91:0a:17. Only meaningful on the local link.</dd>
+        <dt><b>IP address</b></dt><dd>Logical, routable address of a host interface (32 bits in IPv4, 128 in IPv6).</dd>
+        <dt><b>Port</b></dt><dd>16-bit number identifying an application endpoint on a host (443 = HTTPS, 53 = DNS).</dd>
+        <dt><b>TTL</b></dt><dd>Time to live: decremented by each router; a packet reaching 0 is discarded, preventing endless loops.</dd>
+        <dt><b>MSS</b></dt><dd>Maximum segment size: largest TCP payload, typically 1460 bytes on Ethernet (1500-byte MTU minus 40 bytes of headers).</dd>
+        <dt><b>RTT</b></dt><dd>Round-trip time: delay for a segment to reach the receiver and its ACK to return.</dd>
+        <dt><b>RTO</b></dt><dd>Retransmission timeout, set from a smoothed RTT estimate plus a margin for its variation.</dd>
+        <dt><b>Default gateway</b></dt><dd>The router a host sends packets to when the destination is outside its own subnet.</dd>
+        <dt><b>CIDR</b></dt><dd>Classless inter-domain routing: addresses written with a prefix length, e.g. 10.0.0.0/8.</dd>
+      </dl>
+    </div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = s => document.querySelector(s);
+  const MONO = '"JetBrains Mono", ui-monospace, monospace';
+  const rnd = n => Math.floor(Math.random() * n);
+  const seg = (sel, cb) => { const el = $(sel); el.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; el.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); cb(b.dataset.v); }); };
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const PC = { ARP: '#a3e635', DNS: '#f472b6', TCP: '#60a5fa', TLS: '#a78bfa', HTTP: '#22d3ee' };
+
+  /* =====================================================================
+     CHALLENGES (shared)
+     ===================================================================== */
+  const CH = [
+    ['journey', 'Load a web page', 'Complete a full request from a client to the web server.'],
+    ['cached', 'Warm caches', 'Load the page with both ARP and DNS answered from cache (fewer packets).'],
+    ['inspect', 'Look inside', 'Inspect a packet on a hop beyond the router and see the NAT-rewritten source address.'],
+    ['newhost', 'Grow the LAN', 'Add a new device, cable it in, and load the page from it.'],
+    ['reroute', 'Self-healing network', 'Take a link on the current shortest path down and watch the network re-route around it.'],
+    ['norout', 'Partition', 'Break links until the destination is unreachable from the source.'],
+    ['tcpdone', 'Reliable over lossy', 'Deliver all 60 segments with loss of at least 20 %.'],
+    ['srwin', 'Fill the pipe', 'With 0 % loss, reach the maximum 4 segments/s goodput.'],
+    ['sub62', 'Right-size a subnet', 'A computer lab needs 100 addresses. Set the smallest subnet (longest prefix) that still fits them.'],
+    ['sub2', 'Point-to-point', 'Show a /31 or /30 network (2 usable addresses).'],
+  ];
+  const solved = new Set();
+  $('#chal').innerHTML = CH.map(([k, t, d]) => `<li data-k="${k}"><span class="led"></span><div><b>${t}</b><span class="small">${d}</span></div></li>`).join('');
+  function check(k, ok) { if (!ok || solved.has(k)) return; solved.add(k); const li = document.querySelector(`#chal li[data-k="${k}"] .led`); if (li) li.classList.add('on'); SL.toast(`<b>Challenge complete:</b> ${CH.find(c => c[0] === k)[1]} (${solved.size}/${CH.length})`, 'ok'); }
+
+  /* =====================================================================
+     1. PACKET JOURNEY
+     ===================================================================== */
+  const VW = 1000, VH = 560;
+  const DEVNAME = { laptop: 'Laptop', phone: 'Phone', switch: 'Switch', ap: 'Wi-Fi AP', router: 'Router', cloud: 'Internet', dns: 'DNS server', web: 'Web server' };
+  let nodes = [], links = [], nid = 1;
+  const macOf = i => ['3c:22:fb', '00:1a:2b', 'a4:83:e7', 'f0:9f:c2', '58:6d:8f'][i % 5] + ':' + [(i * 37) % 256, (i * 91 + 17) % 256, (i * 53 + 101) % 256].map(x => x.toString(16).padStart(2, '0')).join(':');
+  function addNode(type, x, y, extra) { const n = Object.assign({ id: nid++, type, x, y, name: DEVNAME[type], ip: '', ip2: '', mac: '' }, extra || {}); n.mac = macOf(n.id + 3); nodes.push(n); return n; }
+  function link(a, b, wl) { if (a === b || links.some(l => (l.a === a && l.b === b) || (l.a === b && l.b === a))) return; links.push({ a, b, wl: !!wl, load: 0 }); }
+  function defaultTopo() {
+    nodes = []; links = []; nid = 1;
+    const lap = addNode('laptop', 90, 100, { name: 'Student laptop', ip: '192.168.1.23' });
+    const pc = addNode('laptop', 90, 290, { name: 'Lab PC', ip: '192.168.1.41' });
+    const ph = addNode('phone', 90, 470, { name: 'Phone', ip: '192.168.1.57' });
+    const ap = addNode('ap', 250, 470, { name: 'Wi-Fi AP' });
+    const sw = addNode('switch', 290, 250, { name: 'Switch' });
+    const r = addNode('router', 480, 280, { name: 'Campus router', ip: '192.168.1.1', ip2: '198.51.100.7' });
+    const cl = addNode('cloud', 680, 280, { name: 'Internet' });
+    const dns = addNode('dns', 880, 120, { name: 'DNS resolver', ip: '192.0.2.53' });
+    const web = addNode('web', 880, 440, { name: 'portal.example.ac.ke', ip: '203.0.113.10' });
+    link(lap.id, sw.id); link(pc.id, sw.id); link(ph.id, ap.id, true); link(ap.id, sw.id); link(sw.id, r.id); link(r.id, cl.id); link(cl.id, dns.id); link(cl.id, web.id);
+  }
+  defaultTopo();
+  const N = id => nodes.find(n => n.id === id);
+  const isHost = n => ['laptop', 'phone', 'web', 'dns'].includes(n.type);
+  const isL3 = n => isHost(n) || n.type === 'router' || n.type === 'cloud';
+  const nbr = id => links.filter(l => l.a === id || l.b === id).map(l => l.a === id ? l.b : l.a);
+  function bfsPath(a, b, avoidL3) { const prev = new Map([[a, null]]), q = [a]; while (q.length) { const u = q.shift(); if (u === b) break; for (const v of nbr(u)) if (!prev.has(v)) { if (avoidL3 && v !== b && isL3(N(v))) continue; prev.set(v, u); q.push(v); } } if (!prev.has(b)) return null; const p = []; for (let u = b; u !== null; u = prev.get(u)) p.push(u); return p.reverse(); }
+  function nextIp(prefix, start) { const used = new Set(nodes.map(n => n.ip)); for (let k = start; k < 255; k++) if (!used.has(prefix + k)) return prefix + k; return prefix + '254'; }
+
+  // ---------- view ----------
+  const netCv = SL.canvas($('#netCv'));
+  let NV = { s: 1, ox: 0, oy: 0, rot: false };
+  function netFit() { const { w, h } = netCv; NV.rot = w / h < 0.85; const W = NV.rot ? VH : VW, H = NV.rot ? VW : VH; const top = NV.rot ? 64 : 36, bot = NV.rot ? 58 : 30; NV.s = Math.min(w / W, (h - top - bot) / H) * 0.96; NV.ox = (w - W * NV.s) / 2; NV.oy = top + (h - top - bot - H * NV.s) / 2; }
+  const P = n => NV.rot ? { x: NV.ox + n.y * NV.s, y: NV.oy + n.x * NV.s } : { x: NV.ox + n.x * NV.s, y: NV.oy + n.y * NV.s };
+  const unP = (x, y) => NV.rot ? { x: (y - NV.oy) / NV.s, y: (x - NV.ox) / NV.s } : { x: (x - NV.ox) / NV.s, y: (y - NV.oy) / NV.s };
+  const icoS = () => SL.clamp(NV.s * 1.25, 0.72, 1.15);
+
+  function drawDevice(ctx, n, sel, t) {
+    const { x, y } = P(n), s = icoS();
+    ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+    const st = sel ? '#60a5fa' : '#8ea2c8', fill = '#111b31';
+    ctx.lineWidth = sel ? 2.4 : 1.6; ctx.strokeStyle = st; ctx.fillStyle = fill;
+    if (sel) { ctx.shadowColor = '#60a5fa'; ctx.shadowBlur = 18; }
+    const rr = (x0, y0, w, h, r) => { ctx.beginPath(); ctx.roundRect(x0, y0, w, h, r); ctx.fill(); ctx.stroke(); };
+    switch (n.type) {
+      case 'laptop': rr(-20, -18, 40, 26, 3); ctx.shadowBlur = 0; ctx.fillStyle = '#0e3a5c'; ctx.fillRect(-16, -14, 32, 18); ctx.fillStyle = fill; ctx.beginPath(); ctx.moveTo(-26, 10); ctx.lineTo(26, 10); ctx.lineTo(22, 15); ctx.lineTo(-22, 15); ctx.closePath(); ctx.fill(); ctx.stroke(); break;
+      case 'phone': rr(-11, -20, 22, 38, 5); ctx.shadowBlur = 0; ctx.fillStyle = '#0e3a5c'; ctx.fillRect(-8, -15, 16, 26); break;
+      case 'switch': rr(-30, -12, 60, 24, 5); ctx.shadowBlur = 0; for (let i = 0; i < 6; i++) { ctx.fillStyle = (Math.floor(t * 6 + i * 1.7) % 3) ? '#22c55e' : '#14532d'; ctx.fillRect(-24 + i * 9, -3, 6, 6); } break;
+      case 'ap': rr(-18, 2, 36, 14, 4); ctx.shadowBlur = 0; ctx.strokeStyle = '#22d3ee'; for (let k = 1; k <= 3; k++) { ctx.globalAlpha = 0.35 + 0.65 * ((Math.sin(t * 3 - k) + 1) / 2); ctx.beginPath(); ctx.arc(0, 2, 6 + k * 6, -Math.PI * 0.8, -Math.PI * 0.2); ctx.stroke(); } ctx.globalAlpha = 1; break;
+      case 'router': { ctx.beginPath(); ctx.ellipse(0, -8, 26, 8, 0, 0, 7); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-26, -8); ctx.lineTo(-26, 10); ctx.ellipse(0, 10, 26, 8, 0, Math.PI, 0, true); ctx.lineTo(26, -8); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.ellipse(0, -8, 26, 8, 0, 0, 7); ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0; ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 1.6; [[-12, -8, -4, -8], [12, -8, 4, -8]].forEach(([a, b, c, d]) => SL.arrow(ctx, a, b, c, d, '#60a5fa', 1.4, 4)); SL.arrow(ctx, -4, -8, -12, -8, '#60a5fa', 1.4, 4); break; }
+      case 'cloud': ctx.beginPath(); ctx.arc(-22, 6, 16, Math.PI * 0.5, Math.PI * 1.5); ctx.arc(-6, -12, 18, Math.PI, Math.PI * 1.9); ctx.arc(18, -4, 18, Math.PI * 1.4, Math.PI * 0.4); ctx.lineTo(-22, 22); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0; ctx.fillStyle = '#93c5fd'; ctx.font = `600 9px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText('ISP', 0, 8); break;
+      case 'dns': case 'web': rr(-16, -24, 32, 46, 4); ctx.shadowBlur = 0; for (let i = 0; i < 3; i++) { ctx.strokeStyle = '#2a3a5c'; ctx.strokeRect(-12, -19 + i * 13, 24, 10); ctx.fillStyle = (Math.floor(t * 4 + i) % 2) ? '#22c55e' : '#f59e0b'; ctx.fillRect(6, -16 + i * 13, 3, 3); } ctx.fillStyle = n.type === 'dns' ? '#f472b6' : '#22d3ee'; ctx.font = `700 8px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText(n.type === 'dns' ? 'DNS' : 'WEB', 0, 30); break;
+    }
+    ctx.restore();
+    ctx.fillStyle = '#e6ecf7'; ctx.font = `600 ${NV.s < .7 ? 9.5 : 11}px ${MONO}`; ctx.textAlign = 'center';
+    const ly = y + 34 * s + (n.type === 'dns' || n.type === 'web' ? 10 : 0);
+    ctx.fillText(n.name, x, ly);
+    if (n.ip) { ctx.fillStyle = '#93a1bd'; ctx.font = `500 ${NV.s < .7 ? 8.5 : 10}px ${MONO}`; ctx.fillText(n.ip + (n.ip2 ? ' | ' + n.ip2 : ''), x, ly + 12); }
+  }
+
+  // ---------- request script ----------
+  const J = { steps: [], cur: -1, anim: null, auto: false, sel: null, selNode: null, selLink: null, linkMode: false, arp: false, dns: false, inspect: null, speed: 1 };
+  const ISN_C = 1000, ISN_S = 5000;
+  function buildScript() {
+    const cl = N(+$('#client').value), web = N(+$('#server').value), dns = nodes.find(n => n.type === 'dns');
+    if (!cl || !web) return { err: 'Choose a client and a website.' };
+    if (!dns) return { err: 'Add a DNS server to the network first.' };
+    const pW = bfsPath(cl.id, web.id), pD = bfsPath(cl.id, dns.id);
+    if (!pW) return { err: `No route from ${cl.name} to ${web.name}: check the cabling.` };
+    if (!pD) return { err: `No route from ${cl.name} to the DNS server.` };
+    // gateway = first L3 node after the client on the path to the web server
+    const gwId = pW.slice(1).find(id => isL3(N(id))), gw = N(gwId);
+    const lanSeg = pW.slice(0, pW.indexOf(gwId) + 1);
+    const tls = $('#tls').checked, port = tls ? 443 : 80, eph = 52814, nat = 40123;
+    const S = [];
+    const tcp = (from, to, info, fl, seq, ack, len, payload, proto) => S.push({ proto: proto || 'TCP', from, to, path: from === cl ? pW : pW.slice().reverse(), info, l4: { kind: 'TCP', sport: from === cl ? eph : port, dport: from === cl ? port : eph, seq, ack, flags: fl, win: 64240, len }, payload });
+    if (!J.arp) {
+      S.push({ proto: 'ARP', from: cl, to: gw, path: lanSeg, flood: true, info: `Who has ${gw.ip || '?'}? Tell ${cl.ip}`, arp: { op: 'request (1)', sha: cl.mac, spa: cl.ip, tha: '00:00:00:00:00:00', tpa: gw.ip }, payload: '' });
+      S.push({ proto: 'ARP', from: gw, to: cl, path: lanSeg.slice().reverse(), info: `${gw.ip} is at ${gw.mac}`, arp: { op: 'reply (2)', sha: gw.mac, spa: gw.ip, tha: cl.mac, tpa: cl.ip }, payload: '' });
+    }
+    if (!J.dns) {
+      S.push({ proto: 'DNS', from: cl, to: dns, path: pD, info: `Query A ${web.name}`, l4: { kind: 'UDP', sport: 53001, dport: 53, len: 8 + 30 + web.name.length }, payload: `DNS standard query 0x2f1c\n  Question: ${web.name}  type A, class IN` });
+      S.push({ proto: 'DNS', from: dns, to: cl, path: pD.slice().reverse(), info: `Answer ${web.name} → ${web.ip}`, l4: { kind: 'UDP', sport: 53, dport: 53001, len: 8 + 46 + web.name.length }, payload: `DNS standard response 0x2f1c\n  Answer: ${web.name}  A ${web.ip}  TTL 300 s` });
+    }
+    tcp(cl, web, `SYN  seq=${ISN_C}`, 'SYN', ISN_C, 0, 0, '(no payload) Options: MSS 1460, SACK permitted, window scale 7');
+    tcp(web, cl, `SYN-ACK  seq=${ISN_S} ack=${ISN_C + 1}`, 'SYN, ACK', ISN_S, ISN_C + 1, 0, '(no payload) Options: MSS 1460, SACK permitted');
+    tcp(cl, web, `ACK  ack=${ISN_S + 1}`, 'ACK', ISN_C + 1, ISN_S + 1, 0, '(no payload)');
+    let cs = ISN_C + 1, ss = ISN_S + 1;
+    if (tls) {
+      tcp(cl, web, 'TLS ClientHello', 'PSH, ACK', cs, ss, 517, `TLS 1.3 Handshake: ClientHello\n  SNI: ${web.name}\n  Cipher suites: TLS_AES_128_GCM_SHA256, TLS_CHACHA20_POLY1305_SHA256\n  Key share: x25519 (32-byte public key)`, 'TLS'); cs += 517;
+      tcp(web, cl, 'TLS ServerHello, Certificate, Finished', 'PSH, ACK', ss, cs, 1380, `TLS 1.3 Handshake: ServerHello (x25519 key share)\n  {EncryptedExtensions, Certificate: CN=${web.name}, CertificateVerify, Finished}\n  Everything in braces is already encrypted.`, 'TLS'); ss += 1380;
+      tcp(cl, web, 'TLS Finished', 'PSH, ACK', cs, ss, 74, 'TLS 1.3: {Finished}  (client confirms the handshake; keys are now in use)', 'TLS'); cs += 74;
+    }
+    const getLen = tls ? 120 : 96, resLen = 1200;
+    const get = `GET / HTTP/1.1\nHost: ${web.name}\nUser-Agent: SimLabBrowser/1.0\nAccept: text/html`;
+    const res = `HTTP/1.1 200 OK\nContent-Type: text/html; charset=utf-8\nContent-Length: 1024\n\n<!doctype html><title>Student portal</title>…`;
+    const enc = (s, L) => `TLS Application Data record: 5-byte header + ${L - 22} bytes encrypted + 1-byte type + 16-byte auth tag\n  17 03 03 ${((L - 5) >> 8).toString(16).padStart(2, '0')} ${((L - 5) & 255).toString(16).padStart(2, '0')} 9a e4 1f 07 c3 5b 22 d8 ...`;
+    tcp(cl, web, 'HTTP GET /', 'PSH, ACK', cs, ss, getLen, tls ? enc(get, getLen) + '\n\nDecrypted view:\n' + get : get, 'HTTP'); cs += getLen;
+    tcp(web, cl, 'HTTP 200 OK (page)', 'PSH, ACK', ss, cs, resLen, tls ? enc(res, resLen) + '\n\nDecrypted view (first bytes):\n' + res : res, 'HTTP'); ss += resLen;
+    tcp(cl, web, `ACK  ack=${ss}`, 'ACK', cs, ss, 0, '(no payload)');
+    // assign IP/NAT context
+    const router = pW.map(N).find(n => n.type === 'router' && n.ip2);
+    S.forEach(s => { s.cl = cl; s.router = router; s.eph = eph; s.nat = nat; });
+    return { S };
+  }
+  // compute headers on hop k (link from path[k] to path[k+1])
+  function headersAt(st, k) {
+    const path = st.path.map(N), a = path[k], b = path[k + 1];
+    const wl = links.find(l => (l.a === a.id && l.b === b.id) || (l.a === b.id && l.b === a.id));
+    let src = a; for (let i = k; i >= 0; i--) if (isL3(path[i])) { src = path[i]; break; }
+    let dst = b; for (let i = k + 1; i < path.length; i++) if (isL3(path[i])) { dst = path[i]; break; }
+    const eth = { src: src.mac, dst: st.flood && st.proto === 'ARP' ? 'ff:ff:ff:ff:ff:ff' : dst.mac, type: st.proto === 'ARP' ? '0x0806 (ARP)' : '0x0800 (IPv4)', wifi: wl && wl.wl };
+    if (st.proto === 'ARP') return { eth, arp: st.arp };
+    // TTL: start 64 at sender, -1 per router, -6 per cloud
+    let ttl = 64; for (let i = 1; i <= k; i++) { const n = path[i]; if (n.type === 'router') ttl -= 1; if (n.type === 'cloud') ttl -= 6; }
+    const rIdx = st.router ? path.findIndex(n => n === st.router) : -1;
+    const fromClient = st.from === st.cl;
+    const wanSide = rIdx >= 0 && (fromClient ? k >= rIdx : k < rIdx);
+    let sip = st.from.ip, dip = st.to.ip, sport = st.l4.sport, dport = st.l4.dport;
+    if (wanSide) { if (fromClient) { sip = st.router.ip2; sport = st.l4.kind === 'UDP' ? st.nat + 7 : st.nat; } else { dip = st.router.ip2; dport = st.l4.kind === 'UDP' ? st.nat + 7 : st.nat; } }
+    const l4len = (st.l4.kind === 'TCP' ? 20 : 8) + (st.l4.kind === 'TCP' ? st.l4.len : st.l4.len - 8);
+    const ip = { ver: 4, ttl, proto: st.l4.kind === 'TCP' ? '6 (TCP)' : '17 (UDP)', src: sip, dst: dip, len: 20 + l4len };
+    return { eth, ip, l4: Object.assign({}, st.l4, { sport, dport }), wanSide, natted: wanSide };
+  }
+
+  function renderLog() {
+    const ul = $('#log');
+    if (!J.steps.length) { ul.innerHTML = '<li class="muted">No packets yet.</li>'; return; }
+    ul.innerHTML = J.steps.map((s, i) => `<li data-i="${i}" class="${i === J.cur ? 'cur' : i < J.cur ? 'done' : ''}"><span class="proto" style="background:${PC[s.proto]}">${s.proto}</span><span><b>${esc(s.from.name)} → ${esc(s.to.name)}</b><br>${esc(s.info)}</span></li>`).join('');
+    const cur = ul.querySelector('.cur'); if (cur) cur.scrollIntoView({ block: 'nearest' });
+  }
+  $('#log').addEventListener('click', e => { const li = e.target.closest('li[data-i]'); if (!li) return; const i = +li.dataset.i; inspect(i, J.anim && J.anim.i === i ? J.anim.k : (J.steps[i].path.length > 2 ? Math.floor((J.steps[i].path.length - 1) / 2) : 0)); });
+
+  function fieldHTML(list, prev) { return `<div class="fields">${list.map(([k, v, key]) => `<div class="${prev && key && prev[key] !== undefined && prev[key] !== v ? 'chg' : ''}"><small>${k}</small>${esc(v)}</div>`).join('')}</div>`; }
+  function inspect(i, k) {
+    const st = J.steps[i]; if (!st) return; k = SL.clamp(k, 0, st.path.length - 2);
+    J.inspect = { i, k };
+    const H = headersAt(st, k), prevH = k > 0 ? headersAt(st, k - 1) : null;
+    const a = N(st.path[k]), b = N(st.path[k + 1]);
+    const flat = h => h && ({ esrc: h.eth.src, edst: h.eth.dst, ttl: h.ip && h.ip.ttl, isrc: h.ip && h.ip.src, idst: h.ip && h.ip.dst, sp: h.l4 && h.l4.sport, dp: h.l4 && h.l4.dport });
+    const pv = flat(prevH);
+    let inner = '';
+    if (H.arp) inner = `<div class="layer" style="--lc:#a3e635"><div class="lh"><span>ARP message</span><span>layer 2.5 · 28 bytes</span></div>${fieldHTML([['Operation', H.arp.op], ['Sender MAC', H.arp.sha], ['Sender IP', H.arp.spa], ['Target MAC', H.arp.tha], ['Target IP', H.arp.tpa]])}</div>`;
+    else {
+      const l4 = H.l4, isT = l4.kind === 'TCP';
+      const l4f = isT ? [['Src port', l4.sport, 'sp'], ['Dst port', l4.dport, 'dp'], ['Seq', l4.seq], ['Ack', l4.ack || 0], ['Flags', l4.flags], ['Window', l4.win], ['Hdr len', '20 B']] : [['Src port', l4.sport, 'sp'], ['Dst port', l4.dport, 'dp'], ['Length', l4.len + ' B'], ['Checksum', '0x' + (0x3a7c + i * 97).toString(16)]];
+      const appName = st.proto === 'DNS' ? 'DNS message' : st.proto === 'TLS' ? 'TLS record' : st.proto === 'HTTP' ? (st.payload.startsWith('TLS') ? 'TLS record carrying HTTP' : 'HTTP message') : 'TCP payload';
+      const appLen = isT ? l4.len : l4.len - 8;
+      inner = `<div class="layer" style="--lc:#60a5fa"><div class="lh"><span>IPv4 packet</span><span>layer 3 · ${H.ip.len} bytes</span></div>${fieldHTML([['Version', 4], ['TTL', H.ip.ttl, 'ttl'], ['Protocol', H.ip.proto], ['Src IP', H.ip.src, 'isrc'], ['Dst IP', H.ip.dst, 'idst'], ['Total len', H.ip.len + ' B']], pv)}
+        <div class="layer" style="--lc:${isT ? '#a78bfa' : '#f472b6'}"><div class="lh"><span>${isT ? 'TCP segment' : 'UDP datagram'}</span><span>layer 4 · ${isT ? 20 + l4.len : l4.len} bytes</span></div>${fieldHTML(l4f, pv)}
+          <div class="layer" style="--lc:#22d3ee"><div class="lh"><span>${appName}</span><span>layers 5–7 · ${appLen} bytes</span></div><div class="payload">${esc(st.payload || '(empty)')}</div></div>
+        </div></div>`;
+    }
+    const frameLen = (H.ip ? H.ip.len : 28) + 18;
+    const html = `<div class="hopbar"><span class="proto" style="background:${PC[st.proto]}">${st.proto}</span><b>${esc(st.info)}</b></div>
+      <div class="hopbar"><span class="small muted">Hop ${k + 1} of ${st.path.length - 1}: ${esc(a.name)} → ${esc(b.name)}${H.natted ? ' <span class="chip" style="color:#f59e0b">after NAT</span>' : ''}</span>
+        <button class="btn sm" data-h="-1" ${k === 0 ? 'disabled' : ''}><i data-lucide="chevron-left"></i></button><button class="btn sm" data-h="1" ${k >= st.path.length - 2 ? 'disabled' : ''}><i data-lucide="chevron-right"></i></button></div>
+      <div class="encap"><div class="layer" style="--lc:#94a3b8"><div class="lh"><span>${H.eth.wifi ? '802.11 Wi-Fi frame' : 'Ethernet II frame'}</span><span>layer 2 · ${frameLen} bytes</span></div>${fieldHTML([['Dst MAC', H.eth.dst, 'edst'], ['Src MAC', H.eth.src, 'esrc'], ['EtherType', H.eth.type]], pv)}${inner}<div class="fields" style="margin-top:6px"><div><small>FCS (CRC-32)</small>0x${((i + 7) * 2654435761 >>> 0).toString(16).slice(0, 8)}</div></div></div></div>
+      <p class="small muted" style="margin:8px 0 0">Fields outlined in amber changed since the previous hop.${st.proto !== 'ARP' ? ' The MAC addresses describe only this link; the IP addresses describe the whole journey.' : ''}</p>`;
+    $('#insp').innerHTML = html; SL.refreshIcons($('#insp'));
+    $('#insp').querySelectorAll('[data-h]').forEach(b => b.onclick = () => inspect(i, k + +b.dataset.h));
+    if (H.natted && H.ip) check('inspect', true);
+  }
+
+  function startJourney() {
+    J.arp = $('#arpC').checked; J.dns = $('#dnsC').checked;
+    const r = buildScript(); if (r.err) { SL.toast(r.err, 'warn'); return false; }
+    J.steps = r.S; J.cur = -1; J.anim = null; J.cachedRun = J.arp && J.dns; J.client = J.steps[0].cl;
+    renderLog(); return true;
+  }
+  function launchStep(i) {
+    const st = J.steps[i]; if (!st) return;
+    J.cur = i; renderLog();
+    const segs = [];
+    if (st.flood) {
+      // flood within the L2 domain: BFS tree from the sender, stopping at L3 nodes
+      const seen = new Set([st.from.id]); let frontier = [st.from.id], depth = 0;
+      while (frontier.length) { const nf = []; for (const u of frontier) { if (u !== st.from.id && isL3(N(u))) continue; for (const v of nbr(u)) if (!seen.has(v)) { seen.add(v); segs.push({ a: u, b: v, d: depth }); nf.push(v); } } frontier = nf; depth++; }
+    } else st.path.forEach((id, k) => { if (k) segs.push({ a: st.path[k - 1], b: id, d: k - 1 }); });
+    J.anim = { i, segs, t: 0, maxD: Math.max(...segs.map(s => s.d)), k: 0 };
+    $('#netHud').innerHTML = `<b>${st.proto}</b> ${esc(st.info)}`;
+  }
+  function stepDone() {
+    const i = J.anim.i; J.anim = null;
+    if (i >= J.steps.length - 1) {
+      J.auto = false; setGo(); $('#netHud').innerHTML = `Page loaded in <b>${J.steps.length}</b> packets`;
+      SL.toast(`Page loaded: ${J.steps.length} packets. ARP and DNS answers are now cached.`, 'ok');
+      check('journey', true); if (J.cachedRun) check('cached', true); if (J.client && J.client.added) check('newhost', true);
+      $('#arpC').checked = true; $('#dnsC').checked = true;
+    } else if (J.auto) launchStep(i + 1);
+  }
+  function setGo() { $('#go').innerHTML = J.auto ? '<i data-lucide="pause"></i> Pause' : '<i data-lucide="play"></i> Open website'; SL.refreshIcons($('#go')); }
+  $('#go').onclick = () => {
+    if (J.auto) { J.auto = false; setGo(); return; }
+    if (!J.steps.length || J.cur >= J.steps.length - 1 && !J.anim) { if (!startJourney()) return; }
+    J.auto = true; setGo(); if (!J.anim) launchStep(J.cur + 1);
+  };
+  $('#stepB').onclick = () => { J.auto = false; setGo(); if (J.anim) return; if (!J.steps.length || J.cur >= J.steps.length - 1) { if (!startJourney()) return; } launchStep(J.cur + 1); };
+  SL.bind('#pspd', v => { J.speed = v; }, v => v + '×');
+
+  function populateSelects() {
+    const c = $('#client'), s = $('#server'), cv = c.value, sv = s.value;
+    c.innerHTML = nodes.filter(n => n.type === 'laptop' || n.type === 'phone').map(n => `<option value="${n.id}">${esc(n.name)} (${n.ip})</option>`).join('');
+    s.innerHTML = nodes.filter(n => n.type === 'web').map(n => `<option value="${n.id}">${esc(n.name)}</option>`).join('');
+    if ([...c.options].some(o => o.value === cv)) c.value = cv; if ([...s.options].some(o => o.value === sv)) s.value = sv;
+  }
+  populateSelects();
+  const ADD = [['laptop', 'laptop'], ['phone', 'smartphone'], ['switch', 'network'], ['ap', 'wifi'], ['router', 'router'], ['web', 'server']];
+  $('#addbar').innerHTML = ADD.map(([t, ic]) => `<button class="btn sm" data-add="${t}"><i data-lucide="${ic}"></i> ${DEVNAME[t]}</button>`).join('');
+  let webCount = 1;
+  $('#addbar').addEventListener('click', e => {
+    const b = e.target.closest('[data-add]'); if (!b) return; const t = b.dataset.add;
+    const extra = { added: true };
+    if (t === 'laptop' || t === 'phone') { extra.ip = nextIp('192.168.1.', 60); extra.name = (t === 'laptop' ? 'Laptop ' : 'Phone ') + extra.ip.split('.')[3]; }
+    if (t === 'router') { extra.ip = nextIp('10.0.0.', 1); }
+    if (t === 'web') { webCount++; extra.ip = nextIp('203.0.113.', 20); extra.name = ['library', 'lms', 'news', 'jobs'][(webCount - 2) % 4] + '.example.ke'; }
+    const n = addNode(t, 380 + rnd(240), 60 + rnd(80), extra); J.selNode = n; J.selLink = null; populateSelects();
+    SL.toast(`Added ${esc(n.name)}. Turn on the link tool and drag from it to a device to connect it.`, '', 3200);
+  });
+  $('#nLink').onclick = () => { J.linkMode = !J.linkMode; $('#nLink').classList.toggle('on', J.linkMode); };
+  $('#nDel').onclick = () => {
+    if (J.selNode) { const id = J.selNode.id; nodes = nodes.filter(n => n.id !== id); links = links.filter(l => l.a !== id && l.b !== id); J.selNode = null; populateSelects(); J.steps = []; J.anim = null; J.auto = false; setGo(); renderLog(); }
+    else if (J.selLink) { links = links.filter(l => l !== J.selLink); J.selLink = null; J.steps = []; J.anim = null; J.auto = false; setGo(); renderLog(); }
+  };
+
+  // pointer
+  let nd = null;
+  function nodeAt(x, y) { const r = 30 * icoS(); return nodes.slice().reverse().find(n => { const p = P(n); return Math.abs(p.x - x) < r && Math.abs(p.y - y) < r; }); }
+  function pktAt(x, y) { if (!J.anim) return false; const pos = pktPositions(); return pos.some(p => Math.hypot(p.x - x, p.y - y) < 18); }
+  const segD = (p, a, b) => { const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy || 1, t = SL.clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / L, 0, 1); return Math.hypot(a.x + t * dx - p.x, a.y + t * dy - p.y); };
+  $('#netCv').addEventListener('pointerdown', e => {
+    const p = SL.ptr(e, e.currentTarget);
+    if (pktAt(p.x, p.y)) { inspect(J.anim.i, J.anim.k); $('#inspector').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return; }
+    const n = nodeAt(p.x, p.y);
+    if (n) { e.currentTarget.setPointerCapture(e.pointerId); nd = { n, link: J.linkMode, x: p.x, y: p.y }; J.selNode = n; J.selLink = null; return; }
+    const l = links.find(l => segD(p, P(N(l.a)), P(N(l.b))) < 8); J.selLink = l || null; J.selNode = null;
+  });
+  $('#netCv').addEventListener('pointermove', e => {
+    if (!nd) return; const p = SL.ptr(e, e.currentTarget);
+    if (nd.link) { nd.x = p.x; nd.y = p.y; return; }
+    const w = unP(p.x, p.y); nd.n.x = SL.clamp(w.x, 30, VW - 30); nd.n.y = SL.clamp(w.y, 30, VH - 40);
+  });
+  $('#netCv').addEventListener('pointerup', e => {
+    if (nd && nd.link) { const p = SL.ptr(e, e.currentTarget); const t = nodeAt(p.x, p.y); if (t && t !== nd.n) { link(nd.n.id, t.id, nd.n.type === 'ap' && t.type === 'phone' || t.type === 'ap' && nd.n.type === 'phone' || (nd.n.type === 'ap' || t.type === 'ap') && (nd.n.type === 'laptop' || t.type === 'laptop')); J.steps = []; J.anim = null; renderLog(); } }
+    nd = null;
+  });
+
+  function pktPositions() {
+    const A = J.anim; if (!A) return [];
+    const out = [];
+    A.segs.forEach(s => { const local = A.t - s.d; if (local < 0 || local > 1) return; const a = P(N(s.a)), b = P(N(s.b)); out.push({ x: a.x + (b.x - a.x) * local, y: a.y + (b.y - a.y) * local, s }); });
+    return out;
+  }
+  SL.loop((dt, t) => {
+    if (document.hidden || netCv.ctx.canvas.offsetParent === null) return;
+    const { ctx, w, h } = netCv; netFit(); ctx.clearRect(0, 0, w, h);
+    if (J.anim) {
+      const A = J.anim; A.t += dt * J.speed * 1.1;
+      const active = A.segs.find(s => A.t - s.d >= 0 && A.t - s.d <= 1); if (active) A.k = J.steps[A.i].flood ? 0 : active.d;
+      A.segs.forEach(s => { if (A.t - s.d >= 0 && A.t - s.d <= 1) { const l = links.find(l => (l.a === s.a && l.b === s.b) || (l.a === s.b && l.b === s.a)); if (l) l.load = 1; } });
+      if (A.t > A.maxD + 1.15) stepDone();
+    }
+    // links
+    links.forEach(l => {
+      const a = P(N(l.a)), b = P(N(l.b)); const sel = J.selLink === l;
+      ctx.strokeStyle = sel ? '#60a5fa' : l.load > 0.01 ? `rgba(96,165,250,${0.35 + 0.6 * l.load})` : '#2a3a5c'; ctx.lineWidth = sel ? 4 : 2.5 + 2 * l.load;
+      ctx.setLineDash(l.wl ? [6, 6] : []); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]);
+      l.load = Math.max(0, l.load - dt * 1.5);
+    });
+    if (nd && nd.link) { const a = P(nd.n); ctx.strokeStyle = '#fff'; ctx.setLineDash([5, 5]); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(nd.x, nd.y); ctx.stroke(); ctx.setLineDash([]); }
+    nodes.forEach(n => drawDevice(ctx, n, J.selNode === n, t));
+    // packets
+    if (J.anim) {
+      const st = J.steps[J.anim.i], col = PC[st.proto];
+      pktPositions().forEach(p => {
+        ctx.save(); ctx.translate(p.x, p.y); ctx.shadowColor = col; ctx.shadowBlur = 18; ctx.fillStyle = col;
+        ctx.beginPath(); ctx.roundRect(-17, -9, 34, 18, 5); ctx.fill(); ctx.shadowBlur = 0;
+        ctx.fillStyle = '#06101f'; ctx.font = `700 9px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText(st.proto, 0, 3.5); ctx.restore();
+      });
+    }
+  }).start();
+
+  /* =====================================================================
+     2. ROUTING (link state + Dijkstra)
+     ===================================================================== */
+  const RW = 1000, RH = 520;
+  let R = [], RL = [];
+  function rReset() {
+    R = [['R1', 110, 260], ['R2', 330, 90], ['R3', 600, 110], ['R4', 330, 420], ['R5', 600, 400], ['R6', 880, 260], ['R7', 470, 260]].map(([n, x, y], i) => ({ i, n, x, y }));
+    RL = [[0, 1, 2], [0, 3, 1], [1, 2, 3], [1, 6, 4], [3, 4, 1], [3, 2, 3], [2, 5, 5], [4, 5, 2], [6, 4, 3], [6, 2, 2], [1, 3, 3]].map(([a, b, c]) => ({ a, b, c, up: true }));
+    RT.flood = null; RT.pkt = null; RT.selL = null; recompute();
+  }
+  const RT = { src: 0, dst: 5, res: null, djStep: -1, flood: null, pkt: null, selL: null, prevCost: null };
+  function dijkstra(src) {
+    const n = R.length, D = new Array(n).fill(Infinity), prev = new Array(n).fill(-1), done = new Array(n).fill(false), iters = [];
+    D[src] = 0;
+    for (let k = 0; k < n; k++) {
+      let u = -1; for (let v = 0; v < n; v++) if (!done[v] && D[v] < Infinity && (u < 0 || D[v] < D[u] || (D[v] === D[u] && v < u))) u = v;
+      if (u < 0) break; done[u] = true;
+      for (const l of RL) { if (!l.up) continue; const v = l.a === u ? l.b : l.b === u ? l.a : -1; if (v < 0 || done[v]) continue; if (D[u] + l.c < D[v]) { D[v] = D[u] + l.c; prev[v] = u; } }
+      iters.push({ u, D: D.slice(), prev: prev.slice(), done: done.slice() });
+    }
+    return { D, prev, iters };
+  }
+  const pathTo = (res, s, d) => { if (res.D[d] === Infinity) return null; const p = []; for (let u = d; u !== -1; u = res.prev[u]) p.push(u); return p.reverse(); };
+  function recompute() {
+    RT.res = dijkstra(RT.src);
+    const s = $('#rSrc'), d = $('#rDst');
+    if (!s.options.length) { R.forEach(r => { s.add(new Option(r.n, r.i)); d.add(new Option(r.n, r.i)); }); }
+    s.value = RT.src; d.value = RT.dst;
+    $('#rtName').textContent = R[RT.src].n; $('#djName').textContent = R[RT.src].n;
+    $('#rtTable').innerHTML = `<tr><th>Destination</th><th>Next hop</th><th>Cost</th><th>Path</th></tr>` + R.filter(r => r.i !== RT.src).map(r => { const p = pathTo(RT.res, RT.src, r.i); return `<tr${r.i === RT.dst ? ' style="background:color-mix(in srgb,var(--accent) 12%,transparent)"' : ''}><td class="mono">${r.n}</td><td class="mono">${p ? R[p[1]].n : '–'}</td><td class="num">${p ? RT.res.D[r.i] : '∞'}</td><td class="mono small">${p ? p.map(i => R[i].n).join('→') : 'unreachable'}</td></tr>`; }).join('');
+    renderDj();
+    const p = pathTo(RT.res, RT.src, RT.dst);
+    $('#rtHud').innerHTML = p ? `${R[RT.src].n} → ${R[RT.dst].n}: <b>${p.map(i => R[i].n).join(' → ')}</b> · cost <b>${RT.res.D[RT.dst]}</b>` : `<b style="color:var(--bad)">${R[RT.dst].n} is unreachable from ${R[RT.src].n}</b>`;
+    if (!p) check('norout', true);
+  }
+  function renderDj() {
+    const it = RT.res.iters, upto = RT.djStep < 0 ? it.length : RT.djStep + 1;
+    const cols = R.filter(r => r.i !== RT.src);
+    $('#djTable').innerHTML = `<tr><th>Step</th><th>N′</th>${cols.map(r => `<th>${r.n}</th>`).join('')}</tr>` + it.slice(0, upto).map((s, k) => { const Np = it.slice(0, k + 1).map(x => R[x.u].n).join(', '); return `<tr><td class="num">${k}</td><td class="mono small">${Np}</td>${cols.map(r => { const chosenEarlier = it.slice(0, k).some(x => x.u === r.i); const v = s.D[r.i]; return `<td class="mono small" style="${chosenEarlier ? 'color:var(--dim)' : ''}${s.u === r.i ? ';font-weight:700;color:#fff' : ''}">${chosenEarlier ? '' : v === Infinity ? '∞' : v + ',' + R[s.prev[r.i]].n}</td>`; }).join('')}</tr>`; }).join('');
+  }
+  $('#rSrc').onchange = e => { RT.src = +e.target.value; RT.djStep = -1; recompute(); };
+  $('#rDst').onchange = e => { RT.dst = +e.target.value; recompute(); };
+  $('#rStep').onclick = () => { const n = RT.res.iters.length; RT.djStep = RT.djStep < 0 ? 0 : (RT.djStep + 1) % n; renderDj(); };
+  $('#rReset').onclick = () => { rReset(); renderLinkPanel(); };
+  $('#rSend').onclick = () => { const p = pathTo(RT.res, RT.src, RT.dst); if (!p) { SL.toast('No route: the packet would be dropped.', 'bad'); return; } RT.pkt = { p, t: 0 }; };
+  const rtCv = SL.canvas($('#rtCv'));
+  let RV = { s: 1, ox: 0, oy: 0, rot: false };
+  function rtFit() { const { w, h } = rtCv; RV.rot = w / h < 0.85; const W = RV.rot ? RH : RW, H = RV.rot ? RW : RH; RV.s = Math.min(w / W, h / H) * 0.92; RV.ox = (w - W * RV.s) / 2; RV.oy = (h - H * RV.s) / 2 + 12; }
+  const RP = r => RV.rot ? { x: RV.ox + r.y * RV.s, y: RV.oy + r.x * RV.s } : { x: RV.ox + r.x * RV.s, y: RV.oy + r.y * RV.s };
+  function renderLinkPanel() {
+    const el = $('#linkPanel'), l = RT.selL;
+    if (!l) { el.innerHTML = '<p class="small muted" style="margin:0">Tap a link to change its cost or take it down.</p>'; return; }
+    el.innerHTML = `<p class="small" style="margin:0 0 4px">Link <b class="mono">${R[l.a].n}–${R[l.b].n}</b> is <b style="color:${l.up ? 'var(--ok)' : 'var(--bad)'}">${l.up ? 'up' : 'down'}</b></p>
+      <div class="ctl"><label for="lc">Link cost (OSPF metric)</label><output>${l.c}</output><input type="range" id="lc" min="1" max="20" step="1" value="${l.c}"></div>
+      <button class="btn sm ${l.up ? 'danger' : ''}" id="lUp"><i data-lucide="${l.up ? 'unplug' : 'plug'}"></i> ${l.up ? 'Take link down' : 'Bring link up'}</button>`;
+    SL.refreshIcons(el);
+    SL.bind('#lc', v => { if (v !== l.c) { l.c = v; changeTopo(l); } });
+    $('#lUp').onclick = () => { l.up = !l.up; changeTopo(l); renderLinkPanel(); };
+    el.querySelectorAll('input[type=range]').forEach(r => r.dispatchEvent(new Event('input')));
+  }
+  function changeTopo(l) {
+    const before = pathTo(RT.res, RT.src, RT.dst), onPath = before && before.some((u, k) => k && ((before[k - 1] === l.a && u === l.b) || (before[k - 1] === l.b && u === l.a)));
+    RT.flood = { from: [l.a, l.b], t: 0, onPath: onPath && !l.up };
+    // routers learn the change when the LSA flood reaches them; recompute after the flood
+  }
+  $('#rtCv').addEventListener('pointerdown', e => {
+    const p = SL.ptr(e, e.currentTarget);
+    const r = R.find(r => { const q = RP(r); return Math.hypot(q.x - p.x, q.y - p.y) < 26; });
+    if (r) { if (e.shiftKey || RT.src === r.i) { RT.dst = r.i === RT.src ? RT.dst : r.i; } else RT.src = r.i; if (RT.dst === RT.src) RT.dst = (RT.src + 5) % R.length; RT.djStep = -1; recompute(); return; }
+    const l = RL.find(l => segD(p, RP(R[l.a]), RP(R[l.b])) < 10); RT.selL = l || null; renderLinkPanel();
+  });
+  function hopDepth(from) { const d = new Array(R.length).fill(Infinity), q = []; from.forEach(f => { d[f] = 0; q.push(f); }); while (q.length) { const u = q.shift(); for (const l of RL) { if (!l.up && !from.includes(l.a)) { /* down links do not carry LSAs */ } if (!l.up) continue; const v = l.a === u ? l.b : l.b === u ? l.a : -1; if (v >= 0 && d[v] === Infinity) { d[v] = d[u] + 1; q.push(v); } } } return d; }
+  SL.loop((dt, t) => {
+    if (document.hidden || rtCv.ctx.canvas.offsetParent === null) return;
+    const { ctx, w, h } = rtCv; rtFit(); ctx.clearRect(0, 0, w, h);
+    const tree = new Set(); R.forEach(r => { const pv = RT.res.prev[r.i]; if (pv >= 0) tree.add(Math.min(pv, r.i) + '-' + Math.max(pv, r.i)); });
+    const path = pathTo(RT.res, RT.src, RT.dst) || [], pset = new Set(); path.forEach((u, k) => { if (k) pset.add(Math.min(u, path[k - 1]) + '-' + Math.max(u, path[k - 1])); });
+    RL.forEach(l => {
+      const a = RP(R[l.a]), b = RP(R[l.b]), key = Math.min(l.a, l.b) + '-' + Math.max(l.a, l.b), onP = pset.has(key), inT = tree.has(key), sel = RT.selL === l;
+      ctx.lineWidth = onP ? 5 : inT ? 3 : 2; ctx.strokeStyle = !l.up ? 'rgba(239,68,68,.6)' : onP ? '#facc15' : inT ? 'rgba(96,165,250,.75)' : '#2a3a5c';
+      if (onP) { ctx.shadowColor = '#facc15'; ctx.shadowBlur = 12; }
+      ctx.setLineDash(l.up ? [] : [8, 7]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]); ctx.shadowBlur = 0;
+      if (sel) { ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 9; ctx.globalAlpha = .3; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.globalAlpha = 1; }
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      ctx.fillStyle = '#0b1222'; ctx.strokeStyle = !l.up ? '#ef4444' : onP ? '#facc15' : '#475569'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(mx, my, 12, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = l.up ? '#e6ecf7' : '#ef4444'; ctx.font = `700 11px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText(l.up ? l.c : '✕', mx, my + 4);
+    });
+    // LSA flood rings
+    if (RT.flood) {
+      const F = RT.flood; F.t += dt * 2.2; const d = hopDepth(F.from); const maxd = Math.max(...d.filter(x => x < Infinity));
+      R.forEach(r => { const k = F.t - d[r.i]; if (k > 0 && k < 1) { const q = RP(r); ctx.strokeStyle = `rgba(167,139,250,${1 - k})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(q.x, q.y, 22 + k * 30, 0, 7); ctx.stroke(); } });
+      if (F.t > maxd + 1) { RT.flood = null; const before = RT.res.D[RT.dst]; RT.djStep = -1; recompute(); const p = pathTo(RT.res, RT.src, RT.dst); SL.toast(p ? `Converged. ${R[RT.src].n} → ${R[RT.dst].n} now goes ${p.map(i => R[i].n).join('→')} (cost ${RT.res.D[RT.dst]}, was ${before === Infinity ? '∞' : before}).` : `Converged: ${R[RT.dst].n} is now unreachable.`, p ? 'ok' : 'bad', 4500); if (F.onPath && p) check('reroute', true); }
+      $('#rtHud').innerHTML = '<b style="color:#a78bfa">Flooding link-state advertisements…</b>';
+    }
+    // routers
+    R.forEach(r => {
+      const q = RP(r), isS = r.i === RT.src, isD = r.i === RT.dst;
+      ctx.shadowColor = isS ? '#34d399' : isD ? '#fb7185' : '#60a5fa'; ctx.shadowBlur = isS || isD ? 18 : 6;
+      ctx.fillStyle = '#111b31'; ctx.strokeStyle = isS ? '#34d399' : isD ? '#fb7185' : '#8ea2c8'; ctx.lineWidth = 2.2;
+      ctx.beginPath(); ctx.arc(q.x, q.y, 22, 0, 7); ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0;
+      ctx.fillStyle = '#e6ecf7'; ctx.font = `700 12px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText(r.n, q.x, q.y + 4);
+      const D = RT.res.D[r.i]; ctx.fillStyle = isS ? '#34d399' : '#93a1bd'; ctx.font = `600 10px ${MONO}`; ctx.fillText(isS ? 'source' : D === Infinity ? 'd=∞' : 'd=' + D, q.x, q.y + 38);
+    });
+    // packet
+    if (RT.pkt) { const K = RT.pkt; K.t += dt * 1.6; const seg = Math.floor(K.t); if (seg >= K.p.length - 1) { RT.pkt = null; SL.toast(`Packet delivered to ${R[RT.dst].n} in ${K.p.length - 1} hops.`, 'ok', 2000); } else { const a = RP(R[K.p[seg]]), b = RP(R[K.p[seg + 1]]), f = K.t - seg; const x = a.x + (b.x - a.x) * f, y = a.y + (b.y - a.y) * f; ctx.shadowColor = '#facc15'; ctx.shadowBlur = 16; ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.roundRect(x - 11, y - 7, 22, 14, 4); ctx.fill(); ctx.shadowBlur = 0; } }
+  }).start();
+
+  /* =====================================================================
+     3. RELIABILITY: sliding window
+     ===================================================================== */
+  const NSEG = 60, DELAY = 1.0, TX = 0.25;
+  const T = { proto: 'tcp', W: 6, loss: 0.1, rtoK: 1.5, speed: 1, playing: true };
+  let S;
+  function tReset() {
+    S = { t: 0, base: 0, next: 0, acked: new Uint8Array(NSEG), rcv: new Uint8Array(NSEG), rbase: 0, fly: [], timers: new Map(), lastTx: -9, sent: 0, retx: 0, lost: 0, dup: 0, lastAck: -1, queue: [], hist: [], done: false, deliveredAt: [], sentCnt: new Uint8Array(NSEG), told: false };
+  }
+  tReset();
+  const RTO = () => T.rtoK * (2 * DELAY + TX);
+  function sendData(seq, re) {
+    const lost = Math.random() < T.loss;
+    S.fly.push({ kind: 'd', seq, t0: S.t, lost, lostAt: 0.3 + Math.random() * 0.4, re });
+    S.sent++; if (re) S.retx++; S.sentCnt[seq]++;
+    if (T.proto === 'sr') S.timers.set(seq, S.t + RTO());
+    else if (seq === S.base || !S.timers.has('base')) S.timers.set('base', S.t + RTO());
+  }
+  function sendAck(ack, forSeq) { S.fly.push({ kind: 'a', ack, seq: forSeq, t0: S.t, lost: Math.random() < T.loss, lostAt: 0.3 + Math.random() * 0.4 }); }
+  function receive(seq) {
+    if (T.proto === 'gbn') { if (seq === S.rbase) { S.rcv[seq] = 2; S.rbase++; S.deliveredAt.push(S.t); } sendAck(S.rbase, seq); return; }
+    if (seq >= S.rbase && seq < S.rbase + T.W && !S.rcv[seq]) S.rcv[seq] = 1;
+    while (S.rbase < NSEG && S.rcv[S.rbase]) { S.rcv[S.rbase] = 2; S.rbase++; S.deliveredAt.push(S.t); }
+    sendAck(T.proto === 'sr' ? seq : S.rbase, seq);
+  }
+  function gotAck(a) {
+    if (T.proto === 'sr') { if (!S.acked[a.ack]) { S.acked[a.ack] = 1; S.timers.delete(a.ack); } while (S.base < NSEG && S.acked[S.base]) S.base++; return; }
+    if (a.ack > S.base) { for (let k = S.base; k < a.ack; k++) S.acked[k] = 1; S.base = a.ack; S.dup = 0; S.lastAck = a.ack; if (S.base < S.next) S.timers.set('base', S.t + RTO()); else S.timers.delete('base'); }
+    else if (T.proto === 'tcp' && a.ack === S.lastAck && S.base < S.next) { S.dup++; if (S.dup === 3) { S.queue.push(S.base); S.fastRe = (S.fastRe || 0) + 1; S.flash = { t: S.t, txt: 'fast retransmit (3 dup ACKs)' }; } }
+  }
+  function tStep(dt) {
+    S.t += dt;
+    // arrivals
+    for (const f of S.fly) {
+      const prog = (S.t - f.t0) / DELAY;
+      if (f.lost && prog >= f.lostAt && !f.dead) { f.dead = S.t; S.lost++; }
+      if (!f.lost && prog >= 1 && !f.arrived) { f.arrived = true; if (f.kind === 'd') receive(f.seq); else gotAck(f); }
+    }
+    S.fly = S.fly.filter(f => !(f.arrived || (f.dead && S.t - f.dead > 0.5)));
+    // timeouts
+    for (const [k, due] of [...S.timers]) if (S.t >= due) {
+      if (T.proto === 'sr') { if (!S.acked[k]) { S.queue.push(k); } S.timers.delete(k); }
+      else { S.timers.delete('base'); if (S.base < S.next) { S.flash = { t: S.t, txt: 'timeout' }; if (T.proto === 'gbn') { S.next = S.base; } else S.queue.push(S.base); } }
+    }
+    // transmit (one segment per TX interval)
+    if (S.t - S.lastTx >= TX) {
+      let seq = -1, re = false;
+      while (S.queue.length) { const q = S.queue.shift(); if (!S.acked[q] && q >= S.base) { seq = q; re = true; break; } }
+      if (seq < 0 && S.next < NSEG && S.next < S.base + T.W) { seq = S.next++; re = S.sentCnt[seq] > 0; }
+      if (seq >= 0) { sendData(seq, re); S.lastTx = S.t; }
+    }
+    if (!S.done && S.rbase >= NSEG && S.base >= NSEG) { S.done = true; S.doneT = S.t; SL.toast(`All ${NSEG} segments delivered in ${SL.fmt(S.t, 1)} s (${S.retx} retransmissions).`, 'ok'); check('tcpdone', T.loss >= 0.2); }
+    // throughput history (goodput over the last 2 s)
+    if (!S.hist.length || S.t - S.hist[S.hist.length - 1][0] >= 0.25) { const GW = 2 * (2 * DELAY + TX); const g = S.deliveredAt.filter(x => x > S.t - GW).length / Math.min(GW, Math.max(S.t, 0.25)); S.hist.push([S.t, g]); if (g >= 3.9 && T.loss === 0 && S.t > 5) check('srwin', true); }
+  }
+  const ideal = () => Math.min(1 / TX, T.W / (2 * DELAY + TX));
+  const tcpCv = SL.canvas($('#tcpCv')), thrCv = SL.canvas($('#thrCv'));
+  let viewBase = 0;
+  function drawTcp() {
+    const { ctx, w, h } = tcpCv; ctx.clearRect(0, 0, w, h);
+    const bw = w < 600 ? 22 : 28, vis = Math.floor((w - 40) / bw), target = SL.clamp(S.base - 3, 0, Math.max(0, NSEG - vis));
+    viewBase += (target - viewBase) * 0.12;
+    const X = seq => 20 + (seq - viewBase) * bw + bw / 2;
+    const yS = 70, yR = h - 64;
+    ctx.font = `600 11px ${MONO}`; ctx.textAlign = 'left'; ctx.fillStyle = '#93a1bd';
+    ctx.fillText('SENDER', 20, yS - 28); ctx.fillText('RECEIVER', 20, yR - 26);
+    ctx.save(); ctx.beginPath(); ctx.rect(10, 0, w - 20, h); ctx.clip();
+    for (let s = Math.floor(viewBase) - 1; s < viewBase + vis + 1; s++) {
+      if (s < 0 || s >= NSEG) continue; const x = X(s) - bw / 2 + 2;
+      // sender box
+      const sc = S.acked[s] ? '#22c55e' : s < S.next || S.sentCnt[s] ? (S.sentCnt[s] > 1 ? '#f59e0b' : '#3b82f6') : '#1e293b';
+      ctx.fillStyle = sc; ctx.globalAlpha = S.acked[s] ? .55 : 1; ctx.beginPath(); ctx.roundRect(x, yS - 14, bw - 4, 28, 4); ctx.fill(); ctx.globalAlpha = 1;
+      ctx.fillStyle = '#e6ecf7'; ctx.font = `600 ${bw < 26 ? 9 : 10}px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText(s, x + (bw - 4) / 2, yS + 4);
+      // receiver box
+      const rc = S.rcv[s] === 2 ? '#22c55e' : S.rcv[s] === 1 ? '#eab308' : '#1e293b';
+      ctx.fillStyle = rc; ctx.globalAlpha = S.rcv[s] === 2 ? .55 : 1; ctx.beginPath(); ctx.roundRect(x, yR - 14, bw - 4, 28, 4); ctx.fill(); ctx.globalAlpha = 1;
+      ctx.fillStyle = '#e6ecf7'; ctx.fillText(s, x + (bw - 4) / 2, yR + 4);
+    }
+    // window bracket
+    const wx0 = X(S.base) - bw / 2, wx1 = X(Math.min(NSEG, S.base + T.W)) - bw / 2;
+    ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2; ctx.shadowColor = '#60a5fa'; ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.roundRect(wx0 - 1, yS - 19, Math.max(4, wx1 - wx0 + 2), 38, 7); ctx.stroke(); ctx.shadowBlur = 0;
+    ctx.fillStyle = '#60a5fa'; ctx.font = `600 10px ${MONO}`; ctx.textAlign = 'left'; ctx.fillText(`window W=${T.W}  base=${S.base}  next=${S.next}`, Math.max(14, wx0), yS + 32);
+    if (T.proto !== 'gbn') { const rx0 = X(S.rbase) - bw / 2, rx1 = X(Math.min(NSEG, S.rbase + T.W)) - bw / 2; ctx.strokeStyle = 'rgba(234,179,8,.7)'; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.roundRect(rx0 - 1, yR - 19, Math.max(4, rx1 - rx0 + 2), 38, 7); ctx.stroke(); ctx.setLineDash([]); }
+    // flying packets
+    for (const f of S.fly) {
+      let prog = (S.t - f.t0) / DELAY; if (f.dead) prog = f.lostAt;
+      const x = X(f.seq) + (f.kind === 'a' ? bw * 0.18 : -bw * 0.18), y0 = f.kind === 'd' ? yS + 18 : yR - 18, y1 = f.kind === 'd' ? yR - 18 : yS + 18;
+      const y = y0 + (y1 - y0) * Math.min(1, prog);
+      f.sx = x; f.sy = y;
+      if (f.dead) { const a = 1 - (S.t - f.dead) / 0.5; ctx.globalAlpha = Math.max(0, a); ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(x - 7, y - 7); ctx.lineTo(x + 7, y + 7); ctx.moveTo(x + 7, y - 7); ctx.lineTo(x - 7, y + 7); ctx.stroke(); ctx.globalAlpha = 1; continue; }
+      const col = f.kind === 'd' ? (f.re ? '#f59e0b' : '#60a5fa') : '#34d399';
+      ctx.shadowColor = col; ctx.shadowBlur = 12; ctx.fillStyle = col; ctx.beginPath(); ctx.roundRect(x - 13, y - 8, 26, 16, 4); ctx.fill(); ctx.shadowBlur = 0;
+      ctx.fillStyle = '#06101f'; ctx.font = `700 8.5px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText(f.kind === 'd' ? f.seq : 'A' + f.ack, x, y + 3);
+    }
+    ctx.restore();
+    if (S.flash && S.t - S.flash.t < 1.2) { ctx.fillStyle = `rgba(245,158,11,${1 - (S.t - S.flash.t) / 1.2})`; ctx.font = `700 13px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText(S.flash.txt.toUpperCase(), w / 2, (yS + yR) / 2); }
+    // legend
+    ctx.font = `500 10px ${MONO}`; ctx.textAlign = 'right'; let lx = w - 16;
+    (w < 600 ? [['#22c55e', 'acked'], ['#eab308', 'buffered'], ['#f59e0b', 'resent'], ['#3b82f6', 'in flight']] : [['#22c55e', 'acked/delivered'], ['#eab308', 'buffered'], ['#f59e0b', 'retransmitted'], ['#3b82f6', 'in flight']]).forEach(([c, t]) => { ctx.fillStyle = '#93a1bd'; ctx.fillText(t, lx, h - 12); const tw = ctx.measureText(t).width; ctx.fillStyle = c; ctx.fillRect(lx - tw - 13, h - 20, 9, 9); lx -= tw + 26; });
+  }
+  function drawThr() {
+    const { ctx, w, h } = thrCv; if (w < 20) return;
+    const id = ideal(), tmax = Math.max(20, S.t);
+    SL.chart(thrCv, [{ data: S.hist.length ? S.hist : [[0, 0]], color: '#34d399', label: 'goodput' }, { data: [[0, id], [tmax, id]], color: 'rgba(255,255,255,.5)', dash: [4, 4], width: 1.2, label: 'ideal' }], { xmin: 0, xmax: tmax, ymin: 0, ymax: 4.4, pad: [24, 10, 26, 34], xlabel: 's' });
+  }
+  let thrT = 0;
+  SL.loop((dt) => {
+    if (document.hidden || tcpCv.ctx.canvas.offsetParent === null) return;
+    if (T.playing && !S.done) { const sub = 4, d = dt * T.speed / sub; for (let i = 0; i < sub; i++) tStep(d); }
+    drawTcp();
+    thrT += dt; if (thrT > 0.25) { thrT = 0; drawThr(); }
+    $('#tsD').innerHTML = `${S.rbase}<small>/ ${NSEG}</small>`; $('#tsS').textContent = S.sent; $('#tsR').textContent = S.retx; $('#tsL').textContent = S.lost;
+    $('#tsG').innerHTML = `${SL.fmt(S.hist.length ? S.hist[S.hist.length - 1][1] : 0, 2)}<small>seg/s</small>`; $('#tsI').innerHTML = `${SL.fmt(ideal(), 2)}<small>seg/s</small>`;
+  }).start();
+  $('#tcpCv').addEventListener('pointerdown', e => { const p = SL.ptr(e, e.currentTarget); const f = S.fly.find(f => !f.dead && !f.lost && f.sx !== undefined && Math.abs(f.sx - p.x) < 16 && Math.abs(f.sy - p.y) < 12); if (f) { f.lost = true; f.lostAt = (S.t - f.t0) / DELAY; } });
+  seg('#proto', v => { T.proto = v; tReset(); });
+  SL.bind('#win', v => { T.W = v; });
+  SL.bind('#loss', v => { T.loss = v / 100; }, v => v + '%');
+  SL.bind('#rto', v => { T.rtoK = v; }, v => v.toFixed(1) + ' × RTT');
+  SL.bind('#tspd', v => { T.speed = v; }, v => v + '×');
+  $('#tPlay').onclick = () => { T.playing = !T.playing; $('#tPlay').innerHTML = T.playing ? '<i data-lucide="pause"></i> Pause' : '<i data-lucide="play"></i> Play'; SL.refreshIcons($('#tPlay')); };
+  $('#tReset').onclick = () => { tReset(); viewBase = 0; };
+
+  /* =====================================================================
+     4. SUBNETTING
+     ===================================================================== */
+  const ip2n = s => { const m = String(s).trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/); if (!m) return null; const o = m.slice(1).map(Number); if (o.some(x => x > 255)) return null; return ((o[0] << 24) >>> 0) + (o[1] << 16) + (o[2] << 8) + o[3]; };
+  const n2ip = n => [24, 16, 8, 0].map(s => (n >>> s) & 255).join('.');
+  const maskOf = p => p === 0 ? 0 : (0xFFFFFFFF << (32 - p)) >>> 0;
+  function subnet(ipStr, p) {
+    const ip = ip2n(ipStr); if (ip === null || !(p >= 0 && p <= 32)) return null;
+    const mask = maskOf(p), net = (ip & mask) >>> 0, bc = (net | (~mask >>> 0)) >>> 0;
+    const total = 2 ** (32 - p), hosts = p === 32 ? 1 : p === 31 ? 2 : total - 2;
+    const first = p >= 31 ? net : net + 1, last = p >= 31 ? bc : bc - 1;
+    const o1 = ip >>> 24, cls = o1 < 128 ? 'A' : o1 < 192 ? 'B' : o1 < 224 ? 'C' : o1 < 240 ? 'D (multicast)' : 'E (reserved)';
+    const priv = (ip >>> 24) === 10 || ((ip >>> 20) === 0xAC1) || ((ip >>> 16) === 0xC0A8);
+    return { ip, p, mask, net, bc, total, hosts, first, last, cls, priv, wild: (~mask) >>> 0 };
+  }
+  window.__subnet = (s, p) => { const r = subnet(s, p); return r && { network: n2ip(r.net), broadcast: n2ip(r.bc), mask: n2ip(r.mask), first: n2ip(r.first), last: n2ip(r.last), hosts: r.hosts }; };
+  function bitsHTML(n, p, mode) { const b = (n >>> 0).toString(2).padStart(32, '0'); return [0, 1, 2, 3].map(o => `<div class="oct">${[...b.slice(o * 8, o * 8 + 8)].map((c, i) => { const idx = o * 8 + i; return `<span class="b ${idx < p ? 'n' : 'h'}">${c}</span>`; }).join('')}</div>`).join('') + `<span class="mono" style="align-self:center;color:var(--muted);font-size:.9rem">= ${n2ip(n)}</span>`; }
+  function renderSub(e) {
+    const user = !!e;
+    const raw = $('#ipIn').value.trim(); const m = raw.match(/^([\d.]+)\s*(?:\/\s*(\d{1,2}))?$/);
+    const p = m && m[2] !== undefined ? +m[2] : +$('#pfx').value;
+    const r = m ? subnet(m[1], p) : null;
+    if (!r || p > 32) { $('#ipErr').textContent = 'Enter an IPv4 address like 10.20.30.40/22.'; return; }
+    $('#ipErr').textContent = ''; $('#pfx').value = p; $('#pfx').dispatchEvent(new Event('fill')); $('#pfx').closest('.ctl').querySelector('output').textContent = '/' + p;
+    $('#pfx').style.setProperty('--p', (p / 32 * 100) + '%');
+    $('#bIp').innerHTML = bitsHTML(r.ip, p); $('#bMask').innerHTML = bitsHTML(r.mask, p); $('#bNet').innerHTML = bitsHTML(r.net, p); $('#bBc').innerHTML = bitsHTML(r.bc, p);
+    $('#subRes').innerHTML = [['Network', n2ip(r.net) + '/' + p], ['Subnet mask', n2ip(r.mask)], ['Wildcard', n2ip(r.wild)], ['Broadcast', p >= 31 ? '— (none)' : n2ip(r.bc)], ['First host', n2ip(r.first)], ['Last host', n2ip(r.last)], ['Usable hosts', r.hosts.toLocaleString('en')], ['Total addresses', r.total.toLocaleString('en')], ['Historic class', r.cls], ['Scope', r.priv ? 'Private (RFC 1918)' : 'Public / other']].map(([k, v]) => `<tr><td>${k}</td><td class="mono" style="text-align:right">${v}</td></tr>`).join('');
+    // split
+    const maxB = Math.max(0, Math.min(6, 30 - p)); const sp = $('#split'); sp.max = maxB; if (+sp.value > maxB) sp.value = maxB;
+    const b = +sp.value, np = p + b, cnt = 2 ** b, size = 2 ** (32 - np);
+    sp.closest('.ctl').querySelector('output').textContent = `${b} → ${cnt} subnet${cnt > 1 ? 's' : ''} of /${np}`; sp.style.setProperty('--p', (maxB ? b / maxB * 100 : 0) + '%');
+    const rows = []; for (let k = 0; k < Math.min(cnt, 16); k++) { const net = (r.net + k * size) >>> 0, rr = subnet(n2ip(net), np); rows.push(`<tr${r.ip >= rr.net && r.ip <= rr.bc ? ' style="background:color-mix(in srgb,var(--accent) 12%,transparent)"' : ''}><td class="num">${k}</td><td class="mono">${n2ip(rr.net)}/${np}</td><td class="mono">${n2ip(rr.first)} – ${n2ip(rr.last)}</td><td class="mono">${np >= 31 ? '—' : n2ip(rr.bc)}</td><td class="num">${rr.hosts.toLocaleString('en')}</td></tr>`); }
+    $('#subTable').innerHTML = `<tr><th>#</th><th>Subnet</th><th>Host range</th><th>Broadcast</th><th>Hosts</th></tr>` + rows.join('') + (cnt > 16 ? `<tr><td colspan="5" class="small muted">… ${cnt - 16} more</td></tr>` : '');
+    // same subnet
+    const ip2 = ip2n($('#ip2').value);
+    $('#sameRes').innerHTML = ip2 === null ? '<span class="muted">Enter a valid address.</span>' : ((ip2 & r.mask) >>> 0) === r.net ? `<span style="color:var(--ok)">Same subnet</span> <span class="muted">(${n2ip(ip2)} AND ${n2ip(r.mask)} = ${n2ip(r.net)}). They talk directly via ARP and the switch.</span>` : `<span style="color:var(--warn)">Different subnets</span> <span class="muted">(${n2ip(ip2)} is in ${n2ip((ip2 & r.mask) >>> 0)}/${p}). Traffic must go through a router.</span>`;
+    if (user) { check('sub62', p === 25); check('sub2', r.hosts === 2); }
+  }
+  $('#ipIn').addEventListener('input', renderSub);
+  $('#ip2').addEventListener('input', renderSub);
+  $('#pfx').addEventListener('input', e => { const ipPart = ($('#ipIn').value.split('/')[0] || '').trim(); $('#ipIn').value = ipPart + '/' + e.target.value; renderSub(e); });
+  $('#split').addEventListener('input', renderSub);
+  renderSub();
+
+  /* =====================================================================
+     QUIZ
+     ===================================================================== */
+  SL.quiz('#quiz', [
+    { q: 'A frame crosses a switch and then a router. Which addresses does the router change?', options: ['Only the IP addresses', 'The source and destination MAC addresses (and the TTL)', 'Nothing', 'The TCP port numbers, always'], answer: 1, why: 'A router builds a new link-layer frame for the next hop and decrements the TTL. IP addresses stay end-to-end unless NAT is involved.' },
+    { q: 'Why does the laptop send an ARP request before its first packet to the web server?', options: ['To find the web server’s IP address', 'To find the MAC address of its default gateway', 'To open a TCP connection', 'To encrypt the traffic'], answer: 1, why: 'The server is in another network, so the frame must be addressed to the gateway’s MAC. DNS (not ARP) finds the server’s IP.' },
+    { q: 'The client sends SYN with seq = 7000. What acknowledgement number does the SYN-ACK carry?', options: ['7000', '7001', '0', 'Any random number'], answer: 1, why: 'The SYN consumes one sequence number, so the server acknowledges 7001: the next byte it expects.' },
+    { q: 'Which transport protocol does a classic DNS query use, and on which port?', options: ['TCP port 80', 'UDP port 53', 'TCP port 443', 'UDP port 67'], answer: 1, why: 'Small DNS queries use UDP port 53 (TCP 53 is used for large responses and zone transfers).' },
+    { q: 'How many usable host addresses does a /27 network have?', options: ['32', '30', '27', '62'], answer: 1, why: '2^(32−27) = 32 addresses, minus the network and broadcast addresses = 30.' },
+    { q: 'Is 172.20.5.9 a private address?', options: ['Yes, it is in 172.16.0.0/12', 'No, only 10.x and 192.168.x are private', 'Only if NAT is enabled', 'It is a multicast address'], answer: 0, why: '172.16.0.0/12 covers 172.16.0.0 to 172.31.255.255.' },
+    { q: 'With a fixed window of 10 segments of 1460 bytes and RTT 100 ms, the maximum TCP throughput is about…', options: ['146 kB/s', '1.46 MB/s', '14.6 MB/s', '10 segments per second'], answer: 0, why: 'W·MSS/RTT = 14 600 bytes / 0.1 s = 146 000 bytes/s ≈ 146 kB/s (about 1.17 Mbit/s).' },
+    { q: 'Segment 5 of a burst is lost. Under Go-Back-N, what does the sender retransmit after the timeout?', options: ['Only segment 5', 'Segment 5 and every segment sent after it', 'Nothing; the receiver repairs it', 'The whole file'], answer: 1, why: 'The Go-Back-N receiver discards out-of-order segments, so the sender goes back to the oldest unacknowledged one and resends from there.' },
+    { q: 'In link-state routing, what happens when a link fails?', options: ['Packets are dropped forever', 'Adjacent routers flood new LSAs and every router reruns Dijkstra', 'Only the next packet is rerouted, at random', 'The TTL is reset'], answer: 1, why: 'All routers update the shared map and recompute their shortest-path trees, converging on new routes.' },
+    { q: 'What does NAT on a home or campus router rewrite for outgoing traffic?', options: ['The destination MAC only', 'The private source IP and port to a public IP and port', 'The DNS name', 'The HTTP request line'], answer: 1, why: 'The router keeps a translation table mapping (private IP, port) ↔ (public IP, port) so replies reach the right device.' },
+  ]);
+
+  window.__net = { buildScript, headersAt, startJourney, J, nodes: () => nodes, links: () => links, dijkstra, R: () => R, RL: () => RL, RT, recompute, S: () => S, T, subnet };
+  rReset(); renderLinkPanel();
+})();
+</script>
+</body>
+</html>

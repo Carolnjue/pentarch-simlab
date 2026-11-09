@@ -1,0 +1,1294 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Algorithm Visualizer · Pentarch SimLab</title>
+<meta name="description" content="Animate sorting, searching and pathfinding algorithms step by step with live operation counters, pseudo-code, races, sonification and Big-O growth plots.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .modes{margin:18px 0 0}
+  .modes>.tablist button{font-size:.95rem;padding:12px 18px}
+  .modes>.tabpanel{padding:0}
+  .stage.s-main{height:540px}
+  .stage.s-big{height:460px}
+  .stage.s-meas{height:320px;min-height:280px}
+  @media (max-width:600px){.stage.s-main{height:440px}.stage.s-search{height:560px}.stage.s-big{height:380px}.stage.s-path{height:470px}}
+  .field{display:flex;flex-direction:column;gap:5px;margin:6px 0 8px}
+  .field>label,.field>span.lbl{font-size:.86rem;color:var(--muted)}
+  .lab>aside,.lab>.stage{min-width:0}
+  .pseudo{font:500 .74rem/1.5 var(--mono);background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:8px 0;margin:0;white-space:pre-wrap}
+  .pseudo div{padding:1px 10px 1px 26px;text-indent:-14px;color:var(--muted);border-left:3px solid transparent}
+  .pseudo div.on{background:color-mix(in srgb,var(--accent) 16%,transparent);color:#fff;border-left-color:var(--accent)}
+  .pseudo .cm{color:var(--dim)}
+  .pseudo-title{font:600 .7rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin:10px 0 6px}
+  .legend{display:flex;flex-wrap:wrap;gap:6px}
+  .legend .readout{display:inline-flex;align-items:center;gap:6px}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:3px}
+  #pathCv{touch-action:none;cursor:crosshair}
+  .chal{list-style:none;padding:0;margin:0}
+  .chal li{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
+  .chal li .led{margin-top:6px;flex:none}
+  .chal li>div>b:first-child{display:block}
+  .chal li span.small{color:var(--muted)}
+  .slog{font:500 .76rem/1.6 var(--mono);color:var(--muted);max-height:190px;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  .slog div.last{color:#fff}
+  table.data.cmp td,table.data.cmp th{padding:6px 6px;font-size:.8rem}
+  .ftoggles{display:flex;flex-wrap:wrap;gap:6px}
+  .ftoggles .btn{font-family:var(--mono)}
+  .ftoggles .btn i.sw{width:9px;height:9px;border-radius:50%}
+  .tblwrap{overflow-x:auto}
+  .ok-t{color:var(--ok)} .bad-t{color:var(--bad)}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  @media (max-width:420px){.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body data-page="algorithms">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <!-- 1. THE LAB -->
+  <section class="tabs modes" data-tabs id="modes">
+    <div class="tablist">
+      <button><i data-lucide="chart-column"></i> Sorting</button>
+      <button><i data-lucide="search"></i> Searching</button>
+      <button><i data-lucide="route"></i> Pathfinding</button>
+      <button><i data-lucide="trending-up"></i> Big-O</button>
+    </div>
+
+    <!-- ===== SORTING ===== -->
+    <div class="tabpanel">
+      <div class="lab">
+        <div class="stage s-main">
+          <canvas id="sortCv"></canvas>
+          <div class="hud hud-b legend">
+            <span class="readout"><i class="sw" style="background:#f59e0b"></i>compare</span>
+            <span class="readout"><i class="sw" style="background:#fb7185"></i>swap</span>
+            <span class="readout"><i class="sw" style="background:#a78bfa"></i>write</span>
+            <span class="readout"><i class="sw" style="background:#22d3ee"></i>read</span>
+            <span class="readout"><i class="sw" style="background:#34d399"></i>sorted</span>
+          </div>
+        </div>
+        <aside>
+          <div class="panel">
+            <h3><i data-lucide="sliders-horizontal"></i> Sorting controls</h3>
+            <div class="field"><label for="algA">Algorithm</label><select id="algA"></select></div>
+            <label class="toggle">Race against a second algorithm <input type="checkbox" id="race"></label>
+            <div class="field" id="algBWrap" hidden><label for="algB">Opponent</label><select id="algB"></select></div>
+            <div class="ctl"><label for="size">Array size n</label><output>48</output><input type="range" id="size" min="8" max="200" step="1" value="48"></div>
+            <div class="field"><span class="lbl">Initial order</span>
+              <div class="seg" id="order"><button data-v="random" class="on">Random</button><button data-v="nearly">Nearly sorted</button><button data-v="reversed">Reversed</button><button data-v="few">Few unique</button></div>
+            </div>
+            <div class="ctl"><label for="speed">Speed</label><output>144 ops/s</output><input type="range" id="speed" min="0" max="100" step="1" value="60"></div>
+            <div class="btn-row" style="margin-top:8px">
+              <button class="btn primary" id="sPlay"><i data-lucide="play"></i> Play</button>
+              <button class="btn" id="sBack" title="Step back"><i data-lucide="step-back"></i></button>
+              <button class="btn" id="sStep" title="Step forward"><i data-lucide="step-forward"></i></button>
+              <button class="btn" id="sNew" title="New array"><i data-lucide="shuffle"></i> New</button>
+            </div>
+            <label class="toggle" style="margin-top:8px">Sonify values (pitch ∝ value) <input type="checkbox" id="sound"></label>
+          </div>
+          <div class="panel">
+            <h3><i data-lucide="gauge"></i> Live counters <span class="small muted" id="cntName" style="margin-left:auto;font-weight:500"></span></h3>
+            <div class="stats">
+              <div class="stat"><div class="k">Comparisons</div><div class="v" id="kC">0</div></div>
+              <div class="stat"><div class="k">Swaps</div><div class="v" id="kS">0</div></div>
+              <div class="stat"><div class="k">Writes</div><div class="v" id="kW">0</div></div>
+              <div class="stat"><div class="k">Array accesses</div><div class="v" id="kA">0</div></div>
+            </div>
+            <p class="small muted" style="margin:10px 0 0">Progress <b id="kP" class="mono">0 / 0</b> primitive operations</p>
+          </div>
+          <div class="panel">
+            <h3><i data-lucide="code"></i> Pseudo-code</h3>
+            <div id="pseudoA"></div>
+            <div id="pseudoB"></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- ===== SEARCHING ===== -->
+    <div class="tabpanel">
+      <div class="lab">
+        <div class="stage s-main s-search">
+          <canvas id="searchCv"></canvas>
+        </div>
+        <aside>
+          <div class="panel">
+            <h3><i data-lucide="search"></i> Search controls</h3>
+            <div class="ctl"><label for="sn">Sorted array size n</label><output>32</output><input type="range" id="sn" min="8" max="64" step="1" value="32"></div>
+            <div class="field"><label for="target">Target value (or click a cell)</label><input type="number" id="target" value="0"></div>
+            <div class="btn-row">
+              <button class="btn sm" id="tPresent"><i data-lucide="dices"></i> Random present</button>
+              <button class="btn sm" id="tAbsent"><i data-lucide="dices"></i> Random absent</button>
+            </div>
+            <div class="ctl" style="margin-top:6px"><label for="sspeed">Probes per second</label><output>2</output><input type="range" id="sspeed" min="0.5" max="20" step="0.5" value="2"></div>
+            <div class="btn-row" style="margin-top:8px">
+              <button class="btn primary" id="qPlay"><i data-lucide="play"></i> Search</button>
+              <button class="btn" id="qStep"><i data-lucide="step-forward"></i> Step</button>
+              <button class="btn" id="qReset"><i data-lucide="rotate-ccw"></i> Reset</button>
+              <button class="btn" id="qNew"><i data-lucide="shuffle"></i> New array</button>
+            </div>
+          </div>
+          <div class="panel">
+            <h3><i data-lucide="gauge"></i> Comparisons</h3>
+            <div class="stats">
+              <div class="stat"><div class="k">Linear</div><div class="v" id="qL">0</div></div>
+              <div class="stat"><div class="k">Binary</div><div class="v" id="qB">0</div></div>
+              <div class="stat"><div class="k">Linear worst</div><div class="v" id="qLw">32</div></div>
+              <div class="stat"><div class="k">Binary worst</div><div class="v" id="qBw">6</div></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h3><i data-lucide="list-ordered"></i> Binary search trace</h3>
+            <div class="slog" id="slog"><div class="muted">Press Search or Step to begin.</div></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- ===== PATHFINDING ===== -->
+    <div class="tabpanel">
+      <div class="lab">
+        <div class="stage s-main s-path">
+          <canvas id="pathCv"></canvas>
+          <div class="hud"><span class="readout" id="pHud">Draw walls · drag S and E</span></div>
+          <div class="hud hud-b legend">
+            <span class="readout"><i class="sw" style="background:#334155"></i>wall</span>
+            <span class="readout"><i class="sw" style="background:#8b5e34"></i>mud ×5</span>
+            <span class="readout"><i class="sw" style="background:#22d3ee"></i>frontier</span>
+            <span class="readout"><i class="sw" style="background:#6366f1"></i>visited</span>
+            <span class="readout"><i class="sw" style="background:#facc15"></i>path</span>
+          </div>
+        </div>
+        <aside>
+          <div class="panel">
+            <h3><i data-lucide="route"></i> Pathfinding</h3>
+            <div class="field"><span class="lbl">Draw tool</span>
+              <div class="seg" id="tool"><button data-v="wall" class="on">Wall</button><button data-v="mud">Mud</button><button data-v="erase">Erase</button><button data-v="start">Start</button><button data-v="end">End</button></div>
+            </div>
+            <div class="field"><label for="palg">Algorithm</label>
+              <select id="palg">
+                <option value="bfs">Breadth-first search (BFS)</option>
+                <option value="dfs">Depth-first search (DFS)</option>
+                <option value="dijkstra">Dijkstra (uniform-cost)</option>
+                <option value="astar" selected>A* search</option>
+                <option value="greedy">Greedy best-first</option>
+              </select></div>
+            <div id="heurWrap">
+              <div class="field"><span class="lbl">Heuristic h(n)</span>
+                <div class="seg" id="heur"><button data-v="manhattan" class="on">Manhattan</button><button data-v="euclid">Euclidean</button></div>
+              </div>
+              <div class="ctl" id="hwCtl"><label for="hw">A* heuristic weight w</label><output>1.0</output><input type="range" id="hw" min="1" max="5" step="0.5" value="1"></div>
+            </div>
+            <div class="ctl"><label for="pspeed">Animation speed</label><output>120 nodes/s</output><input type="range" id="pspeed" min="0" max="100" step="1" value="55"></div>
+            <div class="btn-row" style="margin-top:8px">
+              <button class="btn primary" id="pRun"><i data-lucide="play"></i> Run</button>
+              <button class="btn" id="pClearPath"><i data-lucide="eraser"></i> Clear path</button>
+            </div>
+            <div class="btn-row" style="margin-top:8px">
+              <button class="btn sm" id="pMaze"><i data-lucide="grid-3x3"></i> Maze</button>
+              <button class="btn sm" id="pMud"><i data-lucide="waves"></i> Scatter mud</button>
+              <button class="btn sm" id="pWalls"><i data-lucide="dices"></i> Random walls</button>
+              <button class="btn sm" id="pClear"><i data-lucide="trash-2"></i> Clear all</button>
+            </div>
+          </div>
+          <div class="panel">
+            <h3><i data-lucide="gauge"></i> Search results</h3>
+            <div class="stats">
+              <div class="stat"><div class="k">Nodes visited</div><div class="v" id="rV">0</div></div>
+              <div class="stat"><div class="k">Max frontier</div><div class="v" id="rF">0</div></div>
+              <div class="stat"><div class="k">Path moves</div><div class="v" id="rL">–</div></div>
+              <div class="stat"><div class="k">Path cost</div><div class="v" id="rC">–</div></div>
+            </div>
+            <p class="small" style="margin:10px 0 0" id="rOpt"><span class="muted">Optimality check appears after a run.</span></p>
+          </div>
+          <div class="panel">
+            <h3><i data-lucide="swords"></i> Compare all on this grid</h3>
+            <button class="btn sm" id="pCompare"><i data-lucide="table-2"></i> Run all algorithms</button>
+            <div class="tblwrap" id="cmpTbl" style="margin-top:10px"></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- ===== BIG-O ===== -->
+    <div class="tabpanel">
+      <div class="lab">
+        <div class="stage s-big">
+          <canvas id="bigCv"></canvas>
+        </div>
+        <aside>
+          <div class="panel">
+            <h3><i data-lucide="trending-up"></i> Growth rates</h3>
+            <div class="ctl"><label for="bigN">Largest n shown</label><output>20</output><input type="range" id="bigN" min="4" max="100" step="1" value="20"></div>
+            <label class="toggle">Logarithmic y-axis <input type="checkbox" id="bigLog"></label>
+            <div class="ftoggles" id="ftog"></div>
+          </div>
+          <div class="panel">
+            <h3><i data-lucide="calculator"></i> Operations at n = <span id="bigAt" class="mono">20</span></h3>
+            <table class="data" id="bigVals"></table>
+            <p class="small muted" style="margin:8px 0 0">Hover or touch the plot to read values. Logarithms are base 2.</p>
+          </div>
+        </aside>
+      </div>
+      <div class="lab">
+        <div class="stage s-meas"><canvas id="measCv"></canvas></div>
+        <aside>
+          <div class="panel">
+            <h3><i data-lucide="flask-conical"></i> Measure real comparison counts</h3>
+            <p class="small muted">Runs each algorithm on arrays of n = 10 … 250 (average of 5 trials) and plots comparisons against the reference curves.</p>
+            <div class="field"><span class="lbl">Input order</span>
+              <div class="seg" id="measOrder"><button data-v="random" class="on">Random</button><button data-v="nearly">Nearly sorted</button><button data-v="reversed">Reversed</button></div>
+            </div>
+            <button class="btn primary" id="measGo"><i data-lucide="play"></i> Run measurement</button>
+          </div>
+        </aside>
+      </div>
+      <div class="panel" style="margin-bottom:10px">
+        <h3><i data-lucide="table-2"></i> Complexity reference</h3>
+        <div class="tblwrap"><table class="data" id="cxTable"></table></div>
+        <p class="small muted" style="margin:10px 0 0">$n$ = number of items, $k$ = range of key values, $d$ = number of digits, $b$ = radix (10 here), $V$ and $E$ = vertices and edges of the graph. Space is auxiliary memory beyond the input.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. LEARNING TABS -->
+  <section class="tabs" data-tabs style="margin-top:28px">
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+      <button><i data-lucide="book-a"></i> Glossary</button>
+    </div>
+    <div class="tabpanel prose">
+      <h3>What an algorithm costs</h3>
+      <p>We measure an algorithm by how the number of primitive operations grows with the input size $n$, ignoring constant factors and lower-order terms. Formally, $f(n) = O(g(n))$ if there are constants $c>0$ and $n_0$ such that $f(n) \le c\,g(n)$ for all $n \ge n_0$. $\Omega$ gives a lower bound and $\Theta$ a tight bound (both $O$ and $\Omega$).</p>
+      <div class="eq">$$O(1) \subset O(\log n) \subset O(n) \subset O(n\log n) \subset O(n^2) \subset O(2^n) \subset O(n!)$$</div>
+      <p>The counters in the lab are the raw material of this analysis: <b>comparisons</b> (is $A[i] &gt; A[j]$?), <b>swaps</b>, single <b>writes</b>, and <b>array accesses</b> (every read or write of the main array).</p>
+
+      <h3>Quadratic sorts</h3>
+      <p><b>Bubble sort</b> repeatedly swaps adjacent out-of-order pairs; after pass $i$ the largest $i+1$ items are in their final places. Pass $i$ needs $n-1-i$ comparisons, so the worst case is</p>
+      <div class="eq">$$C_{\text{worst}} = \sum_{i=0}^{n-2} (n-1-i) = \frac{n(n-1)}{2} = \Theta(n^2).$$</div>
+      <p>With the early-exit flag a sorted array needs just one pass of $n-1$ comparisons. <b>Insertion sort</b> grows a sorted prefix, shifting larger elements one place right. It performs exactly one shift per <i>inversion</i> (a pair $i&lt;j$ with $A[i]&gt;A[j]$), so its cost is $\Theta(n + I)$ where $I$ is the number of inversions: excellent on nearly sorted data. <b>Selection sort</b> always makes $n(n-1)/2$ comparisons but at most $n-1$ swaps, useful when writes are expensive.</p>
+
+      <h3>Divide and conquer</h3>
+      <p><b>Merge sort</b> splits the array in half, sorts each half recursively and merges them in linear time:</p>
+      <div class="eq">$$T(n) = 2\,T\!\left(\tfrac{n}{2}\right) + \Theta(n) \;\Rightarrow\; T(n) = \Theta(n \log n)$$</div>
+      <p>by the master theorem (case 2: $a=2$, $b=2$, $f(n)=\Theta(n^{\log_b a})$). There are $\log_2 n$ levels of recursion, each doing $\Theta(n)$ work. Merging into an auxiliary array costs $O(n)$ extra space; taking from the left half on ties makes it <b>stable</b>.</p>
+      <p><b>Quicksort</b> partitions around a pivot so that smaller items go left and larger go right, then recurses. If the pivot splits evenly, $T(n)=2T(n/2)+\Theta(n)=\Theta(n\log n)$; if it is always the minimum or maximum, $T(n)=T(n-1)+\Theta(n)=\Theta(n^2)$. The <b>Lomuto</b> scheme (pivot = last element) hits that worst case on already-sorted or reversed input. <b>Hoare's</b> scheme scans from both ends, uses about three times fewer swaps on average, and here takes the middle element as pivot, which avoids the sorted-input trap. Random pivots give expected $\approx 1.39\,n\log_2 n$ comparisons.</p>
+      <p><b>Heapsort</b> builds a binary max-heap in $O(n)$ time (node $i$ has children $2i+1$ and $2i+2$), then repeatedly swaps the root to the end and sifts down: $\Theta(n\log n)$ in every case with $O(1)$ extra space, but not stable and cache-unfriendly.</p>
+
+      <h3>The comparison lower bound and how to beat it</h3>
+      <p>Any comparison sort is a binary decision tree with at least $n!$ leaves, so its height (worst-case comparisons) is at least</p>
+      <div class="eq">$$\log_2 n! = n\log_2 n - n\log_2 e + O(\log n) = \Omega(n \log n).$$</div>
+      <p><b>Counting sort</b> and <b>radix sort</b> avoid comparisons by using the keys as array indices. Counting sort takes $\Theta(n+k)$ for integer keys in $[0,k]$. LSD radix sort runs a stable counting sort on each of $d$ digits in base $b$: $\Theta(d(n+b))$. Their counters show <b>zero comparisons</b>.</p>
+
+      <h3>Searching</h3>
+      <p>Linear search checks items one by one: $n$ comparisons in the worst case (target last or absent). Binary search on a <b>sorted</b> array halves the live interval $[lo, hi]$ at each probe of $mid = \lfloor (lo+hi)/2 \rfloor$, so the worst case is</p>
+      <div class="eq">$$C_{\text{binary}}(n) = \lfloor \log_2 n \rfloor + 1 .$$</div>
+      <p>For $n = 10^6$ that is 20 probes instead of a million.</p>
+
+      <h3>Graph search on a grid</h3>
+      <p>Each free cell is a vertex joined to its four neighbours. Entering a normal cell costs 1; entering mud costs 5. All the algorithms share one template: take a node from the <b>frontier</b>, mark it visited, push its unvisited neighbours. They differ only in which node they take next:</p>
+      <ul>
+        <li><b>BFS</b>: a FIFO queue. Finds the path with the fewest moves; ignores weights.</li>
+        <li><b>DFS</b>: a LIFO stack. Complete on finite grids but paths can be very long.</li>
+        <li><b>Dijkstra</b>: the node with the smallest path cost $g(n)$ so far (priority queue). Optimal for non-negative weights; $O((V+E)\log V)$ with a binary heap.</li>
+        <li><b>A*</b>: smallest $f(n) = g(n) + h(n)$, where $h$ estimates the remaining cost.</li>
+        <li><b>Greedy best-first</b>: smallest $h(n)$ only. Fast, but not optimal.</li>
+      </ul>
+      <div class="eq">$$h_{\text{Manhattan}} = |x-x_e| + |y-y_e|, \qquad h_{\text{Euclid}} = \sqrt{(x-x_e)^2 + (y-y_e)^2}$$</div>
+      <p>A* is guaranteed optimal when $h$ is <b>admissible</b> (never overestimates the true remaining cost). Both heuristics are admissible on a 4-connected grid with step cost $\ge 1$; Manhattan is tighter, so A* expands fewer nodes. Weighting it, $f = g + w\,h$ with $w&gt;1$, trades optimality for speed: the cost found is at most $w$ times the optimum.</p>
+      <div class="callout"><i data-lucide="info"></i><div>Simplifications: the grid is 4-connected, costs are attached to the cell being entered, and ties in priority queues are broken by smaller $h$ then insertion order. Real libraries differ in these details, which changes the exact counts but not the complexity.</div></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. Bubble sort on 5 numbers</h3>
+      <div class="worked">
+        <p>Sort $[5, 1, 4, 2, 8]$ ascending.</p>
+        <ol>
+          <li>Pass 1: compare (5,1) swap → [1,5,4,2,8]; (5,4) swap → [1,4,5,2,8]; (5,2) swap → [1,4,2,5,8]; (5,8) no swap. 4 comparisons, 3 swaps. 8 is now final.</li>
+          <li>Pass 2: (1,4) –; (4,2) swap → [1,2,4,5,8]; (4,5) –. 3 comparisons, 1 swap.</li>
+          <li>Pass 3: (1,2) –; (2,4) –. 2 comparisons, 0 swaps, so the early-exit flag stops the sort.</li>
+        </ol>
+        <p>Total: $4+3+2 = 9$ comparisons and 4 swaps. The 4 swaps equal the number of inversions: (5,1), (5,4), (5,2), (4,2).</p>
+      </div>
+
+      <h3>2. Worst case in the lab</h3>
+      <div class="worked">
+        <p>Set <b>n = 48</b>, order <b>Reversed</b>, algorithm <b>Bubble sort</b>. Every pair is an inversion, so</p>
+        <div class="eq">$$C = S = \frac{48 \times 47}{2} = 1128 .$$</div>
+        <p>The counters finish at 1128 comparisons and 1128 swaps. Each swap reads and writes two cells and each comparison reads two, so accesses $= 2(1128) + 4(1128) = 6768$. Switch to <b>Insertion sort</b>: 1128 comparisons again, but now 1128 shifts plus 47 key placements $= 1175$ writes.</p>
+      </div>
+
+      <h3>3. Why $n\log n$ wins</h3>
+      <div class="worked">
+        <p>A laptop does roughly $10^9$ simple operations per second. Sorting $n = 10^6$ records (say, every M-Pesa transaction in an hour):</p>
+        <ul>
+          <li>$n^2/2 = 5\times10^{11}$ operations ≈ 500 s, over 8 minutes.</li>
+          <li>$n\log_2 n \approx 10^6 \times 19.93 \approx 2\times10^{7}$ operations ≈ 0.02 s.</li>
+        </ul>
+        <p>The ratio is $n/(2\log_2 n) \approx 25\,000$. No hardware upgrade closes a gap like that.</p>
+      </div>
+
+      <h3>4. Binary search step by step</h3>
+      <div class="worked">
+        <p>Find 61 in $A = [3, 8, 14, 21, 29, 33, 40, 47, 52, 61, 66, 75, 81, 90, 97]$ ($n=15$, indices 0–14).</p>
+        <ol>
+          <li>$lo=0, hi=14, mid=7$: $A[7]=47 &lt; 61$ → $lo=8$.</li>
+          <li>$lo=8, hi=14, mid=11$: $A[11]=75 &gt; 61$ → $hi=10$.</li>
+          <li>$lo=8, hi=10, mid=9$: $A[9]=61$ → found in 3 probes.</li>
+        </ol>
+        <p>Worst case $\lfloor\log_2 15\rfloor + 1 = 4$ probes; linear search needed 10 comparisons here.</p>
+      </div>
+
+      <h3>5. Dijkstra versus BFS with mud</h3>
+      <div class="worked">
+        <p>Start and end are 6 cells apart in a straight corridor, and the corridor's middle cell is mud. A detour around it takes 8 moves on normal ground.</p>
+        <ul>
+          <li>BFS counts moves only: it takes the straight route, 6 moves, cost $5\cdot1 + 1\cdot5 = 10$.</li>
+          <li>Dijkstra compares costs: detour $= 8 &lt; 10$, so it walks 8 moves at cost 8.</li>
+        </ul>
+        <p>Try it in the lab: the optimality line under the results reports whether the path found matches Dijkstra's optimum.</p>
+      </div>
+
+      <h3>6. One A* expansion</h3>
+      <div class="worked">
+        <p>Start $(2,2)$, end $(9,5)$, Manhattan heuristic. The neighbour $(3,2)$ has $g = 1$ and $h = |3-9| + |2-5| = 9$, so $f = 10$. The neighbour $(1,2)$ has $g=1$, $h=11$, $f=12$. A* expands $(3,2)$ first, pulling the search towards the goal. Dijkstra treats both equally ($g=1$), which is why its visited region is a diamond while A*'s is a narrow beam.</p>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <p>Each challenge is checked automatically when the relevant run finishes. The light turns green when you succeed.</p>
+      <ul class="chal" id="chal"></ul>
+      <h3>Further experiments</h3>
+      <ol class="steps">
+        <li>Sort the same random array of 100 items with every algorithm. Rank them by comparisons, then by writes. Is the ranking the same?</li>
+        <li>Switch to <b>Few unique</b> and race Lomuto quicksort against Hoare quicksort. Why does Lomuto degrade when many keys are equal?</li>
+        <li>In Big-O, use <b>Run measurement</b> with reversed input. Which curve does insertion sort follow now, and why does heapsort barely change?</li>
+        <li>Build a long wall with one gap far from the straight line between S and E. Compare the nodes visited by greedy best-first and A*.</li>
+        <li>Set the A* weight to 3 on a mud field. How much faster is it, and how far from optimal is the cost?</li>
+      </ol>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+
+    <div class="tabpanel prose">
+      <dl>
+        <dt><b>Stable sort</b></dt><dd>Equal keys keep their original relative order. Needed when sorting by several keys in turn (e.g. by surname, then by county).</dd>
+        <dt><b>In-place</b></dt><dd>Uses $O(1)$ (or $O(\log n)$ stack) extra memory beyond the input array.</dd>
+        <dt><b>Inversion</b></dt><dd>A pair of positions $i&lt;j$ with $A[i]&gt;A[j]$. A reversed array has $n(n-1)/2$ of them.</dd>
+        <dt><b>Pivot</b></dt><dd>The element quicksort partitions around.</dd>
+        <dt><b>Heap</b></dt><dd>A complete binary tree stored in an array where every parent is at least as large as its children (max-heap).</dd>
+        <dt><b>Frontier (open set)</b></dt><dd>Discovered nodes that have not yet been expanded.</dd>
+        <dt><b>Admissible heuristic</b></dt><dd>Never overestimates the true remaining cost; guarantees A* optimality.</dd>
+        <dt><b>Consistent heuristic</b></dt><dd>$h(u) \le c(u,v) + h(v)$ for every edge; implies admissible and means no node is expanded twice.</dd>
+        <dt><b>Amortised / average case</b></dt><dd>Average case averages over inputs; amortised averages over a sequence of operations on one structure.</dd>
+      </dl>
+    </div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = s => document.querySelector(s);
+  const COL = { cmp: '#f59e0b', swp: '#fb7185', wr: '#a78bfa', rd: '#22d3ee', ok: '#34d399', piv: '#ffffff' };
+  const MONO = '"JetBrains Mono", ui-monospace, monospace';
+  const rnd = n => Math.floor(Math.random() * n);
+  const seg = (sel, cb) => { const el = $(sel); el.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; el.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); cb(b.dataset.v); }); return () => el.querySelector('.on').dataset.v; };
+  const visible = el => !document.hidden && el.offsetParent !== null;
+
+  /* =====================================================================
+     SORTING: algorithms record a trace of primitive operations
+     ===================================================================== */
+  const ALGOS = {
+    bubble: { name: 'Bubble sort', code: [
+      'procedure bubbleSort(A)',
+      '  for i ← 0 to n−2',
+      '    swapped ← false',
+      '    for j ← 0 to n−2−i',
+      '      if A[j] > A[j+1] then',
+      '        swap A[j], A[j+1]; swapped ← true',
+      '    A[n−1−i] is now in place',
+      '    if not swapped then stop'],
+      run(R) { const n = R.n; for (let i = 0; i < n - 1; i++) { R.L(1); let sw = false; R.range(0, n - 1 - i); for (let j = 0; j < n - 1 - i; j++) { R.L(4); if (R.cmp(j, j + 1) > 0) { R.L(5); R.swap(j, j + 1); sw = true; } } R.L(6); R.done(n - 1 - i); if (!sw) { R.L(7); R.done(0, n - 1 - i); return; } } } },
+    insertion: { name: 'Insertion sort', code: [
+      'procedure insertionSort(A)',
+      '  for i ← 1 to n−1',
+      '    key ← A[i]',
+      '    j ← i − 1',
+      '    while j ≥ 0 and A[j] > key',
+      '      A[j+1] ← A[j]        // shift right',
+      '      j ← j − 1',
+      '    A[j+1] ← key'],
+      run(R) { const n = R.n; for (let i = 1; i < n; i++) { R.L(2); R.range(0, i); const key = R.get(i); R.key(i); let j = i - 1; R.L(4); while (j >= 0) { R.L(4); if (R.cmpv(j, key) > 0) { R.L(5); R.set(j + 1, R.get(j)); j--; R.key(j + 1); } else break; } R.L(7); R.set(j + 1, key); } } },
+    selection: { name: 'Selection sort', code: [
+      'procedure selectionSort(A)',
+      '  for i ← 0 to n−2',
+      '    min ← i',
+      '    for j ← i+1 to n−1',
+      '      if A[j] < A[min] then min ← j',
+      '    if min ≠ i then swap A[i], A[min]',
+      '    A[i] is now in place'],
+      run(R) { const n = R.n; for (let i = 0; i < n - 1; i++) { R.L(2); let m = i; R.key(m); R.range(i, n - 1); for (let j = i + 1; j < n; j++) { R.L(4); if (R.cmp(j, m) < 0) { m = j; R.key(m); } } R.L(5); if (m !== i) R.swap(i, m); R.L(6); R.done(i); } } },
+    merge: { name: 'Merge sort', code: [
+      'procedure mergeSort(A, lo, hi)',
+      '  if hi − lo < 1 then return',
+      '  mid ← ⌊(lo + hi) / 2⌋',
+      '  mergeSort(A, lo, mid); mergeSort(A, mid+1, hi)',
+      '  aux ← copy of A[lo..hi]',
+      '  i ← lo; j ← mid + 1',
+      '  for k ← lo to hi',
+      '    if i > mid then A[k] ← aux[j++]',
+      '    else if j > hi then A[k] ← aux[i++]',
+      '    else if aux[j] < aux[i] then A[k] ← aux[j++]',
+      '    else A[k] ← aux[i++]     // ties: left (stable)'],
+      run(R) {
+        const a = R.a;
+        const ms = (lo, hi) => {
+          R.L(1); if (hi - lo < 1) return;
+          R.L(2); const mid = (lo + hi) >> 1;
+          R.L(3); ms(lo, mid); ms(mid + 1, hi);
+          R.range(lo, hi); R.L(4);
+          const aux = []; for (let k = lo; k <= hi; k++) aux[k] = R.get(k);
+          let i = lo, j = mid + 1;
+          for (let k = lo; k <= hi; k++) {
+            if (i > mid) { R.L(7); R.set(k, aux[j++]); }
+            else if (j > hi) { R.L(8); R.set(k, aux[i++]); }
+            else { R.L(9); if (R.cmpx(i, j, aux[j], aux[i]) < 0) { R.set(k, aux[j++]); } else { R.L(10); R.set(k, aux[i++]); } }
+          }
+          if (lo === 0 && hi === a.length - 1) R.done(0, hi);
+        };
+        ms(0, R.n - 1);
+      } },
+    quickL: { name: 'Quicksort (Lomuto)', code: [
+      'procedure quickSort(A, lo, hi)',
+      '  if lo ≥ hi then return',
+      '  pivot ← A[hi]',
+      '  i ← lo',
+      '  for j ← lo to hi − 1',
+      '    if A[j] < pivot then',
+      '      swap A[i], A[j]; i ← i + 1',
+      '  swap A[i], A[hi]     // pivot lands in place',
+      '  quickSort(A, lo, i−1); quickSort(A, i+1, hi)'],
+      run(R) {
+        const qs = (lo, hi) => {
+          R.L(1); if (lo >= hi) { if (lo === hi) R.done(lo); return; }
+          R.range(lo, hi); R.L(2); const p = R.get(hi); R.key(hi);
+          R.L(3); let i = lo;
+          for (let j = lo; j < hi; j++) { R.L(5); if (R.cmpv(j, p) < 0) { R.L(6); R.swap(i, j); i++; } }
+          R.L(7); R.swap(i, hi); R.done(i);
+          R.L(8); qs(lo, i - 1); qs(i + 1, hi);
+        };
+        qs(0, R.n - 1);
+      } },
+    quickH: { name: 'Quicksort (Hoare)', code: [
+      'procedure quickSort(A, lo, hi)',
+      '  if lo ≥ hi then return',
+      '  pivot ← A[⌊(lo + hi) / 2⌋]',
+      '  i ← lo − 1; j ← hi + 1',
+      '  loop',
+      '    do i ← i + 1 while A[i] < pivot',
+      '    do j ← j − 1 while A[j] > pivot',
+      '    if i ≥ j then p ← j; exit loop',
+      '    swap A[i], A[j]',
+      '  quickSort(A, lo, p); quickSort(A, p+1, hi)'],
+      run(R) {
+        const qs = (lo, hi) => {
+          R.L(1); if (lo >= hi) { if (lo === hi) R.done(lo); return; }
+          R.range(lo, hi); R.L(2); const m = (lo + hi) >> 1; const p = R.get(m); R.key(m);
+          R.L(3); let i = lo - 1, j = hi + 1, part;
+          for (;;) {
+            R.L(5); do { i++; } while (R.cmpv(i, p) < 0);
+            R.L(6); do { j--; } while (R.cmpv(j, p) > 0);
+            R.L(7); if (i >= j) { part = j; break; }
+            R.L(8); R.swap(i, j);
+          }
+          R.L(9); qs(lo, part); qs(part + 1, hi);
+        };
+        qs(0, R.n - 1);
+      } },
+    heap: { name: 'Heapsort', code: [
+      'procedure heapSort(A)',
+      '  for i ← ⌊n/2⌋−1 down to 0: siftDown(A, i, n)',
+      '  for end ← n−1 down to 1',
+      '    swap A[0], A[end]; A[end] is in place',
+      '    siftDown(A, 0, end)',
+      'procedure siftDown(A, i, size)',
+      '  while 2i + 1 < size',
+      '    c ← 2i + 1',
+      '    if c+1 < size and A[c+1] > A[c] then c ← c+1',
+      '    if A[i] ≥ A[c] then return',
+      '    swap A[i], A[c]; i ← c'],
+      run(R) {
+        const n = R.n;
+        const sift = (i, size) => {
+          while (2 * i + 1 < size) {
+            R.L(6); let c = 2 * i + 1;
+            R.L(8); if (c + 1 < size && R.cmp(c + 1, c) > 0) c++;
+            R.L(9); if (R.cmp(i, c) >= 0) return;
+            R.L(10); R.swap(i, c); i = c;
+          }
+        };
+        R.range(0, n - 1);
+        for (let i = (n >> 1) - 1; i >= 0; i--) { R.L(1); R.key(i); sift(i, n); }
+        for (let end = n - 1; end > 0; end--) { R.L(3); R.range(0, end); R.swap(0, end); R.done(end); R.L(4); sift(0, end); }
+        R.done(0);
+      } },
+    counting: { name: 'Counting sort', code: [
+      'procedure countingSort(A, k)   // keys in 0..k',
+      '  C[0..k] ← 0',
+      '  for i ← 0 to n−1',
+      '    C[A[i]] ← C[A[i]] + 1      // tally',
+      '  i ← 0',
+      '  for v ← 0 to k',
+      '    repeat C[v] times',
+      '      A[i] ← v; i ← i + 1'],
+      run(R) {
+        const n = R.n; let k = 0; R.L(2);
+        const cnt = [];
+        for (let i = 0; i < n; i++) { R.L(3); const v = R.read(i); cnt[v] = (cnt[v] || 0) + 1; if (v > k) k = v; }
+        let i = 0;
+        for (let v = 0; v <= k; v++) { R.L(5); for (let c = 0; c < (cnt[v] || 0); c++) { R.L(7); R.set(i, v); R.done(i); i++; } }
+      } },
+    radix: { name: 'Radix sort (LSD)', code: [
+      'procedure radixSort(A)        // base 10, LSD',
+      '  for exp ← 1, 10, 100, … while max ≥ exp',
+      '    for i ← 0 to n−1: count[digit(A[i])]++',
+      '    prefix-sum count → bucket end positions',
+      '    for i ← n−1 down to 0      // stable',
+      '      B[−−count[digit(A[i])]] ← A[i]',
+      '    copy B back into A'],
+      run(R) {
+        const n = R.n; let max = 0; for (let i = 0; i < n; i++) max = Math.max(max, R.a[i]);
+        for (let exp = 1; Math.floor(max / exp) > 0; exp *= 10) {
+          R.L(1); const cnt = new Array(10).fill(0);
+          for (let i = 0; i < n; i++) { R.L(2); cnt[Math.floor(R.read(i) / exp) % 10]++; }
+          R.L(3); for (let d = 1; d < 10; d++) cnt[d] += cnt[d - 1];
+          const B = new Array(n);
+          for (let i = n - 1; i >= 0; i--) { R.L(5); const v = R.read(i); B[--cnt[Math.floor(v / exp) % 10]] = v; }
+          for (let i = 0; i < n; i++) { R.L(6); R.set(i, B[i]); }
+        }
+      } },
+  };
+  const KEYS = Object.keys(ALGOS);
+  const isOp = e => e.t === 'c' || e.t === 's' || e.t === 'w' || e.t === 'r';
+
+  function record(key, input) {
+    const a = input.slice(), ev = []; let ln = 0, pend = 0;
+    const push = (e, acc) => { e.ln = ln; e.a = acc + pend; pend = 0; ev.push(e); };
+    const R = {
+      a, n: a.length,
+      L(x) { ln = x; },
+      get(i) { pend++; return a[i]; },
+      read(i) { push({ t: 'r', i }, 1); return a[i]; },
+      cmp(i, j) { push({ t: 'c', i, j }, 2); return a[i] - a[j]; },
+      cmpv(i, v) { push({ t: 'c', i, j: -1 }, 1); return a[i] - v; },
+      cmpx(i, j, x, y) { push({ t: 'c', i, j }, 0); return x - y; },
+      swap(i, j) { const t = a[i]; a[i] = a[j]; a[j] = t; push({ t: 's', i, j }, 4); },
+      set(i, v) { a[i] = v; push({ t: 'w', i, v }, 1); },
+      key(i) { push({ t: 'k', i }, 0); },
+      range(lo, hi) { push({ t: 'g', lo, hi }, 0); },
+      done(lo, hi) { push({ t: 'd', lo, hi: hi === undefined ? lo : hi }, 0); },
+    };
+    ALGOS[key].run(R);
+    R.done(0, a.length - 1);
+    return { ev, out: a };
+  }
+
+  class Player {
+    constructor(key, input) {
+      this.key = key; this.input = input.slice();
+      const r = record(key, input); this.ev = r.ev; this.out = r.out;
+      this.ops = 0; for (const e of this.ev) if (isOp(e)) this.ops++;
+      this.max = Math.max(...input); this.reset();
+    }
+    reset() { const n = this.input.length; this.v = this.input.slice(); this.sorted = new Uint8Array(n); this.pos = 0; this.opi = 0; this.done = false; this.c = { c: 0, s: 0, w: 0, a: 0 }; this.hl = null; this.mark = -1; this.range = null; this.ln = -1; this.doneAt = 0; }
+    apply(e) {
+      this.c.a += e.a || 0; this.ln = e.ln;
+      switch (e.t) {
+        case 'c': this.c.c++; this.hl = e; break;
+        case 's': { const t = this.v[e.i]; this.v[e.i] = this.v[e.j]; this.v[e.j] = t; this.c.s++; this.hl = e; break; }
+        case 'w': this.v[e.i] = e.v; this.c.w++; this.hl = e; break;
+        case 'r': this.hl = e; break;
+        case 'k': this.mark = e.i; break;
+        case 'g': this.range = [e.lo, e.hi]; break;
+        case 'd': for (let k = e.lo; k <= e.hi; k++) this.sorted[k] = 1; break;
+      }
+    }
+    step() {
+      if (this.done) return null;
+      let op = null;
+      while (this.pos < this.ev.length) { const e = this.ev[this.pos++]; this.apply(e); if (isOp(e)) { op = e; this.opi++; break; } }
+      while (this.pos < this.ev.length && !isOp(this.ev[this.pos])) this.apply(this.ev[this.pos++]);
+      if (this.pos >= this.ev.length) { this.done = true; this.hl = null; this.mark = -1; this.range = null; this.ln = -1; }
+      return op;
+    }
+    seek(k) { this.reset(); while (this.opi < k && !this.done) this.step(); }
+  }
+
+  function makeArray(n, order) {
+    let a = Array.from({ length: n }, (_, i) => i + 1);
+    if (order === 'reversed') return a.reverse();
+    if (order === 'few') { const lv = [0.25, 0.5, 0.75, 1].map(f => Math.max(1, Math.round(f * n))); a = a.map(() => lv[rnd(4)]); return a; }
+    for (let i = n - 1; i > 0; i--) { const j = rnd(i + 1); [a[i], a[j]] = [a[j], a[i]]; }
+    if (order === 'nearly') { a.sort((x, y) => x - y); const sw = Math.max(1, Math.round(n / 12)); for (let k = 0; k < sw; k++) { const i = rnd(n - 1); const j = Math.min(n - 1, i + 1 + rnd(2)); [a[i], a[j]] = [a[j], a[i]]; } }
+    return a;
+  }
+
+  // ---- UI state ----
+  const S = { n: 48, order: 'random', sps: 144, playing: false, acc: 0, race: false, sound: false, A: null, B: null, base: null, raceTold: false };
+  const algA = $('#algA'), algB = $('#algB');
+  KEYS.forEach(k => { algA.add(new Option(ALGOS[k].name, k)); algB.add(new Option(ALGOS[k].name, k)); });
+  algA.value = 'quickL'; algB.value = 'merge';
+
+  const sortCv = SL.canvas($('#sortCv'));
+  function rebuild(newArray) {
+    if (newArray || !S.base || S.base.length !== S.n) S.base = makeArray(S.n, S.order);
+    S.A = new Player(algA.value, S.base);
+    S.B = S.race ? new Player(algB.value, S.base) : null;
+    S.playing = false; S.acc = 0; S.raceTold = false; setPlayBtn();
+    renderPseudo(true); updCounters();
+  }
+  function setPlayBtn() { $('#sPlay').innerHTML = S.playing ? '<i data-lucide="pause"></i> Pause' : (S.A && S.A.done && (!S.B || S.B.done) ? '<i data-lucide="rotate-ccw"></i> Replay' : '<i data-lucide="play"></i> Play'); SL.refreshIcons($('#sPlay')); }
+
+  function pseudoHTML(p, title) { return (title ? `<div class="pseudo-title">${title}</div>` : '') + `<pre class="pseudo">${ALGOS[p.key].code.map((l, i) => `<div data-l="${i}">${l.replace(/(\/\/.*)$/, '<span class="cm">$1</span>')}</div>`).join('')}</pre>`; }
+  let lastLn = [-2, -2];
+  function renderPseudo(force) {
+    if (force) {
+      $('#pseudoA').innerHTML = pseudoHTML(S.A, S.B ? 'A · ' + ALGOS[S.A.key].name : '');
+      $('#pseudoB').innerHTML = S.B ? pseudoHTML(S.B, 'B · ' + ALGOS[S.B.key].name) : '';
+      lastLn = [-2, -2];
+    }
+    [[S.A, '#pseudoA', 0], [S.B, '#pseudoB', 1]].forEach(([p, sel, k]) => {
+      if (!p || p.ln === lastLn[k]) return; lastLn[k] = p.ln;
+      $(sel).querySelectorAll('.pseudo div').forEach(d => d.classList.toggle('on', +d.dataset.l === p.ln));
+    });
+  }
+  const nf = n => n.toLocaleString('en');
+  function updCounters() {
+    const p = S.A; $('#kC').textContent = nf(p.c.c); $('#kS').textContent = nf(p.c.s); $('#kW').textContent = nf(p.c.w); $('#kA').textContent = nf(p.c.a);
+    $('#kP').textContent = `${nf(p.opi)} / ${nf(p.ops)}`; $('#cntName').textContent = S.B ? 'A: ' + ALGOS[p.key].name : '';
+  }
+
+  // sonification
+  let lastTone = 0;
+  function tone(p, e) {
+    const ac = SL.audio(); if (!ac) return;
+    const now = ac.currentTime; if (now - lastTone < 0.022) return; lastTone = now;
+    const v = e.t === 'w' ? e.v : p.v[e.i];
+    const f = 180 * Math.pow(2, 2.6 * v / p.max);
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'triangle'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(0.09, now + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
+    o.connect(g).connect(ac.destination); o.start(now); o.stop(now + 0.08);
+  }
+
+  function drawLane(ctx, x, y, w, h, p, label, t) {
+    const n = p.v.length, padT = 46, padB = 18;
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,.02)'; ctx.strokeStyle = 'rgba(255,255,255,.06)';
+    ctx.beginPath(); ctx.roundRect(x + 6, y + 6, w - 12, h - 12, 10); ctx.fill(); ctx.stroke();
+    // title + counters
+    ctx.font = `600 13px ${MONO}`; ctx.fillStyle = '#e6ecf7'; ctx.textAlign = 'left';
+    ctx.fillText((label ? label + ' · ' : '') + ALGOS[p.key].name, x + 18, y + 27);
+    ctx.font = `500 11px ${MONO}`; ctx.fillStyle = '#93a1bd';
+    const info = `cmp ${nf(p.c.c)}  swp ${nf(p.c.s)}  wr ${nf(p.c.w)}  acc ${nf(p.c.a)}`;
+    if (w > 560) { ctx.textAlign = 'right'; ctx.fillText(info, x + w - 18, y + 27); }
+    else { ctx.fillText(info, x + 18, y + 42); }
+    const bx = x + 16, bw = w - 32, by = y + padT + (w > 560 ? 0 : 8), bh = h - padT - padB - (w > 560 ? 0 : 8);
+    const cw = bw / n, gap = cw > 4 ? Math.min(2, cw * 0.18) : 0;
+    const hl = p.hl;
+    for (let i = 0; i < n; i++) {
+      const v = p.v[i], hh = Math.max(2, (v / p.max) * (bh - 4));
+      const bx0 = bx + i * cw, by0 = by + bh - hh;
+      let c = null;
+      if (hl) {
+        if (hl.t === 'c' && (hl.i === i || hl.j === i)) c = COL.cmp;
+        else if (hl.t === 's' && (hl.i === i || hl.j === i)) c = COL.swp;
+        else if (hl.t === 'w' && hl.i === i) c = COL.wr;
+        else if (hl.t === 'r' && hl.i === i) c = COL.rd;
+      }
+      if (!c && p.sorted[i]) c = COL.ok;
+      const inR = !p.range || (i >= p.range[0] && i <= p.range[1]);
+      if (c) { ctx.shadowColor = c; ctx.shadowBlur = c === COL.ok ? 0 : 14; ctx.fillStyle = c; }
+      else { ctx.shadowBlur = 0; const g = ctx.createLinearGradient(0, by0, 0, by + bh); const hue = 220 - 40 * (v / p.max); g.addColorStop(0, `hsla(${hue},90%,${62 + 8 * v / p.max}%,${inR ? 1 : .35})`); g.addColorStop(1, `hsla(${hue + 20},80%,32%,${inR ? .9 : .3})`); ctx.fillStyle = g; }
+      ctx.fillRect(bx0 + gap / 2, by0, Math.max(1, cw - gap), hh);
+      if (i === p.mark) { ctx.shadowBlur = 0; ctx.strokeStyle = COL.piv; ctx.lineWidth = 1.5; ctx.strokeRect(bx0 + gap / 2 + .5, by0 + .5, Math.max(1, cw - gap) - 1, hh - 1); }
+      if (cw >= 20) { ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(230,236,247,.85)'; ctx.font = `500 ${cw > 28 ? 11 : 9}px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText(v, bx0 + cw / 2, by0 - 4); }
+    }
+    ctx.shadowBlur = 0;
+    if (p.range) { const x0 = bx + p.range[0] * cw, x1 = bx + (p.range[1] + 1) * cw; ctx.strokeStyle = 'rgba(96,165,250,.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x0 + 1, by + bh + 5); ctx.lineTo(x0 + 1, by + bh + 9); ctx.lineTo(x1 - 1, by + bh + 9); ctx.lineTo(x1 - 1, by + bh + 5); ctx.stroke(); }
+    // progress
+    const pr = p.ops ? p.opi / p.ops : 0;
+    ctx.fillStyle = 'rgba(255,255,255,.06)'; ctx.fillRect(x + 16, y + h - 8, w - 32, 2);
+    ctx.fillStyle = p.done ? COL.ok : '#60a5fa'; ctx.fillRect(x + 16, y + h - 8, (w - 32) * pr, 2);
+    if (p.done && p.doneAt) { ctx.font = `600 12px ${MONO}`; ctx.fillStyle = COL.ok; ctx.textAlign = 'right'; ctx.fillText(t || '✓ sorted', x + w - 18, y + (w > 560 ? 44 : 27)); }
+    ctx.restore();
+  }
+
+  function drawSort() {
+    const { ctx, w, h } = sortCv; ctx.clearRect(0, 0, w, h);
+    const bottom = w < 600 ? 80 : 44;
+    if (!S.B) drawLane(ctx, 0, 0, w, h - bottom, S.A, '', '✓ sorted');
+    else {
+      const winA = S.A.done && (!S.B.done || S.A.ops <= S.B.ops), winB = S.B.done && (!S.A.done || S.B.ops <= S.A.ops);
+      if (w > 860) { drawLane(ctx, 0, 0, w / 2, h - bottom, S.A, 'A', winA && S.B.done ? '✓ winner' : '✓ sorted'); drawLane(ctx, w / 2, 0, w / 2, h - bottom, S.B, 'B', winB && S.A.done ? '✓ winner' : '✓ sorted'); }
+      else { const hh = (h - bottom) / 2; drawLane(ctx, 0, 0, w, hh, S.A, 'A', '✓ sorted'); drawLane(ctx, 0, hh, w, hh, S.B, 'B', '✓ sorted'); }
+    }
+  }
+
+  let tick = 0;
+  function stepAll() {
+    tick++;
+    const ea = S.A.step(); if (S.A.done && !S.A.doneAt) S.A.doneAt = tick;
+    let eb = null; if (S.B) { eb = S.B.step(); if (S.B.done && !S.B.doneAt) S.B.doneAt = tick; }
+    return ea || eb ? [ea ? S.A : S.B, ea || eb] : null;
+  }
+  const sortLoop = SL.loop(dt => {
+    if (!visible(sortCv.ctx.canvas)) return;
+    if (S.playing) {
+      S.acc += S.sps * dt; let k = Math.floor(S.acc); S.acc -= k; let last = null;
+      while (k-- > 0) { const r = stepAll(); if (r) last = r; if (S.A.done && (!S.B || S.B.done)) break; }
+      if (S.sound && last) tone(last[0], last[1]);
+      if (S.A.done && (!S.B || S.B.done)) { S.playing = false; setPlayBtn(); sortFinished(); }
+      if (S.B && !S.raceTold && (S.A.done || S.B.done)) {
+        S.raceTold = true; const w = S.A.done ? S.A : S.B, l = S.A.done ? S.B : S.A;
+        if (!(S.A.done && S.B.done && S.A.ops === S.B.ops)) SL.toast(`<b>${ALGOS[w.key].name}</b> finished first: ${nf(w.ops)} operations (opponent needs ${nf(l.ops)}).`, 'ok');
+      }
+      updCounters(); renderPseudo();
+    }
+    drawSort();
+  }).start();
+
+  function sortFinished() {
+    const A = S.A, n = S.n;
+    check('ins', A.key === 'insertion' && S.order === 'nearly' && n >= 40 && A.c.c < 3 * n);
+    check('qworst', A.key === 'quickL' && (S.order === 'reversed') && n >= 50 && A.c.c >= 0.45 * n * n);
+    if (S.B) {
+      const pair = [S.A, S.B]; const m = pair.find(p => p.key === 'merge'), q = pair.find(p => p.key === 'quickL');
+      check('race', !!(m && q && m.ops < q.ops));
+    }
+    check('nocmp', (A.key === 'counting' || A.key === 'radix') && n >= 100);
+  }
+
+  $('#sPlay').onclick = () => {
+    if (S.sound) SL.audio();
+    if (S.A.done && (!S.B || S.B.done)) { S.A.reset(); S.B && S.B.reset(); tick = 0; S.raceTold = false; }
+    S.playing = !S.playing; setPlayBtn();
+  };
+  $('#sStep').onclick = () => { S.playing = false; setPlayBtn(); const r = stepAll(); if (S.sound && r) tone(r[0], r[1]); if (S.A.done && (!S.B || S.B.done)) { setPlayBtn(); sortFinished(); } updCounters(); renderPseudo(); };
+  $('#sBack').onclick = () => { S.playing = false; const k = Math.max(0, S.A.opi - 1); S.A.seek(k); if (S.B) S.B.seek(Math.max(0, S.B.opi - 1)); tick = Math.max(0, tick - 1); setPlayBtn(); updCounters(); renderPseudo(); };
+  $('#sNew').onclick = () => rebuild(true);
+  algA.onchange = () => rebuild(false);
+  algB.onchange = () => rebuild(false);
+  $('#race').onchange = e => { S.race = e.target.checked; $('#algBWrap').hidden = !S.race; rebuild(false); };
+  $('#sound').onchange = e => { S.sound = e.target.checked; if (S.sound) SL.audio(); };
+  SL.bind('#size', v => { if (v !== S.n) { S.n = v; rebuild(true); } });
+  seg('#order', v => { S.order = v; rebuild(true); });
+  SL.bind('#speed', v => { S.sps = Math.round(Math.pow(10, v * 3.6 / 100)); }, v => Math.round(Math.pow(10, v * 3.6 / 100)) + ' ops/s');
+  rebuild(true);
+
+  /* =====================================================================
+     SEARCHING
+     ===================================================================== */
+  const Q = { n: 32, arr: [], target: 0, lin: null, bin: null, playing: false, acc: 0, sps: 2, log: [], layout: null };
+  const searchCv = SL.canvas($('#searchCv'));
+  function newSearchArray() { const a = []; let v = 2 + rnd(6); for (let i = 0; i < Q.n; i++) { a.push(v); v += 1 + rnd(6); } Q.arr = a; }
+  function resetSearch() {
+    Q.lin = { i: 0, cmp: 0, done: false, found: -1 };
+    Q.bin = { lo: 0, hi: Q.n - 1, mid: -1, cmp: 0, done: false, found: -1 };
+    Q.log = []; Q.playing = false; Q.acc = 0; setQBtn(); renderLog(); updQ();
+  }
+  function pickTarget(present) {
+    if (present) Q.target = Q.arr[rnd(Q.n)];
+    else { let t; const set = new Set(Q.arr); do { t = Q.arr[0] - 1 + rnd(Q.arr[Q.n - 1] - Q.arr[0] + 4); } while (set.has(t)); Q.target = t; }
+    $('#target').value = Q.target; resetSearch();
+  }
+  function qStep() {
+    const L = Q.lin, B = Q.bin, A = Q.arr, t = Q.target;
+    if (!L.done) { L.cmp++; if (A[L.i] === t) { L.done = true; L.found = L.i; } else if (L.i === Q.n - 1) L.done = true; else L.i++; }
+    if (!B.done) {
+      if (B.lo > B.hi) { B.done = true; B.mid = -1; Q.log.push(`lo=${B.lo} > hi=${B.hi}: interval empty, ${t} is absent`); }
+      else {
+        B.mid = (B.lo + B.hi) >> 1; B.cmp++; const v = A[B.mid];
+        if (v === t) { B.done = true; B.found = B.mid; Q.log.push(`lo=${B.lo} hi=${B.hi} mid=${B.mid}: A[${B.mid}]=${v} = ${t}  found`); }
+        else if (v < t) { Q.log.push(`lo=${B.lo} hi=${B.hi} mid=${B.mid}: A[${B.mid}]=${v} < ${t}  → lo=${B.mid + 1}`); B.lo = B.mid + 1; }
+        else { Q.log.push(`lo=${B.lo} hi=${B.hi} mid=${B.mid}: A[${B.mid}]=${v} > ${t}  → hi=${B.mid - 1}`); B.hi = B.mid - 1; }
+        if (!B.done && B.lo > B.hi) { B.done = true; B.mid = -1; Q.log.push(`lo=${B.lo} > hi=${B.hi}: ${t} is absent`); }
+      }
+    }
+    renderLog(); updQ();
+    if (L.done && B.done) {
+      Q.playing = false; setQBtn();
+      check('bin1', B.found >= 0 && B.cmp === 1);
+      check('binabs', B.found < 0 && Q.n >= 60 && B.cmp === Math.floor(Math.log2(Q.n)) + 1);
+    }
+  }
+  function renderLog() {
+    const el = $('#slog');
+    el.innerHTML = Q.log.length ? Q.log.map((l, i) => `<div class="${i === Q.log.length - 1 ? 'last' : ''}">${i + 1}. ${l}</div>`).join('') : '<div class="muted">Press Search or Step to begin.</div>';
+    el.scrollTop = el.scrollHeight;
+  }
+  function updQ() { $('#qL').textContent = Q.lin.cmp; $('#qB').textContent = Q.bin.cmp; $('#qLw').textContent = Q.n; $('#qBw').textContent = Math.floor(Math.log2(Q.n)) + 1; }
+  function setQBtn() { $('#qPlay').innerHTML = Q.playing ? '<i data-lucide="pause"></i> Pause' : '<i data-lucide="play"></i> Search'; SL.refreshIcons($('#qPlay')); }
+
+  function searchLayout(w) {
+    const pad = 16, avail = w - pad * 2;
+    const maxPer = Math.max(6, Math.floor(avail / (w < 600 ? 30 : 44)));
+    const rowsNeeded = Math.ceil(Q.n / maxPer), per = Math.ceil(Q.n / rowsNeeded);
+    const s = Math.min(avail / per, 52);
+    const rows = Math.ceil(Q.n / per), rowH = s + 18;
+    return { pad, per, s, rows, rowH, laneH: 34 + rows * rowH };
+  }
+  function cellXY(L, i, y0) { const r = Math.floor(i / L.per), c = i % L.per; return [L.pad + c * L.s, y0 + 34 + r * L.rowH + 16]; }
+  function drawSearchLane(ctx, L, y0, title, st, isBin) {
+    const A = Q.arr;
+    ctx.font = `600 13px ${MONO}`; ctx.textAlign = 'left'; ctx.fillStyle = '#e6ecf7';
+    ctx.fillText(title, L.pad, y0 + 20);
+    ctx.font = `500 11px ${MONO}`; ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'right';
+    const status = st.done ? (st.found >= 0 ? `found at index ${st.found}` : 'not found') : 'searching…';
+    ctx.fillText(`${st.cmp} comparison${st.cmp === 1 ? '' : 's'} · ${status}`, sCv().w - L.pad, y0 + 20);
+    for (let i = 0; i < A.length; i++) {
+      const [x, y] = cellXY(L, i, y0), s = L.s - 3;
+      let fill = 'rgba(96,165,250,.10)', stroke = 'rgba(96,165,250,.35)', txt = '#cbd5e1', glow = 0;
+      if (isBin) {
+        const out = i < st.lo || i > st.hi;
+        if (out && !(st.found === i)) { fill = 'rgba(255,255,255,.02)'; stroke = 'rgba(255,255,255,.06)'; txt = '#3b4763'; }
+        if (i === st.mid && !st.done) { fill = 'rgba(245,158,11,.25)'; stroke = COL.cmp; txt = '#fff'; glow = 12; }
+      } else {
+        if (i < st.i && st.found !== i) { fill = 'rgba(255,255,255,.02)'; stroke = 'rgba(255,255,255,.06)'; txt = '#3b4763'; }
+        if (i === st.i && !st.done && st.cmp > 0) { fill = 'rgba(245,158,11,.25)'; stroke = COL.cmp; txt = '#fff'; glow = 12; }
+        if (st.done && st.found < 0 && i <= st.i) { fill = 'rgba(255,255,255,.02)'; stroke = 'rgba(255,255,255,.06)'; txt = '#3b4763'; }
+      }
+      if (st.found === i) { fill = 'rgba(52,211,153,.28)'; stroke = COL.ok; txt = '#fff'; glow = 16; }
+      if (A[i] === Q.target && st.found !== i && !(fill.includes('.02'))) { stroke = 'rgba(52,211,153,.55)'; }
+      ctx.shadowColor = stroke; ctx.shadowBlur = glow; ctx.fillStyle = fill; ctx.strokeStyle = stroke; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.roundRect(x + 1.5, y, s, s, 5); ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0;
+      ctx.fillStyle = txt; ctx.textAlign = 'center'; ctx.font = `600 ${s > 30 ? 12 : 10}px ${MONO}`; ctx.fillText(A[i], x + 1.5 + s / 2, y + s / 2 + 4);
+      // index labels / pointers
+      const labels = [];
+      if (isBin && !st.done) { if (i === st.lo) labels.push('lo'); if (i === st.mid) labels.push('mid'); if (i === st.hi) labels.push('hi'); }
+      if (!isBin && !st.done && i === st.i) labels.push('i');
+      if (labels.length) { ctx.font = `600 9.5px ${MONO}`; ctx.fillStyle = labels.includes('mid') || labels.includes('i') ? COL.cmp : '#93c5fd'; ctx.fillText(labels.join('/'), x + 1.5 + s / 2, y - 5); }
+      else if (L.s > 30 || i % 4 === 0) { ctx.font = `500 8.5px ${MONO}`; ctx.fillStyle = '#4b5878'; ctx.fillText(i, x + 1.5 + s / 2, y - 5); }
+    }
+  }
+  const sCv = () => searchCv;
+  function drawSearch() {
+    const { ctx, w, h } = searchCv; ctx.clearRect(0, 0, w, h);
+    const L = searchLayout(w); Q.layout = L;
+    drawSearchLane(ctx, L, 6, 'Linear search', Q.lin, false);
+    const y2 = 6 + L.laneH + 14;
+    ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); ctx.moveTo(16, y2 - 6); ctx.lineTo(w - 16, y2 - 6); ctx.stroke();
+    drawSearchLane(ctx, L, y2, 'Binary search', Q.bin, true);
+    // comparison bars
+    const y3 = y2 + L.laneH + 22, bw = w - 32;
+    if (y3 + 70 < h) {
+      ctx.font = `600 11px ${MONO}`; ctx.textAlign = 'left'; ctx.fillStyle = '#93a1bd';
+      ctx.fillText(`Comparisons so far (scale: n = ${Q.n})`, 16, y3);
+      [[Q.lin.cmp, '#60a5fa', 'linear'], [Q.bin.cmp, COL.ok, 'binary']].forEach(([c, col, nm], k) => {
+        const yy = y3 + 12 + k * 24; ctx.fillStyle = 'rgba(255,255,255,.05)'; ctx.fillRect(16, yy, bw, 14);
+        ctx.fillStyle = col; ctx.fillRect(16, yy, bw * Math.min(1, c / Q.n), 14);
+        ctx.fillStyle = '#e6ecf7'; ctx.fillText(`${nm} ${c}`, 22, yy + 11);
+      });
+      const wb = Math.floor(Math.log2(Q.n)) + 1; const xm = 16 + bw * wb / Q.n;
+      ctx.strokeStyle = 'rgba(52,211,153,.7)'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(xm, y3 + 8); ctx.lineTo(xm, y3 + 64); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(52,211,153,.9)'; ctx.font = `500 10px ${MONO}`; ctx.fillText(`⌊log₂n⌋+1 = ${wb}`, Math.min(xm + 4, w - 110), y3 + 66 + 8);
+    }
+    // target
+    ctx.font = `600 12px ${MONO}`; ctx.textAlign = 'right'; ctx.fillStyle = COL.ok;
+  }
+  $('#searchCv').addEventListener('click', e => {
+    const L = Q.layout; if (!L) return; const p = SL.ptr(e, e.currentTarget);
+    const y2 = 6 + L.laneH + 14;
+    for (const y0 of [6, y2]) for (let i = 0; i < Q.n; i++) { const [x, y] = cellXY(L, i, y0); if (p.x >= x && p.x <= x + L.s && p.y >= y && p.y <= y + L.s) { Q.target = Q.arr[i]; $('#target').value = Q.target; resetSearch(); return; } }
+  });
+  const searchLoop = SL.loop(dt => {
+    if (!visible(searchCv.ctx.canvas)) return;
+    if (Q.playing) { Q.acc += Q.sps * dt; while (Q.acc >= 1 && Q.playing) { Q.acc -= 1; qStep(); } }
+    drawSearch();
+  }).start();
+  $('#qPlay').onclick = () => { if (Q.lin.done && Q.bin.done) resetSearch(); Q.playing = !Q.playing; Q.acc = Q.playing ? 1 : 0; setQBtn(); };
+  $('#qStep').onclick = () => { Q.playing = false; setQBtn(); if (!(Q.lin.done && Q.bin.done)) qStep(); };
+  $('#qReset').onclick = resetSearch;
+  $('#qNew').onclick = () => { newSearchArray(); pickTarget(true); };
+  $('#tPresent').onclick = () => pickTarget(true);
+  $('#tAbsent').onclick = () => pickTarget(false);
+  $('#target').addEventListener('change', e => { Q.target = Math.round(+e.target.value || 0); resetSearch(); });
+  SL.bind('#sn', v => { if (v !== Q.n || !Q.arr.length) { Q.n = v; newSearchArray(); Q.target = Q.arr[Math.floor(Q.n * 0.7)]; $('#target').value = Q.target; resetSearch(); } });
+  SL.bind('#sspeed', v => { Q.sps = v; });
+
+  /* =====================================================================
+     PATHFINDING
+     ===================================================================== */
+  const P = { cols: 0, rows: 0, cell: 20, ox: 0, oy: 0, g: null, start: 0, end: 0, tool: 'wall', algo: 'astar', heur: 'manhattan', hw: 1, sps: 120, run: null, maze: null, hover: -1 };
+  const pathCv = SL.canvas($('#pathCv'), () => setTimeout(() => { if (!P.g) initGrid(); fitGrid(); }));
+  function initGrid() {
+    const { w, h } = pathCv; if (w < 50) return;
+    const target = w < 600 ? 19 : 24, bot = w < 600 ? 78 : 46;
+    let cols = Math.floor((w - 8) / target), rows = Math.floor((h - bot - 4) / target);
+    if (cols % 2 === 0) cols--; if (rows % 2 === 0) rows--;
+    P.cols = Math.max(11, cols); P.rows = Math.max(11, rows);
+    P.g = new Uint8Array(P.cols * P.rows);
+    const ry = P.rows >> 1;
+    P.start = id(Math.max(1, Math.floor(P.cols * 0.18)), ry); P.end = id(Math.min(P.cols - 2, Math.ceil(P.cols * 0.82)), ry);
+    // a demo wall with a gap, so the first run is interesting
+    const wx = P.cols >> 1;
+    for (let y = 2; y < P.rows - 2; y++) if (y !== 3) P.g[id(wx, y)] = 1;
+    for (let y = ry - 3; y <= ry + 3; y++) for (let x = wx - 5; x <= wx - 3; x++) if (x > 0) P.g[id(x, y)] = 2;
+  }
+  function fitGrid() { if (!P.g) return; const { w, h } = pathCv; const bot = w < 600 ? 78 : 46; P.cell = Math.min((w - 8) / P.cols, (h - bot - 4) / P.rows); P.ox = (w - P.cell * P.cols) / 2; P.oy = 4 + ((h - bot - 4) - P.cell * P.rows) / 2; }
+  const id = (x, y) => y * P.cols + x, cx = i => i % P.cols, cy = i => Math.floor(i / P.cols);
+  const cost = i => P.g[i] === 2 ? 5 : 1;
+  function nbrs(i) { const x = cx(i), y = cy(i), out = []; if (y > 0) out.push(i - P.cols); if (x < P.cols - 1) out.push(i + 1); if (y < P.rows - 1) out.push(i + P.cols); if (x > 0) out.push(i - 1); return out.filter(j => P.g[j] !== 1); }
+  function hfun(i, kind) { const dx = Math.abs(cx(i) - cx(P.end)), dy = Math.abs(cy(i) - cy(P.end)); return kind === 'euclid' ? Math.hypot(dx, dy) : dx + dy; }
+
+  class Heap { constructor() { this.a = []; } push(x) { const a = this.a; a.push(x); let i = a.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (this.lt(a[i], a[p])) { [a[i], a[p]] = [a[p], a[i]]; i = p; } else break; } } pop() { const a = this.a, top = a[0], last = a.pop(); if (a.length) { a[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < a.length && this.lt(a[l], a[m])) m = l; if (r < a.length && this.lt(a[r], a[m])) m = r; if (m === i) break; [a[i], a[m]] = [a[m], a[i]]; i = m; } } return top; } lt(x, y) { return x[0] !== y[0] ? x[0] < y[0] : x[1] !== y[1] ? x[1] < y[1] : x[2] < y[2]; } get size() { return this.a.length; } }
+
+  function search(algo, heur, w) {
+    const N = P.cols * P.rows, par = new Int32Array(N).fill(-1), ev = []; let maxF = 0, seq = 0;
+    const s = P.start, t = P.end; let found = false;
+    const closed = new Uint8Array(N);
+    if (algo === 'bfs') {
+      const q = [s], seen = new Uint8Array(N); seen[s] = 1; let h = 0; ev.push({ t: 'f', i: s });
+      while (h < q.length) { const u = q[h++]; ev.push({ t: 'v', i: u }); closed[u] = 1; if (u === t) { found = true; break; } for (const v of nbrs(u)) if (!seen[v]) { seen[v] = 1; par[v] = u; q.push(v); ev.push({ t: 'f', i: v }); } maxF = Math.max(maxF, q.length - h); }
+    } else if (algo === 'dfs') {
+      const st = [s]; ev.push({ t: 'f', i: s });
+      while (st.length) { const u = st.pop(); if (closed[u]) continue; closed[u] = 1; ev.push({ t: 'v', i: u }); if (u === t) { found = true; break; } const nb = nbrs(u).reverse(); for (const v of nb) if (!closed[v]) { par[v] = u; st.push(v); ev.push({ t: 'f', i: v }); } maxF = Math.max(maxF, st.length); }
+    } else {
+      const g = new Float64Array(N).fill(Infinity); g[s] = 0; const H = new Heap();
+      const pri = i => algo === 'dijkstra' ? [g[i], 0] : algo === 'greedy' ? [hfun(i, heur), 0] : [g[i] + w * hfun(i, heur), hfun(i, heur)];
+      const p0 = pri(s); H.push([p0[0], p0[1], seq++, s]); ev.push({ t: 'f', i: s });
+      const seen = new Uint8Array(N); seen[s] = 1;
+      while (H.size) {
+        const [, , , u] = H.pop(); if (closed[u]) continue; closed[u] = 1; ev.push({ t: 'v', i: u });
+        if (u === t) { found = true; break; }
+        for (const v of nbrs(u)) {
+          if (closed[v]) continue;
+          if (algo === 'greedy') { if (seen[v]) continue; seen[v] = 1; g[v] = g[u] + cost(v); par[v] = u; const p = pri(v); H.push([p[0], p[1], seq++, v]); ev.push({ t: 'f', i: v }); }
+          else { const ng = g[u] + cost(v); if (ng < g[v]) { g[v] = ng; par[v] = u; const p = pri(v); H.push([p[0], p[1], seq++, v]); ev.push({ t: 'f', i: v }); } }
+        }
+        maxF = Math.max(maxF, H.size);
+      }
+    }
+    const path = []; let pc = 0;
+    if (found) { for (let u = t; u !== -1; u = par[u]) path.push(u); path.reverse(); for (let k = 1; k < path.length; k++) pc += cost(path[k]); }
+    const visited = ev.filter(e => e.t === 'v').length;
+    return { ev, path, found, visited, maxF, cost: pc, moves: found ? path.length - 1 : null };
+  }
+
+  function startRun(instant) {
+    if (!P.g) return;
+    const r = search(P.algo, P.heur, P.algo === 'astar' ? P.hw : 1);
+    const ref = search('dijkstra', 'manhattan', 1);
+    const N = P.cols * P.rows;
+    P.run = Object.assign(r, { ref, pos: 0, vc: 0, ord: instant ? null : new Float32Array(N), vis: new Float32Array(N).fill(-1), fr: new Uint8Array(N), cur: -1, pathT: 0, playing: !instant, done: false, acc: 0, t0: performance.now() });
+    if (instant) { while (P.run.pos < r.ev.length) applyP(r.ev[P.run.pos++], 0); P.run.done = true; P.run.pathT = 1; P.run.cur = -1; finishRun(true); }
+    setPBtn(); updP();
+  }
+  function applyP(e, now) { const R = P.run; if (e.t === 'f') R.fr[e.i] = 1; else { R.fr[e.i] = 0; R.vis[e.i] = now; R.cur = e.i; } }
+  function finishRun(silent) {
+    const R = P.run; updP();
+    const el = $('#rOpt');
+    if (!R.found) { el.innerHTML = '<span class="bad-t">No path exists: the end is walled off.</span>'; return; }
+    const opt = Math.abs(R.cost - R.ref.cost) < 1e-9;
+    el.innerHTML = opt ? `<span class="ok-t">Optimal:</span> <span class="muted">cost ${R.cost} equals Dijkstra's optimum (${R.ref.visited} nodes visited by Dijkstra).</span>` : `<span class="bad-t">Not optimal:</span> <span class="muted">cost ${R.cost} vs optimum ${R.ref.cost} (+${Math.round((R.cost / R.ref.cost - 1) * 100)}%).</span>`;
+    const bfs = search('bfs', 'manhattan', 1);
+    check('astar', P.algo === 'astar' && P.hw === 1 && opt && R.visited <= 0.5 * R.ref.visited && R.ref.visited >= 40);
+    check('dfs', P.algo === 'dfs' && bfs.found && R.moves >= 2 * bfs.moves && bfs.moves >= 6);
+    check('greedy', P.algo === 'greedy' && !opt);
+    check('mud', P.algo === 'dijkstra' && bfs.found && R.moves > bfs.moves);
+  }
+  function updP() {
+    const R = P.run;
+    if (!R) { ['#rV', '#rF'].forEach(s => $(s).textContent = 0); $('#rL').textContent = '–'; $('#rC').textContent = '–'; return; }
+    let v = 0; if (R.done) v = R.visited; else for (let k = 0; k < R.pos; k++) if (R.ev[k].t === 'v') v++;
+    $('#rV').textContent = v; $('#rF').textContent = R.done ? R.maxF : '…';
+    $('#rL').textContent = R.done ? (R.found ? R.moves : '∞') : '…'; $('#rC').textContent = R.done ? (R.found ? R.cost : '∞') : '…';
+  }
+  function setPBtn() { const pl = P.run && P.run.playing; $('#pRun').innerHTML = pl ? '<i data-lucide="pause"></i> Pause' : '<i data-lucide="play"></i> Run'; SL.refreshIcons($('#pRun')); }
+  function clearRun() { P.run = null; setPBtn(); updP(); $('#rOpt').innerHTML = '<span class="muted">Optimality check appears after a run.</span>'; }
+  function edited() { if (P.run && P.run.done) startRun(true); else if (P.run) clearRun(); }
+
+  function makeMaze() {
+    const N = P.cols * P.rows; P.g = new Uint8Array(N).fill(1); clearRun();
+    const carve = []; const seen = new Uint8Array(N);
+    const sx = 1, sy = 1; const st = [id(sx, sy)]; seen[st[0]] = 1; carve.push(st[0]);
+    while (st.length) {
+      const u = st[st.length - 1], x = cx(u), y = cy(u);
+      const opts = [[0, -2], [2, 0], [0, 2], [-2, 0]].filter(([dx, dy]) => x + dx > 0 && x + dx < P.cols - 1 && y + dy > 0 && y + dy < P.rows - 1 && !seen[id(x + dx, y + dy)]);
+      if (!opts.length) { st.pop(); continue; }
+      const [dx, dy] = opts[rnd(opts.length)]; const v = id(x + dx, y + dy);
+      carve.push(id(x + dx / 2, y + dy / 2), v); seen[v] = 1; st.push(v);
+    }
+    // a few extra openings make multiple routes (so algorithms differ)
+    const extra = Math.round(P.cols * P.rows / 60);
+    for (let k = 0; k < extra; k++) { const x = 1 + rnd(P.cols - 2), y = 1 + rnd(P.rows - 2); if ((x + y) % 2 === 1) carve.push(id(x, y)); }
+    P.start = id(1, 1); P.end = id(P.cols - 2, P.rows - 2);
+    P.maze = { carve, pos: 0 };
+  }
+  function scatter(type, frac) {
+    clearRun(); const N = P.cols * P.rows;
+    for (let i = 0; i < N; i++) { if (i === P.start || i === P.end) continue; if (type === 1 && P.g[i] === 1) P.g[i] = 0; if (Math.random() < frac) P.g[i] = type; }
+  }
+
+  // pointer editing
+  let drag = null;
+  function cellAt(e) { const p = SL.ptr(e, pathCv.ctx.canvas); const x = Math.floor((p.x - P.ox) / P.cell), y = Math.floor((p.y - P.oy) / P.cell); return x >= 0 && y >= 0 && x < P.cols && y < P.rows ? id(x, y) : -1; }
+  function paint(i) { if (i < 0 || i === P.start || i === P.end) return; if (P.g[i] !== drag.val) { P.g[i] = drag.val; edited(); } }
+  function paintLine(a, b) { let x0 = cx(a), y0 = cy(a); const x1 = cx(b), y1 = cy(b); const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)); for (let k = 1; k <= n; k++) paint(id(Math.round(x0 + (x1 - x0) * k / n), Math.round(y0 + (y1 - y0) * k / n))); }
+  const pcv = $('#pathCv');
+  pcv.addEventListener('pointerdown', e => {
+    if (!P.g || P.maze) return; const i = cellAt(e); if (i < 0) return;
+    pcv.setPointerCapture(e.pointerId);
+    if (i === P.start || P.tool === 'start') { drag = { kind: 'start' }; if (P.g[i] !== 1 && i !== P.end) { P.start = i; edited(); } return; }
+    if (i === P.end || P.tool === 'end') { drag = { kind: 'end' }; if (P.g[i] !== 1 && i !== P.start) { P.end = i; edited(); } return; }
+    const val = P.tool === 'wall' ? (P.g[i] === 1 ? 0 : 1) : P.tool === 'mud' ? (P.g[i] === 2 ? 0 : 2) : 0;
+    drag = { kind: 'paint', val, last: i }; paint(i);
+  });
+  pcv.addEventListener('pointermove', e => {
+    const i = cellAt(e); P.hover = i;
+    if (!drag || i < 0) return;
+    if (drag.kind === 'paint') { if (i !== drag.last) { paintLine(drag.last, i); drag.last = i; } }
+    else if (P.g[i] !== 1) { if (drag.kind === 'start' && i !== P.end && i !== P.start) { P.start = i; edited(); } if (drag.kind === 'end' && i !== P.start && i !== P.end) { P.end = i; edited(); } }
+  });
+  const endDrag = () => { drag = null; };
+  pcv.addEventListener('pointerup', endDrag); pcv.addEventListener('pointercancel', endDrag);
+  pcv.addEventListener('pointerleave', () => { P.hover = -1; });
+
+  function drawPath(t) {
+    const { ctx, w, h } = pathCv; ctx.clearRect(0, 0, w, h); if (!P.g) return;
+    const c = P.cell, R = P.run, now = performance.now() / 1000;
+    // background grid
+    ctx.fillStyle = '#081022'; ctx.fillRect(P.ox, P.oy, c * P.cols, c * P.rows);
+    const N = P.cols * P.rows; let maxV = 1; if (R) for (let k = 0; k < N; k++) if (R.vis[k] >= 0) maxV = Math.max(maxV, R.vis[k]);
+    for (let i = 0; i < N; i++) {
+      const x = P.ox + cx(i) * c, y = P.oy + cy(i) * c, gv = P.g[i];
+      if (gv === 1) { const gr = ctx.createLinearGradient(x, y, x, y + c); gr.addColorStop(0, '#475569'); gr.addColorStop(1, '#273449'); ctx.fillStyle = gr; ctx.fillRect(x + .5, y + .5, c - 1, c - 1); continue; }
+      if (gv === 2) { ctx.fillStyle = '#5b3d22'; ctx.fillRect(x + .5, y + .5, c - 1, c - 1); ctx.fillStyle = 'rgba(160,110,60,.55)'; const s = Math.max(1.2, c * .08); ctx.beginPath(); ctx.arc(x + c * .3, y + c * .35, s, 0, 7); ctx.arc(x + c * .68, y + c * .6, s, 0, 7); ctx.arc(x + c * .4, y + c * .75, s * .8, 0, 7); ctx.fill(); }
+      if (R) {
+        if (R.vis[i] >= 0) {
+          const age = Math.min(1, (now - R.vis[i]) / 0.35), k = R.done && R.pathT >= 1 ? 1 : age;
+          const sc = .35 + .65 * (k < 1 ? (1 - Math.pow(1 - k, 3)) : 1);
+          const hue = 230 + 50 * (R.ord ? R.ord[i] / R.visited : 0);
+          ctx.fillStyle = gv === 2 ? `hsla(${hue},70%,45%,.45)` : `hsla(${hue},75%,${k < 1 ? 62 : 40}%,${gv === 2 ? .45 : .75})`;
+          const s = (c - 2) * sc; ctx.fillRect(x + c / 2 - s / 2, y + c / 2 - s / 2, s, s);
+        } else if (R.fr[i]) { ctx.strokeStyle = 'rgba(34,211,238,.9)'; ctx.lineWidth = 1.5; ctx.fillStyle = 'rgba(34,211,238,.18)'; ctx.fillRect(x + 2, y + 2, c - 4, c - 4); ctx.strokeRect(x + 2.5, y + 2.5, c - 5, c - 5); }
+      }
+    }
+    // grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,.04)'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let x = 0; x <= P.cols; x++) { ctx.moveTo(P.ox + x * c, P.oy); ctx.lineTo(P.ox + x * c, P.oy + P.rows * c); }
+    for (let y = 0; y <= P.rows; y++) { ctx.moveTo(P.ox, P.oy + y * c); ctx.lineTo(P.ox + P.cols * c, P.oy + y * c); }
+    ctx.stroke();
+    if (R && R.cur >= 0 && !R.done) { const x = P.ox + cx(R.cur) * c, y = P.oy + cy(R.cur) * c; ctx.shadowColor = '#fff'; ctx.shadowBlur = 14; ctx.fillStyle = '#fff'; ctx.fillRect(x + 3, y + 3, c - 6, c - 6); ctx.shadowBlur = 0; }
+    // path
+    if (R && R.done && R.found && R.path.length > 1) {
+      const n = R.path.length, upto = R.pathT * (n - 1);
+      ctx.save(); ctx.strokeStyle = '#facc15'; ctx.lineWidth = Math.max(3, c * .28); ctx.lineCap = ctx.lineJoin = 'round'; ctx.shadowColor = '#facc15'; ctx.shadowBlur = 12;
+      ctx.beginPath();
+      for (let k = 0; k <= Math.floor(upto); k++) { const p = R.path[k], x = P.ox + (cx(p) + .5) * c, y = P.oy + (cy(p) + .5) * c; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      const f = upto - Math.floor(upto); if (f > 0 && Math.floor(upto) < n - 1) { const a = R.path[Math.floor(upto)], b = R.path[Math.floor(upto) + 1]; ctx.lineTo(P.ox + (cx(a) + .5 + (cx(b) - cx(a)) * f) * c, P.oy + (cy(a) + .5 + (cy(b) - cy(a)) * f) * c); }
+      ctx.stroke(); ctx.restore();
+    }
+    // start / end markers
+    const mk = (i, col, txt) => { const x = P.ox + (cx(i) + .5) * c, y = P.oy + (cy(i) + .5) * c, r = c * .42 + Math.sin(now * 4) * .6; ctx.shadowColor = col; ctx.shadowBlur = 16; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.shadowBlur = 0; ctx.fillStyle = '#06101f'; ctx.font = `700 ${Math.max(9, c * .5)}px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText(txt, x, y + c * .18); };
+    mk(P.start, '#34d399', 'S'); mk(P.end, '#fb7185', 'E');
+    // hover outline
+    if (P.hover >= 0) { ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1.5; ctx.strokeRect(P.ox + cx(P.hover) * c + .5, P.oy + cy(P.hover) * c + .5, c - 1, c - 1); }
+  }
+
+  const pathLoop = SL.loop(dt => {
+    if (!visible(pathCv.ctx.canvas)) return;
+    if (!P.g) { initGrid(); fitGrid(); }
+    const now = performance.now() / 1000;
+    if (P.maze) { const M = P.maze, k = Math.max(4, Math.round(M.carve.length * dt / 1.6)); for (let j = 0; j < k && M.pos < M.carve.length; j++) P.g[M.carve[M.pos++]] = 0; if (M.pos >= M.carve.length) { P.maze = null; } }
+    const R = P.run;
+    if (R && R.playing && !R.done) {
+      R.acc += P.sps * dt; let vcount = Math.floor(R.acc); R.acc -= vcount;
+      while (vcount > 0 && R.pos < R.ev.length) { const e = R.ev[R.pos++]; applyP(e, now); if (e.t === 'v') { R.ord[e.i] = ++R.vc; vcount--; } }
+      if (R.pos >= R.ev.length) { R.done = true; R.playing = false; R.cur = -1; R.pathT = 0; setPBtn(); finishRun(false); }
+      updP();
+    }
+    if (R && R.done && R.pathT < 1) R.pathT = Math.min(1, R.pathT + dt * Math.max(1.2, 40 / Math.max(1, R.path.length)));
+    if (R && R.done && !R.ord) { R.ord = new Float32Array(P.cols * P.rows); let k = 0; for (const e of R.ev) if (e.t === 'v') R.ord[e.i] = ++k; }
+    let hud = `${P.cols}×${P.rows} grid`;
+    if (P.hover >= 0) { const gv = P.g[P.hover]; hud = `cell (${cx(P.hover)}, ${cy(P.hover)}) · ${gv === 1 ? 'wall' : gv === 2 ? 'mud, entry cost 5' : 'open, entry cost 1'}`; if (P.hover !== P.start && P.algo !== 'bfs' && P.algo !== 'dfs' && P.g[P.hover] !== 1) hud += ` · h = ${SL.fmt(hfun(P.hover, P.heur), 2)}`; }
+    $('#pHud').textContent = hud;
+    drawPath();
+  }).start();
+
+  $('#pRun').onclick = () => {
+    if (P.maze) return;
+    if (P.run && !P.run.done) { P.run.playing = !P.run.playing; setPBtn(); return; }
+    startRun(false);
+  };
+  $('#pClearPath').onclick = clearRun;
+  $('#pMaze').onclick = makeMaze;
+  $('#pMud').onclick = () => { for (let i = 0; i < P.g.length; i++) if (P.g[i] === 2) P.g[i] = 0; const N = P.g.length; for (let k = 0; k < 6; k++) { const x0 = rnd(P.cols), y0 = rnd(P.rows), r = 2 + rnd(3); for (let y = y0 - r; y <= y0 + r; y++) for (let x = x0 - r; x <= x0 + r; x++) if (x >= 0 && y >= 0 && x < P.cols && y < P.rows && Math.hypot(x - x0, y - y0) <= r + .3) { const i = id(x, y); if (P.g[i] === 0 && i !== P.start && i !== P.end) P.g[i] = 2; } } void N; edited(); };
+  $('#pWalls').onclick = () => { scatter(1, 0.28); edited(); };
+  $('#pClear').onclick = () => { P.g.fill(0); clearRun(); };
+  seg('#tool', v => P.tool = v);
+  seg('#heur', v => { P.heur = v; edited(); });
+  $('#palg').onchange = e => { P.algo = e.target.value; $('#heurWrap').style.display = (P.algo === 'astar' || P.algo === 'greedy') ? '' : 'none'; $('#hwCtl').style.display = P.algo === 'astar' ? '' : 'none'; if (P.run && P.run.done) startRun(true); else clearRun(); };
+  SL.bind('#hw', v => { P.hw = v; if (P.run && P.run.done) startRun(true); }, v => v.toFixed(1));
+  SL.bind('#pspeed', v => { P.sps = Math.round(Math.pow(10, 0.5 + v * 3 / 100)); }, v => Math.round(Math.pow(10, 0.5 + v * 3 / 100)) + ' nodes/s');
+  $('#pCompare').onclick = () => {
+    if (!P.g) return;
+    const rows = [['BFS', 'bfs', 'manhattan', 1], ['DFS', 'dfs', 'manhattan', 1], ['Dijkstra', 'dijkstra', 'manhattan', 1], ['A* Manhattan', 'astar', 'manhattan', 1], ['A* Euclidean', 'astar', 'euclid', 1], ['Greedy (Manh.)', 'greedy', 'manhattan', 1]];
+    const ref = search('dijkstra', 'manhattan', 1);
+    $('#cmpTbl').innerHTML = `<table class="data cmp"><tr><th>Algorithm</th><th>Visited</th><th>Moves</th><th>Cost</th><th></th></tr>${rows.map(([nm, a, hh, ww]) => { const r = search(a, hh, ww); const ok = r.found && Math.abs(r.cost - ref.cost) < 1e-9; return `<tr><td>${nm}</td><td class="num">${r.visited}</td><td class="num">${r.found ? r.moves : '–'}</td><td class="num">${r.found ? r.cost : '–'}</td><td>${r.found ? (ok ? '<span class="ok-t">opt</span>' : '<span class="bad-t">sub</span>') : ''}</td></tr>`; }).join('')}</table>`;
+  };
+
+  /* =====================================================================
+     BIG-O
+     ===================================================================== */
+  const FUNCS = [
+    { k: '1', tex: 'O(1)', f: n => 1, c: '#94a3b8' },
+    { k: 'log', tex: 'O(log n)', f: n => Math.log2(n), c: '#34d399' },
+    { k: 'n', tex: 'O(n)', f: n => n, c: '#22d3ee' },
+    { k: 'nlog', tex: 'O(n log n)', f: n => n * Math.log2(n), c: '#60a5fa' },
+    { k: 'n2', tex: 'O(n²)', f: n => n * n, c: '#f59e0b' },
+    { k: '2n', tex: 'O(2ⁿ)', f: n => Math.pow(2, n), c: '#fb7185' },
+  ];
+  const BG = { N: 20, log: false, on: new Set(FUNCS.map(f => f.k)), hover: null };
+  $('#ftog').innerHTML = FUNCS.map(f => `<button class="btn sm on" data-k="${f.k}"><i class="sw" style="background:${f.c}"></i>${f.tex}</button>`).join('');
+  $('#ftog').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const k = b.dataset.k; BG.on.has(k) ? BG.on.delete(k) : BG.on.add(k); b.classList.toggle('on', BG.on.has(k)); drawBig(); });
+  const bigCv = SL.canvas($('#bigCv'), () => setTimeout(drawBig));
+  const SUP = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '-': '⁻' };
+  function fmtBig(v) { if (v >= 1e6) { const [m, e] = v.toExponential(2).split('e+'); return m + '×10' + e.split('').map(c => SUP[c]).join(''); } return SL.fmt(v, v < 10 ? 2 : 0); }
+  function drawBig() {
+    const { ctx, w, h } = bigCv; if (w < 20) return; ctx.clearRect(0, 0, w, h);
+    const pl = 64, pr = 18, pt = 20, pb = 40, N = BG.N;
+    const fs = FUNCS.filter(f => BG.on.has(f.k));
+    let ymax;
+    if (BG.log) ymax = Math.max(10, ...fs.map(f => f.f(N)));
+    else { const non = fs.filter(f => f.k !== '2n'); ymax = non.length ? Math.max(...non.map(f => f.f(N))) * 1.1 : Math.pow(2, N); if (!non.length) ymax = Math.pow(2, N); }
+    const ymin = BG.log ? 0.5 : 0;
+    const X = n => pl + (n - 1) / (N - 1) * (w - pl - pr);
+    const Y = v => BG.log ? h - pb - (Math.log10(Math.max(v, ymin)) - Math.log10(ymin)) / (Math.log10(ymax) - Math.log10(ymin)) * (h - pt - pb) : h - pb - v / ymax * (h - pt - pb);
+    ctx.font = `11px ${MONO}`; ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.fillStyle = '#5f6d8a'; ctx.lineWidth = 1;
+    if (BG.log) { for (let e = 0; e <= Math.ceil(Math.log10(ymax)); e++) { const y = Y(Math.pow(10, e)); if (y < pt - 2) break; ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(w - pr, y); ctx.stroke(); ctx.textAlign = 'right'; ctx.fillText(e < 4 ? String(Math.pow(10, e)) : '1e' + e, pl - 8, y + 4); } }
+    else for (let i = 0; i <= 5; i++) { const v = ymax * i / 5, y = Y(v); ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(w - pr, y); ctx.stroke(); ctx.textAlign = 'right'; ctx.fillText(fmtBig(v), pl - 8, y + 4); }
+    for (let i = 0; i <= 5; i++) { const n = 1 + (N - 1) * i / 5; ctx.textAlign = 'center'; ctx.fillText(Math.round(n), X(n), h - pb + 16); }
+    ctx.textAlign = 'right'; ctx.fillStyle = '#93a1bd'; ctx.fillText('input size n →', w - pr, h - 6);
+    ctx.save(); ctx.translate(14, pt + (h - pt - pb) / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText('operations', 0, 0); ctx.restore();
+    ctx.save(); ctx.beginPath(); ctx.rect(pl, pt - 4, w - pl - pr, h - pt - pb + 4); ctx.clip();
+    fs.forEach(f => { ctx.strokeStyle = f.c; ctx.lineWidth = 2.4; ctx.shadowColor = f.c; ctx.shadowBlur = 8; ctx.beginPath(); const steps = 300; for (let s = 0; s <= steps; s++) { const n = 1 + (N - 1) * s / steps; const y = Y(f.f(n)); s ? ctx.lineTo(X(n), y) : ctx.moveTo(X(n), y); } ctx.stroke(); });
+    ctx.restore(); ctx.shadowBlur = 0;
+    // labels at right end
+    ctx.font = `600 11px ${MONO}`; ctx.textAlign = 'right';
+    const labs = [];
+    fs.forEach(f => { const y = Y(f.f(N)); if (y > pt + 6) labs.push({ f, y: Math.min(y - 6, h - pb - 4) }); else { ctx.fillStyle = f.c; ctx.fillText(f.tex + ' ↑', X(Math.min(N, Math.log2(ymax) + 1)) - 4, pt + 12); } });
+    labs.sort((a, b) => b.y - a.y); for (let i = 1; i < labs.length; i++) if (labs[i - 1].y - labs[i].y < 13) labs[i].y = labs[i - 1].y - 13;
+    labs.forEach(l => { ctx.fillStyle = l.f.c; ctx.fillText(l.f.tex, w - pr - 4, l.y); });
+    const nh = BG.hover ?? N;
+    if (BG.hover) { const x = X(nh); ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(x, pt); ctx.lineTo(x, h - pb); ctx.stroke(); ctx.setLineDash([]); fs.forEach(f => { const y = Y(f.f(nh)); if (y >= pt && y <= h - pb) { ctx.fillStyle = f.c; ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fill(); } }); }
+    $('#bigAt').textContent = nh;
+    $('#bigVals').innerHTML = FUNCS.map(f => `<tr><td><i class="sw" style="background:${f.c};display:inline-block;margin-right:6px"></i>${f.tex}</td><td class="num">${fmtBig(f.f(nh))}</td></tr>`).join('');
+  }
+  $('#bigCv').addEventListener('pointermove', e => { const p = SL.ptr(e, e.currentTarget); const { w } = bigCv; const n = Math.round(1 + (p.x - 64) / (w - 64 - 18) * (BG.N - 1)); BG.hover = SL.clamp(n, 1, BG.N); drawBig(); });
+  $('#bigCv').addEventListener('pointerleave', () => { BG.hover = null; drawBig(); });
+  SL.bind('#bigN', v => { BG.N = v; drawBig(); });
+  $('#bigLog').onchange = e => { BG.log = e.target.checked; drawBig(); };
+
+  // measured comparisons
+  const measCv = SL.canvas($('#measCv'), () => setTimeout(drawMeas));
+  let meas = null; let measOrder = 'random';
+  seg('#measOrder', v => { measOrder = v; });
+  function runMeas() {
+    const ns = [10, 20, 30, 40, 60, 80, 100, 130, 160, 190, 220, 250];
+    const algos = [['insertion', '#f59e0b'], ['merge', '#34d399'], ['quickH', '#60a5fa'], ['heap', '#a78bfa'], ['selection', '#fb7185']];
+    meas = algos.map(([k, c]) => ({ label: ALGOS[k].name, color: c, data: ns.map(n => { let s = 0; const T = 5; for (let t = 0; t < T; t++) { const r = record(k, makeArray(n, measOrder)); s += r.ev.filter(e => e.t === 'c').length; } return [n, s / T]; }) }));
+    meas.push({ label: 'n²/2', color: 'rgba(255,255,255,.55)', dash: [5, 5], width: 1.5, data: ns.map(n => [n, n * n / 2]) });
+    meas.push({ label: 'n log₂n', color: 'rgba(255,255,255,.35)', dash: [2, 4], width: 1.5, data: ns.map(n => [n, n * Math.log2(n)]) });
+    drawMeas();
+    check('meas', true);
+  }
+  function drawMeas() {
+    const { ctx, w, h } = measCv; if (w < 20) return; ctx.clearRect(0, 0, w, h);
+    if (!meas) { ctx.fillStyle = '#5f6d8a'; ctx.font = `13px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText('Press "Run measurement" to plot comparison counts', w / 2, h / 2); return; }
+    SL.chart(measCv, meas, { pad: [w < 600 ? 72 : 46, 14, 34, 56], xlabel: 'n', ylabel: '', ymin: 0, xmin: 0, xmax: 250 });
+    if (w < 600) { /* legend wraps poorly on narrow screens: draw compact legend */ ctx.clearRect(0, 0, w, 60); ctx.font = `10px ${MONO}`; meas.forEach((s, i) => { const x = 10 + (i % 2) * (w / 2), y = 12 + Math.floor(i / 2) * 14; ctx.fillStyle = s.color; ctx.fillRect(x, y - 4, 10, 3); ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'left'; ctx.fillText(s.label, x + 14, y); }); }
+  }
+  $('#measGo').onclick = runMeas;
+
+  const CX = [
+    ['Bubble sort', 'O(n)', 'O(n²)', 'O(n²)', 'O(1)', 'Yes'],
+    ['Insertion sort', 'O(n)', 'O(n²)', 'O(n²)', 'O(1)', 'Yes'],
+    ['Selection sort', 'O(n²)', 'O(n²)', 'O(n²)', 'O(1)', 'No'],
+    ['Merge sort', 'O(n log n)', 'O(n log n)', 'O(n log n)', 'O(n)', 'Yes'],
+    ['Quicksort', 'O(n log n)', 'O(n log n)', 'O(n²)', 'O(log n) stack*', 'No'],
+    ['Heapsort', 'O(n log n)', 'O(n log n)', 'O(n log n)', 'O(1)', 'No'],
+    ['Counting sort', 'O(n + k)', 'O(n + k)', 'O(n + k)', 'O(n + k)', 'Yes'],
+    ['Radix sort (LSD)', 'O(d(n + b))', 'O(d(n + b))', 'O(d(n + b))', 'O(n + b)', 'Yes'],
+    ['Linear search', 'O(1)', 'O(n)', 'O(n)', 'O(1)', '–'],
+    ['Binary search', 'O(1)', 'O(log n)', 'O(log n)', 'O(1)', '–'],
+    ['BFS / DFS', 'O(V + E)', 'O(V + E)', 'O(V + E)', 'O(V)', '–'],
+    ['Dijkstra (binary heap)', '–', 'O((V + E) log V)', 'O((V + E) log V)', 'O(V)', '–'],
+    ['A* (consistent h)', 'O(d)†', 'depends on h', 'O((V + E) log V)', 'O(V)', '–'],
+  ];
+  $('#cxTable').innerHTML = `<tr><th>Algorithm</th><th>Best</th><th>Average</th><th>Worst</th><th>Space</th><th>Stable</th></tr>` + CX.map(r => `<tr>${r.map((c, i) => `<td${i ? ' class="mono"' : ''}>${c}</td>`).join('')}</tr>`).join('') + `<tr><td colspan="6" class="small muted">* O(n) stack in the worst case unless the smaller side is recursed first. † With a perfect heuristic A* expands only the d nodes on the optimal path. Counting sort shown is the stable prefix-sum version; the key-only variant in the lab uses O(k) space.</td></tr>`;
+
+  // pause loops when the lab mode changes (they also skip work when hidden)
+  $('#modes').addEventListener('tab', e => { if (e.detail === 3) { drawBig(); drawMeas(); } });
+
+  /* =====================================================================
+     CHALLENGES
+     ===================================================================== */
+  const CH = [
+    ['ins', 'Insertion sort’s best case', 'Sort a <b>nearly sorted</b> array of at least 40 items with insertion sort using fewer than 3n comparisons.'],
+    ['qworst', 'Break quicksort', 'Make Lomuto quicksort hit its worst case: reversed input, n ≥ 50, at least 0.45·n² comparisons.'],
+    ['race', 'Tortoise beats hare', 'Race merge sort against Lomuto quicksort and make merge sort finish first.'],
+    ['nocmp', 'No comparisons needed', 'Sort at least 100 items with counting sort or radix sort and confirm the comparison counter stays at zero.'],
+    ['bin1', 'Lucky probe', 'Choose a target that binary search finds with exactly one comparison.'],
+    ['binabs', 'Worst-case binary search', 'With n ≥ 60, search for an absent value that takes exactly ⌊log₂n⌋+1 probes.'],
+    ['astar', 'A good heuristic pays', 'Find an optimal path with A* (Manhattan or Euclidean, w = 1) while visiting at most half the nodes Dijkstra visits (Dijkstra ≥ 40 nodes).'],
+    ['dfs', 'Depth-first detour', 'Get DFS to return a path at least twice as many moves as the BFS shortest path.'],
+    ['greedy', 'Greedy gets fooled', 'Build a grid where greedy best-first returns a non-optimal path.'],
+    ['mud', 'Avoid the mud', 'Make Dijkstra choose a path with more moves than BFS because it walks around mud.'],
+    ['meas', 'Measure it', 'Run a comparison-count measurement in the Big-O tab.'],
+  ];
+  const done = new Set();
+  $('#chal').innerHTML = CH.map(([k, t, d]) => `<li data-k="${k}"><span class="led"></span><div><b>${t}</b><span class="small">${d}</span></div></li>`).join('');
+  function check(k, ok) {
+    if (!ok || done.has(k)) return; done.add(k);
+    const li = document.querySelector(`#chal li[data-k="${k}"]`); if (li) li.querySelector('.led').classList.add('on');
+    const c = CH.find(x => x[0] === k); SL.toast(`<b>Challenge complete:</b> ${c[1]} (${done.size}/${CH.length})`, 'ok');
+  }
+
+  /* =====================================================================
+     QUIZ
+     ===================================================================== */
+  SL.quiz('#quiz', [
+    { q: 'Bubble sort with an early-exit flag is given an already sorted array of n items. How many comparisons does it make?', options: ['0', 'n − 1', 'n(n−1)/2', 'n log₂ n'], answer: 1, why: 'One pass of n − 1 comparisons finds no swaps, so the flag stops the algorithm.' },
+    { q: 'Which sort is stable, guaranteed O(n log n), but needs O(n) extra memory?', options: ['Heapsort', 'Quicksort', 'Merge sort', 'Selection sort'], answer: 2, why: 'Merge sort is Θ(n log n) in every case and stable when ties are taken from the left half, but merging uses an auxiliary array.' },
+    { q: 'Lomuto quicksort (pivot = last element) is run on a reversed array of 100 items. Roughly how many comparisons?', options: ['≈ 660', '≈ 1 000', '≈ 4 950', '≈ 10 000'], answer: 2, why: 'Every partition peels off one element, so comparisons are (n−1)+(n−2)+…+1 = n(n−1)/2 = 4 950.' },
+    { q: 'What is the minimum worst-case number of comparisons any comparison sort needs for n items?', options: ['Ω(n)', 'Ω(log n)', 'Ω(n log n)', 'Ω(n²)'], answer: 2, why: 'A decision tree must have at least n! leaves, so its height is at least log₂(n!) = Θ(n log n).' },
+    { q: 'Binary search on a sorted array of 1 000 000 items needs at most how many probes?', options: ['10', '20', '1 000', '500 000'], answer: 1, why: '⌊log₂ 10⁶⌋ + 1 = 19 + 1 = 20.' },
+    { q: 'On a grid with mud cells (cost 5), which algorithm is guaranteed to find the cheapest path?', options: ['BFS', 'DFS', 'Dijkstra', 'Greedy best-first'], answer: 2, why: 'Dijkstra expands nodes in order of path cost and is optimal for non-negative weights. BFS minimises the number of moves, not cost.' },
+    { q: 'A* uses f(n) = g(n) + h(n). Which condition guarantees it returns an optimal path?', options: ['h is admissible (never overestimates)', 'h is always zero', 'h overestimates by at most 2×', 'the grid has no walls'], answer: 0, why: 'An admissible heuristic never makes the optimal path look worse than a suboptimal one. h = 0 also works but turns A* into Dijkstra; it is a special case of admissible.' },
+    { q: 'Why does counting sort show zero comparisons in the lab?', options: ['It only works on sorted data', 'It uses keys as array indices instead of comparing them', 'It hides comparisons in a heap', 'It compares in parallel'], answer: 1, why: 'Counting sort tallies how many times each key occurs and writes them back in order, so the Ω(n log n) comparison bound does not apply.' },
+    { q: 'Insertion sort’s running time is Θ(n + I). What is I?', options: ['The number of inversions', 'The number of distinct keys', 'The recursion depth', 'The number of writes to auxiliary memory'], answer: 0, why: 'Each shift in insertion sort removes exactly one inversion (an out-of-order pair).' },
+  ]);
+
+  // expose for automated checks
+  window.__algo = { record, ALGOS, search, P, Q, makeArray };
+})();
+</script>
+</body>
+</html>
