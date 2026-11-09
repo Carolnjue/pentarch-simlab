@@ -333,6 +333,7 @@
     const m = byId[page];
     if (m && !document.body.dataset.dept) document.body.dataset.dept = m.dept;
     const h = document.getElementById('sl-header'); if (h) h.outerHTML = header();
+    const mainEl = document.querySelector('main'); if (mainEl) { if (!mainEl.id) mainEl.id = 'main'; const sk = document.createElement('a'); sk.className = 'skip-link'; sk.href = '#' + mainEl.id; sk.textContent = 'Skip to content'; document.body.prepend(sk); }
     const hero = document.getElementById('sl-hero'); if (hero && m) hero.outerHTML = pageHero(m);
     wireTourBtn();
     const heroEl = document.querySelector('.page-hero[data-fx]'); if (heroEl) setTimeout(() => heroFx(heroEl), 30);
@@ -346,11 +347,12 @@
     const sm = document.getElementById('slSearchM'); if (sm) sm.onclick = e => { e.preventDefault(); document.getElementById('slHeader').classList.remove('mobile-open'); showPalette(); };
     const hdr = document.getElementById('slHeader');
     const burger = document.getElementById('slBurger');
-    if (burger) burger.onclick = () => hdr.classList.toggle('mobile-open');
+    if (burger) burger.onclick = () => { hdr.classList.toggle('mobile-open'); burger.setAttribute('aria-expanded', hdr.classList.contains('mobile-open')); };
     document.querySelectorAll('.sl-nav>.item>button').forEach(b => b.addEventListener('click', () => {
       const it = b.parentElement, was = it.classList.contains('open');
       document.querySelectorAll('.sl-nav>.item.open').forEach(x => x.classList.remove('open'));
       if (!was) it.classList.add('open');
+      document.querySelectorAll('.sl-nav>.item>button').forEach(x => x.setAttribute('aria-expanded', x.parentElement.classList.contains('open')));
     }));
     document.addEventListener('click', e => { if (!e.target.closest('.sl-nav')) document.querySelectorAll('.sl-nav>.item.open').forEach(x => x.classList.remove('open')); });
     // tabs
