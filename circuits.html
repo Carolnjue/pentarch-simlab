@@ -884,7 +884,7 @@
   function showErr() { const el = $('#err'); if (SIM.err) { el.style.display = 'block'; el.textContent = SIM.err; } else el.style.display = 'none'; }
 
   let acc = 0, lastBurnCheck = 0;
-  SL.loop(dt => {
+  const mainLoop = SL.loop(dt => {
     if (document.hidden) return;
     T0 += dt;
     const span = 10 * SC.tdiv; SIM.h = span / 1000;
@@ -909,7 +909,12 @@
     if (fac && SIM.h > 1 / (20 * fac)) { hw.style.display = ''; hw.textContent = `time step too coarse for ${eng(fac, 'Hz')}: reduce time/div`; } else hw.style.display = 'none';
     draw(); drawScope(); updateMeter();
     if (++ebN % 8 === 0) energy();
-  }).start();
+  });
+  { // run only while the stage is on screen and the tab is visible
+    let onScreen = true; const sync = () => (document.hidden || !onScreen) ? mainLoop.stop() : mainLoop.start();
+    document.addEventListener('visibilitychange', sync);
+    if ('IntersectionObserver' in window) (() => { const vis = new Set(), io = new IntersectionObserver(es => { es.forEach(e => e.isIntersecting ? vis.add(e.target) : vis.delete(e.target)); onScreen = vis.size > 0; sync(); }, { rootMargin: '300px' }); document.querySelectorAll('.lab, main canvas').forEach(el => { if (!el.closest('.tabs')) io.observe(el); }); })(); else mainLoop.start();
+  }
 
   /* Energy balance (Tellegen: the powers of all parts sum to zero at every instant) */
   let ebN = 0;
@@ -965,20 +970,22 @@
   $('#tabs').addEventListener('tab', e => { if (e.detail === 2) setTimeout(drawBode, 30); });
 
   /* ---------------- challenges ---------------- */
-  const steady = e => e.ema;
+  // DC challenges read the same instantaneous values the meters display; the check must hold for two
+  // consecutive polls (about 1 s) so a passing transient does not count.
+  const steady = e => e.v;
   const CH = [
     { id: 'div', icon: 'divide', title: '3.3 V from a 9 V battery', text: 'Design a divider that gives 3.30 V (±0.05 V) on a voltmeter from a 9 V battery, drawing no more than 1 mA from the battery. Microcontrollers often need 3.3 V logic levels.',
       setup: () => loadPreset('divider', true),
-      check: () => { const b = els.filter(e => e.type === 'dc' && Math.abs(e.V - 9) < 1e-9 && !(e.rint > 0)); const vm = els.filter(e => e.type === 'volt' && Math.abs(Math.abs(steady(e)) - 3.3) <= 0.05); return { ok: b.length === 1 && vm.length > 0 && !els.some(e => e.type === 'ac') && Math.abs(b[0].emi) <= 1e-3 + 1e-9 && SIM.t > 0.005, msg: `Voltmeter: ${els.filter(e => e.type === 'volt').map(e => eng(steady(e), 'V', 4)).join(', ') || 'none'} · battery current ${b.length ? eng(Math.abs(b[0].emi), 'A') : '—'}` }; } },
+      check: () => { const b = els.filter(e => e.type === 'dc' && Math.abs(e.V - 9) < 1e-9 && !(e.rint > 0)); const vm = els.filter(e => e.type === 'volt' && Math.abs(Math.abs(steady(e)) - 3.3) <= 0.05); return { ok: b.length === 1 && vm.length > 0 && !els.some(e => e.type === 'ac') && Math.abs(b[0].i) <= 1e-3 + 1e-9 && SIM.t > 0.005, msg: `Voltmeter: ${els.filter(e => e.type === 'volt').map(e => eng(steady(e), 'V', 4)).join(', ') || 'none'} · battery current ${b.length ? eng(Math.abs(b[0].i), 'A') : '—'}` }; } },
     { id: 'led', icon: 'lightbulb', title: 'Light an LED safely', text: 'Get the LED to between 15 and 20 mA from the 9 V battery without burning it out. Calculate the resistor first: $R = (9 - V_F)/I$, with $V_F \\approx 1.9$ V for red.',
       setup: () => { loadPreset('led', true); const r = els.find(e => e.label === 'R1'); r.R = 47; renderProps(); },
-      check: () => { const d = els.filter(e => e.type === 'led' && !e.burnt && e.emi >= 0.015 && e.emi <= 0.02); const all = els.filter(e => e.type === 'led'); return { ok: d.length > 0 && els.some(e => e.type === 'dc' && Math.abs(e.V - 9) < 1e-9), msg: all.map(e => `${e.label}: ${e.burnt ? 'burnt out' : eng(e.emi, 'A')}`).join(', ') }; } },
+      check: () => { const d = els.filter(e => e.type === 'led' && !e.burnt && e.i >= 0.015 && e.i <= 0.02); const all = els.filter(e => e.type === 'led'); return { ok: d.length > 0 && els.some(e => e.type === 'dc' && Math.abs(e.V - 9) < 1e-9), msg: all.map(e => `${e.label}: ${e.burnt ? 'burnt out (select it and press Replace LED)' : eng(e.i, 'A')}`).join(', ') }; } },
     { id: 'res', icon: 'radio', title: 'Tune to 1 kHz', text: 'The RLC circuit has L = 10 mH. Set the source to 1.000 kHz and choose C so that the current is in phase with the source voltage (within 2°). Predict C from $f_0 = 1/(2\\pi\\sqrt{LC})$ first.',
       setup: () => { loadPreset('rlc', true); const s = els.find(e => e.type === 'ac'); s.f = 1000; renderProps(); },
       check: () => { const s = els.find(e => e.type === 'ac'); if (!s || Math.abs(s.f - 1000) > 1 || !els.some(e => e.type === 'ind') || !els.some(e => e.type === 'cap')) return { ok: false, msg: 'Need an AC source at 1 kHz with an inductor and a capacitor.' }; const m = phasor(s.f); if (!m) return { ok: false, msg: '' }; const r = m.get(s.id); const ph = SL.deg(Math.atan2(-r.i[1], -r.i[0]) - Math.atan2(r.v[1], r.v[0])); const p2 = ((ph + 540) % 360) - 180; const C = els.find(e => e.type === 'cap'); return { ok: Math.abs(p2) < 2, msg: `Phase of current relative to source: ${p2.toFixed(1)}° · C = ${eng(C.C, 'F', 4)}` }; } },
     { id: 'wheat', icon: 'scale', title: 'Find the unknown resistor', text: 'R4 is hidden. Adjust R3 until the bridge voltmeter reads less than 5 mV, then work out R4 from $R_1/R_3 = R_2/R_4$.',
       setup: () => { loadPreset('wheat', true); const r4 = els.find(e => e.label === 'R4'); r4.R = 4700; r4.locked = true; const r3 = els.find(e => e.label === 'R3'); r3.R = 1000; sel = r3; renderProps(); },
-      check: () => { const vm = els.find(e => e.type === 'volt'), rx = els.find(e => e.locked); if (!vm || !rx) return { ok: false, msg: '' }; return { ok: Math.abs(vm.ema) < 5e-3 && SIM.t > 0.005, msg: `Bridge voltage ${eng(vm.ema, 'V', 3)}` + (Math.abs(vm.ema) < 5e-3 ? ` · so R4 = R2·R3/R1 = ${eng(rx.R, 'Ω')}` : '') }; } },
+      check: () => { const vm = els.find(e => e.type === 'volt'), rx = els.find(e => e.locked); if (!vm || !rx) return { ok: false, msg: '' }; return { ok: Math.abs(vm.v) < 5e-3 && SIM.t > 0.005, msg: `Bridge voltage ${eng(vm.v, 'V', 3)}` + (Math.abs(vm.v) < 5e-3 ? ` · so R4 = R2·R3/R1 = ${eng(rx.R, 'Ω')}` : '') }; } },
   ];
   let active = null; const done = new Set();
   function renderChals() {
@@ -986,7 +993,8 @@
     SL.refreshIcons($('#chals')); SL.renderMath($('#chals'));
     document.querySelectorAll('[data-ch]').forEach(b => b.onclick = () => { active = b.dataset.ch; const c = CH.find(x => x.id === active); c.setup(); renderChals(); document.querySelector('.lab').scrollIntoView({ behavior: 'smooth' }); SL.toast(`<b>${c.title}</b> started.`, '', 3000); });
   }
-  setInterval(() => { if (!active || document.hidden) return; const c = CH.find(x => x.id === active); const r = c.check(); const m = document.getElementById('cm-' + c.id); if (m) m.textContent = r.msg; if (r.ok && !done.has(c.id)) { done.add(c.id); SL.toast(`Challenge complete: <b>${c.title}</b>. ${r.msg}`, 'ok', 7000); renderChals(); } }, 500);
+  let okRun = 0;
+  setInterval(() => { if (!active || document.hidden) return; const c = CH.find(x => x.id === active); const r = c.check(); const m = document.getElementById('cm-' + c.id); if (m) m.textContent = r.msg; okRun = r.ok ? okRun + 1 : 0; if (okRun >= 2 && !done.has(c.id)) { done.add(c.id); SL.toast(`Challenge complete: <b>${c.title}</b>. ${r.msg}`, 'ok', 7000); renderChals(); } }, 500);
   renderChals();
   document.querySelectorAll('[data-pre]').forEach(b => b.onclick = () => { loadPreset(b.dataset.pre); document.querySelector('.lab').scrollIntoView({ behavior: 'smooth' }); });
 

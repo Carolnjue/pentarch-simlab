@@ -302,12 +302,28 @@
     return RP.n === 1 ? [RP.src[0]] : RP.src;
   }
   function setSep() { const H = RP.W * st.h / st.w, s = ripSources(), cx = RP.n === 2 ? (RP.src[0][0] + RP.src[1][0]) / 2 : 7, cy = RP.n === 2 ? (RP.src[0][1] + RP.src[1][1]) / 2 : H / 2; const a = RP.src ? Math.atan2(RP.src[1][1] - RP.src[0][1], RP.src[1][0] - RP.src[0][0]) : Math.PI / 2; RP.src = [[cx - Math.cos(a) * RP.d / 2, cy - Math.sin(a) * RP.d / 2], [cx + Math.cos(a) * RP.d / 2, cy + Math.sin(a) * RP.d / 2]]; RP.cache = null; }
+  const ripWave = { key: '', C: null, S: null, img: null };
   function drawRipple(dt) {
     const { ctx, w, h } = st, res = w < 600 ? 3 : 3, gw = Math.ceil(w / res), gh = Math.ceil(h / res);
     if (off.width !== gw || off.height !== gh) { off.width = gw; off.height = gh; RP.cache = null; }
     const sc = RP.W / w, src = ripSources(), k = 2 * Math.PI / RP.lam, om = 2 * Math.PI * RP.v / RP.lam, phs = [0, SL.rad(RP.phi)];
-    const img = RP.view === 'wave' ? octx.createImageData(gw, gh) : (RP.cache || octx.createImageData(gw, gh));
-    if (RP.view === 'wave' || !RP.cache) {
+    let img;
+    if (RP.view === 'wave') {
+      // Per-pixel sums C = Σ a·cos(kr+φ) and S = Σ a·sin(kr+φ) depend only on the geometry, so they are cached;
+      // each frame then needs just ψ = C·cos ωt + S·sin ωt per pixel.
+      const key = [gw, gh, sc, RP.lam, RP.phi, src.map(q => q.join(',')).join(';')].join('|');
+      if (key !== ripWave.key) {
+        ripWave.key = key; const C = ripWave.C = new Float32Array(gw * gh), S = ripWave.S = new Float32Array(gw * gh), r0 = RP.lam / 3;
+        for (let j = 0; j < gh; j++) { const y = (j + .5) * res * sc;
+          for (let i = 0; i < gw; i++) { const x = (i + .5) * res * sc; let re = 0, im = 0;
+            for (let s = 0; s < src.length; s++) { const r = Math.max(r0, Math.hypot(x - src[s][0], y - src[s][1])), a = 1 / Math.sqrt(r), ph = k * r + phs[s]; re += a * Math.cos(ph); im += a * Math.sin(ph); }
+            C[j * gw + i] = re; S[j * gw + i] = im; } }
+      }
+      if (!ripWave.img || ripWave.img.width !== gw || ripWave.img.height !== gh) ripWave.img = octx.createImageData(gw, gh);
+      img = ripWave.img; const D = img.data, C = ripWave.C, S = ripWave.S, cw = Math.cos(om * T), sw = Math.sin(om * T);
+      for (let q = 0, p = 0; q < C.length; q++, p += 4) { const val = C[q] * cw + S[q] * sw; const c = LUTw[Math.max(0, Math.min(255, Math.round((val * 0.9 + 1) * 127.5)))]; D[p] = c[0]; D[p + 1] = c[1]; D[p + 2] = c[2]; D[p + 3] = 255; }
+    } else img = RP.cache || octx.createImageData(gw, gh);
+    if (RP.view !== 'wave' && !RP.cache) {
       const D = img.data; let imax = 0; const I = RP.view === 'int' ? new Float32Array(gw * gh) : null;
       const r0 = RP.lam / 3;
       for (let j = 0; j < gh; j++) { const y = (j + .5) * res * sc;
@@ -360,6 +376,7 @@
     return { I: env * inter, env };
   }
   function thMax() { const lam = SP.lam * 1e-9; if (SP.type === 'g') return Math.min(Math.asin(Math.min(0.999, 3.3 * lam / effAD()[1])), SL.rad(80)); return Math.min(SL.rad(70), Math.asin(Math.min(0.95, 2.6 * lam / (SP.a * 1e-6)))); }
+  const slitStrip = { key: '', cv: document.createElement('canvas') };
   function drawSlits(dt) {
     const { ctx, w, h } = st; ctx.fillStyle = '#04070f'; ctx.fillRect(0, 0, w, h);
     const tm = thMax(), G = SP.type === 'g', ymax = G ? SL.deg(tm) : SP.L * Math.tan(tm), col = lambdaRGB(SP.lam);
@@ -379,7 +396,11 @@
     // screen pattern
     const sy0 = b1 + 6, sh = b2 - b1 - 12;
     ctx.fillStyle = '#000'; ctx.fillRect(pl, sy0, pw, sh);
-    if (!SP.phot) { for (let px = 0; px < pw; px++) { const y = (px / pw * 2 - 1) * ymax, I = slitI(thOf(y)).I; ctx.fillStyle = lambdaRGB(SP.lam, Math.min(1, Math.pow(I, .55) * 1.1)); ctx.fillRect(pl + px, sy0, 1, sh); } }
+    if (!SP.phot) { // the fringe strip only changes with the set-up, so it is drawn once into a cached canvas
+      const key = [SP.type, SP.lam, SP.a, SP.d, SP.N, SP.lpm, SP.L, SP.env, pw, sh, st.dpr].join('|');
+      if (key !== slitStrip.key) { slitStrip.key = key; const c = slitStrip.cv, dpr = st.dpr || 1; c.width = Math.max(1, Math.round(pw * dpr)); c.height = Math.max(1, Math.round(sh * dpr)); const x2 = c.getContext('2d'); x2.setTransform(dpr, 0, 0, dpr, 0, 0);
+        for (let px = 0; px < pw; px++) { const y = (px / pw * 2 - 1) * ymax, I = slitI(thOf(y)).I; x2.fillStyle = lambdaRGB(SP.lam, Math.min(1, Math.pow(I, .55) * 1.1)); x2.fillRect(px, 0, 1, sh); } }
+      ctx.drawImage(slitStrip.cv, pl, sy0, pw, sh); }
     else {
       if (running) { const nNew = Math.min(400, Math.ceil(dt * 900)); for (let k = 0; k < nNew; k++) { for (let tries = 0; tries < 40; tries++) { const y = (Math.random() * 2 - 1) * ymax; if (Math.random() < slitI(thOf(y)).I) { SP.hits.push([y, Math.random()]); break; } } } if (SP.hits.length > 9000) SP.hits.splice(0, SP.hits.length - 9000); }
       ctx.fillStyle = lambdaRGB(SP.lam, .85); SP.hits.forEach(p => ctx.fillRect(yToX(p[0]), sy0 + p[1] * sh, 1.4, 1.4));
@@ -819,7 +840,9 @@
     uiAcc += dt; if (uiAcc > .15) { uiAcc = 0; updUI(); }
     chAcc += dt; if (chAcc > .5) { chAcc = 0; checkChallenges(); }
   }).start();
-  document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
+  { let onScreen = true; const sync = () => (document.hidden || !onScreen) ? loop.stop() : loop.start();
+    document.addEventListener('visibilitychange', sync);
+    if ('IntersectionObserver' in window) (() => { const vis = new Set(), io = new IntersectionObserver(es => { es.forEach(e => e.isIntersecting ? vis.add(e.target) : vis.delete(e.target)); onScreen = vis.size > 0; sync(); }, { rootMargin: '300px' }); document.querySelectorAll('.lab, main canvas').forEach(el => { if (!el.closest('.tabs')) io.observe(el); }); })(); }
   slitUI(); benchKindUI(); swUI(); $('#f2wrap').style.display = 'none'; setMode('ripple');
   const tour = () => SL.tour([
     { el: '#stage', title: 'The ripple tank', text: 'Two sources send out overlapping waves. Drag a source to move it; tap or hover anywhere to read the path difference.', before: () => setMode('ripple') },

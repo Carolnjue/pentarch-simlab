@@ -325,7 +325,7 @@
   const VSCALE = () => (st.w < 500 ? 9 : 13) / 1000; // px per (m/s)
   const accel = r => { const d = Math.hypot(r[0], r[1]), k = -MU / (d * d * d); return [k * r[0], k * r[1]]; };
   function resetSectors() { A.sectors = []; A.cur = null; }
-  function setSat(r, v, keepDv) { A.r = r.slice(); A.v = v.slice(); A.crashed = false; A.trail = []; resetSectors(); if (!keepDv) { A.dvUsed = 0; const el = elements(A.r, A.v, MU); A.startR = el.e < 0.01 ? el.a : null; } }
+  function setSat(r, v, keepDv) { A.r = r.slice(); A.v = v.slice(); A.crashed = false; A.trail = []; resetSectors(); if (!keepDv) { A.dvUsed = 0; const el = elements(A.r, A.v, MU); A.startR = el.e < 0.01 ? el.a : null; A.e0 = el.e; } }
   function preset(k) {
     const rr = { circ: 12e6, ell: 12e6, esc: 12e6, hyp: 12e6, iss: RE + 420e3, geo: 42164e3 }[k], vc = Math.sqrt(MU / rr);
     const f = { circ: 1, ell: 1.2, esc: Math.SQRT2, hyp: 1.6, iss: 1, geo: 1 }[k];
@@ -627,7 +627,7 @@
   }
   const miniSt = SL.canvas($('#mini'));
   function rocketChallenges(el) {
-    winC('orbit', `Reached ${SL.fmt((el.rp - RE) / 1000, 0)} × ${SL.fmt((el.ra - RE) / 1000, 0)} km.`);
+    if (el.rp - RE >= 400e3) winC('orbit', `Reached ${SL.fmt((el.rp - RE) / 1000, 0)} × ${SL.fmt((el.ra - RE) / 1000, 0)} km.`);
     if (RK.payload >= 1000) winC('heavy', `${RK.payload} kg delivered.`);
     if (R.maxQ < 30e3) winC('gentle', `Max-Q was ${SL.fmt(R.maxQ / 1000, 1)} kPa.`);
   }
@@ -693,19 +693,19 @@
 
   /* ======================= challenges ======================= */
   const CHALS = [
-    { id: 'circ', t: 'Circularise', d: 'Starting from the Ellipse preset, use burns to make the orbit circular ($e &lt; 0.01$).' },
+    { id: 'circ', t: 'Circularise', d: 'Starting from the Ellipse preset (or any orbit with $e \\ge 0.1$), use burns to make the orbit circular ($e &lt; 0.01$).' },
     { id: 'hoh', t: 'Hohmann to GEO', d: 'From a circular orbit, reach the target ring ($e &lt; 0.01$, radius within 1%) using no more than 5% above the ideal Hohmann Δv. Use the armed apoapsis burn.' },
     { id: 'esc', t: 'Escape efficiently', d: 'From a circular orbit, reach escape ($e \\ge 1$) with a single prograde burn within 2% of the minimum $(\\sqrt2-1)v_c$.' },
     { id: 'k2', t: 'Equal areas', d: 'On an orbit with $e &gt; 0.5$ and swept areas on, record 8 sectors and see that their areas agree.' },
-    { id: 'orbit', t: 'Reach orbit from Kenya', d: 'Launch the rocket and reach a stable orbit with periapsis above 140 km.' },
-    { id: 'heavy', t: 'Heavy lifter', d: 'Reach orbit with a payload of 1000 kg or more. This launcher manages about 1,600 kg to a 200 km orbit and less the higher you aim, so keep the target low and try a pitch-over of 3–4°.' },
+    { id: 'orbit', t: 'Reach orbit from Kenya', d: 'Launch from the Malindi coast to the height of the space station: a stable orbit with periapsis at or above 400 km. (The autopilot undershoots its target a little, so aim higher.)' },
+    { id: 'heavy', t: 'Heavy lifter', d: 'Reach orbit with a payload of 1000 kg or more. This launcher manages about 1,600 kg to a 200 km orbit and less the higher you aim, so keep the target low and try a pitch-over of 4–4.5°.' },
     { id: 'gentle', t: 'Smooth ride', d: 'Reach orbit with maximum dynamic pressure below 30 kPa.' },
   ];
   $('#chalList').innerHTML = CHALS.map(c => `<div class="chal" id="ch-${c.id}"><span class="led"></span><div><b>${c.t}</b><p>${c.d}</p></div></div>`).join('');
   function winC(id, msg) { if (done[id]) return; done[id] = true; $('#ch-' + id + ' .led').classList.add('on'); SL.toast(`<b>Challenge complete:</b> ${CHALS.find(c => c.id === id).t}${msg ? '<br>' + msg : ''}`, 'ok', 6000); }
   function checkOrbitChallenges() {
     const el = elements(A.r, A.v, MU);
-    if (el.e < 0.01 && A.dvUsed > 0) winC('circ', `e = ${SL.fmt(el.e, 4)} using ${SL.fmt(A.dvUsed, 0)} m/s.`);
+    if (el.e < 0.01 && A.dvUsed > 0 && A.e0 >= 0.1) winC('circ', `e = ${SL.fmt(el.e, 4)} using ${SL.fmt(A.dvUsed, 0)} m/s.`);
     if (A.startR && el.e < 0.01 && Math.abs(el.a - A.tgt) / A.tgt < 0.01) {
       const r1 = A.startR, r2 = A.tgt, ideal = Math.abs(Math.sqrt(MU / r1) * (Math.sqrt(2 * r2 / (r1 + r2)) - 1)) + Math.abs(Math.sqrt(MU / r2) * (1 - Math.sqrt(2 * r1 / (r1 + r2))));
       if (A.dvUsed <= ideal * 1.05) winC('hoh', `Used ${SL.fmt(A.dvUsed, 0)} m/s against an ideal ${SL.fmt(ideal, 0)} m/s.`);
@@ -735,7 +735,7 @@
   $('#armApo').onclick = () => { A.armed = A.armed === 'apo' ? null : 'apo'; armUI(); };
   $('#armPeri').onclick = () => { A.armed = A.armed === 'peri' ? null : 'peri'; armUI(); };
   $('#armRetro').onclick = () => { A.armDir = A.armDir === 'pro' ? 'retro' : 'pro'; armUI(); };
-  $('#dvReset').onclick = () => { A.dvUsed = 0; const el = elements(A.r, A.v, MU); A.startR = el.e < 0.01 ? el.a : null; };
+  $('#dvReset').onclick = () => { A.dvUsed = 0; const el = elements(A.r, A.v, MU); A.startR = el.e < 0.01 ? el.a : null; A.e0 = el.e; };
   SL.bind('#dv', v => A.dvSize = v, v => v + ' m/s');
   SL.bind('#tgt', v => A.tgt = v * 1000, v => SL.fmt(v, 0) + ' km');
   SL.bind('#kep', v => { A.kep = v; resetSectors(); }); SL.bind('#conic', v => A.conic = v);
@@ -810,7 +810,9 @@
     else drawSolar(running ? dt : 0);
     uiAcc += dt; if (uiAcc > 0.15) { uiAcc = 0; if (mode === 'sandbox') { uiA(el); hohmannUI(); } else if (mode === 'rocket') uiRocket(el); else uiSolar(); }
   }).start();
-  document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
+  { let onScreen = true; const sync = () => (document.hidden || !onScreen) ? loop.stop() : loop.start();
+    document.addEventListener('visibilitychange', sync);
+    if ('IntersectionObserver' in window) (() => { const vis = new Set(), io = new IntersectionObserver(es => { es.forEach(e => e.isIntersecting ? vis.add(e.target) : vis.delete(e.target)); onScreen = vis.size > 0; sync(); }, { rootMargin: '300px' }); document.querySelectorAll('.lab, main canvas').forEach(el => { if (!el.closest('.tabs')) io.observe(el); }); })(); }
   preset('ell'); A.VR = A.VRt;
   const tour = () => SL.tour([
     { el: '#stage', title: 'Earth and a satellite', text: 'Drag the satellite to move it, or the tip of its yellow arrow to change its velocity. The predicted orbit updates live.', before: () => setMode('sandbox') },

@@ -876,7 +876,7 @@
       const n = S.key === 'rrr' ? 3 : 2; let cum = 0; const tx = [], ty = [], vx = [], vy = [];
       for (let i = 0; i < n; i++) { cum += q[i]; const a = rows[i].a, ang = i ? `θ${Array.from({ length: i + 1 }, (_, k) => k + 1).join('+θ')}` : 'θ1';
         tx.push(`${f(a, 2)}·cos(${f(cum, 0)}°)`); ty.push(`${f(a, 2)}·sin(${f(cum, 0)}°)`); vx.push(a * Math.cos(cum * D2R)); vy.push(a * Math.sin(cum * D2R)); }
-      h += `Each link adds its length in the direction it points (the sum of the joint angles before it):`;
+      h += `Each link adds its length in the direction it points, which is the sum of its own joint angle and all the joint angles before it:`;
       h += `<div class="eqn">x = ${tx.join(' + ')} = ${vx.map(v => f3(v)).join(' + ')} = <b>${f3(tip[0])} m</b></div>`;
       h += `<div class="eqn">y = ${ty.join(' + ')} = ${vy.map(v => f3(v)).join(' + ')} = <b>${f3(tip[1])} m</b></div>`;
       if (S.key === 'scara') h += `The height comes from the column and the prismatic joint: z = ${f3(tip[2])} m. `;
@@ -1017,7 +1017,7 @@
     const pick = () => { const r = reachMin + (reachMax * 0.88 - reachMin) * Math.random(), a = (Math.random() * 2 - 1) * Math.PI * 0.8; return [r * Math.cos(a), r * Math.sin(a)]; };
     let b, c, tries = 0;
     do { b = pick(); c = pick(); tries++; } while (Math.hypot(b[0] - c[0], b[1] - c[1]) < 0.3 && tries < 60);
-    S.block = { p: [b[0], b[1], z], vz: 0 }; S.bin = c; S.held = false; S.pickDone = false; S.pickT0 = performance.now(); S.seq = null;
+    S.block = { p: [b[0], b[1], z], vz: 0 }; S.bin = c; S.held = false; S.pickDone = false; S.pickT0 = performance.now(); S.seq = null; S.autoUsed = false;
     $('#bGrip').querySelector('span').textContent = 'Grip';
     if (!silent) setPickMsg('Block on the table. Reach it and grip.', '');
   }
@@ -1042,6 +1042,7 @@
         setPickMsg(`Delivered in ${SL.fmt(secs, 1)} s. Press New layout to go again.`, 'on');
         SL.toast(`Block delivered in ${SL.fmt(secs, 1)} s`, 'ok');
         S.lastPick = { key: S.key, secs, auto: !!S.autoUsed };
+        checkChallenges();
       } else setPickMsg('Dropped outside the bin. Pick it up again.', 'warn');
     }
   }
@@ -1053,6 +1054,7 @@
     stopMotion(); S.autoUsed = true;
     for (let attempt = 0; attempt < 8; attempt++) {
       if (S.pickDone || attempt > 0) newLayout(true);
+      S.autoUsed = true;
       const b = S.block.p, lift = S.rob.planar ? 0 : 0.14, z = S.rob.planar ? 0 : b[2] + 0.02;
       const tgtAt = (x, y, zz) => { const t = { p: [x, y, zz] }; if (S.key === 'rrr') t.phi = wrapDeg(Math.atan2(y, x) * R2D); if (S.key === 'scara') t.psi = S.psi; if (S.key === 'puma') t.R = [[1, 0, 0], [0, -1, 0], [0, 0, -1]]; return t; };
       let q = [...S.q], ok = true; const pts = [];
@@ -1237,7 +1239,9 @@
     setRobot('rr');
     SL.quiz('#quiz', QUIZ); renderChal(); chalReady = true;
     const lp = SL.loop(frame).start();
-    document.addEventListener('visibilitychange', () => document.hidden ? lp.stop() : lp.start());
+    let onScreen = true; const sync = () => (document.hidden || !onScreen) ? lp.stop() : lp.start();
+    document.addEventListener('visibilitychange', sync);
+    if ('IntersectionObserver' in window) (() => { const vis = new Set(), io = new IntersectionObserver(es => { es.forEach(e => e.isIntersecting ? vis.add(e.target) : vis.delete(e.target)); onScreen = vis.size > 0; sync(); }, { rootMargin: '300px' }); document.querySelectorAll('.lab, main canvas').forEach(el => { if (!el.closest('.tabs')) io.observe(el); }); })();
     SL.tour([
       { el: '#stage', title: 'The robot', text: 'A live 3D serial arm. Drag empty space to orbit and pinch or scroll to zoom. The coloured axes are each joint\'s DH frame.' },
       { el: '#robSeg', title: 'Choose a robot', text: 'Switch between a 2R and 3R planar arm, a SCARA and a 6-DOF elbow arm. Each has its own DH table and workspace.' },
