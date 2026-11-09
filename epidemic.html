@@ -125,7 +125,7 @@
       <div class="eq">$$R_0=\frac{\beta}{\gamma}=\beta D$$</div>
       <p>$R_0$ is the average number of secondary cases caused by one infectious person in a <i>fully susceptible</i> population. In SEIR without deaths during the latent period it is still $\beta/\gamma$: the latent period changes the <i>speed</i> of the epidemic, not how many people each case infects. As immunity builds up, the <b>effective reproduction number</b> falls:</p>
       <div class="eq">$$R_\text{eff}(t)=R_c\,\frac{S(t)}{N},\qquad R_c=R_0\times(\text{effect of interventions})$$</div>
-      <p>Cases grow while $R_\text{eff}&gt;1$ and shrink once $R_\text{eff}&lt;1$. The peak of infections happens exactly when $S/N = 1/R_c$.</p>
+      <p>Cases grow while $R_\text{eff}&gt;1$ and shrink once $R_\text{eff}&lt;1$. In SIR the number infectious peaks exactly when $S/N = 1/R_c$; in SEIR it is the total currently infected ($E+I$) that peaks there, with $I$ alone peaking slightly later.</p>
       <h3>Herd immunity threshold</h3>
       <div class="eq">$$\text{HIT}=1-\frac{1}{R_0},\qquad c_\text{crit}=\frac{1-1/R_0}{\varepsilon}$$</div>
       <p>If more than the HIT fraction is immune, $R_\text{eff}&lt;1$ from the start and an introduced case cannot start a large outbreak. Measles ($R_0 \approx 15$) needs about 93% immune, which is why two-dose coverage of 95% is the target. With an imperfect vaccine, the required coverage is the HIT divided by efficacy, and may exceed 100%: then vaccination alone cannot achieve herd immunity.</p>
@@ -134,7 +134,7 @@
       <div class="eq">$$\ln\frac{s_0}{s_\infty}=R_c\,(s_0-s_\infty)\quad\Rightarrow\quad z=1-e^{-R_0 z}\ \ \text{(fully susceptible, } z=\text{attack rate)}$$</div>
       <p>For $R_0 = 2$ about 80% are eventually infected; for $R_0 = 1.5$, 58%. The epidemic "overshoots" the herd immunity threshold because many people are still infectious when $R_\text{eff}$ passes 1.</p>
       <h3>The epidemic curve and early growth</h3>
-      <p>Early on, $S\approx N$ and cases grow exponentially at rate $r$. For SEIR, $r$ solves $(1+r/\sigma)(1+r/\gamma) = R_0$; for SIR, simply $r=\gamma(R_0-1)$. The doubling time is $\ln 2/r$. The curve rises, peaks when immunity reaches $1-1/R_c$, and falls as fewer susceptibles remain.</p>
+      <p>Early on, $S\approx N$ and cases grow exponentially at rate $r$. For SEIR, $r$ solves $(1+r/\sigma)(1+r/\gamma) = R_0$; for SIR, simply $r=\gamma(R_0-1)$. The doubling time is $\ln 2/r$. The curve rises, peaks when the susceptible fraction has fallen to $1/R_c$, and falls as fewer susceptibles remain.</p>
       <h3>Interventions in this model</h3>
       <ul>
         <li><b>Masks and distancing</b> multiply transmission by $(1-m)$.</li>
@@ -631,6 +631,7 @@
     else t = `R<sub>eff</sub> = ${SL.fmt(reff, 2)} &lt; 1: so many people are immune (${imm}%) that each case now infects fewer than one other. Cases are <b>falling</b>, though people are still being infected.`;
     $('#epiCap').innerHTML = `<b>Day ${day}.</b> ${t}`;
   }
+  const epStage = document.querySelector('.ep-stage'); const epVis = () => { const r = (epStage.closest('.lab') || epStage).getBoundingClientRect(); return r.bottom > -100 && r.top < innerHeight + 100; };
   const loop = SL.loop((dt) => {
     if (document.visibilityState !== 'visible') return;
     if (mode === 'town') {
@@ -639,12 +640,12 @@
         const n = Math.ceil(simH / 0.25);
         for (let i = 0; i < n; i++) { stepTown(simH / n, P); moveAgents(simH / n); }
       } else if (playing) moveAgents(dt * 2.4);
-      drawTown(); drawTownChart();
+      if (epVis()) { drawTown(); drawTownChart(); }
       const c = counts(), n = T.agents.length;
       $('#hDay').textContent = T.day; $('#hReff').textContent = SL.fmt(Rc(P) * c.S / n, 2); $('#hInf').textContent = c.I;
     } else {
       if (playing) { playhead += dt * DAYS / 14 * speed; if (playhead >= DAYS) { playhead = DAYS; playing = false; $('#play').innerHTML = '<i data-lucide="play"></i>'; SL.refreshIcons($('#play')); } }
-      drawODE();
+      if (epVis()) drawODE();
       const i = Math.min(ODE.t.length - 1, Math.round(playhead / 0.25));
       $('#hDay').textContent = Math.floor(playhead); $('#hReff').textContent = SL.fmt(ODE.Reff[i], 2); { const v = ODE.I[i] / N * 100; $('#hInf').textContent = v < 0.001 ? '<0.001%' : v.toFixed(v < 0.1 ? 3 : 2) + '%'; }
     }
@@ -663,7 +664,7 @@
     { id: 'cap', title: 'Protect the hospitals with the least disruption', text: 'COVID-19-like virus, no vaccine yet, 150 beds per 100 000. Keep hospital demand under capacity for the whole first year (SEIR view) with the lowest disruption index you can. Gold ≤ 18, silver ≤ 25, bronze: any. <br><span class="small">Disruption index (shown in Results): 0.8 per % of masks/distancing, 20 for school closure, 0.1 per % of cases isolated, up to 10 for fast testing, 10 for contact tracing.</span>', setup: () => { $('#mode button[data-m=ode]').click(); loadPreset('covid', { cov: 0, mask: 0, iso: 0, delay: 3, school: false, trace: false, cap: 150 }); },
       check: () => { if (P.cov > 0) return [false, 'No vaccine is available in this challenge: set coverage to 0.']; if (P.cap > 150) return [false, 'Keep capacity at 150 beds per 100 000.']; if (Math.abs(P.R0 - 2.8) > 0.01 || P.inf !== 7 || P.hosp !== 4) return [false, 'Use the COVID-19 preset values.']; const s = ODE.sum; if (s.hmax > s.cap) return [false, `Peak demand ${Math.round(s.hmax / N * 1e5)} beds per 100 000 exceeds capacity.`]; const d = disruption(P); const medal = d <= 18 ? "Gold" : d <= 25 ? "Silver" : "Bronze"; return [true, `${medal}: under capacity with disruption index ${d.toFixed(0)}. Peak demand ${Math.round(s.hmax / N * 1e5)}/100k.`]; } },
     { id: 'measles', title: 'Measles: just enough vaccine', text: 'Measles preset, efficacy 97%. Find the lowest coverage that keeps R<sub>eff</sub> below 1 from the start (within 2 percentage points of the critical value).', setup: () => loadPreset('measles', { cov: 80, eff: 97, mask: 0, iso: 0, school: false, trace: false }),
-      check: () => { const need = (1 - 1 / P.R0) / (P.eff / 100) * 100; if (P.R0 < 12) return [false, 'Use the measles preset (R₀ ≥ 12).']; const ok = P.cov >= need && P.cov <= need + 2; return [ok, ok ? `${P.cov}% coverage protects ${(P.cov * P.eff / 100).toFixed(1)}%, above the ${((1 - 1 / P.R0) * 100).toFixed(1)}% threshold.` : `Critical coverage is ${need.toFixed(1)}%; you have ${P.cov}%.`]; }, auto: true },
+      check: () => { const need = (1 - 1 / P.R0) / (P.eff / 100) * 100; if (P.R0 < 12) return [false, 'Use the measles preset (R₀ ≥ 12).']; if (P.eff !== 97) return [false, 'Set vaccine efficacy to 97% (two doses).']; const ok = P.cov >= need && P.cov <= need + 2; return [ok, ok ? `${P.cov}% coverage protects ${(P.cov * P.eff / 100).toFixed(1)}%, above the ${((1 - 1 / P.R0) * 100).toFixed(1)}% threshold.` : `Critical coverage is ${need.toFixed(1)}%; you have ${P.cov}%.`]; }, auto: true },
     { id: 'ebola', title: 'Stop Ebola without a vaccine', text: 'Ebola preset, coverage 0. Use isolation, testing speed and tracing only (no masks or school closure) to get R<sub>c</sub> below 1.', setup: () => loadPreset('ebola', { cov: 0, mask: 0, iso: 0, delay: 5, school: false, trace: false }),
       check: () => { if (P.cov > 0 || P.mask > 0 || P.school) return [false, 'Isolation, testing and tracing only.']; if (Math.abs(P.R0 - 1.8) > 0.01) return [false, 'Use the Ebola preset.']; const r = Rc(P); return [r < 1, r < 1 ? `R_c = ${r.toFixed(2)}: each case now causes fewer than one new case.` : `R_c = ${r.toFixed(2)}.`]; }, auto: true },
     { id: 'town', title: 'Small-town outbreak control', text: 'In the town view with the COVID-19 preset (R₀ 2.8), run an outbreak to the end with fewer than 20% of residents infected, without vaccination.', setup: () => { $('#mode button[data-m=town]').click(); loadPreset('covid', { cov: 0 }); },
@@ -675,6 +676,7 @@
   function chalAuto() { if (userTouched) CH.filter(c => c.auto).forEach(c => { if (!done[c.id]) runCheck(c, true); }); }
   function chalTown(ar) {
     const box = $('#ch-town'); if (P.cov > 0 || Math.abs(P.R0 - 2.8) > 0.01) return;
+    if (ar < 0.2 && Rc(P) > 2.79) { box.querySelector('[data-msg]').textContent = `Only ${Math.round(ar * 100)}% infected, but with no measures in place this was chance extinction. Add interventions and run it again.`; return; }
     if (ar < 0.2) { box.querySelector('.led').className = 'led on'; box.querySelector('[data-msg]').textContent = `Done: ${Math.round(ar * 100)}% infected.`; if (!done.town) { done.town = 1; SL.toast('<b>Challenge complete:</b> small-town outbreak control', 'ok'); } }
     else box.querySelector('[data-msg]').textContent = `Last outbreak infected ${Math.round(ar * 100)}%. Try again.`;
   }

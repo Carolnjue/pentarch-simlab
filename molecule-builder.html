@@ -171,7 +171,7 @@
       <h3>Polarity</h3>
       <p>When two atoms of different electronegativity share electrons, the pair is pulled towards the more electronegative atom, giving partial charges $\delta^+$ and $\delta^-$ and a <b>bond dipole</b>. Dipole moment is $\mu = q\,d$ (unit: debye, 1 D = 3.336×10<sup>−30</sup> C m). Rough guide to bond type by $\Delta\chi$: below 0.4 essentially nonpolar covalent, 0.4–1.7 polar covalent, above about 1.7 largely ionic.</p>
       <p>The molecular dipole is the <b>vector sum</b> of bond dipoles (plus a contribution from lone pairs). Symmetric shapes cancel: CO<sub>2</sub>, BF<sub>3</sub>, CH<sub>4</sub>, PCl<sub>5</sub>, SF<sub>6</sub> and XeF<sub>4</sub> have polar bonds but are nonpolar molecules. H<sub>2</sub>O, NH<sub>3</sub> and ClF<sub>3</sub> do not cancel and are polar. The builder estimates this as $\vec\mu \approx \sum \Delta\chi\,\hat{\mathbf u}$, each unit vector pointing from the less to the more electronegative atom, and draws the result with the chemist's crossed arrow (pointing to the δ− end).</p>
-      <div class="callout warn"><i data-lucide="triangle-alert"></i><div><b>Model limits.</b> The 3D shapes come from a simplified force field (bond springs, VSEPR domain templates with lone-pair compression for SN 3–4, planar double bonds, soft non-bonded repulsion); it is not a quantum calculation. Stereochemistry (R/S, cis/trans, chair conformers) is not controlled. Resonance is not modelled: nitrogen next to C=O or in aromatic rings (amides, caffeine) is really planar sp², though simple VSEPR counts it as pyramidal. The net-dipole estimate ignores lone-pair dipoles, so it under-estimates NH<sub>3</sub> and misses the small dipole of molecules like CO.</div></div>
+      <div class="callout warn"><i data-lucide="triangle-alert"></i><div><b>Model limits.</b> The 3D shapes come from a simplified force field (bond springs, VSEPR domain templates with lone-pair compression for SN 3–4, planar double bonds, soft non-bonded repulsion); it is not a quantum calculation. Stereochemistry (R/S, cis/trans, chair conformers) is not controlled. Resonance is not modelled: nitrogen next to C=O or in aromatic rings (amides, caffeine), and the single-bonded oxygen of esters and carboxylic acids, are really close to planar sp², though simple VSEPR counts them as sp³. The net-dipole estimate ignores lone-pair dipoles, so it under-estimates NH<sub>3</sub> and misses the small dipole of molecules like CO.</div></div>
     </div>
 
     <!-- LEWIS -->
@@ -207,7 +207,7 @@
       </div>
       <h3>4. Hybridisation in aspirin</h3>
       <div class="worked">
-        <p>Aspirin, C<sub>9</sub>H<sub>8</sub>O<sub>4</sub> (M = 180.16 g/mol), has 9 carbons: the six ring carbons and the two C=O carbons have SN = 3 (sp², trigonal planar, 120°); the methyl carbon has SN = 4 (sp³, tetrahedral). The ester oxygen and the O–H oxygen have 2 bonds and 2 lone pairs: SN = 4, sp³, bent. Click the centres list in the VSEPR panel to check each one.</p>
+        <p>Aspirin, C<sub>9</sub>H<sub>8</sub>O<sub>4</sub> (M = 180.16 g/mol), has 9 carbons: the six ring carbons and the two C=O carbons have SN = 3 (sp², trigonal planar, 120°); the methyl carbon has SN = 4 (sp³, tetrahedral). The ester oxygen and the O–H oxygen have 2 bonds and 2 lone pairs: SN = 4, sp³, bent in simple VSEPR counting (resonance with the neighbouring C=O makes the ester oxygen closer to sp² in reality). Click the centres list in the VSEPR panel to check each one.</p>
       </div>
       <h3>5. Counting σ and π bonds in ethyne, C<sub>2</sub>H<sub>2</sub></h3>
       <div class="worked">
@@ -279,7 +279,7 @@
     if (Math.abs(det) < 1e-12) return null;
     return [[A / det, B / det, C / det], [-(b * i - c * h) / det, (a * i - c * g) / det, -(a * h - b * g) / det], [(b * f - c * e) / det, -(a * f - c * d) / det, (a * e - b * d) / det]];
   }
-  function polar(M) { let X = M; for (let it = 0; it < 12; it++) { const Y = inv3T(X); if (!Y) break; X = X.map((r, i) => r.map((v, j) => 0.5 * (v + Y[i][j]))); } return X; }
+  function polar(M) { let X = M; for (let it = 0; it < 12; it++) { const Y = inv3T(X); if (!Y) break; let d = 0; X = X.map((r, i) => r.map((v, j) => { const nv = 0.5 * (v + Y[i][j]); d = Math.max(d, Math.abs(nv - v)); return nv; })); if (d < 1e-7) break; } return X; }
   const C2D = Array.from({ length: 48 }, (_, i) => [Math.cos(i * Math.PI / 24 + .01), Math.sin(i * Math.PI / 24 + .01), 0]);
   const FIB = (() => { const out = [], N = 96; for (let i = 0; i < N; i++) { const y = 1 - 2 * (i + .5) / N, r = Math.sqrt(1 - y * y), t = i * 2.39996; out.push([r * Math.cos(t), y, r * Math.sin(t)]); } return out; })();
 
@@ -574,9 +574,10 @@
     selected = null; computeTopology(); analyse(); selected = centralAtom(); update();
   }
   let tool = 'add', order = 1, palEl = 'C', selected = null, bondStart = null;
+  let settled = 0, lastMf = 0;
 
   function edited(sel) {
-    fillHydrogens(); analyse(); relax(40);
+    settled = 0; fillHydrogens(); analyse(); relax(40);
     if (sel !== undefined) selected = sel;
     if (selected && !atoms.includes(selected)) selected = centralAtom();
     presetName = ''; update();
@@ -804,6 +805,7 @@
 
   function atomLabel(a) { const same = atoms.filter(x => x.el === a.el); return a.el + (same.length > 1 ? same.indexOf(a) + 1 : ''); }
   function update() {
+    settled = 0;
     computeTopology(); analyse();
     const f = formula(); dip = dipole();
     document.getElementById('formula').innerHTML = f.htm || '–';
@@ -932,9 +934,12 @@
   ]);
 
   /* ===================== LOOP ===================== */
+  const stageEl = cv.closest('.stage') || cv;
   SL.loop((dt, t) => {
-    if (document.hidden) return;
-    const mf = relax(atoms.length > 30 ? 3 : 6);
+    // idle when the tab is hidden or the builder is scrolled out of view
+    if (document.hidden) return; { const r = stageEl.getBoundingClientRect(); if (r.bottom < -100 || r.top > innerHeight + 100) return; }
+    // once the force field has converged, stop relaxing until the molecule changes
+    let mf = 0; if (settled < 20) { mf = relax(atoms.length > 30 ? 3 : 6); settled = (mf < 1e-4 || Math.abs(mf - lastMf) < 2e-4 * (1 + mf)) ? settled + 1 : 0; lastMf = mf; }
     if (autoRot && pts.size === 0) rotate('y', dt * 0.5);
     draw(t);
     if (lewisDirty) drawLewis();

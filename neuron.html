@@ -252,7 +252,7 @@
         <li><b>Spatial summation:</b> inputs from different synapses arrive at about the same time. Proximal synapses contribute more because dendritic signals decay with distance.</li>
       </ul>
       <p>Spikes are initiated at the <b>axon hillock / initial segment</b>, which has the highest density of voltage-gated Na⁺ channels and therefore the lowest threshold.</p>
-      <div class="callout warn"><i data-lucide="triangle-alert"></i><div><b>Model notes.</b> The HH lab is the original deterministic squid-axon model (a space-clamped patch, no dendrites). The conduction race uses empirical velocity rules rather than solving the cable equation, and the synapse panel uses alpha-function PSPs with a stylised spike at threshold. These simplifications keep the essential behaviour while running in real time.</div></div>
+      <div class="callout warn"><i data-lucide="triangle-alert"></i><div><b>Model notes.</b> The HH lab is the original deterministic squid-axon model (a space-clamped patch, no dendrites). TEA is modelled as blocking the voltage-gated delayed rectifier only; the small K⁺ conductance open at rest is kept, so the resting potential stays at −65 mV (in the bare HH equations a large cut in ḡ<sub>K</sub> makes the patch fire spontaneously). The conduction race uses empirical velocity rules rather than solving the cable equation, and the synapse panel uses alpha-function PSPs with a stylised spike at threshold. These simplifications keep the essential behaviour while running in real time.</div></div>
     </div>
 
     <div class="tabpanel">
@@ -322,7 +322,7 @@
       <div class="worked">
         <p>A sensory Aβ fibre (myelinated, $d = 10$ µm) conducts at $v \approx 6 \times 10 = 60$ m/s. Over 1 m from toe to spinal cord: $t = 1/60 = 16.7$ ms.</p>
         <p>An unmyelinated C fibre ($d = 1$ µm, $v \approx 1$ m/s) needs about 1 s. This is why you feel the sharp first pain of stubbing a toe before the slow, dull second pain.</p>
-        <p>To match 60 m/s without myelin, $\sqrt{d} = 60$ so $d \approx 3600$ µm = 3.6 mm: an axon nearly as thick as a pencil lead. Myelin saves enormous space and energy.</p>
+        <p>To match 60 m/s without myelin, $\sqrt{d} = 60$ so $d \approx 3600$ µm = 3.6 mm: an axon thicker than a pencil lead. Myelin saves enormous space and energy.</p>
       </div>
     </div>
 
@@ -337,7 +337,7 @@
         <canvas id="sdCv"></canvas>
         <h3>Open investigations</h3>
         <ol class="steps">
-          <li>Raise the temperature from 6.3 °C to 20 °C. What happens to spike width and peak? Above about 28–30 °C the squid model fails to fire; explain why in terms of the relative speeds of m, h and n.</li>
+          <li>Raise the temperature from 6.3 °C to 20 °C. What happens to spike width and peak? Above about 28–30 °C the threshold soars and the spike shrinks until the squid model effectively stops firing (heat block); explain why in terms of the relative speeds of m, h and n.</li>
           <li>Increase extracellular K⁺. Why does a modest rise make the cell more excitable, while a large rise (×4) abolishes firing? Relate this to h at rest (depolarisation block, as in severe hyperkalaemia).</li>
           <li>With TTX at 50 %, find the new threshold. Local anaesthetics such as lidocaine block the same channel from the inside.</li>
           <li>In the step protocol, measure firing frequency against current (an f–I curve). The HH neuron jumps from 0 to about 50 Hz near 6.2 µA/cm² (a type II excitability).</li>
@@ -367,13 +367,13 @@
   const P = { mode: 'single', amp: 10, dur: 1, gap: 12, amp2: 10, freq: 80, ttx: 0, tea: 0, ko: 1, T: 6.3, speed: 12 };
   function model() {
     const RTF = 8.314 * (P.T + 273.15) / 96.485; // mV
-    return { gNa: 120 * (1 - P.ttx / 100), gK: 36 * (1 - P.tea / 100), gL: 0.3, ENa: 50, EK: -77 + RTF * Math.log(P.ko), EL: -54.387, C: 1, phi: Math.pow(3, (P.T - 6.3) / 10) };
+    return { gNa: 120 * (1 - P.ttx / 100), gK: 36 * (1 - P.tea / 100), gKr: 36 * (P.tea / 100) * Math.pow(0.31768, 4), gL: 0.3, ENa: 50, EK: -77 + RTF * Math.log(P.ko), EL: -54.387, C: 1, phi: Math.pow(3, (P.T - 6.3) / 10) };
   }
   function deriv(M, V, m, h, n, I, out) {
     const x = V + 40, am = Math.abs(x) < 1e-7 ? 1 : 0.1 * x / (1 - Math.exp(-x / 10)), bm = 4 * Math.exp(-(V + 65) / 18);
     const ah = 0.07 * Math.exp(-(V + 65) / 20), bh = 1 / (1 + Math.exp(-(V + 35) / 10));
     const y = V + 55, an = Math.abs(y) < 1e-7 ? 0.1 : 0.01 * y / (1 - Math.exp(-y / 10)), bn = 0.125 * Math.exp(-(V + 65) / 80);
-    out[0] = (I - M.gNa * m * m * m * h * (V - M.ENa) - M.gK * n * n * n * n * (V - M.EK) - M.gL * (V - M.EL)) / M.C;
+    out[0] = (I - M.gNa * m * m * m * h * (V - M.ENa) - (M.gK * n * n * n * n + M.gKr) * (V - M.EK) - M.gL * (V - M.EL)) / M.C;
     out[1] = M.phi * (am * (1 - m) - bm * m); out[2] = M.phi * (ah * (1 - h) - bh * h); out[3] = M.phi * (an * (1 - n) - bn * n);
   }
   const k1 = new Float64Array(4), k2 = new Float64Array(4), k3 = new Float64Array(4), k4 = new Float64Array(4);
@@ -404,7 +404,7 @@
       if (i % STRIDE === 0 && j < N) {
         const [V, m, h, n] = s;
         r.t[j] = t; r.V[j] = V; r.m[j] = m; r.h[j] = h; r.n[j] = n; r.I[j] = I;
-        r.INa[j] = M.gNa * m * m * m * h * (V - M.ENa); r.IK[j] = M.gK * n ** 4 * (V - M.EK); r.IL[j] = M.gL * (V - M.EL); j++;
+        r.INa[j] = M.gNa * m * m * m * h * (V - M.ENa); r.IK[j] = (M.gK * n ** 4 + M.gKr) * (V - M.EK); r.IL[j] = M.gL * (V - M.EL); j++;
       }
       rk4(M, s, I, DT);
     }
@@ -481,7 +481,7 @@
   $('#presetLido').onclick = () => { preset({ ttx: 60, tea: 0, ko: 1, temp: 6.3, amp: 10 }); SL.toast('Lidocaine-type local anaesthetics block a share of the Na⁺ channels, so the threshold rises: the 10 µA/cm² pulse that fired before now fails. Press <b>Find threshold</b> to see how much more current is needed.', 'warn', 6000); };
   $('#presetRef').onclick = () => { setMode('pair'); preset({ ttx: 0, tea: 0, ko: 1, temp: 6.3, amp: 10, gap: 5, amp2: 10 }); SL.toast('Two identical pulses 5 ms apart: the second fails because Na⁺ channels are still inactivated (h is low). Lengthen the interval or raise the 2nd pulse to find the refractory periods.', 'ok', 6500); };
   $('#presetNorm').onclick = () => preset({ ttx: 0, tea: 0, ko: 1, temp: 6.3 });
-  $('#presetTTX').onclick = () => { preset({ ttx: 100, tea: 0, ko: 1, temp: 6.3, amp: 40 }); SL.toast('Tetrodotoxin from pufferfish blocks voltage-gated Na⁺ channels: no spike, only a passive response.', 'warn'); };
+  $('#presetTTX').onclick = () => { preset({ ttx: 100, tea: 0, ko: 1, temp: 6.3, amp: 20 }); SL.toast('Tetrodotoxin from pufferfish blocks voltage-gated Na⁺ channels: no spike, only a passive response. Try a much stronger pulse.', 'warn'); };
   $('#presetHyperK').onclick = () => { preset({ ttx: 0, tea: 0, ko: 4, temp: 6.3 }); SL.toast('High [K⁺]ₒ depolarises the resting membrane and inactivates Na⁺ channels (depolarisation block).', 'warn'); };
 
   function updateStats() {
@@ -935,11 +935,11 @@
     if (sp !== undefined) { const a = apShape(t - sp); if (a !== null) return a; }
     let v = VR; for (const e of syn.ev) if (sp === undefined || e.t > sp + 3) v += psp(e, t); return v;
   }
-  const fire = (k, at) => { const tt = at ?? syn.t; syn.ev.push({ k, t: tt }); syn.last = k; syn.anim.push({ k, t0: performance.now() / 1000 + Math.max(0, (tt - syn.t) / syn.speed) }); };
+  const fire = (k, at, demo) => { const tt = at ?? syn.t; syn.ev.push({ k, t: tt, demo: !!demo }); syn.last = k; syn.anim.push({ k, t0: performance.now() / 1000 + Math.max(0, (tt - syn.t) / syn.speed) }); };
   $('#fE1').onclick = () => fire('E1'); $('#fE2').onclick = () => fire('E2'); $('#fI1').onclick = () => fire('I1');
   $('#dSingle').onclick = () => fire('E2');
-  $('#dTemp').onclick = () => { for (let k = 0; k < 4; k++) fire('E2', syn.t + k * 3); };
-  $('#dSpat').onclick = () => { fire('E1', syn.t); fire('E2', syn.t + 0.5); fire('E1', syn.t + 1); fire('E2', syn.t + 1.5); };
+  $('#dTemp').onclick = () => { for (let k = 0; k < 4; k++) fire('E2', syn.t + k * 3, true); };
+  $('#dSpat').onclick = () => { fire('E1', syn.t, true); fire('E2', syn.t + 0.5, true); fire('E1', syn.t + 1, true); fire('E2', syn.t + 1.5, true); };
   $('#dInh').onclick = () => { fire('I1', syn.t); fire('I1', syn.t + 1); for (let k = 0; k < 4; k++) fire('E2', syn.t + k * 3); };
   // close-up particles
   const vrand = mulberry(21); const ves = []; for (let k = 0; k < 16; k++) ves.push({ x: vrand(), y: vrand(), home: true });
@@ -958,7 +958,8 @@
   function checkSyn(tt) {
     const recent = syn.ev.filter(e => e.t <= tt && tt - e.t < 20 && SYN[e.k].type === 'E');
     const kinds = new Set(recent.map(e => e.k));
-    if (kinds.size >= 2) ch.done('spat'); else if (recent.length >= 2) ch.done('temp');
+    if (recent.some(e => e.demo)) { /* demonstrations do not count towards the challenges */ }
+    else if (kinds.size >= 2) ch.done('spat'); else if (recent.length >= 2) ch.done('temp');
     SL.toast('Threshold reached at the hillock: action potential fired.', 'ok', 2200);
   }
   function drawSyn(dt) {
@@ -1086,10 +1087,10 @@
     ['rel', 'Relative refractory period', 'Two pulses: both fire but the second spike peaks at least 5 mV lower than the first.'],
     ['rep', 'Repetitive firing', 'Use a step stimulus to fire at least 5 spikes in 100 ms.'],
     ['ttx', 'Block with TTX', 'With TTX at 100 %, show that even a 40 µA/cm² pulse cannot fire a spike.'],
-    ['tea', 'Prolong with TEA', 'Partially block K⁺ channels so the spike is at least 1.8 times as wide (at 0 mV) as normal. Note that in this model the delayed-rectifier K⁺ conductance also sets the resting potential, so a near-total block depolarises the resting membrane.'],
+    ['tea', 'Prolong with TEA', 'Partially block K⁺ channels so the spike is at least 1.8 times as wide (at 0 mV) as normal.'],
     ['race', 'Run the conduction race', 'Race a myelinated against an unmyelinated axon.'],
-    ['temp', 'Temporal summation', 'Make the hillock fire using repeated input from one excitatory synapse.'],
-    ['spat', 'Spatial summation', 'Make the hillock fire using near-simultaneous input from E1 and E2.'],
+    ['temp', 'Temporal summation', 'Make the hillock fire using repeated input from one excitatory synapse, tapping its button yourself (the demonstration buttons do not count; slow the playback to help).'],
+    ['spat', 'Spatial summation', 'Make the hillock fire using near-simultaneous input from E1 and E2, tapping the buttons yourself.'],
   ];
   const ch = {
     st: {},
@@ -1108,7 +1109,7 @@
     }
     if (P.mode === 'step' && s.spikes.length >= 5) ch.done('rep');
     if (P.ttx >= 100 && P.amp >= 40 && !s.spikes.length) ch.done('ttx');
-    if (normalWidth === null) { const ref = simulate({ ...M, gNa: 120, gK: 36, EK: -77, phi: M.phi }, { L: 50, list: [[5, 1, 10]] }); normalWidth = ref.width; }
+    if (normalWidth === null) { const ref = simulate({ ...M, gNa: 120, gK: 36, gKr: 0, EK: -77, phi: M.phi }, { L: 50, list: [[5, 1, 10]] }); normalWidth = ref.width; }
     if (P.tea > 0 && s.width && s.width >= 1.8 * normalWidth && s.spikes.length) ch.done('tea');
   }
   $('#temp').addEventListener('change', () => normalWidth = null);

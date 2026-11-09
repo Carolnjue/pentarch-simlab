@@ -268,7 +268,7 @@
         <tr><td>Atrial fibrillation</td><td>No P waves, fibrillatory baseline, irregularly irregular RR</td><td>No atrial kick; beat-to-beat SV varies; stroke risk from clots in the left atrial appendage</td></tr>
         <tr><td>Ventricular tachycardia</td><td>Wide (&gt; 0.12 s) regular complexes, AV dissociation</td><td>Little filling time, low output: may cause collapse; can degenerate to VF</td></tr>
         <tr><td>First-degree AV block</td><td>PR &gt; 0.20 s, every P conducted</td><td>Usually none</td></tr>
-        <tr><td>Third-degree AV block</td><td>P waves and QRS complexes independent; slow wide escape rhythm</td><td>Low rate and output; atria sometimes contract against closed AV valves (cannon waves); needs pacing</td></tr></table>
+        <tr><td>Third-degree AV block</td><td>P waves and QRS complexes independent; slow escape rhythm (narrow if junctional, wide if ventricular)</td><td>Low rate and output; atria sometimes contract against closed AV valves (cannon waves); needs pacing</td></tr></table>
     </div>
     <div class="tabpanel prose">
       <div class="worked"><h4>1. Cardiac output and ejection fraction</h4><ol class="steps">
@@ -281,7 +281,7 @@
       <div class="worked" style="margin-top:14px"><h4>3. Why tachycardia does not raise output for ever</h4><ol class="steps">
         <li>At 72 bpm each beat lasts 0.83 s; systole ≈ 0.3 s, diastole ≈ 0.53 s.</li>
         <li>At 180 bpm each beat lasts 0.33 s; systole shortens only to ≈ 0.2 s, leaving ≈ 0.13 s to fill.</li>
-        <li>In the model SV falls from about 85 ml to about 40 ml, so CO barely changes even though rate has more than doubled (set 180 bpm and see).</li></ol></div>
+        <li>In the model SV falls from about 80 ml to about 32 ml, so CO stays near 5.7 L/min even though the rate has more than doubled (set 180 bpm and see). In a real heart, sympathetic drive also shortens systole, speeds relaxation and raises contractility and venous return, so output keeps rising up to about 150–170 bpm; the model has no autonomic control, so it shows only the filling-time limit.</li></ol></div>
       <div class="worked" style="margin-top:14px"><h4>4. Heart rate from an ECG</h4><ol class="steps">
         <li>At 25 mm/s one large square (5 mm) = 0.2 s.</li>
         <li>R–R = 4 large squares = 0.8 s: $HR = 60/0.8 = 75$ bpm (or 300 ÷ 4).</li>
@@ -535,7 +535,7 @@ function Atlas(cfg) {
   const $ = s => document.querySelector(s);
   const NS = 'http://www.w3.org/2000/svg';
   const CH = [
-    ['co8', 'Raise cardiac output above 8 L/min using heart rate and contractility.'],
+    ['co8', 'Raise cardiac output above 7 L/min using heart rate and contractility. (Without extra venous return, which this model does not include, output cannot rise much further.)'],
     ['tachyfall', 'Show that a very fast rate (above 170 bpm, sinus) gives a stroke volume below 50 ml.'],
     ['af', 'In atrial fibrillation, observe beat-to-beat variation: two consecutive stroke volumes differing by more than 15 ml.'],
     ['chb', 'Select complete heart block and watch the slow escape rhythm drop cardiac output below 4 L/min.'],
@@ -835,7 +835,8 @@ function Atlas(cfg) {
     // phase bands on pressure panel
     const cols = ['rgba(250,204,21,.10)', 'rgba(239,68,68,.11)', 'rgba(168,85,247,.10)', 'rgba(56,189,248,.08)'];
     const pp = geo[1];
-    for (let i = 0; i < NBUF; i++) { ctx.fillStyle = cols[buf.ph[i]]; ctx.fillRect(X(i), pp.y, (R - L) / NBUF + .6, pp.h + geo[2].h); }
+    // phase shading: one rectangle per run of equal phase (not one per sample)
+    for (let i = 0; i < NBUF;) { const ph = buf.ph[i]; let j = i + 1; while (j < NBUF && buf.ph[j] === ph) j++; ctx.fillStyle = cols[ph]; ctx.fillRect(X(i), pp.y, X(j) - X(i) + .6, pp.h + geo[2].h); i = j; }
     geo.forEach(p => { ctx.strokeStyle = '#1e2a44'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(L, p.y + p.h); ctx.lineTo(R, p.y + p.h); ctx.stroke();
       ctx.fillStyle = '#5f6d8a'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText(p.n, L + 6, p.y + 12);
       if (p.u) { ctx.textAlign = 'right'; [p.lo, p.hi].forEach(v => ctx.fillText(v, L - 6, p.Y(v) + 3)); } });
@@ -874,7 +875,7 @@ function Atlas(cfg) {
     $('#sBP').innerHTML = Math.round(sys) + '/' + Math.round(dia) + '<small>mmHg</small>'; $('#sMAP').innerHTML = Math.round(dia + (sys - dia) / 3) + '<small>mmHg</small>';
     $('#sPR').innerHTML = (rhythm === 'af' || rhythm === 'avb3' || rhythm === 'vt' ? '–' : PRof().toFixed(2) + ' s') + ' / ' + (rhythm === 'vt' || rhythm === 'avb3' ? '0.16 s' : '0.08 s');
     EDVref = SL.lerp(EDVref, Math.max(60, EDV), 0.2);
-    if (CO > 8) done('co8');
+    if (CO > 7) done('co8');
     if (['nsr', 'tachy'].includes(rhythm) && HR > 170 && SV < 50) done('tachyfall');
     if (rhythm === 'af' && sv.length >= 2 && Math.abs(sv[sv.length - 1] - sv[sv.length - 2]) > 15) done('af');
     if (rhythm === 'avb3' && CO < 4 && beats.length > 3) done('chb');
@@ -924,7 +925,11 @@ function Atlas(cfg) {
   for (let i = 0; i < 6 / 0.0005; i++) { step(0.0005); }
   ev = ev.filter(e => e.t > st.t); beats.length = 0;
   let tReal = 0;
+  const inView = el => { if (!el) return false; const r = el.getBoundingClientRect(); return r.bottom > -100 && r.top < innerHeight + 100 && r.width > 0; };
+  const heartEls = ['#heartAtlas', '.wig-stage', '#circSvg'].map(s => document.querySelector(s)).filter(Boolean);
   SL.loop(dt => {
+    // pause the model and drawing when the tab is hidden or every heart view is scrolled out of sight
+    if (document.hidden || !heartEls.some(inView)) return;
     tReal += dt;
     if (!paused) {
       const simDt = dt * speed, n = Math.max(1, Math.ceil(simDt / 0.0005)), h = simDt / n;
