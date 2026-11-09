@@ -1,0 +1,1148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gear Trains & Torque · Pentarch SimLab</title>
+<meta name="description" content="Build simple, compound and planetary gear trains with correctly meshing involute teeth; compute ratios, speed, torque, power, pitch diameters and contact ratio.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  #stage{height:600px;touch-action:none}
+  #stage canvas{cursor:grab}
+  #stage canvas.drag{cursor:grabbing}
+  .gtip{position:absolute;pointer-events:none;background:rgba(5,9,19,.92);border:1px solid var(--line2);border-radius:9px;padding:8px 10px;font:500 .76rem var(--mono);color:var(--text);display:none;z-index:5;max-width:240px;line-height:1.45}
+  .gtip b{color:var(--accent)}
+  .mode-seg{display:flex;width:100%}
+  .mode-seg button{flex:1;text-align:center}
+  .grow{display:grid;grid-template-columns:auto 1fr auto;gap:6px 10px;align-items:center;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg2);margin-bottom:6px;transition:.15s}
+  .grow.sel{border-color:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 40%,transparent)}
+  .grow .gid{display:flex;align-items:center;gap:7px;font:600 .8rem var(--mono)}
+  .grow .sw{width:12px;height:12px;border-radius:4px;flex:none}
+  .grow .zv{font:600 .82rem var(--mono);text-align:right;min-width:40px}
+  .grow input[type=range]{grid-column:1/-1}
+  .grow .sub{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:.76rem;color:var(--muted)}
+  .grow .sub select{width:auto;padding:3px 6px;font-size:.76rem}
+  .grow .x{all:unset;cursor:pointer;color:var(--dim);display:grid;place-items:center;width:24px;height:24px;border-radius:6px}
+  .grow .x:hover{color:var(--bad);background:rgba(239,68,68,.12)}
+  .grow .x svg{width:15px;height:15px}
+  .tag2{font:600 .64rem var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:5px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent)}
+  .tag2.c{background:rgba(96,165,250,.16);color:#93c5fd}
+  .gl{max-height:430px;overflow:auto;padding-right:2px}
+  .chal{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px dashed var(--line)}
+  .chal .led{margin-top:6px;flex:none}
+  .chal b{display:block}
+  .chal .small{color:var(--muted)}
+  .tbl-wrap{overflow-x:auto}
+  .tbl-wrap table.data{min-width:430px}
+  .tbl-wrap table.data td,.tbl-wrap table.data th{white-space:nowrap}
+  .mini-cv{width:100%;height:300px;display:block;background:#050913;border:1px solid var(--line);border-radius:12px}
+  .warnline{font-size:.8rem;color:var(--warn);margin-top:6px;min-height:1em}
+  select.inl{width:auto}
+  .sel-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0}
+  .sel-row label{font-size:.78rem;color:var(--muted);display:block;margin-bottom:3px}
+  @media (max-width:980px){#stage{height:460px}}
+  @media (max-width:520px){#stage{height:400px}.stage-toolbar .btn span{display:none}}
+</style>
+</head>
+<body data-page="gears">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab wide-controls">
+    <div>
+      <div class="stage" id="stage">
+        <canvas id="cv" aria-label="Gear train simulation"></canvas>
+        <div class="hud">
+          <span class="readout" id="h1"></span>
+          <span class="readout" id="h2"></span>
+          <span class="readout" id="h3"></span>
+        </div>
+        <div class="hud hud-r" style="top:auto;bottom:56px"><span class="readout" id="hPlay">Playback ×1</span></div>
+        <div class="stage-toolbar">
+          <button class="btn sm" id="bPause" title="Pause / play"><i data-lucide="pause"></i><span>Pause</span></button>
+          <button class="btn sm on" id="bPitch" title="Pitch circles"><i data-lucide="circle-dashed"></i><span>Pitch</span></button>
+          <button class="btn sm" id="bLoa" title="Line of action"><i data-lucide="slash"></i><span>Action</span></button>
+          <button class="btn sm" id="bFit" title="Fit view"><i data-lucide="scan"></i><span>Fit</span></button>
+        </div>
+        <div class="gtip" id="tip"></div>
+      </div>
+      <p class="small muted" style="margin:8px 2px 0"><i data-lucide="mouse-pointer-2" style="width:14px;height:14px;vertical-align:-2px"></i> Drag a gear to swing it around its partner. Drag the driver (G1) or empty space to pan; scroll or pinch to zoom. Hover any gear for details.</p>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="layers"></i> Mechanism</h3>
+        <div class="seg mode-seg" id="modeSeg">
+          <button data-m="train" class="on">Gear train</button><button data-m="planet">Planetary</button><button data-m="rack">Rack</button><button data-m="worm">Worm</button>
+        </div>
+      </div>
+
+      <div class="panel" id="pTrain">
+        <h3><i data-lucide="cog"></i> Build the train</h3>
+        <div class="btn-row" style="margin-bottom:10px">
+          <select id="trainPreset" aria-label="Train presets">
+            <option value="">Presets…</option>
+            <option value="two">Simple pair 2:1</option>
+            <option value="idler">Idler: same direction</option>
+            <option value="comp">Compound 6:1 (default)</option>
+            <option value="clock">Three-stage 60:1</option>
+            <option value="up">Speed-up 1:9</option>
+          </select>
+        </div>
+        <div class="gl" id="gearList"></div>
+        <div class="btn-row" style="margin-top:8px">
+          <button class="btn sm" id="addMesh"><i data-lucide="plus"></i> Meshing gear</button>
+          <button class="btn sm" id="addComp"><i data-lucide="git-commit-vertical"></i> Same-shaft gear</button>
+        </div>
+        <div class="warnline" id="trainWarn"></div>
+      </div>
+
+      <div class="panel" id="pPlanet" hidden>
+        <h3><i data-lucide="sun"></i> Epicyclic gearset</h3>
+        <div class="ctl"><label for="zs">Sun teeth z<sub>s</sub></label><output></output><input type="range" id="zs" min="12" max="60" step="1" value="24"></div>
+        <div class="ctl"><label for="zp">Planet teeth z<sub>p</sub></label><output></output><input type="range" id="zp" min="10" max="40" step="1" value="18"></div>
+        <div class="ctl"><label for="np">Number of planets N</label><output></output><input type="range" id="np" min="2" max="6" step="1" value="3"></div>
+        <div class="ctl"><label for="mp">Module m</label><output></output><input type="range" id="mp" min="1" max="4" step="0.5" value="2"></div>
+        <div class="sel-row">
+          <div><label for="pIn">Input</label><select id="pIn"><option value="s">Sun</option><option value="c">Carrier</option><option value="r">Ring</option></select></div>
+          <div><label for="pFix">Held fixed</label><select id="pFix"><option value="r">Ring</option><option value="s">Sun</option><option value="c">Carrier</option></select></div>
+        </div>
+        <p class="small muted" style="margin:4px 0 0">Ring teeth z<sub>r</sub> = z<sub>s</sub> + 2z<sub>p</sub> = <b id="zrOut">60</b>. Output: <b id="pOutName">carrier</b>.</p>
+        <div class="warnline" id="planetWarn"></div>
+      </div>
+
+      <div class="panel" id="pRack" hidden>
+        <h3><i data-lucide="move-horizontal"></i> Rack and pinion</h3>
+        <div class="ctl"><label for="zr2">Pinion teeth z</label><output></output><input type="range" id="zr2" min="10" max="40" step="1" value="20"></div>
+        <div class="ctl"><label for="mr">Module m</label><output></output><input type="range" id="mr" min="1" max="6" step="0.5" value="3"></div>
+      </div>
+
+      <div class="panel" id="pWorm" hidden>
+        <h3><i data-lucide="screw"></i> Worm and wheel</h3>
+        <div class="ctl"><label for="wz1">Worm starts z<sub>1</sub></label><output></output><input type="range" id="wz1" min="1" max="4" step="1" value="1"></div>
+        <div class="ctl"><label for="wz2">Wheel teeth z<sub>2</sub></label><output></output><input type="range" id="wz2" min="20" max="80" step="1" value="40"></div>
+        <div class="ctl"><label for="wm">Module m</label><output></output><input type="range" id="wm" min="1" max="4" step="0.5" value="2"></div>
+        <div class="ctl"><label for="wq">Diameter quotient q = d<sub>1</sub>/m</label><output></output><input type="range" id="wq" min="6" max="16" step="1" value="10"></div>
+        <div class="ctl"><label for="wmu">Friction coefficient μ</label><output></output><input type="range" id="wmu" min="0.02" max="0.15" step="0.005" value="0.05"></div>
+      </div>
+
+      <div class="panel">
+        <h3><i data-lucide="zap"></i> Motor & losses</h3>
+        <div class="ctl"><label for="rpm">Motor speed n<sub>in</sub></label><output></output><input type="range" id="rpm" min="10" max="3000" step="10" value="1500"></div>
+        <div class="ctl"><label for="tin">Motor torque T<sub>in</sub></label><output></output><input type="range" id="tin" min="0.1" max="20" step="0.1" value="2"></div>
+        <div class="ctl" id="etaCtl"><label for="eta">Efficiency per mesh η</label><output></output><input type="range" id="eta" min="0.85" max="1" step="0.005" value="0.98"></div>
+        <label class="toggle">Reverse motor direction <input type="checkbox" id="rev"></label>
+        <div class="ctl"><label for="play">Playback speed</label><output></output><input type="range" id="play" min="0" max="4" step="1" value="0"></div>
+      </div>
+
+      <div class="panel">
+        <h3><i data-lucide="gauge"></i> Live results</h3>
+        <div class="stats" id="stats"></div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="panel" style="margin-bottom:18px">
+    <h3><i data-lucide="table"></i> Shafts and meshes</h3>
+    <div class="grid2">
+      <div class="tbl-wrap"><table class="data" id="shaftTbl"></table></div>
+      <div class="tbl-wrap"><table class="data" id="meshTbl"></table></div>
+    </div>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+      <button><i data-lucide="book-a"></i> Glossary</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. Pitch circles, module and the basic law</h3>
+      <p>Two meshing spur gears behave like two cylinders rolling on each other without slip. Those imaginary cylinders are the <b>pitch circles</b>. Because the pitch circles roll together, the speed of a point on each pitch circle (the <b>pitch-line velocity</b>) is the same:</p>
+      <div class="eq">$$v = \omega_1 r_1 = \omega_2 r_2 \quad\Rightarrow\quad \frac{\omega_1}{\omega_2} = \frac{r_2}{r_1} = \frac{z_2}{z_1}$$</div>
+      <p>Tooth size is set by the <b>module</b> $m$ (in mm). Gears can only mesh if they have the same module (and pressure angle). The pitch diameter, circular pitch and standard tooth heights are</p>
+      <div class="eq">$$d = m\,z, \qquad p = \pi m, \qquad h_a = m,\quad h_f = 1.25\,m,\quad d_a = m(z+2),\quad d_f = m(z-2.5)$$</div>
+      <p>The <b>centre distance</b> of an external pair is the sum of the pitch radii; for an internal (ring) pair it is the difference:</p>
+      <div class="eq">$$a = \frac{m(z_1+z_2)}{2} \qquad a_{\text{int}} = \frac{m(z_r - z_p)}{2}$$</div>
+
+      <h3>2. Gear ratio, direction and idlers</h3>
+      <p>We define the <b>gear ratio</b> as input speed over output speed, $i = n_{in}/n_{out}$. For a single external mesh $i = -z_2/z_1$; the minus sign records that external gears reverse the direction of rotation. In a simple train every gear sits on its own shaft:</p>
+      <div class="eq">$$i = \left(-\frac{z_2}{z_1}\right)\left(-\frac{z_3}{z_2}\right)\cdots = (-1)^{k}\,\frac{z_{\text{last}}}{z_{\text{first}}}$$</div>
+      <p>where $k$ is the number of meshes. The intermediate teeth cancel, so an <b>idler gear</b> changes the direction and the centre distance but not the magnitude of the ratio.</p>
+      <div class="callout"><i data-lucide="lightbulb"></i><div>Try it: load the <i>Idler</i> preset, then change the idler's tooth count. The output speed does not move, only the spacing and the arrows.</div></div>
+
+      <h3>3. Compound trains</h3>
+      <p>To get large ratios without enormous gears, two gears of different size are fixed to the same shaft (a <b>compound gear</b>). They share one angular velocity, so the ratios of the stages multiply:</p>
+      <div class="eq">$$i = \frac{\text{product of driven teeth}}{\text{product of driving teeth}}\times(-1)^{k} = \frac{z_2\,z_4\,z_6\cdots}{z_1\,z_3\,z_5\cdots}(-1)^k$$</div>
+      <p>Each stage may use a different module, because only gears that actually mesh must match. Later stages carry more torque, so they are usually given a larger module (bigger, stronger teeth).</p>
+
+      <h3>4. Torque, power and efficiency</h3>
+      <p>Power is torque times angular velocity, $P = T\omega$ with $\omega = 2\pi n/60$ (n in rpm). An ideal gear train conserves power, so torque is multiplied by exactly the factor that speed is divided by. Real meshes lose 1–3% each (friction and churning), so with $k$ meshes in series at efficiency $\eta$:</p>
+      <div class="eq">$$P_{out} = \eta^{k} P_{in}, \qquad T_{out} = \eta^{k}\,|i|\,T_{in}, \qquad n_{out} = \frac{n_{in}}{|i|}$$</div>
+      <p>This is why gearboxes are used: a small fast motor delivers little torque, and a reduction trades speed for torque at almost constant power.</p>
+
+      <h3>5. The involute profile and the 20° pressure angle</h3>
+      <div class="grid2" style="align-items:center">
+        <div>
+          <p>Tooth flanks are <b>involutes of a circle</b>: the curve traced by the end of a taut string unwound from the <b>base circle</b>, of radius $r_b = r\cos\alpha$. In polar form, at radius $\rho$ the involute has turned through</p>
+          <div class="eq">$$\operatorname{inv}\alpha_\rho = \tan\alpha_\rho - \alpha_\rho,\qquad \cos\alpha_\rho = \frac{r_b}{\rho}$$</div>
+          <p>Because the normal to an involute is always tangent to the base circle, the contact force between two involute teeth always acts along one fixed line, the <b>line of action</b>, tangent to both base circles and inclined at the <b>pressure angle</b> $\alpha$ (standard: 20°) to the common tangent. Consequences: the velocity ratio is exactly constant (the law of gearing holds), and small errors in centre distance do not change the ratio.</p>
+        </div>
+        <canvas class="mini-cv" id="invCv" aria-label="Involute generation animation"></canvas>
+      </div>
+      <p>The force at the mesh splits into a tangential part that transmits torque and a radial part that pushes the shafts apart:</p>
+      <div class="eq">$$F_t = \frac{T}{r},\qquad F_r = F_t\tan\alpha,\qquad F_n = \frac{F_t}{\cos\alpha}$$</div>
+
+      <h3>6. Contact ratio</h3>
+      <p>For smooth, continuous drive, the next pair of teeth must engage before the current pair leaves contact. The <b>contact ratio</b> is the length of the path of contact divided by the base pitch $p_b = \pi m\cos\alpha$:</p>
+      <div class="eq">$$\varepsilon_\alpha = \frac{\sqrt{r_{a1}^2-r_{b1}^2}+\sqrt{r_{a2}^2-r_{b2}^2}-a\sin\alpha}{\pi m\cos\alpha}$$</div>
+      <p>It should be at least about 1.2; typical spur gears achieve 1.4–1.8. Turn on <b>Action</b> in the toolbar to see the line of action, with the active path of contact drawn bold. Very small pinions (fewer than 17 teeth at 20°) suffer <b>undercut</b>: the cutting tool removes material at the tooth root, weakening it. The drawing here shows simplified undercut.</p>
+
+      <h3>7. Planetary (epicyclic) gearsets and the Willis equation</h3>
+      <p>A sun gear (s), planets carried on a carrier (c) and an internal ring gear (r). Looking from the carrier, it is an ordinary train with the carrier fixed, sun to ring through idler planets: $i_{\text{carrier fixed}} = -z_r/z_s$. Adding the carrier's motion back gives the <b>Willis equation</b>:</p>
+      <div class="eq">$$\frac{\omega_s-\omega_c}{\omega_r-\omega_c} = -\frac{z_r}{z_s}\qquad\Longleftrightarrow\qquad z_s\,\omega_s + z_r\,\omega_r = (z_s+z_r)\,\omega_c$$</div>
+      <table class="data" style="margin:10px 0">
+        <tr><th>Held</th><th>Input</th><th>Output</th><th>Ratio $i=\omega_{in}/\omega_{out}$</th><th>Use</th></tr>
+        <tr><td>Ring</td><td>Sun</td><td>Carrier</td><td class="num">$1+z_r/z_s$</td><td>Large reduction, same direction</td></tr>
+        <tr><td>Sun</td><td>Ring</td><td>Carrier</td><td class="num">$1+z_s/z_r$</td><td>Mild reduction</td></tr>
+        <tr><td>Carrier</td><td>Sun</td><td>Ring</td><td class="num">$-z_r/z_s$</td><td>Reverse</td></tr>
+      </table>
+      <p>Geometric conditions: equal module everywhere, $z_r = z_s + 2z_p$ (coaxial), and for $N$ equally spaced planets the <b>assembly condition</b> $(z_s+z_r)/N$ must be an integer. Torque balance on the three members: $T_s + T_c + T_r = 0$ (ideal), so the held member must react a torque.</p>
+
+      <h3>8. Rack and pinion, worm and wheel</h3>
+      <p>A rack is a gear of infinite radius. The rack moves at the pitch-line velocity $v = \omega r = \omega m z/2$, with force $F = T/r$. A worm is a screw with $z_1$ starts; one revolution advances the wheel by $z_1$ teeth, so $i = z_2/z_1$, giving 20–80:1 in one stage. The lead angle $\gamma$ and efficiency (worm driving, normal pressure angle $\alpha_n$) are</p>
+      <div class="eq">$$\tan\gamma = \frac{z_1 m}{d_1} = \frac{z_1}{q},\qquad \eta = \frac{\tan\gamma\,(\cos\alpha_n-\mu\tan\gamma)}{\cos\alpha_n\tan\gamma+\mu}$$</div>
+      <p>If $\mu \ge \cos\alpha_n\tan\gamma$ the wheel cannot drive the worm backwards: the drive is <b>self-locking</b>, useful for hoists and gates, at the price of low efficiency.</p>
+      <div class="callout warn"><i data-lucide="triangle-alert"></i><div><b>Model limits.</b> The simulator uses standard full-depth 20° involute spur gears with zero profile shift and exact standard centre distances. Efficiency is a constant per mesh (in the planetary mode, applied twice). Tooth strength, bearing losses and dynamic loads are not modelled.</div></div>
+    </div>
+
+    <div class="tabpanel prose">
+      <div class="worked">
+        <h4>Example 1: two-stage compound reducer (the default build)</h4>
+        <p>Motor: 1500 rpm, 2.0 N·m. Stage 1: $z_1 = 20$ drives $z_2 = 40$, module 2 mm. Stage 2 (on the same shaft as $z_2$): $z_3 = 15$ drives $z_4 = 45$, module 3 mm. Efficiency 0.98 per mesh.</p>
+        <ol class="steps">
+          <li>Ratio: $i = (-40/20)(-45/15) = (+2)(3) = 6$. Two meshes, so the output turns the <b>same</b> way as the motor.</li>
+          <li>Output speed: $n_{out} = 1500/6 = 250$ rpm. Intermediate shaft: $1500/2 = 750$ rpm (opposite direction).</li>
+          <li>Input power: $\omega_{in} = 2\pi(1500)/60 = 157.08$ rad/s, $P_{in} = 2.0\times157.08 = 314.2$ W.</li>
+          <li>Output power: $P_{out} = 0.98^2\times314.2 = 301.7$ W. Output torque: $T_{out} = 0.98^2\times6\times2.0 = 11.52$ N·m (check: $301.7/26.18 = 11.52$).</li>
+          <li>Pitch diameters: $d_1 = 2\times20 = 40$ mm, $d_2 = 80$ mm, $d_3 = 3\times15 = 45$ mm, $d_4 = 135$ mm. Centre distances: $a_{12} = 60$ mm, $a_{34} = 90$ mm.</li>
+          <li>Pitch-line velocity, stage 1: $v = 157.08\times0.020 = 3.14$ m/s; stage 2: $78.54\times0.0225 = 1.77$ m/s.</li>
+        </ol>
+        <button class="btn sm" data-load="comp"><i data-lucide="upload"></i> Load into the simulator</button>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 2: contact ratio of the 20/40 pair</h4>
+        <p>$m = 2$ mm, $\alpha = 20°$. Radii: $r_1 = 20$, $r_{a1} = 22$, $r_{b1} = 20\cos20° = 18.794$ mm; $r_2 = 40$, $r_{a2} = 42$, $r_{b2} = 37.588$ mm; $a = 60$ mm.</p>
+        <ol class="steps">
+          <li>$\sqrt{22^2-18.794^2} = 11.436$ mm and $\sqrt{42^2-37.588^2} = 18.739$ mm.</li>
+          <li>$a\sin\alpha = 60\times0.34202 = 20.521$ mm. Path of contact $= 11.436+18.739-20.521 = 9.654$ mm.</li>
+          <li>Base pitch $p_b = \pi\times2\times\cos20° = 5.904$ mm, so $\varepsilon_\alpha = 9.654/5.904 = 1.64$. On average 1.64 tooth pairs share the load.</li>
+          <li>Tooth force at the motor: $F_t = T/r_1 = 2.0/0.020 = 100$ N, $F_r = 100\tan20° = 36.4$ N.</li>
+        </ol>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 3: planetary reducer (the default planetary set)</h4>
+        <p>$z_s = 24$, $z_p = 18$, so $z_r = 24+36 = 60$. Three planets: $(24+60)/3 = 28$, an integer, so they can be assembled equally spaced. Ring held, sun driven at 1500 rpm.</p>
+        <ol class="steps">
+          <li>Willis with $\omega_r = 0$: $\dfrac{\omega_s-\omega_c}{0-\omega_c} = -\dfrac{60}{24}\Rightarrow \omega_s = \omega_c(1+2.5)$, so $i = 3.5$.</li>
+          <li>Carrier speed: $1500/3.5 = 428.6$ rpm, same direction as the sun.</li>
+          <li>Torque with $\eta=0.98$ per mesh (two meshes): $T_c = 0.98^2\times3.5\times2.0 = 6.72$ N·m. The ring must be held with $T_r = -(T_s+T_c) \approx -(2.0 + (-6.72))$: about 4.7 N·m of reaction (sign conventions in the results panel).</li>
+          <li>Centre distance sun–planet: $a = 2(24+18)/2 = 42$ mm; ring pitch diameter $d_r = 120$ mm.</li>
+        </ol>
+        <button class="btn sm" data-load="planet"><i data-lucide="upload"></i> Load into the simulator</button>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 4: worm drive for a gate</h4>
+        <p>Single-start worm ($z_1 = 1$), wheel $z_2 = 40$, $m = 2$ mm, $q = 10$ ($d_1 = 20$ mm), $\mu = 0.05$, $\alpha_n = 20°$. Motor 1500 rpm, 2 N·m.</p>
+        <ol class="steps">
+          <li>Ratio $i = 40/1 = 40$, wheel speed $= 37.5$ rpm.</li>
+          <li>Lead angle $\tan\gamma = 1/10 \Rightarrow \gamma = 5.71°$.</li>
+          <li>Efficiency $\eta = \dfrac{0.1(0.9397 - 0.05\times0.1)}{0.9397\times0.1+0.05} = \dfrac{0.09347}{0.14397} = 0.649$.</li>
+          <li>Wheel torque $T = 0.649\times40\times2 = 51.9$ N·m. Self-locking? $\cos\alpha_n\tan\gamma = 0.094 > 0.05$: <b>no</b>; with $\mu \ge 0.094$ it would lock.</li>
+        </ol>
+        <button class="btn sm" data-load="worm"><i data-lucide="upload"></i> Load into the simulator</button>
+      </div>
+    </div>
+
+    <div class="tabpanel">
+      <div class="grid2">
+        <div class="prose">
+          <h3>Design challenges</h3>
+          <p class="muted">These are checked live as you build. Each one lights up when your mechanism meets the specification.</p>
+          <div id="chalList"></div>
+          <p class="small muted" style="margin-top:10px">Solved <b id="chalCount">0</b> of <span id="chalTotal">0</span>.</p>
+        </div>
+        <div class="prose">
+          <h3>Guided experiments</h3>
+          <ol class="steps">
+            <li><b>Idlers.</b> Load <i>Idler</i>. Change the idler from 15 to 60 teeth. Record output speed and direction. Explain using the cancellation of teeth in the ratio formula.</li>
+            <li><b>Torque for speed.</b> On the default compound train set η = 1. Confirm $P_{out} = P_{in}$ in the shaft table while torque rises six-fold. Then set η = 0.95 and calculate the heat generated in watts.</li>
+            <li><b>Contact ratio.</b> Use a 2-gear train. Reduce the pinion from 40 to 12 teeth and watch $\varepsilon$ in the mesh table. Turn on <i>Action</i> to see the path of contact shrink. At what tooth count does undercut start?</li>
+            <li><b>Planetary modes.</b> Keep $z_s=24$, $z_p=18$. Try all three choices of held member and verify each ratio against the table in Theory. Which configuration reverses the output?</li>
+            <li><b>Self-locking.</b> In worm mode, increase μ until the "self-locking" LED lights. Compare the efficiency at that point with the 2-start and 4-start worms.</li>
+            <li><b>Module and size.</b> Double the module of a stage. What happens to centre distance, pitch-line velocity and tooth force for the same torque?</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+
+    <div class="tabpanel prose">
+      <table class="data">
+        <tr><th>Term</th><th>Meaning</th></tr>
+        <tr><td>Module m</td><td>Pitch diameter per tooth, d/z, in mm. Sets tooth size.</td></tr>
+        <tr><td>Circular pitch p</td><td>Arc distance between adjacent teeth on the pitch circle, πm.</td></tr>
+        <tr><td>Base circle</td><td>Circle from which the involute is unwound, radius r cos α.</td></tr>
+        <tr><td>Pressure angle α</td><td>Angle between the line of action and the common tangent of the pitch circles (20° standard).</td></tr>
+        <tr><td>Addendum / dedendum</td><td>Tooth height above (m) and below (1.25m) the pitch circle.</td></tr>
+        <tr><td>Backlash</td><td>Small clearance between non-driving flanks, allowing lubrication and thermal growth.</td></tr>
+        <tr><td>Idler</td><td>A gear between driver and driven that reverses direction without changing ratio magnitude.</td></tr>
+        <tr><td>Compound gear</td><td>Two gears fixed to one shaft so they turn together.</td></tr>
+        <tr><td>Carrier</td><td>The arm or plate that holds the planet gears' axles in an epicyclic set.</td></tr>
+        <tr><td>Lead angle γ</td><td>Helix angle of the worm thread measured from a plane normal to the worm axis.</td></tr>
+        <tr><td>Self-locking</td><td>A drive that cannot be back-driven from the output, because friction exceeds the driving component.</td></tr>
+      </table>
+    </div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+  const TAU = Math.PI * 2, ALPHA = 20 * Math.PI / 180;
+  const COLORS = ['#f5a524', '#60a5fa', '#34d399', '#f472b6', '#a78bfa', '#22d3ee', '#fb7185', '#facc15'];
+  const inv = a => Math.tan(a) - a;
+  let R = null, ready = false;
+
+  /* ------------------------------------------------------------------ state */
+  const S = {
+    mode: 'train',
+    gears: [],
+    planet: { zs: 24, zp: 18, N: 3, m: 2, inp: 's', fix: 'r' },
+    rack: { z: 20, m: 3 },
+    worm: { z1: 1, z2: 40, m: 2, q: 10, mu: 0.05 },
+    rpm: 1500, tin: 2, eta: 0.98, rev: false, play: 0,
+    paused: false, showPitch: true, showLoa: false,
+    sel: -1,
+  };
+  const PRESETS = {
+    two: [{ z: 20, m: 2 }, { z: 40 }],
+    idler: [{ z: 20, m: 2 }, { z: 15 }, { z: 40 }],
+    comp: [{ z: 20, m: 2 }, { z: 40 }, { z: 15, m: 3, coax: true }, { z: 45 }],
+    clock: [{ z: 12, m: 1.5 }, { z: 48 }, { z: 12, m: 2, coax: true }, { z: 36 }, { z: 12, m: 2.5, coax: true }, { z: 60 }],
+    up: [{ z: 60, m: 1.5 }, { z: 20 }, { z: 45, m: 1.5, coax: true }, { z: 15 }],
+  };
+  function loadPreset(k) {
+    S.gears = PRESETS[k].map(g => ({ z: g.z, m: g.m || 2, coax: !!g.coax, ang: null }));
+    normaliseModules(); S.sel = -1; buildList(); update(true);
+  }
+  // module propagates along each mesh group (run of gears connected by meshes)
+  function groupStart(i) { let s = i; while (s > 0 && !S.gears[s].coax) s--; return s; }
+  function normaliseModules() {
+    S.gears.forEach((g, i) => { if (i > 0 && !g.coax) g.m = S.gears[i - 1].m; });
+  }
+
+  /* --------------------------------------------------------- tooth geometry */
+  const cache = new Map();
+  // external involute gear outline, tooth 0 centred on +x; add/ded in modules, bl = backlash per flank (in m)
+  function gearOutline(z, m, add = 1, ded = 1.25, bl = 0.035) {
+    const key = [z, m, add, ded, bl].join('|');
+    if (cache.has(key)) return cache.get(key);
+    const r = m * z / 2, rb = r * Math.cos(ALPHA), ra = r + add * m, rf = Math.max(r - ded * m, r * 0.35);
+    const half = Math.PI / (2 * z) - bl * m / r, invP = inv(ALPHA);
+    const psi = rr => half + invP - inv(Math.acos(Math.min(1, rb / rr)));
+    const r0 = Math.max(rb, rf), pitch = TAU / z;
+    const under = z < 17 ? (17 - z) / 17 * 0.35 * half : 0; // simplified undercut
+    const p = new Path2D(); let first = true;
+    const P = (rr, a) => { const x = rr * Math.cos(a), y = rr * Math.sin(a); if (first) { p.moveTo(x, y); first = false; } else p.lineTo(x, y); };
+    const NF = 10;
+    for (let k = 0; k < z; k++) {
+      const c = k * pitch, pr = psi(r0);
+      const rootA = rf < rb ? pr - under : pr;
+      // root arc from previous gap
+      for (let j = 0; j <= 3; j++) { const a = c - pitch / 2 + (pitch / 2 - rootA) * j / 3; P(rf, a); }
+      if (rf < rb) P(rb * 0.995, c - pr);
+      for (let j = 0; j <= NF; j++) { const t = j / NF, rr = r0 + (ra - r0) * (t * t * 0.4 + t * 0.6); P(rr, c - Math.max(psi(rr), 0.002)); }
+      const pa = Math.max(psi(ra), 0.002);
+      for (let j = 1; j < 3; j++) P(ra, c - pa + 2 * pa * j / 3);
+      for (let j = NF; j >= 0; j--) { const t = j / NF, rr = r0 + (ra - r0) * (t * t * 0.4 + t * 0.6); P(rr, c + Math.max(psi(rr), 0.002)); }
+      if (rf < rb) P(rb * 0.995, c + pr);
+      for (let j = 0; j <= 3; j++) { const a = c + rootA + (pitch / 2 - rootA) * j / 3; P(rf, a); }
+    }
+    p.closePath();
+    const o = { path: p, r, rb, ra, rf };
+    cache.set(key, o); return o;
+  }
+  function geo(z, m) { const r = m * z / 2; return { r, rb: r * Math.cos(ALPHA), ra: r + m, rf: r - 1.25 * m }; }
+  // mesh phase: gear j meshing externally with gear i along direction beta (from i to j)
+  const meshPhase = (phiI, zi, zj, beta) => beta + Math.PI + Math.PI / zj - (zi / zj) * (phiI - beta);
+  function contactRatio(z1, z2, m) {
+    const a = geo(z1, m), b = geo(z2, m), A = m * (z1 + z2) / 2;
+    return (Math.sqrt(a.ra ** 2 - a.rb ** 2) + Math.sqrt(b.ra ** 2 - b.rb ** 2) - A * Math.sin(ALPHA)) / (Math.PI * m * Math.cos(ALPHA));
+  }
+  function contactRatioInt(zp, zr, m) {
+    const p = geo(zp, m), rr = m * zr / 2, rar = rr - m, rbr = rr * Math.cos(ALPHA), A = m * (zr - zp) / 2;
+    return (Math.sqrt(p.ra ** 2 - p.rb ** 2) - Math.sqrt(rar ** 2 - rbr ** 2) + A * Math.sin(ALPHA)) / (Math.PI * m * Math.cos(ALPHA));
+  }
+
+  /* ------------------------------------------------------------ layout/train */
+  let L = { items: [], meshes: [], shafts: [] }; // computed layout
+  function layoutTrain() {
+    const G = S.gears, items = [];
+    let heading = 0;
+    G.forEach((g, i) => {
+      const gg = geo(g.z, g.m);
+      const it = { i, z: g.z, m: g.m, ...gg, x: 0, y: 0, layer: 0, parent: i - 1, coax: g.coax, color: COLORS[i % COLORS.length] };
+      if (i === 0) { items.push(it); return; }
+      const p = items[i - 1];
+      if (g.coax) { it.x = p.x; it.y = p.y; it.layer = p.layer + 1; items.push(it); return; }
+      it.layer = p.layer;
+      const a = g.m * (p.z + g.z) / 2;
+      let ang;
+      if (g.ang != null) ang = g.ang;
+      else {
+        const cands = [0, -0.6, 0.6, -1.1, 1.1, -1.6, 1.6, 2.2, -2.2].map(d => heading + d);
+        ang = cands[0];
+        for (const c of cands) {
+          const x = p.x + a * Math.cos(c), y = p.y + a * Math.sin(c);
+          const clash = items.some(q => q.i !== p.i && !(q.x === p.x && q.y === p.y) && Math.hypot(q.x - x, q.y - y) < q.ra + it.ra + 3 * g.m);
+          if (!clash) { ang = c; break; }
+        }
+        g.ang = null;
+      }
+      heading = ang * 0.5;
+      it.beta = ang; it.a = a;
+      it.x = p.x + a * Math.cos(ang); it.y = p.y + a * Math.sin(ang);
+      items.push(it);
+    });
+    // clashes (non-meshing gears on the same plane overlapping)
+    items.forEach(it => it.clash = false);
+    for (let a = 0; a < items.length; a++) for (let b = a + 1; b < items.length; b++) {
+      const A = items[a], B = items[b];
+      if (B.parent === A.i && !B.coax) continue;
+      if (A.x === B.x && A.y === B.y) continue;
+      if (Math.abs(A.layer - B.layer) > 0) continue;
+      if (Math.hypot(A.x - B.x, A.y - B.y) < A.ra + B.ra - 0.2 * Math.min(A.m, B.m)) { A.clash = B.clash = true; }
+    }
+    return items;
+  }
+
+  /* ------------------------------------------------------------- kinematics */
+  const W = n => n * TAU / 60;
+  function solve() {
+    const sgn = S.rev ? -1 : 1, nin = S.rpm * sgn, Tin = S.tin * sgn, Pin = S.tin * W(S.rpm);
+    const R = { nin, Pin, members: [], meshes: [], warn: '' };
+    if (S.mode === 'train') {
+      const items = L.items; let n = nin, P = Pin, k = 0, shaft = 0;
+      const shafts = [];
+      items.forEach((it, i) => {
+        if (i > 0 && !it.coax) {
+          const p = items[i - 1];
+          n = -n * p.z / it.z; P *= S.eta; k++; shaft++;
+          R.meshes.push({ a: p.i, b: it.i, z1: p.z, z2: it.z, m: it.m, A: it.a, v: Math.abs(W(n) * it.r / 1000), eps: contactRatio(p.z, it.z, it.m), Ft: P / Math.abs(W(n)) / (it.r / 1000) });
+        }
+        it.n = n; it.shaft = shaft;
+        if (!shafts[shaft]) shafts[shaft] = { gears: [], n, P, k };
+        shafts[shaft].gears.push(it);
+      });
+      R.shafts = shafts; R.k = k;
+      R.nout = n; R.Pout = P; R.ratio = nin / n; R.Tout = P / W(Math.abs(n)) * Math.sign(n);
+      R.Tin = Tin;
+      R.etaTot = Math.pow(S.eta, k);
+      const clash = items.some(i => i.clash);
+      R.warn = clash ? 'Two gears overlap. Drag one of them to a new position.' : '';
+    } else if (S.mode === 'planet') {
+      const { zs, zp, N, m, inp, fix } = S.planet, zr = zs + 2 * zp;
+      const out = ['s', 'c', 'r'].find(x => x !== inp && x !== fix);
+      const w = { s: 0, c: 0, r: 0 }; w[inp] = nin; w[fix] = 0;
+      // Willis: zs ws + zr wr = (zs+zr) wc
+      if (out === 'c') w.c = (zs * w.s + zr * w.r) / (zs + zr);
+      else if (out === 's') w.s = ((zs + zr) * w.c - zr * w.r) / zs;
+      else w.r = ((zs + zr) * w.c - zs * w.s) / zr;
+      const valid = inp !== fix;
+      R.w = w; R.out = out; R.zr = zr; R.valid = valid;
+      R.nout = valid ? w[out] : 0; R.ratio = valid ? nin / w[out] : NaN;
+      R.k = 2; R.etaTot = S.eta * S.eta; R.Pout = Pin * R.etaTot;
+      R.Tout = valid ? -Tin * R.ratio * R.etaTot * -1 * Math.sign(1) : 0; // same sign convention as speeds: T_out has sign of n_out for a driven load
+      R.Tout = valid ? R.Pout / W(Math.abs(R.nout)) * Math.sign(R.nout) : 0;
+      R.Tin = Tin; R.Treact = valid ? -(Tin - R.Tout) : 0; // load torque on output = -Tout; held member balances
+      const wp = zs / zp * (w.s - w.c) * -1 + w.c; // planet absolute speed: (wp - wc) = -(zs/zp)(ws - wc)
+      R.wp = wp;
+      const a = m * (zs + zp) / 2, gp = geo(zp, m);
+      const warns = [];
+      if (!valid) warns.push('Input and held member must be different.');
+      if ((zs + zr) % N !== 0) warns.push(`Assembly condition fails: (z_s + z_r)/N = ${SL.fmt((zs + zr) / N, 2)} is not an integer, so ${N} equally spaced planets cannot all mesh.`);
+      if (2 * a * Math.sin(Math.PI / N) < 2 * gp.ra + 0.5 * m) warns.push(`Planets collide: ${N} planets of ${zp} teeth do not fit around the sun.`);
+      R.warn = warns.join(' ');
+      R.meshes = [
+        { label: 'Sun–planet', z1: zs, z2: zp, m, A: a, v: Math.abs(W(w.s - w.c) * zs * m / 2000), eps: contactRatio(zs, zp, m) },
+        { label: 'Planet–ring (internal)', z1: zp, z2: zr, m, A: m * (zr - zp) / 2, v: Math.abs(W(w.r - w.c) * zr * m / 2000), eps: contactRatioInt(zp, zr, m) },
+      ];
+    } else if (S.mode === 'rack') {
+      const { z, m } = S.rack, r = m * z / 2000;
+      R.v = W(nin) * r; R.F = S.eta * S.tin / r; R.Pout = Pin * S.eta; R.k = 1; R.etaTot = S.eta;
+      R.ratio = NaN; R.nout = NaN; R.Tout = NaN; R.Tin = Tin;
+      R.meshes = [{ label: 'Pinion–rack', z1: z, z2: Infinity, m, A: NaN, v: Math.abs(R.v), eps: (Math.sqrt(geo(z, m).ra ** 2 - geo(z, m).rb ** 2) + m / Math.sin(ALPHA) - m * z / 2 * Math.sin(ALPHA)) / (Math.PI * m * Math.cos(ALPHA)) }];
+    } else {
+      const { z1, z2, m, q, mu } = S.worm, an = ALPHA;
+      const tg = z1 / q, g = Math.atan(tg);
+      const eta = tg * (Math.cos(an) - mu * tg) / (Math.cos(an) * tg + mu);
+      const lock = mu >= Math.cos(an) * tg;
+      R.ratio = z2 / z1; R.nout = nin / R.ratio; R.etaTot = eta; R.Pout = Pin * eta;
+      R.Tout = Math.sign(R.nout) * R.Pout / W(Math.abs(R.nout)); R.Tin = Tin; R.k = 1;
+      R.lead = g; R.lock = lock; R.d1 = q * m; R.d2 = z2 * m; R.A = (q * m + z2 * m) / 2;
+      R.meshes = [{ label: 'Worm–wheel', z1, z2, m, A: R.A, v: Math.abs(W(nin) * q * m / 2000), vs: Math.abs(W(nin) * q * m / 2000) / Math.cos(g), eps: NaN }];
+    }
+    return R;
+  }
+
+  /* ---------------------------------------------------------------- UI build */
+  function buildList() {
+    const el = $('#gearList');
+    el.innerHTML = S.gears.map((g, i) => {
+      const isStart = i === 0 || g.coax;
+      const role = i === 0 ? '<span class="tag2">driver</span>' : (g.coax ? '<span class="tag2 c">same shaft as G' + i + '</span>' : '<span class="tag2" style="background:rgba(255,255,255,.06);color:var(--muted)">meshes G' + i + '</span>');
+      const mods = [1, 1.5, 2, 2.5, 3, 4, 5].map(v => `<option ${v === g.m ? 'selected' : ''}>${v}</option>`).join('');
+      return `<div class="grow ${S.sel === i ? 'sel' : ''}" data-i="${i}">
+        <span class="gid"><span class="sw" style="background:${COLORS[i % COLORS.length]}"></span>G${i + 1}</span>
+        <span>${role}</span>
+        <span style="display:flex;align-items:center;gap:4px"><span class="zv">${g.z}T</span>${i > 0 ? `<button class="x" data-del="${i}" title="Remove this and following gears" aria-label="Remove gear">${SL.icon('trash-2')}</button>` : ''}</span>
+        <input type="range" min="8" max="100" step="1" value="${g.z}" data-z="${i}" aria-label="Teeth of gear ${i + 1}">
+        <div class="sub">${isStart ? `Module <select data-m="${i}" aria-label="Module">${mods}</select> mm` : `m = ${g.m} mm (meshes with G${i})`} · d = ${SL.fmt(g.m * g.z, 1)} mm</div>
+      </div>`;
+    }).join('');
+    SL.refreshIcons(el);
+    el.querySelectorAll('input[type=range]').forEach(r => r.style.setProperty('--p', ((r.value - 8) / 92 * 100) + '%'));
+  }
+  $('#gearList').addEventListener('input', e => {
+    const i = e.target.dataset.z;
+    if (i != null) {
+      S.gears[+i].z = +e.target.value;
+      const row = e.target.closest('.grow'); row.querySelector('.zv').textContent = e.target.value + 'T';
+      row.querySelector('.sub').innerHTML = row.querySelector('.sub').innerHTML.replace(/d = [\d.,]+ mm/, 'd = ' + SL.fmt(S.gears[+i].m * S.gears[+i].z, 1) + ' mm');
+      update(true);
+    }
+  });
+  $('#gearList').addEventListener('change', e => {
+    const i = e.target.dataset.m;
+    if (i != null) { S.gears[+i].m = +e.target.value; normaliseModules(); buildList(); update(true); }
+  });
+  $('#gearList').addEventListener('click', e => {
+    const d = e.target.closest('[data-del]');
+    if (d) { S.gears.splice(+d.dataset.del); S.sel = -1; buildList(); update(true); return; }
+    const row = e.target.closest('.grow'); if (row && !e.target.closest('input,select')) { S.sel = +row.dataset.i; buildList(); }
+  });
+  $('#addMesh').onclick = () => {
+    if (S.gears.length >= 8) return SL.toast('Maximum of 8 gears in this builder.', 'warn');
+    const last = S.gears[S.gears.length - 1];
+    S.gears.push({ z: last.z < 30 ? 40 : 20, m: last.m, coax: false, ang: null }); buildList(); update(true);
+  };
+  $('#addComp').onclick = () => {
+    if (S.gears.length >= 8) return SL.toast('Maximum of 8 gears in this builder.', 'warn');
+    const last = S.gears[S.gears.length - 1];
+    if (S.gears.length > 1 && last.coax) return SL.toast('That shaft already carries two gears. Add a meshing gear first.', 'warn');
+    S.gears.push({ z: Math.max(12, Math.round(last.z / 2.5)), m: last.m, coax: true, ang: null }); buildList(); update(true);
+  };
+  $('#trainPreset').onchange = e => { if (e.target.value) { loadPreset(e.target.value); e.target.value = ''; } };
+
+  // mode
+  function setMode(m) {
+    S.mode = m;
+    $$('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+    $('#pTrain').hidden = m !== 'train'; $('#pPlanet').hidden = m !== 'planet'; $('#pRack').hidden = m !== 'rack'; $('#pWorm').hidden = m !== 'worm';
+    $('#etaCtl').style.display = m === 'worm' ? 'none' : '';
+    view.fitNow = true; update(true);
+  }
+  $('#modeSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.m); });
+
+  const PLAY = [['Auto', 0], ['Real time', 1], ['×0.25', 0.25], ['×0.05', 0.05], ['×0.01', 0.01]];
+  SL.bind('#rpm', v => { S.rpm = v; update(); }, v => v + ' rpm');
+  SL.bind('#tin', v => { S.tin = v; update(); }, v => SL.fmt(v, 1) + ' N·m');
+  SL.bind('#eta', v => { S.eta = v; update(); }, v => SL.fmt(v, 3));
+  SL.bind('#rev', v => { S.rev = v; update(); });
+  SL.bind('#play', v => { S.play = v; }, v => PLAY[v][0]);
+  SL.bind('#zs', v => { S.planet.zs = v; update(true); }, v => v + 'T');
+  SL.bind('#zp', v => { S.planet.zp = v; update(true); }, v => v + 'T');
+  SL.bind('#np', v => { S.planet.N = v; update(true); });
+  SL.bind('#mp', v => { S.planet.m = v; update(true); }, v => v + ' mm');
+  SL.bind('#pIn', v => { S.planet.inp = v; fixPlanetSel(); update(true); });
+  SL.bind('#pFix', v => { S.planet.fix = v; fixPlanetSel(); update(true); });
+  function fixPlanetSel() {
+    if (S.planet.inp === S.planet.fix) { const o = ['r', 's', 'c'].find(x => x !== S.planet.inp); S.planet.fix = o; $('#pFix').value = o; }
+  }
+  SL.bind('#zr2', v => { S.rack.z = v; update(true); }, v => v + 'T');
+  SL.bind('#mr', v => { S.rack.m = v; update(true); }, v => v + ' mm');
+  SL.bind('#wz1', v => { S.worm.z1 = v; update(true); }, v => v + (v > 1 ? ' starts' : ' start'));
+  SL.bind('#wz2', v => { S.worm.z2 = v; update(true); }, v => v + 'T');
+  SL.bind('#wm', v => { S.worm.m = v; update(true); }, v => v + ' mm');
+  SL.bind('#wq', v => { S.worm.q = v; update(true); });
+  SL.bind('#wmu', v => { S.worm.mu = v; update(); }, v => SL.fmt(v, 3));
+
+  $('#bPause').onclick = () => { S.paused = !S.paused; $('#bPause').innerHTML = S.paused ? SL.icon('play') + '<span>Play</span>' : SL.icon('pause') + '<span>Pause</span>'; SL.refreshIcons($('#bPause')); };
+  $('#bPitch').onclick = e => { S.showPitch = !S.showPitch; $('#bPitch').classList.toggle('on', S.showPitch); };
+  $('#bLoa').onclick = e => { S.showLoa = !S.showLoa; $('#bLoa').classList.toggle('on', S.showLoa); };
+  $('#bFit').onclick = () => { view.zoom = 1; view.px = 0; view.py = 0; view.fitNow = true; };
+
+  /* ------------------------------------------------------------- results UI */
+  const stat = (k, v, u) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u ? `<small>${u}</small>` : ''}</div></div>`;
+  const dirName = n => n === 0 ? 'held' : (n > 0 ? 'CCW' : 'CW');
+  function update(geomChanged) {
+    if (!ready) return;
+    if (S.mode === 'train') L.items = layoutTrain();
+    R = solve();
+    const f = SL.fmt;
+    let html = '';
+    if (S.mode === 'rack') {
+      html = stat('Rack speed', f(Math.abs(R.v), 3), 'm/s') + stat('Rack force', f(R.F, 1), 'N') + stat('Pitch dia.', f(S.rack.m * S.rack.z, 1), 'mm') + stat('Travel / rev', f(Math.PI * S.rack.m * S.rack.z, 1), 'mm') + stat('P in', f(R.Pin, 1), 'W') + stat('P out', f(R.Pout, 1), 'W');
+      $('#h1').innerHTML = `Travel <b>${f(Math.PI * S.rack.m * S.rack.z, 1)}</b> mm/rev`; $('#h2').innerHTML = `Rack <b>${f(Math.abs(R.v), 3)}</b> m/s`; $('#h3').innerHTML = `Force <b>${f(R.F, 1)}</b> N`;
+    } else {
+      const ratioTxt = isFinite(R.ratio) ? f(Math.abs(R.ratio), 3) + ' : 1' : '—';
+      html = stat('Gear ratio |i|', ratioTxt) + stat('Direction', !isFinite(R.ratio) ? '—' : (R.ratio > 0 ? 'Same' : 'Reversed')) +
+        stat('Output speed', f(Math.abs(R.nout), 1), 'rpm') + stat('Output torque', f(Math.abs(R.Tout), 2), 'N·m') +
+        stat('Power in', f(R.Pin, 1), 'W') + stat('Power out', f(R.Pout, 1), 'W') +
+        stat('Efficiency', f(R.etaTot * 100, 1), '%') + stat('Heat loss', f(R.Pin - R.Pout, 1), 'W');
+      if (S.mode === 'worm') html += stat('Lead angle γ', f(SL.deg(R.lead), 2), '°') + `<div class="stat"><div class="k">Self-locking</div><div class="v"><span class="led ${R.lock ? 'on' : ''}"></span> ${R.lock ? 'Yes' : 'No'}</div></div>`;
+      if (S.mode === 'planet') html += stat('Planet speed', f(R.wp, 1), 'rpm') + stat('Held reaction', f(Math.abs(R.Treact), 2), 'N·m');
+      $('#h1').innerHTML = `Ratio <b>${ratioTxt}</b>`; $('#h2').innerHTML = `Out <b>${f(Math.abs(R.nout), 1)}</b> rpm`; $('#h3').innerHTML = `T<sub>out</sub> <b>${f(Math.abs(R.Tout), 2)}</b> N·m`;
+    }
+    $('#stats').innerHTML = html;
+    if (S.mode === 'planet') { $('#zrOut').textContent = R.zr; $('#pOutName').textContent = { s: 'sun', c: 'carrier', r: 'ring' }[R.out]; }
+    $('#trainWarn').textContent = S.mode === 'train' ? R.warn : '';
+    $('#planetWarn').textContent = S.mode === 'planet' ? R.warn : '';
+    tables();
+    checkChallenges();
+    if (geomChanged) view.fitNow = true;
+  }
+
+  function tables() {
+    const f = SL.fmt; let sh = '', me = '';
+    if (S.mode === 'train') {
+      sh = `<tr><th>Shaft</th><th>Gears</th><th>Speed (rpm)</th><th>Dir.</th><th>Torque (N·m)</th><th>Power (W)</th></tr>` +
+        R.shafts.map((s, i) => `<tr><td>${i === 0 ? 'Input' : (i === R.shafts.length - 1 ? 'Output' : 'S' + (i + 1))}</td><td>${s.gears.map(g => `<span style="color:${g.color}">G${g.i + 1}</span> ${g.z}T`).join(' + ')}</td><td class="num">${f(Math.abs(s.n), 1)}</td><td>${dirName(s.n)}</td><td class="num">${f(s.P / W(Math.abs(s.n)), 3)}</td><td class="num">${f(s.P, 1)}</td></tr>`).join('');
+      me = `<tr><th>Mesh</th><th>m</th><th>d₁ / d₂ (mm)</th><th>a (mm)</th><th>v (m/s)</th><th>ε</th></tr>` +
+        R.meshes.map(x => `<tr><td>G${x.a + 1}→G${x.b + 1}</td><td class="num">${x.m}</td><td class="num">${f(x.m * x.z1, 1)} / ${f(x.m * x.z2, 1)}</td><td class="num">${f(x.A, 2)}</td><td class="num">${f(x.v, 3)}</td><td class="num">${f(x.eps, 3)}</td></tr>`).join('');
+    } else if (S.mode === 'planet') {
+      const { zs, zp, m } = S.planet, w = R.w;
+      const row = (n, z, sp) => `<tr><td>${n}</td><td class="num">${z}</td><td class="num">${z === '—' ? '—' : f(m * z, 1)}</td><td class="num">${f(Math.abs(sp), 1)}</td><td>${dirName(Math.round(sp * 1e6))}</td></tr>`;
+      sh = `<tr><th>Member</th><th>Teeth</th><th>d (mm)</th><th>Speed (rpm)</th><th>Dir.</th></tr>` + row('Sun', zs, w.s) + row('Planet (abs.)', zp, R.wp) + row('Carrier', '—', w.c) + row('Ring', R.zr, w.r);
+      me = `<tr><th>Mesh</th><th>a (mm)</th><th>v (m/s)</th><th>ε</th></tr>` + R.meshes.map(x => `<tr><td>${x.label}</td><td class="num">${f(x.A, 2)}</td><td class="num">${f(x.v, 3)}</td><td class="num">${f(x.eps, 3)}</td></tr>`).join('');
+    } else if (S.mode === 'rack') {
+      const { z, m } = S.rack, g = geo(z, m);
+      sh = `<tr><th>Quantity</th><th>Value</th></tr><tr><td>Pinion pitch diameter d = mz</td><td class="num">${f(m * z, 1)} mm</td></tr><tr><td>Circular pitch p = πm</td><td class="num">${f(Math.PI * m, 3)} mm</td></tr><tr><td>Rack speed v = ωr</td><td class="num">${f(Math.abs(R.v), 3)} m/s</td></tr><tr><td>Rack force F = ηT/r</td><td class="num">${f(R.F, 1)} N</td></tr><tr><td>Radial (separating) force F tan α</td><td class="num">${f(R.F * Math.tan(ALPHA), 1)} N</td></tr>`;
+      me = `<tr><th>Mesh</th><th>ε</th></tr><tr><td>Pinion–rack</td><td class="num">${f(R.meshes[0].eps, 3)}</td></tr>`;
+    } else {
+      const { z1, z2, m, q } = S.worm;
+      sh = `<tr><th>Quantity</th><th>Value</th></tr><tr><td>Ratio i = z₂/z₁</td><td class="num">${f(R.ratio, 2)}</td></tr><tr><td>Worm pitch diameter d₁ = qm</td><td class="num">${f(R.d1, 1)} mm</td></tr><tr><td>Wheel pitch diameter d₂ = z₂m</td><td class="num">${f(R.d2, 1)} mm</td></tr><tr><td>Centre distance a</td><td class="num">${f(R.A, 2)} mm</td></tr><tr><td>Axial pitch / lead</td><td class="num">${f(Math.PI * m, 3)} / ${f(Math.PI * m * z1, 3)} mm</td></tr><tr><td>Wheel speed</td><td class="num">${f(Math.abs(R.nout), 2)} rpm</td></tr><tr><td>Wheel torque</td><td class="num">${f(Math.abs(R.Tout), 2)} N·m</td></tr>`;
+      me = `<tr><th>Quantity</th><th>Value</th></tr><tr><td>Lead angle γ</td><td class="num">${f(SL.deg(R.lead), 2)}°</td></tr><tr><td>Efficiency η</td><td class="num">${f(R.etaTot * 100, 1)}%</td></tr><tr><td>Worm pitch-line speed</td><td class="num">${f(R.meshes[0].v, 3)} m/s</td></tr><tr><td>Sliding speed v/cos γ</td><td class="num">${f(R.meshes[0].vs, 3)} m/s</td></tr><tr><td>Locking limit μ ≥ cos α·tan γ</td><td class="num">${f(Math.cos(ALPHA) * z1 / q, 4)}</td></tr>`;
+    }
+    $('#shaftTbl').innerHTML = sh; $('#meshTbl').innerHTML = me;
+  }
+
+  /* ------------------------------------------------------------- challenges */
+  const near = (a, b, tol) => Math.abs(a - b) <= tol * Math.abs(b);
+  const CH = [
+    { t: 'Twelve-to-one', d: 'Design a 12:1 reduction (within 0.5%) using at most 4 gears, every gear 12–60 teeth.', ok: () => S.mode === 'train' && S.gears.length <= 4 && S.gears.every(g => g.z >= 12 && g.z <= 60) && near(Math.abs(R.ratio), 12, 0.005) },
+    { t: 'Same direction', d: 'Using a simple train (no shared shafts), make the output turn the same direction as the motor with a reduction of 2:1 or more.', ok: () => S.mode === 'train' && S.gears.every(g => !g.coax) && R.k >= 2 && R.ratio >= 2 },
+    { t: 'Overdrive', d: 'Build a speed increaser: output at least 3× faster than the motor.', ok: () => S.mode === 'train' && R.k >= 1 && Math.abs(R.ratio) <= 1 / 3 },
+    { t: 'Torque target', d: 'From a 1500 rpm, 2 N·m motor deliver at least 50 N·m while keeping the output at 50 rpm or more.', ok: () => S.mode !== 'rack' && S.rpm === 1500 && near(S.tin, 2, 0.001) && Math.abs(R.Tout) >= 50 && Math.abs(R.nout) >= 50 },
+    { t: 'Four-to-one planetary', d: 'Make a planetary set with ratio exactly 4:1 (ring held), using 3 planets that assemble.', ok: () => S.mode === 'planet' && S.planet.fix === 'r' && near(Math.abs(R.ratio), 4, 0.001) && S.planet.N === 3 && !R.warn },
+    { t: 'Planetary reverse', d: 'Use a planetary set as a reverser with |i| = 2.5 (carrier held).', ok: () => S.mode === 'planet' && S.planet.fix === 'c' && R.ratio < 0 && near(Math.abs(R.ratio), 2.5, 0.001) && !R.warn },
+    { t: 'Half a metre per second', d: 'With the motor at 100 rpm, drive a rack at 0.50 m/s (±2%).', ok: () => S.mode === 'rack' && S.rpm === 100 && near(Math.abs(R.v), 0.5, 0.02) },
+    { t: 'Locked gate', d: 'Make a self-locking worm drive with a ratio of at least 40:1.', ok: () => S.mode === 'worm' && R.lock && R.ratio >= 40 },
+  ];
+  const done = new Set();
+  $('#chalTotal').textContent = CH.length;
+  function renderChal() {
+    $('#chalList').innerHTML = CH.map((c, i) => `<div class="chal"><span class="led ${done.has(i) ? 'on' : ''}"></span><div><b>${c.t}</b><span class="small">${c.d}</span></div></div>`).join('');
+    $('#chalCount').textContent = done.size;
+  }
+  let chalReady = false;
+  function checkChallenges() {
+    if (!R) return;
+    let changed = false;
+    CH.forEach((c, i) => { if (!done.has(i)) { let ok = false; try { ok = c.ok(); } catch (e) {} if (ok) { done.add(i); changed = true; if (chalReady) SL.toast(`<b>Challenge solved:</b> ${c.t}`, 'ok'); } } });
+    if (changed || !$('#chalList').innerHTML) renderChal();
+  }
+
+  /* ---------------------------------------------------------------- drawing */
+  const cv = $('#cv'), st = SL.canvas(cv);
+  const view = { s: 3, ox: 0, oy: 0, zoom: 1, px: 0, py: 0, fitNow: true, tgt: null };
+  let phi0 = 0, simT = 0;
+
+  function bounds() {
+    if (S.mode === 'train') {
+      let a = [Infinity, Infinity, -Infinity, -Infinity];
+      L.items.forEach(it => { a[0] = Math.min(a[0], it.x - it.ra); a[1] = Math.min(a[1], it.y - it.ra); a[2] = Math.max(a[2], it.x + it.ra); a[3] = Math.max(a[3], it.y + it.ra); });
+      return a;
+    }
+    if (S.mode === 'planet') { const { zs, zp, m } = S.planet, Rr = m * (zs + 2 * zp) / 2 + 4.5 * m; return [-Rr, -Rr, Rr, Rr]; }
+    if (S.mode === 'rack') { const r = S.rack.m * S.rack.z / 2; return [-r * 2.4, -r - 4 * S.rack.m, r * 2.4, r + S.rack.m]; }
+    const { z2, m, q } = S.worm, r2 = m * z2 / 2, r1 = q * m / 2; return [-r2 * 1.5, -r2 - 2 * r1 - 2 * m, r2 * 1.5, r2 + m];
+  }
+  function computeView() {
+    const b = bounds(), w = st.w, h = st.h, pad = w < 500 ? 34 : 60;
+    const bw = b[2] - b[0], bh = b[3] - b[1];
+    const lab = S.mode === 'train' ? 56 : 30;
+    const s = Math.min((w - 2 * pad) / bw, (h - 2 * pad - lab - 40) / bh);
+    const tgt = { s: s * view.zoom, ox: w / 2 - (b[0] + bw / 2) * s * view.zoom + view.px, oy: h / 2 - lab / 2 + 4 + (b[1] + bh / 2) * s * view.zoom + view.py };
+    if (view.focus) { tgt.ox = w / 2 - view.focus[0] * tgt.s; tgt.oy = h / 2 + view.focus[1] * tgt.s; }
+    if (view.fitNow || !view.tgt) { view.fitNow = false; }
+    view.tgt = tgt;
+  }
+  const X = x => view.ox + x * view.s, Y = y => view.oy - y * view.s;
+
+  function gearFill(ctx, it, r, color, alpha) {
+    const g = ctx.createRadialGradient(-r * 0.35, r * 0.35, r * 0.1, 0, 0, r * 1.05);
+    const c = mix(color, '#8a94a8', 0.38);
+    g.addColorStop(0, mix(c, '#ffffff', 0.4)); g.addColorStop(0.55, c); g.addColorStop(1, mix(c, '#05070d', 0.55));
+    return g;
+  }
+  function mix(a, b, t) {
+    const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+    const c = [16, 8, 0].map(sh => Math.round(((pa >> sh) & 255) * (1 - t) + ((pb >> sh) & 255) * t));
+    return '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
+  }
+  // draw an external gear in world coords
+  function drawGear(ctx, x, y, z, m, phi, color, opts = {}) {
+    const o = gearOutline(z, m);
+    ctx.save();
+    ctx.translate(X(x), Y(y)); ctx.scale(view.s, -view.s); ctx.rotate(phi);
+    ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 4;
+    ctx.globalAlpha = opts.alpha ?? 1;
+    // body with lightening holes (evenodd)
+    const body = new Path2D(); body.addPath(o.path);
+    const hub = Math.min(Math.max(o.r * 0.22, 4 * m), o.rf - 1.4 * m);
+    const holeR = (o.rf - hub) * 0.25;
+    let holes = 0;
+    if (o.rf - hub > 9 * m && o.r > 18) { holes = z > 40 ? 6 : 5; for (let k = 0; k < holes; k++) { const a = k * TAU / holes + Math.PI / holes, cx = (hub + o.rf) / 2 * Math.cos(a), cy = (hub + o.rf) / 2 * Math.sin(a); body.moveTo(cx + holeR, cy); body.arc(cx, cy, holeR, 0, TAU, true); } }
+    ctx.fillStyle = gearFill(ctx, null, o.r, color);
+    ctx.fill(body, 'evenodd');
+    ctx.shadowColor = 'transparent';
+    ctx.lineWidth = 1.2 / view.s; ctx.strokeStyle = opts.clash ? '#ef4444' : mix(color, '#ffffff', 0.5);
+    if (opts.clash) ctx.lineWidth = 3 / view.s;
+    ctx.stroke(o.path);
+    // web rings
+    ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 1.5 / view.s;
+    ctx.beginPath(); ctx.arc(0, 0, o.rf - 1.2 * m, 0, TAU); ctx.stroke();
+    // hub
+    const hg = ctx.createRadialGradient(-hub * .3, hub * .3, 1, 0, 0, hub);
+    hg.addColorStop(0, '#e5e9f2'); hg.addColorStop(1, '#5d6678');
+    ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(0, 0, hub, 0, TAU); ctx.fill();
+    // shaft + key
+    const sr = hub * 0.55; ctx.fillStyle = '#0b1020'; ctx.beginPath(); ctx.arc(0, 0, sr, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#9aa4b8'; ctx.fillRect(sr * 0.55, -sr * 0.22, sr * 0.6, sr * 0.44);
+    // index mark
+    if (o.rf - hub > 3.2 * m) { ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.arc((o.rf + hub) / 2, 0, Math.min(0.6 * m, (o.rf - hub) * 0.18), 0, TAU); ctx.fill(); }
+    ctx.restore();
+    if (S.showPitch) { ctx.save(); ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(X(x), Y(y), o.r * view.s, 0, TAU); ctx.stroke(); ctx.restore(); }
+    if (opts.sel) { ctx.save(); ctx.strokeStyle = cssAccent; ctx.lineWidth = 2; ctx.setLineDash([2, 4]); ctx.beginPath(); ctx.arc(X(x), Y(y), o.ra * view.s + 6, 0, TAU); ctx.stroke(); ctx.restore(); }
+  }
+  // curved arrow showing direction of rotation
+  function dirArrow(ctx, x, y, rr, n, color) {
+    if (!n || !isFinite(n)) return;
+    const cx = X(x), cy = Y(y), R = rr * view.s;
+    if (R < 8) return;
+    const ccw = n > 0; // math CCW = screen CCW (y flipped)
+    const a0 = -Math.PI * 0.85, a1 = -Math.PI * 0.15; // top arc in screen coords
+    ctx.save(); ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+    ctx.shadowColor = color; ctx.shadowBlur = 8;
+    ctx.beginPath(); ctx.arc(cx, cy, R, a0, a1); ctx.stroke();
+    const end = ccw ? a0 : a1, tang = ccw ? end - Math.PI / 2 : end + Math.PI / 2;
+    const ex = cx + R * Math.cos(end), ey = cy + R * Math.sin(end), hl = 9;
+    ctx.beginPath(); ctx.moveTo(ex + Math.cos(tang) * hl, ey + Math.sin(tang) * hl);
+    ctx.lineTo(ex + Math.cos(tang + 2.5) * hl * 0.8, ey + Math.sin(tang + 2.5) * hl * 0.8);
+    ctx.lineTo(ex + Math.cos(tang - 2.5) * hl * 0.8, ey + Math.sin(tang - 2.5) * hl * 0.8); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  function label(ctx, x, y, lines, color) {
+    ctx.save(); ctx.font = '600 11px JetBrains Mono, monospace';
+    const w = Math.max(...lines.map(l => ctx.measureText(l).width)) + 14, h = lines.length * 14 + 8;
+    let lx = Math.round(x - w / 2), ly = Math.round(y);
+    lx = SL.clamp(lx, 4, st.w - w - 4); ly = SL.clamp(ly, 4, st.h - h - 4);
+    ctx.fillStyle = 'rgba(5,9,19,.82)'; ctx.strokeStyle = color; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(lx, ly, w, h, 6) : ctx.rect(lx, ly, w, h); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#e6ecf7'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    lines.forEach((l, i) => { ctx.fillStyle = i === 0 ? color : '#c9d3e6'; ctx.fillText(l, lx + 7, ly + 5 + i * 14); });
+    ctx.restore();
+  }
+  function lineOfAction(ctx, A, B, rA, rB, raA, raB, beta, sgn) {
+    const n = [Math.cos(beta), Math.sin(beta)], t = [-n[1], n[0]];
+    const u = [sgn * t[0] * Math.cos(ALPHA) + n[0] * Math.sin(ALPHA), sgn * t[1] * Math.cos(ALPHA) + n[1] * Math.sin(ALPHA)];
+    const P = [A[0] + rA * n[0], A[1] + rA * n[1]];
+    const rbA = rA * Math.cos(ALPHA), rbB = rB * Math.cos(ALPHA);
+    const s1 = -rA * Math.sin(ALPHA), s2 = rB * Math.sin(ALPHA);
+    const a1 = rB * Math.sin(ALPHA) - Math.sqrt(raB * raB - rbB * rbB), a2 = -rA * Math.sin(ALPHA) + Math.sqrt(raA * raA - rbA * rbA);
+    const pt = s => [X(P[0] + u[0] * s), Y(P[1] + u[1] * s)];
+    ctx.save(); ctx.strokeStyle = 'rgba(34,211,238,.55)'; ctx.lineWidth = 1.2; ctx.setLineDash([6, 4]);
+    let p1 = pt(s1), p2 = pt(s2); ctx.beginPath(); ctx.moveTo(...p1); ctx.lineTo(...p2); ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 3.5; ctx.shadowColor = '#22d3ee'; ctx.shadowBlur = 8;
+    p1 = pt(a1); p2 = pt(a2); ctx.beginPath(); ctx.moveTo(...p1); ctx.lineTo(...p2); ctx.stroke();
+    ctx.fillStyle = '#fff'; const pp = pt(0); ctx.beginPath(); ctx.arc(pp[0], pp[1], 3.5, 0, TAU); ctx.fill();
+    // base circles
+    ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(34,211,238,.25)'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
+    ctx.beginPath(); ctx.arc(X(A[0]), Y(A[1]), rbA * view.s, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.arc(X(B[0]), Y(B[1]), rbB * view.s, 0, TAU); ctx.stroke();
+    ctx.restore();
+  }
+
+  let cssAccent = '#f5a524';
+  function grid(ctx) {
+    const { w, h } = st;
+    const bg = ctx.createRadialGradient(w * 0.5, h * 0.45, 20, w * 0.5, h * 0.5, Math.max(w, h) * 0.75);
+    bg.addColorStop(0, '#0d1528'); bg.addColorStop(1, '#04070f');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+    // mm grid: 10 mm
+    let step = 10 * view.s; while (step < 14) step *= 5;
+    ctx.strokeStyle = 'rgba(120,150,210,.06)'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let x = ((view.ox % step) + step) % step; x < w; x += step) { ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, h); }
+    for (let y = ((view.oy % step) + step) % step; y < h; y += step) { ctx.moveTo(0, y + .5); ctx.lineTo(w, y + .5); }
+    ctx.stroke();
+  }
+
+  function frame(dt) {
+    const { ctx, w, h } = st;
+    if (!R) return;
+    computeView();
+    const k = 0.18; view.s += (view.tgt.s - view.s) * (view.first ? 1 : k); view.ox += (view.tgt.ox - view.ox) * (view.first ? 1 : k); view.oy += (view.tgt.oy - view.oy) * (view.first ? 1 : k); view.first = false;
+    // playback scaling
+    let maxRev = Math.abs(S.rpm) / 60;
+    if (S.mode === 'train') maxRev = Math.max(...L.items.map(i => Math.abs(i.n) / 60));
+    if (S.mode === 'planet') maxRev = Math.max(Math.abs(R.w.s), Math.abs(R.w.c), Math.abs(R.w.r), Math.abs(R.wp)) / 60;
+    if (S.mode === 'worm') maxRev = S.rpm / 60 * 0.15;
+    let f = PLAY[S.play][1]; if (f === 0) f = Math.min(1, 0.45 / Math.max(maxRev, 1e-6));
+    $('#hPlay').textContent = f >= 0.999 ? 'Playback: real time' : 'Slow motion ×' + (f < 0.01 ? f.toExponential(1) : SL.fmt(f, 3));
+    if (!S.paused) { simT += dt * f; }
+    const sgn = S.rev ? -1 : 1;
+    phi0 = W(S.rpm) * simT * sgn;
+    grid(ctx);
+    if (S.mode === 'train') drawTrain(ctx);
+    else if (S.mode === 'planet') drawPlanet(ctx);
+    else if (S.mode === 'rack') drawRack(ctx);
+    else drawWorm(ctx);
+  }
+
+  function drawTrain(ctx) {
+    const items = L.items; const phis = [];
+    items.forEach((it, i) => {
+      if (i === 0) phis[i] = phi0;
+      else if (it.coax) phis[i] = phis[i - 1];
+      else phis[i] = meshPhase(phis[i - 1], items[i - 1].z, it.z, it.beta);
+    });
+    const order = items.map((it, i) => i).sort((a, b) => items[a].layer - items[b].layer || a - b);
+    order.forEach(i => { const it = items[i]; drawGear(ctx, it.x, it.y, it.z, it.m, phis[i], it.color, { clash: it.clash, sel: S.sel === i }); });
+    if (S.showLoa) R.meshes.forEach(ms => { const A = items[ms.a], B = items[ms.b]; lineOfAction(ctx, [A.x, A.y], [B.x, B.y], A.r, B.r, A.ra, B.ra, B.beta, Math.sign(A.n)); });
+    // arrows and labels per shaft (once per shaft position)
+    const seen = new Set();
+    items.forEach((it, i) => {
+      const key = it.x.toFixed(3) + ',' + it.y.toFixed(3);
+      if (seen.has(key)) return; seen.add(key);
+      const same = items.filter(q => q.x === it.x && q.y === it.y);
+      const small = same.reduce((a, b) => a.r < b.r ? a : b);
+      dirArrow(ctx, it.x, it.y, small.r * 0.6, it.n, it.n > 0 ? '#34d399' : '#f472b6');
+    });
+    seen.clear();
+    items.forEach((it, i) => {
+      const key = it.x.toFixed(3) + ',' + it.y.toFixed(3);
+      if (seen.has(key)) return; seen.add(key);
+      const same = items.filter(q => q.x === it.x && q.y === it.y);
+      const big = same.reduce((a, b) => a.r > b.r ? a : b);
+      const names = same.map(q => `G${q.i + 1}`).join('+');
+      label(ctx, X(it.x), Y(it.y) + big.ra * view.s + 8, [`${names} · ${same.map(q => q.z + 'T').join('/')}`, `${SL.fmt(Math.abs(it.n), 1)} rpm ${dirName(it.n)}`], same[0].color);
+    });
+  }
+
+  function drawRing(ctx, zr, m, phi, color) {
+    const hole = gearOutline(zr, m, 1.25, 1.0, -0.035);
+    const Ro = m * zr / 2 + 1.25 * m + 3 * m;
+    ctx.save(); ctx.translate(X(0), Y(0)); ctx.scale(view.s, -view.s); ctx.rotate(phi + Math.PI / zr * 0);
+    const p = new Path2D(); p.arc(0, 0, Ro, 0, TAU); p.closePath(); p.addPath(hole.path);
+    const g = ctx.createRadialGradient(0, 0, Ro * 0.8, 0, 0, Ro);
+    g.addColorStop(0, mix(color, '#05070d', 0.15)); g.addColorStop(0.7, color); g.addColorStop(1, mix(color, '#05070d', 0.6));
+    ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 16;
+    ctx.fillStyle = g; ctx.fill(p, 'evenodd'); ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = mix(color, '#ffffff', 0.45); ctx.lineWidth = 1.2 / view.s; ctx.stroke(hole.path);
+    ctx.beginPath(); ctx.arc(0, 0, Ro, 0, TAU); ctx.stroke();
+    // index marks on rim
+    ctx.fillStyle = 'rgba(255,255,255,.7)'; for (let k = 0; k < 4; k++) { const a = k * TAU / 4; ctx.beginPath(); ctx.arc((Ro - 1.4 * m) * Math.cos(a), (Ro - 1.4 * m) * Math.sin(a), 0.7 * m, 0, TAU); ctx.fill(); }
+    ctx.restore();
+    if (S.showPitch) { ctx.save(); ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.beginPath(); ctx.arc(X(0), Y(0), m * zr / 2 * view.s, 0, TAU); ctx.stroke(); ctx.restore(); }
+  }
+
+  function drawPlanet(ctx) {
+    const { zs, zp, N, m } = S.planet, zr = zs + 2 * zp, a = m * (zs + zp) / 2;
+    const tsc = TAU / 60 * simT * (S.rev ? -1 : 1);
+    const ps = R.w.s * tsc, pc = R.w.c * tsc;
+    // planet phases (relative to carrier), ring from planet 0
+    const sRel = ps - pc;
+    const planets = [];
+    for (let k = 0; k < N; k++) {
+      const b = k * TAU / N;
+      const pRel = meshPhase(sRel, zs, zp, b);
+      planets.push({ b, pRel });
+    }
+    const p0 = planets[0];
+    const ringRel = 0 + (zp / zr) * (p0.pRel - 0); // hole tooth centred at beta=0 when planet tooth points along beta
+    // when rings is held the computed angle must equal zero relative motion; ring absolute = pc + ringRel
+    drawRing(ctx, zr, m, pc + ringRel, '#64748b');
+    // carrier plate
+    ctx.save();
+    const cr = a * view.s;
+    ctx.translate(X(0), Y(0)); ctx.rotate(-pc);
+    ctx.fillStyle = 'rgba(167,139,250,.22)'; ctx.strokeStyle = 'rgba(167,139,250,.85)'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let k = 0; k <= N; k++) { const b = k * TAU / N; const x = cr * Math.cos(b), y = -cr * Math.sin(b); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    if (N === 2) { ctx.lineWidth = zp * m * 0.5 * view.s; ctx.strokeStyle = 'rgba(167,139,250,.35)'; ctx.stroke(); }
+    else { ctx.lineJoin = 'round'; ctx.lineWidth = zp * m * 0.35 * view.s; ctx.strokeStyle = 'rgba(167,139,250,.32)'; ctx.stroke(); ctx.fill(); }
+    ctx.restore();
+    // sun
+    drawGear(ctx, 0, 0, zs, m, ps, '#f5a524');
+    // planets
+    planets.forEach((p, k) => {
+      const ang = p.b + pc; const x = a * Math.cos(ang), y = a * Math.sin(ang);
+      drawGear(ctx, x, y, zp, m, p.pRel + pc, '#60a5fa');
+      // carrier pin
+      ctx.save(); ctx.fillStyle = '#a78bfa'; ctx.shadowColor = '#a78bfa'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(X(x), Y(y), Math.max(3, 1.6 * m * view.s), 0, TAU); ctx.fill(); ctx.restore();
+    });
+    if (S.showLoa) { const x = a * Math.cos(pc), y = a * Math.sin(pc); lineOfAction(ctx, [0, 0], [x, y], zs * m / 2, zp * m / 2, zs * m / 2 + m, zp * m / 2 + m, pc, Math.sign(R.w.s - R.w.c) || 1); }
+    // arrows
+    const col = n => n > 0 ? '#34d399' : '#f472b6';
+    dirArrow(ctx, 0, 0, zs * m / 2 * 0.55, R.w.s, col(R.w.s));
+    dirArrow(ctx, 0, 0, (zr * m / 2 + 3.5 * m), R.w.r, col(R.w.r));
+    const names = { s: 'Sun', c: 'Carrier', r: 'Ring' };
+    const role = x => x === S.planet.inp ? 'INPUT' : x === S.planet.fix ? 'HELD' : 'OUTPUT';
+    const Rr = (zr * m / 2 + 4.25 * m) * view.s;
+    const lab = (k, lx, ly, color) => label(ctx, lx, ly, [`${names[k]} · ${role(k)}`, R.w[k] === 0 ? 'held (0 rpm)' : `${SL.fmt(Math.abs(R.w[k]), 1)} rpm ${dirName(R.w[k])}`], color);
+    lab('s', X(0), Y(0) + 14, '#f5a524');
+    lab('r', X(0) + Rr * 0.72, Y(0) - Rr * 0.72 - 34, '#94a3b8');
+    lab('c', X(0) - Rr * 0.72, Y(0) - Rr * 0.72 - 34, '#a78bfa');
+    if (R.w.c && Math.abs(R.w.c) > 1e-9) { // carrier arrow outside ring on left
+      ctx.save(); const cx = X(0), cy = Y(0), rr = Rr + 12; ctx.strokeStyle = '#a78bfa'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(cx, cy, rr, Math.PI * 0.6, Math.PI * 0.9); ctx.stroke();
+      const e = R.w.c > 0 ? Math.PI * 0.6 : Math.PI * 0.9, tg = R.w.c > 0 ? e - Math.PI / 2 : e + Math.PI / 2, ex = cx + rr * Math.cos(e), ey = cy + rr * Math.sin(e);
+      ctx.fillStyle = '#a78bfa'; ctx.beginPath(); ctx.moveTo(ex + Math.cos(tg) * 9, ey + Math.sin(tg) * 9); ctx.lineTo(ex + Math.cos(tg + 2.5) * 7, ey + Math.sin(tg + 2.5) * 7); ctx.lineTo(ex + Math.cos(tg - 2.5) * 7, ey + Math.sin(tg - 2.5) * 7); ctx.fill(); ctx.restore();
+    }
+  }
+
+  function rackPath(m, x0, x1, yPitch, shift) {
+    // rack teeth pointing up (+y) in world coords; teeth centred at shift + p/2 + k p
+    const p = Math.PI * m, ha = m, hf = 1.25 * m, t = Math.tan(ALPHA), bl = 0.035 * m;
+    const path = new Path2D(); const base = yPitch - hf - 2.5 * m;
+    path.moveTo(x0, base);
+    let k0 = Math.floor((x0 - shift) / p) - 1;
+    const pts = [];
+    for (let k = k0; ; k++) {
+      const c = shift + p / 2 + k * p; if (c - p > x1) break;
+      const hw = p / 4 - bl; // half thickness at pitch line
+      pts.push([c - hw - hf * t, yPitch - hf], [c - hw + ha * t, yPitch + ha], [c + hw - ha * t, yPitch + ha], [c + hw + hf * t, yPitch - hf]);
+    }
+    pts.filter(q => true).forEach(q => path.lineTo(SL.clamp(q[0], x0, x1), q[1]));
+    path.lineTo(x1, yPitch - hf); path.lineTo(x1, base); path.closePath();
+    return path;
+  }
+
+  function drawRack(ctx) {
+    const { z, m } = S.rack, r = m * z / 2;
+    const beta = -Math.PI / 2, shift = r * (phi0 - beta);
+    const b = bounds(); const x0 = (0 - view.ox) / view.s - 10, x1 = (st.w - view.ox) / view.s + 10;
+    const path = rackPath(m, x0, x1, -r, shift);
+    ctx.save(); ctx.translate(view.ox, view.oy); ctx.scale(view.s, -view.s);
+    const g = ctx.createLinearGradient(0, -r + m, 0, -r - 4 * m);
+    g.addColorStop(0, '#cbd5e1'); g.addColorStop(0.4, '#64748b'); g.addColorStop(1, '#1e293b');
+    ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 12; ctx.fillStyle = g; ctx.fill(path); ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1 / view.s; ctx.stroke(path);
+    ctx.restore();
+    if (S.showPitch) { ctx.save(); ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.beginPath(); ctx.moveTo(0, Y(-r)); ctx.lineTo(st.w, Y(-r)); ctx.stroke(); ctx.restore(); }
+    drawGear(ctx, 0, 0, z, m, phi0, '#f5a524');
+    if (S.showLoa) {
+      const u = [Math.sign(R.v || 1) * Math.cos(ALPHA), -Math.sin(ALPHA)], P = [0, -r];
+      ctx.save(); ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2.5; ctx.shadowColor = '#22d3ee'; ctx.shadowBlur = 8;
+      ctx.beginPath(); ctx.moveTo(X(P[0] - u[0] * 3 * m), Y(P[1] - u[1] * 3 * m)); ctx.lineTo(X(P[0] + u[0] * 3 * m), Y(P[1] + u[1] * 3 * m)); ctx.stroke(); ctx.restore();
+    }
+    dirArrow(ctx, 0, 0, r * 0.55, R.nin, R.nin > 0 ? '#34d399' : '#f472b6');
+    // rack velocity arrow
+    const dir = Math.sign(R.v) || 1, ay = Y(-r - 3.4 * m);
+    SL.arrow(ctx, st.w / 2 - dir * 50, ay, st.w / 2 + dir * 50, ay, '#22d3ee', 3, 12);
+    label(ctx, st.w / 2, ay + 12, [`Rack ${SL.fmt(Math.abs(R.v), 3)} m/s`, `F = ${SL.fmt(R.F, 1)} N`, `x = ${SL.fmt((shift - r * Math.PI / 2) / 1000, 3)} m`], '#22d3ee');
+    label(ctx, X(0), Y(r + m) - 52, [`Pinion ${z}T · m ${m}`, `${SL.fmt(S.rpm, 0)} rpm ${dirName(R.nin)}`], '#f5a524');
+  }
+
+  function drawWorm(ctx) {
+    const { z1, z2, m, q } = S.worm, r2 = m * z2 / 2, r1 = q * m / 2, p = Math.PI * m, lead = z1 * p;
+    const phiW = phi0; // worm angle
+    const s = lead * phiW / TAU; // axial advance of thread
+    const beta = -Math.PI / 2;
+    const phiWheel = beta + (-s) / r2 * -1; // wheel turns so its bottom moves with thread
+    const yc = -r2 - r1; // worm axis
+    const len = Math.min(r2 * 2.6, 14 * p);
+    const x0 = -len / 2, x1 = len / 2;
+    // worm body silhouette: thread profile top and bottom
+    const Ro = r1 + m, Rf = r1 - 1.25 * m;
+    ctx.save(); ctx.translate(view.ox, view.oy); ctx.scale(view.s, -view.s);
+    // shaft
+    ctx.fillStyle = '#334155'; ctx.fillRect(x0 - 3 * p, yc - Rf * 0.45, len + 6 * p, Rf * 0.9);
+    const top = rackPath(m, x0, x1, yc + r1, s);
+    ctx.save(); ctx.beginPath(); ctx.rect(x0, yc - Ro - 1, len, 2 * Ro + 2); ctx.clip();
+    const g = ctx.createLinearGradient(0, yc + Ro, 0, yc - Ro);
+    g.addColorStop(0, '#e2e8f0'); g.addColorStop(0.3, '#94a3b8'); g.addColorStop(0.75, '#334155'); g.addColorStop(1, '#0f172a');
+    ctx.fillStyle = g;
+    ctx.fill(top);
+    // bottom silhouette: mirror, thread offset by half a lead (other side of helix)
+    ctx.save(); ctx.translate(0, 2 * yc); ctx.scale(1, -1);
+    const bot = rackPath(m, x0, x1, yc + r1, s + lead / 2);
+    ctx.fill(bot); ctx.restore();
+    ctx.fillStyle = g; ctx.fillRect(x0, yc - Rf, len, 2 * Rf);
+    // helix lines on the front face
+    ctx.strokeStyle = 'rgba(15,23,42,.45)'; ctx.lineWidth = 0.45 * m;
+    for (let k = -20; k < 40; k++) {
+      const xb = s + p / 2 + k * p + lead / 2; // bottom crest
+      ctx.beginPath(); ctx.moveTo(xb, yc - r1); ctx.lineTo(xb + lead / 2, yc + r1); ctx.stroke();
+    }
+    ctx.restore();
+    ctx.restore();
+    drawGear(ctx, 0, 0, z2, m, phiWheel, '#f5a524');
+    if (S.showPitch) { ctx.save(); ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.beginPath(); ctx.moveTo(X(x0), Y(yc + r1)); ctx.lineTo(X(x1), Y(yc + r1)); ctx.stroke(); ctx.restore(); }
+    // motor and labels
+    const mx = X(x0 - 3 * p), my = Y(yc);
+    ctx.save(); const mg = ctx.createLinearGradient(0, my - 26, 0, my + 26); mg.addColorStop(0, '#475569'); mg.addColorStop(1, '#0f172a');
+    ctx.fillStyle = mg; ctx.strokeStyle = '#94a3b8'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(mx - 46, my - 24, 46, 48, 6) : ctx.rect(mx - 46, my - 24, 46, 48); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#f5a524'; ctx.font = '700 10px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText('M', mx - 23, my + 4); ctx.restore();
+    const wheelN = R.nout;
+    dirArrow(ctx, 0, 0, r2 * 0.55, wheelN, wheelN > 0 ? '#34d399' : '#f472b6');
+    // worm axial motion arrow
+    const ay = Y(yc - Ro) + 16; const dir = Math.sign(phi0 === 0 ? 1 : (S.rev ? -1 : 1));
+    SL.arrow(ctx, X(0) - dir * 40, ay, X(0) + dir * 40, ay, '#22d3ee', 2.5, 10);
+    label(ctx, X(0), ay + 8, [`Worm ${z1}-start · ${SL.fmt(S.rpm, 0)} rpm`, `thread moves ${SL.fmt(lead * S.rpm / 60, 0)} mm/s`], '#22d3ee');
+    label(ctx, X(0), Y(r2 + m) - 52, [`Wheel ${z2}T`, `${SL.fmt(Math.abs(wheelN), 2)} rpm ${dirName(wheelN)}`], '#f5a524');
+  }
+
+  /* ---------------------------------------------------------- interaction */
+  const tip = $('#tip');
+  let drag = null; const pts = new Map();
+  const world = p => ({ x: (p.x - view.ox) / view.s, y: (view.oy - p.y) / view.s });
+  function hitGear(p) {
+    if (S.mode !== 'train') return -1;
+    const w = world(p);
+    const order = L.items.map((it, i) => i).sort((a, b) => L.items[b].layer - L.items[a].layer || b - a);
+    for (const i of order) { const it = L.items[i]; if (Math.hypot(w.x - it.x, w.y - it.y) <= it.ra) return i; }
+    return -1;
+  }
+  cv.addEventListener('pointerdown', e => {
+    cv.setPointerCapture(e.pointerId); const p = SL.ptr(e, cv); pts.set(e.pointerId, p);
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; drag = { type: 'pinch', d0: Math.hypot(a.x - b.x, a.y - b.y), z0: view.zoom }; return; }
+    let i = hitGear(p);
+    if (i > 0) {
+      let j = i; while (j > 0 && S.gears[j].coax) j--; // the gear whose position defines the shaft
+      if (j > 0) { drag = { type: 'gear', i: j }; S.sel = i; buildList(); cv.classList.add('drag'); return; }
+    }
+    drag = { type: 'pan', x: p.x, y: p.y, px: view.px, py: view.py }; cv.classList.add('drag');
+    if (i === 0) { S.sel = 0; buildList(); }
+  });
+  cv.addEventListener('pointermove', e => {
+    const p = SL.ptr(e, cv);
+    if (pts.has(e.pointerId)) pts.set(e.pointerId, p);
+    if (drag && drag.type === 'pinch' && pts.size === 2) { const [a, b] = [...pts.values()]; view.zoom = SL.clamp(drag.z0 * Math.hypot(a.x - b.x, a.y - b.y) / drag.d0, 0.3, 6); return; }
+    if (drag && drag.type === 'gear') {
+      const w = world(p), par = L.items[drag.i - 1];
+      S.gears[drag.i].ang = Math.atan2(w.y - par.y, w.x - par.x);
+      L.items = layoutTrain(); R = solve(); $('#trainWarn').textContent = R.warn;
+      return;
+    }
+    if (drag && drag.type === 'pan') { view.px = drag.px + p.x - drag.x; view.py = drag.py + p.y - drag.y; return; }
+    // hover tooltip
+    const i = hitGear(p);
+    if (i >= 0 && e.pointerType === 'mouse') {
+      const it = L.items[i], g = geo(it.z, it.m);
+      tip.innerHTML = `<b>G${i + 1}</b> · ${it.z} teeth · m ${it.m} mm<br>d = ${SL.fmt(it.m * it.z, 1)} mm, d<sub>a</sub> = ${SL.fmt(2 * g.ra, 1)}, d<sub>b</sub> = ${SL.fmt(2 * g.rb, 1)}<br>${SL.fmt(Math.abs(it.n), 1)} rpm ${dirName(it.n)} · T = ${SL.fmt(R.shafts[it.shaft].P / W(Math.abs(it.n)), 2)} N·m${it.clash ? '<br><span style="color:#ef4444">Clashes with another gear</span>' : ''}`;
+      tip.style.display = 'block';
+      tip.style.left = Math.min(p.x + 14, st.w - 250) + 'px'; tip.style.top = Math.min(p.y + 14, st.h - 90) + 'px';
+    } else tip.style.display = 'none';
+  });
+  const end = e => { pts.delete(e.pointerId); if (drag && drag.type === 'gear') update(false); if (pts.size < 2) { drag = null; cv.classList.remove('drag'); } };
+  cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+  cv.addEventListener('pointerleave', () => { tip.style.display = 'none'; });
+  cv.addEventListener('wheel', e => { e.preventDefault(); view.zoom = SL.clamp(view.zoom * Math.exp(-e.deltaY * 0.0012), 0.3, 6); }, { passive: false });
+
+  /* ------------------------------------------------- involute theory canvas */
+  function involuteDemo() {
+    const c = $('#invCv'); if (!c) return; const s2 = SL.canvas(c);
+    let t = 0;
+    const lp = SL.loop(dt => {
+      if (!c.offsetParent) return;
+      t += dt * 0.5; const { ctx, w, h } = s2; ctx.clearRect(0, 0, w, h);
+      const rb = Math.min(w, h) * 0.22, cx = w * 0.36, cy = h * 0.58, tm = 1.25 + 0.45 * Math.sin(t);
+      ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(w, cy); ctx.moveTo(cx, 0); ctx.lineTo(cx, h); ctx.stroke();
+      ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, rb, 0, TAU); ctx.stroke();
+      ctx.fillStyle = '#60a5fa'; ctx.font = '11px JetBrains Mono, ui-monospace, monospace'; ctx.fillText('base circle r_b', cx - rb + 4, cy + rb + 16);
+      ctx.strokeStyle = '#f5a524'; ctx.lineWidth = 2.5; ctx.beginPath();
+      for (let u = 0; u <= 1.7; u += 0.02) { const x = rb * (Math.cos(u) + u * Math.sin(u)), y = rb * (Math.sin(u) - u * Math.cos(u)); u ? ctx.lineTo(cx + x, cy - y) : ctx.moveTo(cx + x, cy - y); }
+      ctx.stroke();
+      const T = [cx + rb * Math.cos(tm), cy - rb * Math.sin(tm)];
+      const Pp = [cx + rb * (Math.cos(tm) + tm * Math.sin(tm)), cy - rb * (Math.sin(tm) - tm * Math.cos(tm))];
+      ctx.strokeStyle = '#22d3ee'; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(...T); ctx.lineTo(...Pp); ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(...T); ctx.moveTo(cx, cy); ctx.lineTo(...Pp); ctx.stroke();
+      ctx.fillStyle = '#22d3ee'; ctx.beginPath(); ctx.arc(...T, 4, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#f5a524'; ctx.beginPath(); ctx.arc(...Pp, 5, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#c9d3e6'; ctx.fillText('string (normal to involute,', Math.min(Pp[0] + 8, w - 200), Pp[1] - 18); ctx.fillText('tangent to base circle)', Math.min(Pp[0] + 8, w - 200), Pp[1] - 4);
+      const rho = Math.hypot(Pp[0] - cx, Pp[1] - cy), ar = Math.acos(rb / rho);
+      ctx.fillStyle = '#93a1bd'; ctx.fillText(`ρ = ${SL.fmt(rho / rb, 3)} r_b   α_ρ = ${SL.fmt(SL.deg(ar), 1)}°   inv α = ${SL.fmt(inv(ar), 4)} rad`, 10, 18);
+    }).start();
+  }
+
+  /* --------------------------------------------------------------- quiz */
+  const QUIZ = [
+    { q: 'A 15-tooth gear with module 2 mm meshes with a 45-tooth gear. What is the centre distance?', options: ['30 mm', '60 mm', '90 mm', '120 mm'], answer: 1, why: 'a = m(z₁+z₂)/2 = 2(15+45)/2 = 60 mm.' },
+    { q: 'A 20T driver turns a 30T idler which turns a 60T output. The motor runs at 900 rpm clockwise. The output turns at…', options: ['300 rpm clockwise', '300 rpm anticlockwise', '450 rpm clockwise', '600 rpm anticlockwise'], answer: 0, why: 'The idler cancels: |i| = 60/20 = 3, so 300 rpm. Two meshes means the direction is restored: clockwise.' },
+    { q: 'A compound train has stages 12→48 and 15→45. What is the overall ratio?', options: ['7', '12', '4 + 3 = 7', '12 : 1 and reversed'], answer: 1, why: 'Ratios multiply: (48/12)(45/15) = 4 × 3 = 12. Two meshes, so the output turns the same way as the input.' },
+    { q: 'A 2 kW motor at 1450 rpm drives a 5:1 gearbox with two meshes of 98% efficiency. Output torque is about…', options: ['13.2 N·m', '63.2 N·m', '65.9 N·m', '1.38 N·m'], answer: 1, why: 'T_in = 2000/(2π·1450/60) = 13.17 N·m. T_out = 0.98² × 5 × 13.17 = 63.2 N·m.' },
+    { q: 'Why can a 20T gear with module 2 not mesh with a 40T gear of module 3?', options: ['Their pitch diameters differ', 'Their tooth spacing (circular pitch πm) differs', 'The ratio is not an integer', 'They would need an idler'], answer: 1, why: 'Teeth only fit into spaces of the same size. Circular pitch p = πm must be equal, so modules (and pressure angles) must match.' },
+    { q: 'In a planetary set with z_s = 30 and z_r = 90, the ring is held and the sun is driven. The ratio is…', options: ['3', '−3', '4', '1.33'], answer: 2, why: 'Ring held: i = 1 + z_r/z_s = 1 + 3 = 4, same direction.' },
+    { q: 'Which statement about the involute profile is correct?', options: ['It makes the tooth stronger at the tip', 'It keeps the velocity ratio constant even if the centre distance changes slightly', 'It eliminates sliding between teeth', 'It only works for gears with more than 17 teeth'], answer: 1, why: 'The common normal always passes through a fixed pitch point, and moving the centres apart only changes the working pressure angle, not the ratio. Sliding still occurs away from the pitch point.' },
+    { q: 'A contact ratio of 1.6 means…', options: ['60% of teeth are in contact', 'On average 1.6 tooth pairs share the load; at times two pairs, at times one', 'The gear is 60% stronger', 'The ratio is 1.6'], answer: 1, why: 'ε is the average number of tooth pairs in contact. Values above about 1.2 give smooth, continuous drive.' },
+    { q: 'A single-start worm with q = 10 and μ = 0.12 (α_n = 20°). Is it self-locking?', options: ['Yes, because μ > cos α_n tan γ ≈ 0.094', 'No, worms are never self-locking', 'Only if the wheel has more than 40 teeth', 'No, because the efficiency is above 50%'], answer: 0, why: 'tan γ = 1/10. cos 20° × 0.1 = 0.094 < 0.12, so friction prevents back-driving.' },
+    { q: 'What is the rack speed for a 24-tooth, module 4 pinion at 100 rpm?', options: ['0.050 m/s', '0.503 m/s', '5.03 m/s', '0.251 m/s'], answer: 1, why: 'r = mz/2 = 48 mm; ω = 10.47 rad/s; v = ωr = 0.503 m/s.' },
+  ];
+
+  /* ------------------------------------------------------------ worked load */
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-load]'); if (!b) return;
+    const k = b.dataset.load;
+    $('#rpm').value = 1500; $('#tin').value = 2; $('#eta').value = 0.98; $('#rev').checked = false;
+    ['#rpm', '#tin', '#eta', '#rev'].forEach(s => $(s).dispatchEvent(new Event('input')));
+    if (k === 'comp') { setMode('train'); loadPreset('comp'); }
+    if (k === 'planet') { setMode('planet'); [['#zs', 24], ['#zp', 18], ['#np', 3], ['#mp', 2], ['#pIn', 's'], ['#pFix', 'r']].forEach(([s, v]) => { $(s).value = v; $(s).dispatchEvent(new Event('input')); }); }
+    if (k === 'worm') { setMode('worm'); [['#wz1', 1], ['#wz2', 40], ['#wm', 2], ['#wq', 10], ['#wmu', 0.05]].forEach(([s, v]) => { $(s).value = v; $(s).dispatchEvent(new Event('input')); }); }
+    document.querySelectorAll('input[type=range]').forEach(r => r.dispatchEvent(new Event('input', { bubbles: true })));
+    $('#stage').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    SL.toast('Loaded into the simulator. Compare the results panel with the worked example.', 'ok');
+  });
+
+  /* ------------------------------------------------------------------ init */
+  function init() {
+    cssAccent = SL.cssVar('--accent') || cssAccent;
+    ready = true;
+    loadPreset('comp');
+    view.first = true;
+    SL.quiz('#quiz', QUIZ);
+    renderChal(); chalReady = true;
+    involuteDemo();
+    const lp = SL.loop(frame).start();
+    document.addEventListener('visibilitychange', () => document.hidden ? lp.stop() : lp.start());
+    window.__gears = { S, view, setT: t => { simT = t; }, get R() { return R; }, setMode, loadPreset, update };
+  }
+  document.addEventListener('sl:ready', init);
+})();
+</script>
+</body>
+</html>

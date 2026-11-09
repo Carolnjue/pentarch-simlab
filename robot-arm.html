@@ -1,0 +1,1214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robot Arm Kinematics · Pentarch SimLab</title>
+<meta name="description" content="Operate 2R, 3R, SCARA and 6-DOF robot arms in 3D: live Denavit–Hartenberg tables and transform matrices, analytic and numerical inverse kinematics, Jacobians, singularities, workspace and trajectory planning.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  #stage{height:640px;touch-action:none}
+  #stage canvas{cursor:grab}
+  #stage canvas.drag{cursor:grabbing}
+  #stage canvas.tgt{cursor:crosshair}
+  .seg.full{display:flex;width:100%}
+  .seg.full button{flex:1;text-align:center}
+  .jrow{display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;align-items:center;padding:5px 0}
+  .jrow .jn{font:600 .8rem var(--mono);color:var(--accent);min-width:34px}
+  .jrow .jl{font-size:.8rem;color:var(--muted)}
+  .jrow output{font:600 .8rem var(--mono);text-align:right;min-width:64px}
+  .jrow input{grid-column:1/-1}
+  .jrow.lim output{color:var(--warn)}
+  table.dh{width:100%;border-collapse:collapse;font:500 .82rem var(--mono)}
+  table.dh th{font:600 .7rem var(--mono);letter-spacing:.06em;color:var(--dim);text-align:center;padding:6px 4px;border-bottom:1px solid var(--line)}
+  table.dh td{padding:4px;text-align:center;border-bottom:1px solid var(--line)}
+  table.dh input{width:76px;padding:5px 6px;text-align:right;font:500 .8rem var(--mono);background:var(--bg2)}
+  table.dh input.var{border-color:var(--accent);color:var(--accent)}
+  table.dh td.jt{color:var(--muted)}
+  .mats{display:flex;flex-wrap:wrap;gap:14px 18px;align-items:flex-start}
+  .mat{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;overflow-x:auto;max-width:100%}
+  .mat .cap{font:600 .68rem var(--mono);letter-spacing:.08em;color:var(--dim);text-transform:uppercase;margin-bottom:2px}
+  .mat .katex{font-size:.86em!important}
+  .mat.big .katex{font-size:.95em!important}
+  .ikstat{display:flex;gap:8px;align-items:flex-start;font-size:.82rem;color:var(--muted);margin-top:8px;line-height:1.4}
+  .ikstat .led{margin-top:4px;flex:none}
+  .plots{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .plots canvas{width:100%;height:220px;display:block;background:#050913;border:1px solid var(--line);border-radius:10px}
+  @media (max-width:760px){.plots{grid-template-columns:1fr}}
+  .chal{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px dashed var(--line)}
+  .chal .led{margin-top:6px;flex:none}
+  .chal b{display:block}
+  .chal .small{color:var(--muted)}
+  .legend3d{position:absolute;right:12px;top:12px;display:flex;gap:10px;font:500 .72rem var(--mono);background:rgba(5,9,19,.78);border:1px solid var(--line2);padding:5px 9px;border-radius:8px;pointer-events:none}
+  .legend3d i{display:inline-block;width:10px;height:3px;margin-right:4px;vertical-align:middle;border-radius:2px}
+  .tbar{position:absolute;left:12px;bottom:12px;display:flex;gap:6px;flex-wrap:wrap;max-width:calc(100% - 24px)}
+  .scroll-x{overflow-x:auto}
+  #byHand table.data th{text-transform:none;letter-spacing:0}
+  svg.diag text{font:500 13px var(--font);fill:#c9d3e6}
+  svg.diag .m{font-family:var(--mono);font-size:12px}
+  .grab{font:600 .82rem var(--mono)}
+  @media (max-width:980px){#stage{height:520px}}
+  @media (max-width:520px){#stage{height:440px}.legend3d{display:none}.tbar .btn span{display:none}}
+</style>
+</head>
+<body data-page="robot-arm">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab wide-controls">
+    <div>
+      <div class="stage" id="stage">
+        <canvas id="cv" aria-label="3D robot arm"></canvas>
+        <div class="hud">
+          <span class="readout">p = <b id="hP">-</b></span>
+          <span class="readout" id="hW">w <b>-</b></span>
+        </div>
+        <div class="legend3d"><span><i style="background:#ef4444"></i>x</span><span><i style="background:#22c55e"></i>y</span><span><i style="background:#3b82f6"></i>z</span></div>
+        <div class="tbar">
+          <button class="btn sm" data-view="iso" title="Isometric view"><i data-lucide="box"></i><span>3D</span></button>
+          <button class="btn sm" data-view="top" title="Top view"><i data-lucide="square"></i><span>Top</span></button>
+          <button class="btn sm" data-view="front" title="Front view"><i data-lucide="rectangle-horizontal"></i><span>Front</span></button>
+          <button class="btn sm on" id="bFrames" title="Coordinate frames"><i data-lucide="axis-3d"></i><span>Frames</span></button>
+          <button class="btn sm" id="bWork" title="Workspace"><i data-lucide="scatter-chart"></i><span>Workspace</span></button>
+          <button class="btn sm on" id="bTrail" title="Tool trail"><i data-lucide="spline"></i><span>Trail</span></button>
+        </div>
+      </div>
+      <p class="small muted" style="margin:8px 2px 0" id="hint">Drag to orbit the camera, scroll or pinch to zoom. Switch to <b>IK</b> and drag the glowing target to make the arm follow.</p>
+  <div class="panel" id="plotPanel" style="margin-top:14px" hidden>
+    <h3><i data-lucide="line-chart"></i> Trajectory profiles</h3>
+    <div class="plots"><canvas id="pq" aria-label="Joint positions against time"></canvas><canvas id="pv" aria-label="Joint velocities against time"></canvas></div>
+  </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="bot"></i> Robot</h3>
+        <div class="seg full" id="robSeg"><button data-r="rr">2R planar</button><button data-r="rrr">3R planar</button><button data-r="scara">SCARA</button><button data-r="puma">6-DOF</button></div>
+        <div class="panel-title">Mode</div>
+        <div class="seg full" id="modeSeg"><button data-m="fk" class="on">Joints</button><button data-m="ik">IK target</button><button data-m="traj">Trajectory</button><button data-m="pick">Pick &amp; place</button></div>
+      </div>
+
+      <div class="panel">
+        <h3><i data-lucide="sliders-horizontal"></i> Joint variables <span class="small muted" style="margin-left:auto;font-weight:500" id="dofLbl"></span></h3>
+        <div id="joints"></div>
+        <div class="btn-row" style="margin-top:8px"><button class="btn sm" id="bHome"><i data-lucide="home"></i> Home</button><button class="btn sm" id="bRand"><i data-lucide="shuffle"></i> Random pose</button></div>
+      </div>
+
+      <div class="panel" id="pIK" hidden>
+        <h3><i data-lucide="crosshair"></i> Inverse kinematics</h3>
+        <div id="ikMethodWrap"><div class="panel-title" style="margin-top:0">Solver</div>
+          <div class="seg full" id="ikMethod"><button data-k="analytic" class="on">Analytic</button><button data-k="dls">Damped least squares</button></div></div>
+        <div id="elbowWrap"><div class="panel-title">Elbow</div>
+          <div class="seg full" id="elbowSeg"><button data-e="down" class="on">Elbow down (θ₂ &gt; 0)</button><button data-e="up">Elbow up (θ₂ &lt; 0)</button></div></div>
+        <div class="ctl" id="phiCtl"><label for="phi">Tool angle φ</label><output></output><input type="range" id="phi" min="-180" max="180" step="1" value="0"></div>
+        <div class="ctl" id="psiCtl"><label for="psi">Tool yaw ψ</label><output></output><input type="range" id="psi" min="-180" max="180" step="1" value="0"></div>
+        <div class="ctl" id="tzCtl"><label for="tz">Target height z</label><output></output><input type="range" id="tz" min="0" max="0.4" step="0.005" value="0.2"></div>
+        <label class="toggle" id="oriWrap">Hold tool orientation (6-D task) <input type="checkbox" id="ori"></label>
+        <div class="ctl" id="lamCtl"><label for="lam">Damping λ</label><output></output><input type="range" id="lam" min="0.005" max="0.3" step="0.005" value="0.05"></div>
+        <div class="ikstat"><span class="led on" id="ikLed"></span><span id="ikTxt">Reachable</span></div>
+      </div>
+
+      <div class="panel" id="pTraj" hidden>
+        <h3><i data-lucide="route"></i> Trajectory planner</h3>
+        <div class="btn-row"><button class="btn sm" id="bSetA"><i data-lucide="map-pin"></i> Set A = current</button><button class="btn sm" id="bSetB"><i data-lucide="flag"></i> Set B = current</button></div>
+        <div class="panel-title">Interpolation</div>
+        <div class="seg full" id="interpSeg"><button data-i="joint" class="on">Joint space</button><button data-i="cart">Cartesian line</button></div>
+        <div class="panel-title">Time scaling s(τ)</div>
+        <div class="seg full" id="scaleSeg"><button data-s="cubic" class="on">Cubic</button><button data-s="quintic">Quintic</button></div>
+        <div class="ctl"><label for="dur">Duration T</label><output></output><input type="range" id="dur" min="0.5" max="6" step="0.1" value="2.5"></div>
+        <label class="toggle">Show the other path for comparison <input type="checkbox" id="ghost" checked></label>
+        <div class="btn-row" style="margin-top:8px"><button class="btn primary" id="bPlay"><i data-lucide="play"></i> Run A → B</button><button class="btn" id="bBack"><i data-lucide="undo-2"></i> B → A</button></div>
+        <div class="ikstat"><span class="led" id="trLed"></span><span id="trTxt">A and B are stored poses. Move the arm, store B, then run.</span></div>
+      </div>
+
+      <div class="panel" id="pPick" hidden>
+        <h3><i data-lucide="package"></i> Pick and place</h3>
+        <p class="small muted" style="margin-top:-4px">Move the tool to the block (use IK by dragging the target, or the joint sliders), grip it, carry it to the bin and release.</p>
+        <div class="btn-row"><button class="btn primary" id="bGrip"><i data-lucide="hand"></i> <span>Grip</span></button><button class="btn" id="bNew"><i data-lucide="refresh-cw"></i> New layout</button><button class="btn" id="bAuto"><i data-lucide="wand-sparkles"></i> Demo</button></div>
+        <label class="toggle" style="margin-top:6px">Drive with IK target <input type="checkbox" id="pickIK" checked></label>
+        <div class="ikstat"><span class="led" id="pkLed"></span><span id="pkTxt">Block on the table.</span></div>
+      </div>
+
+      <div class="panel">
+        <h3><i data-lucide="gauge"></i> Live results</h3>
+        <div class="stats" id="stats"></div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="grid2" style="margin-bottom:16px">
+    <div class="panel">
+      <h3><i data-lucide="table"></i> Denavit–Hartenberg table <span class="small muted" style="margin-left:auto;font-weight:500">editable · * = joint variable</span></h3>
+      <div class="scroll-x"><table class="dh" id="dhTbl"></table></div>
+      <p class="small muted" style="margin:10px 0 0">Standard (distal) convention: $A_i = \mathrm{Rot}_{z}(\theta_i)\,\mathrm{Trans}_{z}(d_i)\,\mathrm{Trans}_{x}(a_i)\,\mathrm{Rot}_{x}(\alpha_i)$. Lengths in metres, angles in degrees. Edit $a$, $\alpha$ or $d$ to redesign the robot.</p>
+    </div>
+    <div class="panel">
+      <h3><i data-lucide="grid-3x3"></i> Jacobian &amp; singularity <span style="margin-left:auto;display:flex;align-items:center;gap:6px" class="small"><span class="led on" id="sgLed"></span><span id="sgTxt" class="muted">OK</span></span></h3>
+      <div class="mat big scroll-x"><div class="cap" id="jCap">Geometric Jacobian J(q)</div><div id="jMat"></div></div>
+      <div class="mat" style="margin-top:10px"><div class="cap" id="jdCap">Task Jacobian determinant</div><div id="jDet"></div></div>
+    </div>
+  </section>
+
+  <section class="panel" style="margin-bottom:16px">
+    <h3><i data-lucide="sigma"></i> Homogeneous transforms (live)</h3>
+    <div class="mats" id="mats"></div>
+  </section>
+
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="grid-3x3"></i> Matrices by hand</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+
+    <!-- THEORY -->
+    <div class="tabpanel prose">
+      <h3>1. Serial manipulators, joints and frames</h3>
+      <p>A serial robot arm is a chain of rigid <b>links</b> connected by <b>joints</b>. A revolute joint (R) rotates by an angle $\theta$; a prismatic joint (P) slides by a distance $d$. The vector of joint variables $\mathbf q = (q_1,\dots,q_n)$ is the robot's <b>configuration</b>, and $n$ is its number of degrees of freedom (DOF). To position and orient a tool anywhere in 3D you need six: three for position and three for orientation.</p>
+      <p><b>Forward kinematics (FK)</b> maps joint variables to the tool pose; <b>inverse kinematics (IK)</b> goes the other way. FK always has exactly one answer; IK may have none, one, several or infinitely many.</p>
+
+      <h3>2. Rotation matrices</h3>
+      <p>The orientation of frame $B$ relative to frame $A$ is a $3\times3$ rotation matrix $R^A_B$ whose columns are $B$'s unit axes written in $A$. It is orthonormal ($R^{\mathsf T}R = I$, $\det R = +1$), so $R^{-1} = R^{\mathsf T}$. The elementary rotations are</p>
+      <div class="eq">$$R_x(\alpha)=\begin{bmatrix}1&0&0\\0&c_\alpha&-s_\alpha\\0&s_\alpha&c_\alpha\end{bmatrix}\quad R_y(\beta)=\begin{bmatrix}c_\beta&0&s_\beta\\0&1&0\\-s_\beta&0&c_\beta\end{bmatrix}\quad R_z(\theta)=\begin{bmatrix}c_\theta&-s_\theta&0\\s_\theta&c_\theta&0\\0&0&1\end{bmatrix}$$</div>
+      <p>with the shorthand $c_\theta = \cos\theta$, $s_\theta = \sin\theta$, and later $c_{12} = \cos(\theta_1+\theta_2)$.</p>
+
+      <h3>3. Homogeneous transformations</h3>
+      <p>Rotation and translation are combined into one $4\times4$ matrix so that chains of frames become simple matrix products:</p>
+      <div class="eq">$$T^A_B = \begin{bmatrix} R^A_B & \mathbf p^A_B \\ \mathbf 0^{\mathsf T} & 1\end{bmatrix},\qquad \begin{bmatrix}\mathbf p^A\\1\end{bmatrix} = T^A_B\begin{bmatrix}\mathbf p^B\\1\end{bmatrix},\qquad T^A_C = T^A_B\,T^B_C$$</div>
+      <p>The inverse is not the plain transpose: $\left(T^A_B\right)^{-1} = \begin{bmatrix} R^{\mathsf T} & -R^{\mathsf T}\mathbf p\\ \mathbf 0^{\mathsf T} & 1\end{bmatrix}$.</p>
+
+      <h3>4. The Denavit–Hartenberg convention, step by step</h3>
+      <ol class="steps">
+        <li><b>Number the joints and links.</b> Link 0 is the fixed base; joint $i$ connects link $i-1$ to link $i$.</li>
+        <li><b>Assign $z_{i-1}$ along the axis of joint $i$</b> (the rotation axis for R, the sliding direction for P).</li>
+        <li><b>Base frame 0:</b> put the origin anywhere on $z_0$; choose $x_0$ conveniently, $y_0 = z_0\times x_0$.</li>
+        <li><b>Origin $o_i$:</b> where the common normal between $z_{i-1}$ and $z_i$ meets $z_i$ (if the axes intersect, at the intersection; if parallel, anywhere convenient on $z_i$).</li>
+        <li><b>$x_i$</b> along that common normal, pointing from $z_{i-1}$ towards $z_i$ (if the axes intersect, $x_i = \pm z_{i-1}\times z_i$). Then $y_i = z_i\times x_i$.</li>
+        <li><b>Read the four parameters</b>: $a_i$ = distance from $z_{i-1}$ to $z_i$ along $x_i$; $\alpha_i$ = angle from $z_{i-1}$ to $z_i$ about $x_i$; $d_i$ = distance from $x_{i-1}$ to $x_i$ along $z_{i-1}$; $\theta_i$ = angle from $x_{i-1}$ to $x_i$ about $z_{i-1}$. For a revolute joint $\theta_i$ is variable; for a prismatic joint $d_i$ is.</li>
+        <li><b>Tool frame:</b> for the last frame put $z_n$ along the approach direction of the tool.</li>
+      </ol>
+      <p>Each row of the table then gives one link transform:</p>
+      <div class="eq">$$A_i=\mathrm{Rot}_{z,\theta_i}\mathrm{Trans}_{z,d_i}\mathrm{Trans}_{x,a_i}\mathrm{Rot}_{x,\alpha_i}=\begin{bmatrix}c_{\theta_i}&-s_{\theta_i}c_{\alpha_i}&s_{\theta_i}s_{\alpha_i}&a_ic_{\theta_i}\\ s_{\theta_i}&c_{\theta_i}c_{\alpha_i}&-c_{\theta_i}s_{\alpha_i}&a_is_{\theta_i}\\0&s_{\alpha_i}&c_{\alpha_i}&d_i\\0&0&0&1\end{bmatrix}$$</div>
+
+      <h3>5. Forward kinematics</h3>
+      <div class="eq">$$T^0_n(\mathbf q) = A_1(q_1)\,A_2(q_2)\cdots A_n(q_n) = \begin{bmatrix}\mathbf n&\mathbf s&\mathbf a&\mathbf o\\0&0&0&1\end{bmatrix}$$</div>
+      <p>The last column $\mathbf o$ is the tool position; the columns $\mathbf n,\mathbf s,\mathbf a$ (normal, sliding, approach) are the tool axes. For the 2R planar arm this reduces to</p>
+      <div class="eq">$$x = a_1c_1 + a_2c_{12},\qquad y = a_1s_1 + a_2s_{12},\qquad \phi = \theta_1+\theta_2$$</div>
+
+      <h3>6. Inverse kinematics of the 2-link arm (law of cosines)</h3>
+      <div class="grid2" style="align-items:center">
+        <div>
+          <p>The base, elbow and wrist form a triangle with sides $a_1$, $a_2$ and $r=\sqrt{x^2+y^2}$. The cosine rule on the angle at the elbow ($\pi-\theta_2$) gives</p>
+          <div class="eq">$$\cos\theta_2 = \frac{x^2+y^2-a_1^2-a_2^2}{2a_1a_2} \equiv D$$</div>
+          <div class="eq">$$\theta_2 = \operatorname{atan2}\!\left(\pm\sqrt{1-D^2},\,D\right)$$</div>
+          <div class="eq">$$\theta_1 = \operatorname{atan2}(y,x)-\operatorname{atan2}(a_2s_2,\;a_1+a_2c_2)$$</div>
+          <p>The $\pm$ gives the two solutions, <b>elbow down</b> ($\theta_2>0$) and <b>elbow up</b>. If $|D|>1$ the point lies outside the annulus $|a_1-a_2|\le r\le a_1+a_2$ and is unreachable. Always use <code>atan2</code>, never <code>atan</code> or <code>acos</code> alone: it returns the correct quadrant.</p>
+          <p>For the 3R planar arm with tool angle $\phi$, first find the <b>wrist point</b> $(x - a_3\cos\phi,\; y - a_3\sin\phi)$, solve the 2R problem for it, then $\theta_3 = \phi-\theta_1-\theta_2$. The 6-DOF arm with a spherical wrist uses the same idea in 3D (kinematic decoupling): the wrist centre $\mathbf o_c = \mathbf o - d_6\mathbf a$ fixes $\theta_1,\theta_2,\theta_3$, and the wrist angles follow from $R^3_6 = (R^0_3)^{\mathsf T}R$.</p>
+        </div>
+        <svg class="diag" viewBox="0 0 360 300" role="img" aria-label="Two-link arm geometry">
+          <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#93a1bd"/></marker></defs>
+          <line x1="40" y1="260" x2="340" y2="260" stroke="#2a3a5c"/><line x1="40" y1="260" x2="40" y2="20" stroke="#2a3a5c"/>
+          <line x1="40" y1="260" x2="300" y2="90" stroke="#5f6d8a" stroke-dasharray="5 5"/>
+          <line x1="40" y1="260" x2="190" y2="120" stroke="#f5a524" stroke-width="7" stroke-linecap="round"/>
+          <line x1="190" y1="120" x2="300" y2="90" stroke="#60a5fa" stroke-width="7" stroke-linecap="round"/>
+          <circle cx="40" cy="260" r="9" fill="#e6ecf7"/><circle cx="190" cy="120" r="8" fill="#e6ecf7"/><circle cx="300" cy="90" r="6" fill="#22d3ee"/>
+          <line x1="190" y1="120" x2="270" y2="45" stroke="#5f6d8a" stroke-dasharray="3 4"/>
+          <path d="M 98 260 A 58 58 0 0 0 82 221" fill="none" stroke="#f5a524" stroke-width="2"/>
+          <path d="M 222 90 A 44 44 0 0 1 232 109" fill="none" stroke="#60a5fa" stroke-width="2"/>
+          <text x="104" y="250">θ₁</text><text x="236" y="98">θ₂</text>
+          <text x="96" y="178">a₁</text><text x="240" y="125">a₂</text><text x="180" y="215" fill="#93a1bd">r</text>
+          <text x="306" y="84">(x, y)</text>
+          <text x="150" y="146" class="m" fill="#93a1bd">π − θ₂</text>
+          <text x="330" y="276" class="m">x</text><text x="24" y="28" class="m">y</text>
+        </svg>
+      </div>
+
+      <h3>7. Velocity kinematics: the Jacobian</h3>
+      <p>The Jacobian maps joint rates to the tool's linear and angular velocity, $\begin{bmatrix}\mathbf v\\ \boldsymbol\omega\end{bmatrix} = J(\mathbf q)\,\dot{\mathbf q}$. Column $i$ of the geometric Jacobian is built from frame $i-1$ (all read from the $T^0_{i-1}$ matrices):</p>
+      <div class="eq">$$J_i = \begin{bmatrix} \mathbf z_{i-1}\times(\mathbf o_n-\mathbf o_{i-1})\\ \mathbf z_{i-1}\end{bmatrix}\ \text{(revolute)},\qquad J_i = \begin{bmatrix}\mathbf z_{i-1}\\ \mathbf 0\end{bmatrix}\ \text{(prismatic)}$$</div>
+      <p>For the 2R arm (position rows only):</p>
+      <div class="eq">$$J = \begin{bmatrix}-a_1s_1-a_2s_{12} & -a_2s_{12}\\ a_1c_1+a_2c_{12} & a_2c_{12}\end{bmatrix},\qquad \det J = a_1a_2\sin\theta_2$$</div>
+      <p>The same matrix relates forces: joint torques needed to push with tool wrench $\mathbf F$ are $\boldsymbol\tau = J^{\mathsf T}\mathbf F$.</p>
+
+      <h3>8. Singularities</h3>
+      <p>Where the (task) Jacobian loses rank, $\det J = 0$, the arm cannot move its tool in some direction no matter how fast the joints turn, and the IK needs infinite joint speeds nearby. The <b>manipulability</b> $w=\sqrt{\det(JJ^{\mathsf T})}$ measures how far you are from one; the ellipse drawn at the planar tool shows the velocities reachable with unit joint speeds. Types:</p>
+      <ul>
+        <li><b>Boundary singularities</b>: arm fully stretched or folded ($\theta_2 = 0$ or $\pi$ in the 2R arm), at the edge of the workspace.</li>
+        <li><b>Interior singularities</b>: e.g. the wrist centre on the base axis $z_0$ of the 6-DOF arm (shoulder singularity).</li>
+        <li><b>Wrist singularity</b>: $\theta_5 = 0$ aligns joint axes 4 and 6, so only their sum matters.</li>
+      </ul>
+
+      <h3>9. Numerical inverse kinematics</h3>
+      <p>For general robots IK is solved iteratively. With task error $\mathbf e$ (position error, plus orientation error $\tfrac12\sum(\mathbf n\times\mathbf n_d+\mathbf s\times\mathbf s_d+\mathbf a\times\mathbf a_d)$ if orientation is controlled), repeat</p>
+      <div class="eq">$$\Delta\mathbf q = J^{\mathsf T}\left(JJ^{\mathsf T}+\lambda^2 I\right)^{-1}\mathbf e,\qquad \mathbf q \leftarrow \mathbf q + \Delta\mathbf q$$</div>
+      <p>This <b>damped least squares</b> (Levenberg–Marquardt) step behaves like the pseudo-inverse far from singularities and stays bounded near them. Larger $\lambda$ is more robust but slower and less accurate. Try both solvers in IK mode, and push the target outside the workspace: the DLS arm reaches towards it smoothly instead of failing.</p>
+
+      <h3>10. Trajectory planning</h3>
+      <p>A path is the geometry; a trajectory adds timing. Between pose A and pose B we interpolate with a time-scaling function $s(\tau)$, $\tau = t/T$:</p>
+      <div class="eq">$$\text{cubic: } s = 3\tau^2-2\tau^3,\qquad \text{quintic: } s=10\tau^3-15\tau^4+6\tau^5$$</div>
+      <p>The cubic satisfies zero velocity at both ends; the quintic also has zero acceleration at both ends (no jump in motor torque, gentler on gearboxes). Peak velocity is $1.5\,\Delta/T$ for the cubic and $1.875\,\Delta/T$ for the quintic.</p>
+      <ul>
+        <li><b>Joint-space interpolation</b> $\mathbf q(t) = \mathbf q_A + s(\tau)(\mathbf q_B-\mathbf q_A)$: simple, no IK needed, never meets a singularity on the way, but the tool follows a curve.</li>
+        <li><b>Cartesian interpolation</b> $\mathbf p(t) = \mathbf p_A + s(\tau)(\mathbf p_B-\mathbf p_A)$ with IK at every sample: the tool moves in a straight line (needed for welding, inserting, picking), but joint speeds blow up near singularities.</li>
+      </ul>
+      <div class="callout warn"><i data-lucide="triangle-alert"></i><div><b>Model limits.</b> This is pure kinematics: no masses, motor limits, dynamics or collisions between links are modelled. The 6-DOF arm is an idealised elbow manipulator with a spherical wrist (zero shoulder and elbow offsets, unlike a real PUMA 560).</div></div>
+    </div>
+
+    <!-- MATRICES BY HAND -->
+    <div class="tabpanel prose" id="byHand"></div>
+
+    <!-- WORKED EXAMPLES -->
+    <div class="tabpanel prose">
+      <div class="worked">
+        <h4>Example 1: forward kinematics of the 2R arm</h4>
+        <p>$a_1 = 0.40$ m, $a_2 = 0.30$ m, $\theta_1 = 30°$, $\theta_2 = 45°$ (the 2R default).</p>
+        <ol class="steps">
+          <li>$c_1 = 0.8660$, $s_1 = 0.5000$, $\theta_1+\theta_2 = 75°$: $c_{12} = 0.2588$, $s_{12} = 0.9659$.</li>
+          <li>$A_1 = \begin{bmatrix}0.866&-0.5&0&0.346\\0.5&0.866&0&0.2\\0&0&1&0\\0&0&0&1\end{bmatrix}$, $A_2 = \begin{bmatrix}0.707&-0.707&0&0.212\\0.707&0.707&0&0.212\\0&0&1&0\\0&0&0&1\end{bmatrix}$.</li>
+          <li>$x = 0.4(0.8660) + 0.3(0.2588) = 0.3464 + 0.0776 = 0.4241$ m.</li>
+          <li>$y = 0.4(0.5000) + 0.3(0.9659) = 0.2000 + 0.2898 = 0.4898$ m; tool angle $\phi = 75°$.</li>
+        </ol>
+        <button class="btn sm" data-load="ex1"><i data-lucide="upload"></i> Load into the simulator</button>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 2: inverse kinematics, both elbows</h4>
+        <p>Same arm, target $(x, y) = (0.50, 0.20)$ m.</p>
+        <ol class="steps">
+          <li>$r^2 = 0.25 + 0.04 = 0.29$. $D = (0.29 - 0.16 - 0.09)/(2\times0.4\times0.3) = 0.04/0.24 = 0.1667$. $|D| \le 1$: reachable.</li>
+          <li>Elbow down: $\theta_2 = \operatorname{atan2}(+0.9860, 0.1667) = 80.41°$. Elbow up: $\theta_2 = -80.41°$.</li>
+          <li>$\operatorname{atan2}(0.2, 0.5) = 21.80°$. For elbow down, $\operatorname{atan2}(0.3\times0.9860,\ 0.4 + 0.3\times0.1667) = \operatorname{atan2}(0.2958, 0.45) = 33.32°$, so $\theta_1 = -11.52°$.</li>
+          <li>For elbow up the second atan2 is $-33.32°$, so $\theta_1 = 55.12°$. Check: $0.4\cos55.12° + 0.3\cos(-25.29°) = 0.2287 + 0.2713 = 0.500$ ✓.</li>
+        </ol>
+        <button class="btn sm" data-load="ex2"><i data-lucide="upload"></i> Load into the simulator</button>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 3: Jacobian and singularity</h4>
+        <p>At $\theta = (30°, 45°)$:</p>
+        <ol class="steps">
+          <li>$J_{11} = -0.4(0.5) - 0.3(0.9659) = -0.4898$, $J_{12} = -0.2898$, $J_{21} = 0.4(0.866) + 0.3(0.2588) = 0.4241$, $J_{22} = 0.0776$.</li>
+          <li>$\det J = (-0.4898)(0.0776) - (-0.2898)(0.4241) = 0.0849$, which equals $a_1a_2\sin\theta_2 = 0.12\sin45° = 0.0849$ ✓.</li>
+          <li>Joint rates for a tool velocity of $(0, 0.1)$ m/s: $\dot{\boldsymbol\theta} = J^{-1}\mathbf v = \frac{1}{0.0849}\begin{bmatrix}0.0776&0.2898\\-0.4241&-0.4898\end{bmatrix}\begin{bmatrix}0\\0.1\end{bmatrix} = \begin{bmatrix}0.341\\-0.577\end{bmatrix}$ rad/s.</li>
+          <li>As $\theta_2\to0$ (arm straight) $\det J\to0$ and these rates grow without bound: a boundary singularity.</li>
+        </ol>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 4: SCARA forward kinematics</h4>
+        <p>$a_1 = 0.35$, $a_2 = 0.30$, $d_1 = 0.40$, $d_4 = 0.08$ m; $\theta_1 = 20°$, $\theta_2 = 40°$, $d_3 = 0.15$ m, $\theta_4 = 10°$ (the SCARA default).</p>
+        <ol class="steps">
+          <li>$x = 0.35\cos20° + 0.3\cos60° = 0.3289 + 0.1500 = 0.4789$ m.</li>
+          <li>$y = 0.35\sin20° + 0.3\sin60° = 0.1197 + 0.2598 = 0.3795$ m.</li>
+          <li>$z = d_1 - d_3 - d_4 = 0.40 - 0.15 - 0.08 = 0.17$ m. The $\alpha_2 = 180°$ row flips $z$, so the tool points down.</li>
+          <li>Tool yaw $\psi = \theta_1+\theta_2-\theta_4 = 50°$: $R = \begin{bmatrix}c_\psi&s_\psi&0\\s_\psi&-c_\psi&0\\0&0&-1\end{bmatrix} = \begin{bmatrix}0.643&0.766&0\\0.766&-0.643&0\\0&0&-1\end{bmatrix}$.</li>
+        </ol>
+        <button class="btn sm" data-load="ex4"><i data-lucide="upload"></i> Load into the simulator</button>
+      </div>
+      <div class="worked" style="margin-top:14px">
+        <h4>Example 5: cubic vs quintic time scaling</h4>
+        <p>A joint moves from 0° to 90° in $T = 2$ s.</p>
+        <ol class="steps">
+          <li>Cubic: $\theta(t) = 90(3\tau^2-2\tau^3)$, $\dot\theta = \tfrac{90}{2}(6\tau-6\tau^2)$. Peak at $\tau = 0.5$: $1.5\times90/2 = 67.5$ °/s. Acceleration jumps to $6\times90/4 = 135$ °/s² at $t = 0$.</li>
+          <li>Quintic: peak velocity $1.875\times90/2 = 84.4$ °/s; acceleration starts at zero and peaks at $\tfrac{10}{\sqrt3}\times\tfrac{90}{4} \approx 129.9$ °/s² at $\tau \approx 0.211$.</li>
+          <li>Run both in Trajectory mode and compare the velocity plots: the quintic starts with zero slope.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- CHALLENGES -->
+    <div class="tabpanel">
+      <div class="grid2">
+        <div class="prose">
+          <h3>Challenges</h3>
+          <p class="muted">Checked live. Each LED lights when you succeed.</p>
+          <div id="chalList"></div>
+          <p class="small muted" style="margin-top:10px">Solved <b id="chalCount">0</b> of <span id="chalTotal">0</span>.</p>
+        </div>
+        <div class="prose">
+          <h3>Guided experiments</h3>
+          <ol class="steps">
+            <li><b>Annulus workspace.</b> 2R arm, turn on <i>Workspace</i>. Measure the inner and outer radii. Now edit $a_2$ in the DH table to equal $a_1$. What happens to the hole?</li>
+            <li><b>Two answers.</b> In IK mode, drag the target and toggle the elbow. Where do the two solutions merge into one?</li>
+            <li><b>Approaching a singularity.</b> 2R arm, IK with the analytic solver. Drag the target slowly outwards along a line to full reach. Watch $\det J$ and the manipulability ellipse collapse to a line.</li>
+            <li><b>DLS damping.</b> 6-DOF arm, drag the target outside the workspace with λ = 0.005, then 0.2. Which gives smoother motion? Which is more accurate inside the workspace?</li>
+            <li><b>Straight or curved?</b> Trajectory mode: store A and B far apart, run joint-space then Cartesian. Compare tool paths and the peak joint velocities.</li>
+            <li><b>Wrist singularity.</b> 6-DOF arm, set θ₅ to 0. Rotate θ₄ and θ₆ in opposite directions. What happens to the tool?</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+  const D2R = Math.PI / 180, R2D = 180 / Math.PI, TAU = Math.PI * 2;
+  const f3 = v => SL.fmt(v, 3);
+
+  /* ============================== linear algebra ============================== */
+  const I4 = () => [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]];
+  const mm = (A, B) => A.map(r => B[0].map((_, j) => r.reduce((s, v, k) => s + v * B[k][j], 0)));
+  const tr = A => A[0].map((_, j) => A.map(r => r[j]));
+  const sub = (a, b) => a.map((v, i) => v - b[i]), add = (a, b) => a.map((v, i) => v + b[i]), sc = (a, k) => a.map(v => v * k);
+  const dot = (a, b) => a.reduce((s, v, i) => s + v * b[i], 0);
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const norm = a => Math.hypot(...a), unit = a => { const n = norm(a) || 1; return a.map(v => v / n); };
+  function solve(A, b) { // Gaussian elimination with partial pivoting
+    const n = A.length, M = A.map((r, i) => [...r, b[i]]);
+    for (let c = 0; c < n; c++) {
+      let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+      [M[c], M[p]] = [M[p], M[c]]; const d = M[c][c] || 1e-12;
+      for (let r = 0; r < n; r++) if (r !== c) { const f = M[r][c] / d; for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k]; }
+    }
+    return M.map((r, i) => r[n] / (M[i][i] || 1e-12));
+  }
+  function det(A) {
+    const n = A.length, M = A.map(r => [...r]); let d = 1;
+    for (let c = 0; c < n; c++) {
+      let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+      if (Math.abs(M[p][c]) < 1e-14) return 0;
+      if (p !== c) { [M[c], M[p]] = [M[p], M[c]]; d = -d; }
+      d *= M[c][c];
+      for (let r = c + 1; r < n; r++) { const f = M[r][c] / M[c][c]; for (let k = c; k < n; k++) M[r][k] -= f * M[c][k]; }
+    }
+    return d;
+  }
+  const rotOf = T => [[T[0][0], T[0][1], T[0][2]], [T[1][0], T[1][1], T[1][2]], [T[2][0], T[2][1], T[2][2]]];
+  const col = (T, j) => [T[0][j], T[1][j], T[2][j]];
+  function axisAngle(R) { // R -> [axis, angle]
+    const c = SL.clamp((R[0][0] + R[1][1] + R[2][2] - 1) / 2, -1, 1), a = Math.acos(c);
+    if (a < 1e-9) return [[0, 0, 1], 0];
+    let k = [R[2][1] - R[1][2], R[0][2] - R[2][0], R[1][0] - R[0][1]];
+    if (Math.sin(a) < 1e-6) { // ~180 deg
+      const xx = Math.sqrt(Math.max(0, (R[0][0] + 1) / 2)), yy = Math.sqrt(Math.max(0, (R[1][1] + 1) / 2)), zz = Math.sqrt(Math.max(0, (R[2][2] + 1) / 2));
+      k = [xx, Math.sign(R[0][1] || 1) * yy, Math.sign(R[0][2] || 1) * zz];
+    }
+    return [unit(k), a];
+  }
+  function rodrigues(k, a) {
+    const [x, y, z] = k, c = Math.cos(a), s = Math.sin(a), v = 1 - c;
+    return [[c + x * x * v, x * y * v - z * s, x * z * v + y * s], [y * x * v + z * s, c + y * y * v, y * z * v - x * s], [z * x * v - y * s, z * y * v + x * s, c + z * z * v]];
+  }
+  const m3 = (A, B) => A.map(r => B[0].map((_, j) => r.reduce((s, v, k) => s + v * B[k][j], 0)));
+
+  /* ================================ robots ==================================== */
+  const R_ = (a, alpha, d, lim) => ({ type: 'R', a, alpha, d, theta: 0, lim: lim || [-180, 180] });
+  const P_ = (a, alpha, theta, lim) => ({ type: 'P', a, alpha, d: 0, theta, lim });
+  const ROBOTS = {
+    rr: { name: '2R planar arm', planar: true, task: [0, 1], taskNames: ['ẋ', 'ẏ'], rows: [R_(0.4, 0, 0), R_(0.3, 0, 0)], home: [30, 45], cam: { az: -100, el: 58, D: 1.75, tgt: [0.15, 0.12, 0] } },
+    rrr: { name: '3R planar arm', planar: true, task: [0, 1, 5], taskNames: ['ẋ', 'ẏ', 'φ̇'], rows: [R_(0.4, 0, 0), R_(0.3, 0, 0), R_(0.15, 0, 0)], home: [20, 50, 30], cam: { az: -100, el: 58, D: 1.8, tgt: [0.15, 0.15, 0] } },
+    scara: { name: 'SCARA (RRPR)', planar: false, task: [0, 1, 2, 5], taskNames: ['ẋ', 'ẏ', 'ż', 'ψ̇'], rows: [R_(0.35, 0, 0.4, [-150, 150]), R_(0.3, 180, 0, [-145, 145]), P_(0, 0, 0, [0, 0.3]), R_(0, 0, 0.08)], home: [20, 40, 0.15, 10], cam: { az: -55, el: 28, D: 2.0, tgt: [0.15, 0.1, 0.2] } },
+    puma: { name: '6-DOF elbow arm (spherical wrist)', planar: false, task: [0, 1, 2, 3, 4, 5], taskNames: ['ẋ', 'ẏ', 'ż', 'ωx', 'ωy', 'ωz'], rows: [R_(0, 90, 0.45, [-170, 170]), R_(0.4, 0, 0, [-30, 210]), R_(0, 90, 0, [-120, 150]), R_(0, -90, 0.38), R_(0, 90, 0, [-120, 120]), R_(0, 0, 0.1)], home: [30, 50, 10, 0, -40, 0], cam: { az: -60, el: 22, D: 2.6, tgt: [0.15, 0.1, 0.38] } },
+  };
+
+  /* ================================= state ==================================== */
+  const S = {
+    key: 'rr', rob: null, q: [], mode: 'fk', ikMethod: 'analytic', elbow: 'down', phi: 75, psi: 50, tz: 0.17, ori: false, lam: 0.05,
+    frames: true, work: false, trail: true,
+    target: [0.4, 0.4, 0], targetR: null, ikOk: true, ikMsg: '',
+    traj: null, A: null, B: null, interp: 'joint', scaling: 'cubic', dur: 2.5, ghost: true, playing: null,
+    block: null, bin: null, held: false, pickT0: 0, pickDone: false, seq: null,
+    trailPts: [], ws: null, wMax: 1, dirty: true,
+  };
+  let K = null; // current kinematics result
+  let ready = false;
+
+  function setRobot(key, keepQ) {
+    S.key = key; const base = ROBOTS[key];
+    S.rob = { ...base, rows: base.rows.map(r => ({ ...r, lim: [...r.lim] })) };
+    S.q = [...base.home];
+    $$('#robSeg button').forEach(b => b.classList.toggle('on', b.dataset.r === key));
+    Object.assign(cam, JSON.parse(JSON.stringify(base.cam))); cam.az *= D2R; cam.el *= D2R; camT = { ...cam };
+    S.trailPts = []; S.traj = null; S.playing = null; S.seq = null;
+    buildJoints(); buildDH();
+    fk(); S.target = [...K.tip]; syncTaskSliders();
+    S.A = [...S.q]; S.B = defaultB();
+    newLayout(true);
+    sampleWorkspace();
+    $('#dofLbl').textContent = `${S.rob.rows.length} DOF · ${S.rob.rows.map(r => r.type).join('')}`;
+    updateModeUI(); refresh(true); buildByHand();
+  }
+  function defaultB() {
+    return { rr: [110, -60], rrr: [120, -50, -40], scara: [-60, 70, 0.25, -30], puma: [-40, 70, -10, 30, -60, 20] }[S.key];
+  }
+
+  /* =============================== kinematics ================================= */
+  function dhA(th, d, a, al) {
+    const ct = Math.cos(th), st = Math.sin(th), ca = Math.cos(al), sa = Math.sin(al);
+    return [[ct, -st * ca, st * sa, a * ct], [st, ct * ca, -ct * sa, a * st], [0, sa, ca, d], [0, 0, 0, 1]];
+  }
+  const rowParams = (row, qi) => row.type === 'R' ? { th: qi * D2R, d: row.d } : { th: row.theta * D2R, d: qi };
+  function fkq(q) {
+    const rows = S.rob.rows; let T = I4(); const Ts = [T], As = [];
+    rows.forEach((row, i) => { const p = rowParams(row, q[i]); const A = dhA(p.th, p.d, row.a, row.alpha * D2R); As.push(A); T = mm(T, A); Ts.push(T); });
+    return { As, Ts, T, tip: col(T, 3) };
+  }
+  function jacobian(Ts) {
+    const n = Ts.length - 1, on = col(Ts[n], 3), J = [[], [], [], [], [], []];
+    for (let i = 0; i < n; i++) {
+      const z = col(Ts[i], 2), o = col(Ts[i], 3), row = S.rob.rows[i];
+      const c = row.type === 'R' ? [...cross(z, sub(on, o)), ...z] : [...z, 0, 0, 0];
+      for (let r = 0; r < 6; r++) J[r][i] = c[r];
+    }
+    return J;
+  }
+  const taskJ = J => S.rob.task.map(r => J[r]);
+  function manip(Jt) { const JJ = mm(Jt, tr(Jt)); return Math.sqrt(Math.max(0, det(JJ))); }
+  function fk() {
+    K = fkq(S.q); K.J = jacobian(K.Ts); K.Jt = taskJ(K.J);
+    K.det = K.Jt.length === K.Jt[0].length ? det(K.Jt) : NaN;
+    K.w = manip(K.Jt);
+    return K;
+  }
+  // task quantities
+  const planarPhi = q => S.key === 'rrr' ? q[0] + q[1] + q[2] : q[0] + q[1];
+  const scaraPsi = q => q[0] + q[1] - q[3];
+  const wrapDeg = a => ((a + 180) % 360 + 360) % 360 - 180;
+  function clampQ(q) {
+    return q.map((v, i) => { const r = S.rob.rows[i]; if (r.type === 'R' && r.lim[0] <= -180 && r.lim[1] >= 180) return wrapDeg(v); return SL.clamp(v, r.lim[0], r.lim[1]); });
+  }
+
+  // analytic 2R
+  function ik2(x, y, a1, a2, up) {
+    const D = (x * x + y * y - a1 * a1 - a2 * a2) / (2 * a1 * a2);
+    const ok = Math.abs(D) <= 1 + 1e-9, Dc = SL.clamp(D, -1, 1);
+    const s2 = (up ? -1 : 1) * Math.sqrt(1 - Dc * Dc);
+    const t2 = Math.atan2(s2, Dc);
+    let t1 = Math.atan2(y, x) - Math.atan2(a2 * s2, a1 + a2 * Dc);
+    if (!ok && x * x + y * y < 1e-12) t1 = 0;
+    return { t1: t1 * R2D, t2: t2 * R2D, ok, D };
+  }
+  // target task: {p, phi, psi, R}
+  function solveIK(tgt, q0, opts = {}) {
+    const rows = S.rob.rows, up = (opts.elbow || S.elbow) === 'up';
+    const method = S.key === 'puma' ? 'dls' : (opts.method || S.ikMethod);
+    if (method === 'analytic') {
+      if (S.key === 'rr') { const s = ik2(tgt.p[0], tgt.p[1], rows[0].a, rows[1].a, up); return { q: clampQ([s.t1, s.t2]), ok: s.ok, D: s.D }; }
+      if (S.key === 'rrr') {
+        const ph = tgt.phi * D2R, wx = tgt.p[0] - rows[2].a * Math.cos(ph), wy = tgt.p[1] - rows[2].a * Math.sin(ph);
+        const s = ik2(wx, wy, rows[0].a, rows[1].a, up); return { q: clampQ([s.t1, s.t2, tgt.phi - s.t1 - s.t2]), ok: s.ok, D: s.D };
+      }
+      if (S.key === 'scara') {
+        const s = ik2(tgt.p[0], tgt.p[1], rows[0].a, rows[1].a, up);
+        const d3 = rows[0].d - rows[3].d - tgt.p[2] - (rows[1].d || 0) - (rows[2].d || 0) * 0;
+        const q = clampQ([s.t1, s.t2, d3, s.t1 + s.t2 - tgt.psi]);
+        const okLim = Math.abs(q[0] - s.t1) < 1e-6 && Math.abs(q[1] - s.t2) < 1e-6 && Math.abs(q[2] - d3) < 1e-6;
+        return { q, ok: s.ok && okLim, D: s.D, lim: !okLim };
+      }
+    }
+    // damped least squares
+    let q = [...(q0 || S.q)]; const iters = opts.iters || 30, lam = opts.lam ?? S.lam;
+    const useOri = S.key === 'puma' ? !!tgt.R : true;
+    let err = 1;
+    for (let it = 0; it < iters; it++) {
+      const k = fkq(q), J = jacobian(k.Ts), p = k.tip;
+      let e = [], Jr = [];
+      if (S.key === 'puma') {
+        e = sub(tgt.p, p); Jr = [J[0], J[1], J[2]];
+        if (useOri) {
+          const Rc = rotOf(k.T), Rd = tgt.R;
+          let eo = [0, 0, 0]; for (let c = 0; c < 3; c++) eo = add(eo, cross([Rc[0][c], Rc[1][c], Rc[2][c]], [Rd[0][c], Rd[1][c], Rd[2][c]]));
+          e = [...e, ...sc(eo, 0.5 * 0.5)]; Jr = [...Jr, ...[J[3], J[4], J[5]].map(r => r.map(v => v * 0.5))];
+        }
+      } else if (S.key === 'rr') { e = [tgt.p[0] - p[0], tgt.p[1] - p[1]]; Jr = [J[0], J[1]]; }
+      else if (S.key === 'rrr') { e = [tgt.p[0] - p[0], tgt.p[1] - p[1], 0.3 * wrapDeg(tgt.phi - planarPhi(q)) * D2R]; Jr = [J[0], J[1], J[5].map(v => v * 0.3)]; }
+      else { e = [tgt.p[0] - p[0], tgt.p[1] - p[1], tgt.p[2] - p[2], 0.3 * wrapDeg(tgt.psi - scaraPsi(q)) * D2R]; Jr = [J[0], J[1], J[2], J[5].map(v => v * 0.3)]; }
+      err = norm(e); if (err < 1e-5) break;
+      const JJ = mm(Jr, tr(Jr)); for (let i = 0; i < JJ.length; i++) JJ[i][i] += lam * lam;
+      const y = solve(JJ, e); let dq = tr(Jr).map(r => dot(r, y));
+      const mx = Math.max(...dq.map(Math.abs)); if (mx > 0.15) dq = dq.map(v => v * 0.15 / mx);
+      q = clampQ(q.map((v, i) => v + (S.rob.rows[i].type === 'R' ? dq[i] * R2D : dq[i])));
+    }
+    if (q.some(v => !isFinite(v))) return { q: [...(q0 || S.q)], ok: false, err: 1 };
+    const pe = norm(sub(tgt.p, fkq(q).tip));
+    return { q, ok: pe < 2e-3, err: pe };
+  }
+  function currentTask() {
+    const t = { p: [...S.target] };
+    if (S.key === 'rrr') t.phi = S.phi;
+    if (S.key === 'scara') { t.psi = S.psi; t.p[2] = S.tz; }
+    if (S.key === 'puma' && S.ori) t.R = S.targetR;
+    if (S.rob.planar) t.p[2] = 0;
+    return t;
+  }
+
+  /* ============================== workspace =================================== */
+  function sampleWorkspace() {
+    const N = S.key === 'puma' ? 2600 : 2200, pts = []; let wMax = 1e-9;
+    for (let k = 0; k < N; k++) {
+      const q = S.rob.rows.map(r => { const lo = r.lim[0], hi = r.lim[1]; return lo + Math.random() * (hi - lo); });
+      if (S.key === 'puma') { q[3] = 0; q[5] = 0; q[4] = -40 + Math.random() * 80; }
+      const kk = fkq(q), w = manip(taskJ(jacobian(kk.Ts)));
+      pts.push({ p: kk.tip, w }); wMax = Math.max(wMax, w);
+    }
+    S.ws = pts; S.wMax = wMax;
+  }
+
+  /* ================================ camera ==================================== */
+  const cv = $('#cv'), st = SL.canvas(cv);
+  const cam = { az: -1.7, el: 1, D: 2, tgt: [0, 0, 0] }; let camT = { ...cam };
+  let CB = null;
+  function camBasis() {
+    const ce = Math.cos(cam.el), cp = add(cam.tgt, [cam.D * ce * Math.cos(cam.az), cam.D * ce * Math.sin(cam.az), cam.D * Math.sin(cam.el)]);
+    const f = unit(sub(cam.tgt, cp)); let r = cross(f, [0, 0, 1]); if (norm(r) < 1e-6) r = [1, 0, 0]; r = unit(r); const u = cross(r, f);
+    const F = Math.min(st.w * 1.75, st.h * 1.7);
+    CB = { cp, f, r, u, F };
+  }
+  function P(p) { const v = sub(p, CB.cp), z = Math.max(dot(v, CB.f), 0.05); return { x: st.w / 2 + CB.F * dot(v, CB.r) / z, y: st.h / 2 - CB.F * dot(v, CB.u) / z, z, k: CB.F / z }; }
+  function ray(sx, sy) { const d = unit(add(CB.f, add(sc(CB.r, (sx - st.w / 2) / CB.F), sc(CB.u, -(sy - st.h / 2) / CB.F)))); return { o: CB.cp, d }; }
+  function hitPlane(rr, n, p0) { const den = dot(rr.d, n); if (Math.abs(den) < 1e-9) return null; const t = dot(sub(p0, rr.o), n) / den; return t > 0 ? add(rr.o, sc(rr.d, t)) : null; }
+
+  /* =============================== drawing ==================================== */
+  const COL = { link: ['#f5a524', '#60a5fa', '#34d399', '#f472b6', '#a78bfa', '#22d3ee'], x: '#ef4444', y: '#22c55e', z: '#3b82f6' };
+  function shade(hex, t) { const n = parseInt(hex.slice(1), 16), c = [16, 8, 0].map(s => (n >> s) & 255).map(v => Math.round(t > 0 ? v + (255 - v) * t : v * (1 + t))); return `rgb(${c.join(',')})`; }
+  function segPrim(a, b, r, color, extra) { return { kind: 'seg', a, b, r, color, z: (P(a).z + P(b).z) / 2, ...extra }; }
+  function cylPrim(a, b, r, color) { return { kind: 'cyl', a, b, r, color, z: P(sc(add(a, b), 0.5)).z }; }
+  function drawCyl(ctx, pr) {
+    const ax = unit(sub(pr.b, pr.a)); let u = cross(ax, [0, 0, 1]); if (norm(u) < 1e-3) u = cross(ax, [1, 0, 0]); u = unit(u); const v = cross(ax, u);
+    const N = 22, rA = [], rB = [], L = unit([0.4, -0.5, 0.8]);
+    for (let k = 0; k <= N; k++) { const t = k / N * TAU, o = add(sc(u, pr.r * Math.cos(t)), sc(v, pr.r * Math.sin(t))); rA.push(add(pr.a, o)); rB.push(add(pr.b, o)); }
+    const c = sc(add(pr.a, pr.b), 0.5);
+    ctx.save(); ctx.lineJoin = 'round';
+    for (let k = 0; k < N; k++) {
+      const t = (k + 0.5) / N * TAU, n = add(sc(u, Math.cos(t)), sc(v, Math.sin(t)));
+      const mid = add(c, sc(n, pr.r)); if (dot(n, sub(CB.cp, mid)) <= 0) continue;
+      const li = 0.25 + 0.75 * Math.max(0, dot(n, L)) ** 0.8;
+      const q = [rA[k], rA[k + 1], rB[k + 1], rB[k]].map(P);
+      ctx.fillStyle = ctx.strokeStyle = shade(pr.color, -0.65 + li * 0.85);
+      ctx.beginPath(); q.forEach((s, i) => i ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y)); ctx.closePath(); ctx.fill(); ctx.lineWidth = 0.8; ctx.stroke();
+    }
+    [[pr.b, ax, rB], [pr.a, sc(ax, -1), rA]].forEach(([cc, n, ring]) => {
+      if (dot(n, sub(CB.cp, cc)) <= 0) return;
+      const li = 0.3 + 0.7 * Math.max(0, dot(n, L));
+      ctx.fillStyle = shade(pr.color, -0.4 + li * 0.7); ctx.strokeStyle = shade(pr.color, 0.35); ctx.lineWidth = 1;
+      ctx.beginPath(); ring.forEach((p, i) => { const s = P(p); i ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); }); ctx.closePath(); ctx.fill(); ctx.stroke();
+    });
+    ctx.restore();
+  }
+  function ballPrim(p, r, color) { return { kind: 'ball', p, r, color, z: P(p).z }; }
+  function drawSeg(ctx, pr) {
+    const A = P(pr.a), B = P(pr.b), w = Math.max(2, pr.r * 2 * (A.k + B.k) / 2);
+    const dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L;
+    const g = ctx.createLinearGradient(A.x + nx * w / 2, A.y + ny * w / 2, A.x - nx * w / 2, A.y - ny * w / 2);
+    g.addColorStop(0, shade(pr.color, -0.55)); g.addColorStop(0.35, shade(pr.color, 0.25)); g.addColorStop(0.55, shade(pr.color, 0.05)); g.addColorStop(1, shade(pr.color, -0.6));
+    ctx.save(); ctx.lineCap = pr.cap || 'round'; ctx.strokeStyle = g; ctx.lineWidth = w;
+    if (pr.glow) { ctx.shadowColor = pr.color; ctx.shadowBlur = 12; }
+    ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke(); ctx.restore();
+  }
+  function drawBall(ctx, pr) {
+    const A = P(pr.p), r = Math.max(2, pr.r * A.k);
+    const g = ctx.createRadialGradient(A.x - r * 0.35, A.y - r * 0.35, r * 0.1, A.x, A.y, r);
+    g.addColorStop(0, shade(pr.color, 0.6)); g.addColorStop(0.6, pr.color); g.addColorStop(1, shade(pr.color, -0.55));
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(A.x, A.y, r, 0, TAU); ctx.fill();
+  }
+  function boxFaces(c, s, h, color, open) { // axis aligned box centre c (x,y), base z c[2], size s, height h
+    const x0 = c[0] - s / 2, x1 = c[0] + s / 2, y0 = c[1] - s / 2, y1 = c[1] + s / 2, z0 = c[2], z1 = c[2] + h;
+    const F = [
+      { pts: [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]], n: [0, 0, -1] },
+      { pts: [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], n: [0, 0, 1], top: true },
+      { pts: [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], n: [0, -1, 0] },
+      { pts: [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], n: [0, 1, 0] },
+      { pts: [[x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1]], n: [-1, 0, 0] },
+      { pts: [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]], n: [1, 0, 0] },
+    ].filter(f => !(open && f.top));
+    return F.map(f => { const cc = f.pts.reduce((a, p) => add(a, sc(p, 0.25)), [0, 0, 0]); return { kind: 'face', pts: f.pts, n: f.n, color, z: P(cc).z, open, cc }; });
+  }
+  function drawFace(ctx, pr) {
+    const facing = dot(pr.n, sub(CB.cp, pr.cc)) > 0;
+    if (!facing && !pr.open) return;
+    const light = Math.max(0, dot(pr.n, unit([0.4, -0.5, 0.8])));
+    ctx.fillStyle = shade(pr.color, facing ? -0.45 + light * 0.6 : -0.7);
+    ctx.globalAlpha = pr.open ? 0.85 : 1;
+    ctx.beginPath(); pr.pts.forEach((p, i) => { const s = P(p); i ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); }); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = shade(pr.color, 0.3); ctx.lineWidth = 1; ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  function line3(ctx, a, b, color, w, dash) { const A = P(a), B = P(b); ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = w || 1; if (dash) ctx.setLineDash(dash); ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke(); ctx.restore(); }
+  function frameAxes(ctx, T, L, label, faint) {
+    const o = col(T, 3); const O = P(o);
+    [[0, COL.x], [1, COL.y], [2, COL.z]].forEach(([j, c]) => { const e = add(o, sc(col(T, j), L)), E = P(e); SL.arrow(ctx, O.x, O.y, E.x, E.y, faint ? c + '88' : c, faint ? 1.5 : 2.2, 7); });
+    if (label != null) { ctx.save(); ctx.font = '600 11px JetBrains Mono, monospace'; ctx.fillStyle = '#e6ecf7'; ctx.strokeStyle = 'rgba(5,9,19,.9)'; ctx.lineWidth = 3; ctx.strokeText(label, O.x + 7, O.y - 7); ctx.fillText(label, O.x + 7, O.y - 7); ctx.restore(); }
+  }
+
+  const tableZ = () => S.rob.planar ? -0.04 : 0;
+  function drawGround(ctx) {
+    const { w, h } = st;
+    const bg = ctx.createLinearGradient(0, 0, 0, h); bg.addColorStop(0, '#0a1222'); bg.addColorStop(1, '#03060d');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+    const z = tableZ(), E = 1.0, step = 0.1;
+    ctx.save(); ctx.lineWidth = 1;
+    for (let v = -E; v <= E + 1e-9; v += step) {
+      const major = Math.abs(v) < 1e-9 || Math.abs((v * 10) % 5) < 1e-6;
+      ctx.strokeStyle = major ? 'rgba(124,150,210,.16)' : 'rgba(124,150,210,.07)';
+      let A = P([v, -E, z]), B = P([v, E, z]); ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+      A = P([-E, v, z]); B = P([E, v, z]); ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+    }
+    // world axes on the floor
+    line3(ctx, [0, 0, z], [0.95, 0, z], 'rgba(239,68,68,.35)', 1.5); line3(ctx, [0, 0, z], [0, 0.95, z], 'rgba(34,197,94,.35)', 1.5);
+    ctx.restore();
+  }
+
+  function drawScene(ctx) {
+    camBasis(); drawGround(ctx);
+    const rows = S.rob.rows, Ts = K.Ts, n = rows.length, z0 = tableZ();
+    const scale = S.key === 'puma' ? 1 : 0.9;
+    // workspace cloud
+    if (S.work && S.ws) {
+      for (const s of S.ws) { const p = S.rob.planar ? [s.p[0], s.p[1], z0 + 0.001] : s.p; const A = P(p); const t = Math.min(1, s.w / S.wMax); ctx.fillStyle = `hsla(${200 - t * 170},90%,${45 + t * 20}%,${0.25 + 0.5 * t})`; ctx.fillRect(A.x - 1, A.y - 1, 2.2, 2.2); }
+    }
+    // shadows on table
+    if (!S.rob.planar) {
+      ctx.save(); ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineCap = 'round';
+      for (let i = 0; i < n; i++) { const a = col(Ts[i], 3), b = col(Ts[i + 1], 3), m = add(a, sc(col(Ts[i], 2), rowParams(rows[i], S.q[i]).d)); [[a, m], [m, b]].forEach(([u, v]) => { const U = P([u[0], u[1], 0]), V = P([v[0], v[1], 0]); ctx.lineWidth = Math.max(2, 0.05 * U.k); ctx.beginPath(); ctx.moveTo(U.x, U.y); ctx.lineTo(V.x, V.y); ctx.stroke(); }); }
+      ctx.restore();
+    }
+    // trail
+    if (S.trail && S.trailPts.length > 1) { ctx.save(); ctx.lineWidth = 2; ctx.lineCap = 'round'; for (let i = 1; i < S.trailPts.length; i++) { const A = P(S.trailPts[i - 1]), B = P(S.trailPts[i]); ctx.strokeStyle = `rgba(34,211,238,${0.1 + 0.6 * i / S.trailPts.length})`; ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke(); } ctx.restore(); }
+    // planned trajectory paths
+    if (S.mode === 'traj' && S.traj) {
+      const pathDraw = (pts, color, w, dash) => { ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = w; if (dash) ctx.setLineDash(dash); ctx.beginPath(); pts.forEach((p, i) => { const A = P(p); i ? ctx.lineTo(A.x, A.y) : ctx.moveTo(A.x, A.y); }); ctx.stroke(); ctx.restore(); };
+      if (S.ghost && S.traj.alt) pathDraw(S.traj.alt.path, S.interp === 'joint' ? 'rgba(34,211,238,.45)' : 'rgba(167,139,250,.5)', 1.5, [5, 5]);
+      pathDraw(S.traj.path, S.interp === 'joint' ? '#a78bfa' : '#22d3ee', 2.5);
+      [[S.traj.path[0], 'A'], [S.traj.path[S.traj.path.length - 1], 'B']].forEach(([p, l]) => { const A = P(p); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(A.x, A.y, 4, 0, TAU); ctx.fill(); ctx.font = '700 12px JetBrains Mono, monospace'; ctx.fillText(l, A.x + 7, A.y + 4); });
+    }
+    // primitives
+    const prims = [];
+    // base
+    if (S.rob.planar) { prims.push(cylPrim([0, 0, z0], [0, 0, -0.012], 0.07, '#475569')); }
+    else { prims.push(cylPrim([0, 0, 0], [0, 0, 0.06], 0.11, '#475569')); }
+    for (let i = 0; i < n; i++) {
+      const row = rows[i], a = col(Ts[i], 3), zA = col(Ts[i], 2), b = col(Ts[i + 1], 3);
+      const d = rowParams(row, S.q[i]).d, m = add(a, sc(zA, d));
+      const c = COL.link[i % COL.link.length];
+      const lr = (S.key === 'puma' ? [0.045, 0.04, 0.035, 0.03, 0.026, 0.018] : S.key === 'scara' ? [0.045, 0.04, 0.02, 0.016] : [0.03, 0.026, 0.02])[i] || 0.02;
+      // joint housing along z_{i-1}
+      const jl = row.type === 'R' ? lr * 1.5 : lr * 0.9;
+      if (row.type === 'R') prims.push(cylPrim(sub(a, sc(zA, jl)), add(a, sc(zA, jl)), lr * 1.3, '#94a3b8'));
+      if (row.type === 'P') { prims.push(cylPrim(sub(a, sc(zA, 0.05)), add(a, sc(zA, 0.06)), lr * 1.9, '#64748b')); }
+      if (norm(sub(m, a)) > 1e-6) prims.push(segPrim(a, m, row.type === 'P' ? lr * 0.8 : lr, row.type === 'P' ? '#cbd5e1' : c));
+      if (norm(sub(b, m)) > 1e-6) prims.push(segPrim(m, b, lr, c));
+      if (row.type !== 'R') prims.push(ballPrim(a, lr * 1.05, '#cbd5e1'));
+    }
+    // gripper
+    const T = K.T, tip = col(T, 3), app = S.rob.planar ? col(T, 0) : col(T, 2), side = S.rob.planar ? col(T, 1) : col(T, 1);
+    const open = S.held ? 0.026 : 0.045, fl = 0.05;
+    const gbase = sub(tip, sc(app, 0.01));
+    prims.push(segPrim(add(gbase, sc(side, open)), sub(gbase, sc(side, open)), 0.01, '#e2e8f0'));
+    [1, -1].forEach(sgn => { const s0 = add(gbase, sc(side, sgn * open)); prims.push(segPrim(s0, add(s0, sc(app, fl)), 0.008, '#e2e8f0')); });
+    // block & bin
+    if (S.mode === 'pick' && S.block) {
+      const bz = S.rob.planar ? z0 : 0;
+      boxFaces([S.bin[0], S.bin[1], bz], 0.18, 0.07, '#334155', true).forEach(f => prims.push(f));
+      const bp = S.block.p; boxFaces([bp[0], bp[1], bp[2] - 0.025], 0.05, 0.05, S.pickDone ? '#22c55e' : '#f5a524').forEach(f => prims.push(f));
+    }
+    prims.sort((A, B) => B.z - A.z);
+    for (const pr of prims) { if (pr.kind === 'seg') drawSeg(ctx, pr); else if (pr.kind === 'ball') drawBall(ctx, pr); else if (pr.kind === 'cyl') drawCyl(ctx, pr); else drawFace(ctx, pr); }
+    // frames
+    if (S.frames) { const L = S.key === 'puma' ? 0.1 : 0.08; Ts.forEach((Tm, i) => frameAxes(ctx, Tm, i === 0 ? L * 1.4 : L, String(i), i > 0 && i < n)); }
+    // manipulability ellipse (planar + scara, xy)
+    if ((S.rob.planar || S.key === 'scara') && S.mode !== 'pick') {
+      const a = K.J[0], b = K.J[1]; const M = [[dot(a, a), dot(a, b)], [dot(a, b), dot(b, b)]];
+      const tA = (M[0][0] + M[1][1]) / 2, dd = Math.sqrt(Math.max(0, ((M[0][0] - M[1][1]) / 2) ** 2 + M[0][1] ** 2));
+      const l1 = tA + dd, l2 = Math.max(0, tA - dd), ang = 0.5 * Math.atan2(2 * M[0][1], M[0][0] - M[1][1]);
+      const s = 0.25, zt = S.rob.planar ? 0 : tip[2];
+      ctx.save(); ctx.strokeStyle = 'rgba(250,204,21,.85)'; ctx.fillStyle = 'rgba(250,204,21,.08)'; ctx.lineWidth = 1.5; ctx.beginPath();
+      for (let k = 0; k <= 48; k++) { const t = k / 48 * TAU, ex = Math.sqrt(l1) * s * Math.cos(t), ey = Math.sqrt(l2) * s * Math.sin(t); const p = [tip[0] + ex * Math.cos(ang) - ey * Math.sin(ang), tip[1] + ex * Math.sin(ang) + ey * Math.cos(ang), zt]; const A = P(p); k ? ctx.lineTo(A.x, A.y) : ctx.moveTo(A.x, A.y); }
+      ctx.fill(); ctx.stroke(); ctx.restore();
+    }
+    // tip marker + drop line
+    const TP = P(tip);
+    if (!S.rob.planar) { line3(ctx, tip, [tip[0], tip[1], 0], 'rgba(148,163,184,.35)', 1, [3, 4]); const G = P([tip[0], tip[1], 0]); ctx.fillStyle = 'rgba(34,211,238,.35)'; ctx.beginPath(); ctx.ellipse(G.x, G.y, 6, 3, 0, 0, TAU); ctx.fill(); }
+    ctx.save(); ctx.fillStyle = '#22d3ee'; ctx.shadowColor = '#22d3ee'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(TP.x, TP.y, 3.5, 0, TAU); ctx.fill(); ctx.restore();
+    // IK target
+    if (S.mode === 'ik' || (S.mode === 'pick' && S.pickIK)) {
+      const t = currentTask().p, A = P(t), pulse = 1 + 0.15 * Math.sin(performance.now() / 250);
+      if (!S.rob.planar) { line3(ctx, t, [t[0], t[1], 0], 'rgba(250,204,21,.4)', 1, [2, 4]); }
+      if (norm(sub(t, tip)) > 0.004) line3(ctx, tip, t, 'rgba(239,68,68,.8)', 1.5, [4, 4]);
+      ctx.save(); ctx.strokeStyle = S.ikOk ? '#facc15' : '#ef4444'; ctx.lineWidth = 2; ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 14;
+      ctx.beginPath(); ctx.arc(A.x, A.y, 11 * pulse, 0, TAU); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(A.x - 17, A.y); ctx.lineTo(A.x - 6, A.y); ctx.moveTo(A.x + 6, A.y); ctx.lineTo(A.x + 17, A.y); ctx.moveTo(A.x, A.y - 17); ctx.lineTo(A.x, A.y - 6); ctx.moveTo(A.x, A.y + 6); ctx.lineTo(A.x, A.y + 17); ctx.stroke(); ctx.restore();
+      if (S.key === 'puma' && S.ori && S.targetR) { const Tt = [[...S.targetR[0], t[0]], [...S.targetR[1], t[1]], [...S.targetR[2], t[2]], [0, 0, 0, 1]]; frameAxes(ctx, Tt, 0.07, null, true); }
+    }
+    // tip label
+    ctx.save(); ctx.font = '600 11px JetBrains Mono, monospace'; ctx.fillStyle = '#22d3ee'; ctx.strokeStyle = 'rgba(5,9,19,.9)'; ctx.lineWidth = 3;
+    const lbl = `(${f3(tip[0])}, ${f3(tip[1])}${S.rob.planar ? '' : ', ' + f3(tip[2])})`; const lx = SL.clamp(TP.x + 10, 4, st.w - ctx.measureText(lbl).width - 6);
+    ctx.strokeText(lbl, lx, TP.y + 18); ctx.fillText(lbl, lx, TP.y + 18); ctx.restore();
+  }
+
+  /* ============================== UI: joints ================================== */
+  function jointLabel(i) { const r = S.rob.rows[i]; return r.type === 'R' ? `θ${i + 1}` : `d${i + 1}`; }
+  const fmtQ = (i, v) => S.rob.rows[i].type === 'R' ? SL.fmt(v, 1) + '°' : SL.fmt(v, 3) + ' m';
+  function buildJoints() {
+    $('#joints').innerHTML = S.rob.rows.map((r, i) => `<div class="jrow" data-j="${i}"><span class="jn">${jointLabel(i)}</span><span class="jl">${r.type === 'R' ? 'revolute' : 'prismatic'} · [${r.type === 'R' ? r.lim.join('°, ') + '°' : r.lim.join(', ') + ' m'}]</span><output></output>
+      <input type="range" min="${r.lim[0]}" max="${r.lim[1]}" step="${r.type === 'R' ? 0.5 : 0.001}" value="${S.q[i]}" aria-label="${jointLabel(i)}"></div>`).join('');
+    syncJointSliders();
+  }
+  function syncJointSliders() {
+    $$('#joints .jrow').forEach((el, i) => {
+      const inp = el.querySelector('input'); inp.value = S.q[i]; el.querySelector('output').textContent = fmtQ(i, S.q[i]);
+      const r = S.rob.rows[i]; inp.style.setProperty('--p', ((S.q[i] - r.lim[0]) / (r.lim[1] - r.lim[0]) * 100) + '%');
+      el.classList.toggle('lim', Math.abs(S.q[i] - r.lim[0]) < 1e-6 || Math.abs(S.q[i] - r.lim[1]) < 1e-6);
+    });
+  }
+  $('#joints').addEventListener('input', e => {
+    const row = e.target.closest('.jrow'); if (!row) return; const i = +row.dataset.j;
+    S.q[i] = +e.target.value; stopMotion(); afterQ(true);
+  });
+  $('#bHome').onclick = () => { stopMotion(); S.q = [...ROBOTS[S.key].home]; afterQ(true); };
+  $('#bRand').onclick = () => { stopMotion(); S.q = S.rob.rows.map(r => { const lo = Math.max(r.lim[0], r.type === 'R' ? -150 : r.lim[0]), hi = Math.min(r.lim[1], r.type === 'R' ? 150 : r.lim[1]); return r.type === 'R' ? Math.round(lo + Math.random() * (hi - lo)) : +(lo + Math.random() * (hi - lo)).toFixed(3); }); afterQ(true); };
+  function stopMotion() { S.playing = null; S.seq = null; }
+  // called after joint values change from sliders/trajectory: keeps IK target synced to the tool
+  function afterQ(fromUser) {
+    fk(); syncJointSliders();
+    if (fromUser && (S.mode === 'ik' || S.mode === 'pick')) { S.target = [...K.tip]; syncTaskSliders(); }
+    S.dirty = true; refresh();
+  }
+  function syncTaskSliders() {
+    if (S.key === 'rrr') { S.phi = Math.round(wrapDeg(planarPhi(S.q))); setRange('#phi', S.phi); }
+    if (S.key === 'scara') { S.psi = Math.round(wrapDeg(scaraPsi(S.q))); setRange('#psi', S.psi); S.tz = +K.tip[2].toFixed(3); setRange('#tz', S.tz); }
+    if (S.key === 'puma') S.targetR = rotOf(K.T);
+  }
+  function setRange(sel, v) { const el = $(sel); el.value = v; const out = el.closest('.ctl')?.querySelector('output'); if (out) out.textContent = el.dataset.fmt === 'm' ? SL.fmt(+v, 3) + ' m' : v + '°'; el.style.setProperty('--p', ((v - el.min) / (el.max - el.min) * 100) + '%'); }
+
+  /* ================================ DH table ================================== */
+  function buildDH() {
+    const rows = S.rob.rows;
+    $('#dhTbl').innerHTML = `<tr><th>i</th><th>joint</th><th>a<sub>i</sub> (m)</th><th>α<sub>i</sub> (°)</th><th>d<sub>i</sub> (m)</th><th>θ<sub>i</sub> (°)</th></tr>` +
+      rows.map((r, i) => `<tr><td>${i + 1}</td><td class="jt">${r.type}</td>
+        <td><input type="number" step="0.01" data-k="a" data-i="${i}" value="${r.a}"></td>
+        <td><input type="number" step="15" data-k="alpha" data-i="${i}" value="${r.alpha}"></td>
+        <td><input type="number" step="${r.type === 'P' ? 0.005 : 0.01}" data-k="d" data-i="${i}" class="${r.type === 'P' ? 'var' : ''}" value=""></td>
+        <td><input type="number" step="1" data-k="theta" data-i="${i}" class="${r.type === 'R' ? 'var' : ''}" value=""></td></tr>`).join('');
+    syncDH();
+  }
+  function syncDH() {
+    $$('#dhTbl input').forEach(inp => {
+      if (document.activeElement === inp) return;
+      const i = +inp.dataset.i, k = inp.dataset.k, r = S.rob.rows[i];
+      if (k === 'd') inp.value = r.type === 'P' ? (+S.q[i].toFixed(3)) : r.d;
+      if (k === 'theta') inp.value = r.type === 'R' ? (+S.q[i].toFixed(1)) : r.theta;
+    });
+  }
+  let wsTimer = 0;
+  $('#dhTbl').addEventListener('input', e => {
+    const inp = e.target; const i = +inp.dataset.i, k = inp.dataset.k, r = S.rob.rows[i], v = parseFloat(inp.value);
+    if (!isFinite(v)) return;
+    if ((k === 'theta' && r.type === 'R') || (k === 'd' && r.type === 'P')) { S.q[i] = SL.clamp(v, r.lim[0], r.lim[1]); stopMotion(); afterQ(true); return; }
+    if (k === 'a' || k === 'd') r[k] = SL.clamp(v, -1.5, 1.5); else r[k] = v;
+    fk(); S.dirty = true; refresh(); clearTimeout(wsTimer); wsTimer = setTimeout(() => { sampleWorkspace(); buildByHand(); }, 350);
+  });
+
+  /* ================================ matrices ================================== */
+  const num = v => { const x = Math.abs(v) < 5e-4 ? 0 : v; return x.toFixed(3); };
+  const texM = M => `\\begin{bmatrix}${M.map(r => r.map(num).join('&')).join('\\\\')}\\end{bmatrix}`;
+  function renderMats() {
+    if (!window.katex) return;
+    const n = S.rob.rows.length;
+    const box = $('#mats');
+    if (box.children.length !== n + 1) box.innerHTML = Array.from({ length: n }, (_, i) => `<div class="mat"><div class="cap">A<sub>${i + 1}</sub> = T<sup>${i}</sup><sub>${i + 1}</sub></div><div></div></div>`).join('') + `<div class="mat big"><div class="cap">T<sup>0</sup><sub>${n}</sub> = A<sub>1</sub>…A<sub>${n}</sub> (tool pose)</div><div></div></div>`;
+    K.As.forEach((A, i) => SL.tex(box.children[i].lastElementChild, `A_{${i + 1}}=` + texM(A)));
+    SL.tex(box.children[n].lastElementChild, `T^0_{${n}}=` + texM(K.T));
+    // Jacobian
+    const names = ['v_x', 'v_y', 'v_z', '\\omega_x', '\\omega_y', '\\omega_z'];
+    const J = K.J, rowsT = S.rob.task;
+    const body = J.map((r, i) => (rowsT.includes(i) ? '\\color{#f5a524}{' : '\\color{#5f6d8a}{') + r.map(num).join('}&' + (rowsT.includes(i) ? '\\color{#f5a524}{' : '\\color{#5f6d8a}{')) + '}').join('\\\\');
+    SL.tex($('#jMat'), `\\begin{matrix}${names.join('\\\\')}\\end{matrix}\\;\\begin{bmatrix}${body}\\end{bmatrix}`);
+    $('#jCap').innerHTML = `Geometric Jacobian J(q), 6×${n} · <span style="color:#f5a524">task rows</span> used for IK`;
+    const sq = K.Jt.length === K.Jt[0].length;
+    $('#jdCap').textContent = sq ? `Task Jacobian (${K.Jt.length}×${K.Jt.length}) determinant` : 'Manipulability';
+    SL.tex($('#jDet'), sq ? `\\det J_{task} = ${num(K.det)}${S.key === 'rr' ? `\\quad (a_1a_2\\sin\\theta_2 = ${num(S.rob.rows[0].a * S.rob.rows[1].a * Math.sin(S.q[1] * D2R))})` : ''}\\qquad w = |\\det J| = ${num(K.w)}` : `w=\\sqrt{\\det(JJ^{\\mathsf T})} = ${num(K.w)}`);
+  }
+
+  /* ================================ results =================================== */
+  const stat = (k, v, u, id) => `<div class="stat"${id ? ` id="${id}"` : ''}><div class="k">${k}</div><div class="v">${v}${u ? `<small>${u}</small>` : ''}</div></div>`;
+  let matTimer = 0, lastMat = 0;
+  function refresh(force) {
+    if (!ready) return;
+    const tip = K.tip, f = SL.fmt;
+    $('#hP').textContent = S.rob.planar ? `(${f3(tip[0])}, ${f3(tip[1])}) m` : `(${f3(tip[0])}, ${f3(tip[1])}, ${f3(tip[2])}) m`;
+    const rel = K.w / S.wMax, sing = rel < 0.03 ? 'bad' : rel < 0.12 ? 'warn' : 'on';
+    $('#hW').innerHTML = `manipulability <b>${f(rel * 100, 1)}%</b>`;
+    $('#sgLed').className = 'led ' + sing; $('#sgTxt').textContent = sing === 'bad' ? 'Singular configuration' : sing === 'warn' ? 'Near a singularity' : 'Well conditioned';
+    let html = stat('x', f3(tip[0]), 'm') + stat('y', f3(tip[1]), 'm');
+    if (!S.rob.planar) html += stat('z', f3(tip[2]), 'm');
+    if (S.key === 'rr' || S.key === 'rrr') html += stat('Tool angle φ', f(wrapDeg(planarPhi(S.q)), 1), '°');
+    if (S.key === 'scara') html += stat('Tool yaw ψ', f(wrapDeg(scaraPsi(S.q)), 1), '°');
+    if (S.key === 'puma') { const R = rotOf(K.T); const yaw = Math.atan2(R[1][0], R[0][0]) * R2D, pitch = Math.atan2(-R[2][0], Math.hypot(R[2][1], R[2][2])) * R2D, roll = Math.atan2(R[2][1], R[2][2]) * R2D; html += stat('Roll / pitch / yaw', `${f(roll, 0)}/${f(pitch, 0)}/${f(yaw, 0)}`, '°'); }
+    html += stat(isFinite(K.det) ? 'det J (task)' : 'w', isFinite(K.det) ? num(K.det) : num(K.w)) + stat('Manipulability', f(rel * 100, 1), '% of max');
+    const reach = Math.hypot(tip[0], tip[1]);
+    html += stat('Radial reach', f3(reach), 'm');
+    $('#stats').innerHTML = html;
+    syncDH();
+    const now = performance.now();
+    if (force || now - lastMat > 110) { lastMat = now; renderMats(); } else { clearTimeout(matTimer); matTimer = setTimeout(() => { lastMat = performance.now(); renderMats(); }, 120); }
+    checkChallenges();
+  }
+
+  /* ================================= modes ==================================== */
+  function updateModeUI() {
+    const m = S.mode, k = S.key;
+    $$('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+    $('#pIK').hidden = !(m === 'ik' || (m === 'pick' && S.pickIK)); $('#pTraj').hidden = m !== 'traj'; $('#pPick').hidden = m !== 'pick';
+    $('#plotPanel').hidden = m !== 'traj';
+    $('#ikMethodWrap').hidden = k === 'puma';
+    $('#elbowWrap').hidden = k === 'puma' || S.ikMethod === 'dls';
+    $('#phiCtl').hidden = k !== 'rrr'; $('#psiCtl').hidden = k !== 'scara'; $('#tzCtl').hidden = k !== 'scara';
+    $('#oriWrap').hidden = k !== 'puma'; $('#lamCtl').hidden = !(k === 'puma' || S.ikMethod === 'dls');
+    $('#hint').innerHTML = m === 'ik' ? (S.rob.planar ? 'Drag the yellow target across the table, or click anywhere on the table to send it there. Drag empty space to orbit.' : k === 'scara' ? 'Drag the yellow target in the horizontal plane; set its height with the slider. Drag empty space to orbit.' : 'Drag the yellow target: it moves parallel to the screen, so orbit the camera to move it in other directions.')
+      : m === 'traj' ? 'Store pose A and pose B, choose interpolation and time scaling, then run. Purple = joint-space path, cyan = straight Cartesian path.'
+      : m === 'pick' ? 'Pick up the orange block and drop it into the bin. Press Grip (or the G key) when the gripper reaches the block.'
+      : 'Drag to orbit the camera, scroll or pinch to zoom. Move the joint sliders or type into the DH table.';
+    if (m === 'traj') planTraj();
+    cv.classList.toggle('tgt', m === 'ik');
+  }
+  $('#robSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setRobot(b.dataset.r); });
+  $('#modeSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; stopMotion(); S.mode = b.dataset.m; if (S.mode === 'ik' || S.mode === 'pick') { S.target = [...K.tip]; syncTaskSliders(); } if (S.mode === 'pick') newLayout(); updateModeUI(); refresh(true); });
+  $('#ikMethod').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.ikMethod = b.dataset.k; $$('#ikMethod button').forEach(x => x.classList.toggle('on', x === b)); updateModeUI(); });
+  $('#elbowSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.elbow = b.dataset.e; $$('#elbowSeg button').forEach(x => x.classList.toggle('on', x === b)); if (S.mode === 'traj') planTraj(); });
+  SL.bind('#phi', v => { S.phi = v; }, v => v + '°');
+  SL.bind('#psi', v => { S.psi = v; }, v => v + '°');
+  $('#tz').dataset.fmt = 'm'; SL.bind('#tz', v => { S.tz = v; S.target[2] = v; }, v => SL.fmt(v, 3) + ' m');
+  SL.bind('#ori', v => { S.ori = v; if (v && K) S.targetR = rotOf(K.T); });
+  SL.bind('#lam', v => { S.lam = v; }, v => SL.fmt(v, 3));
+  $$('[data-view]').forEach(b => b.onclick = () => {
+    const v = b.dataset.view, base = ROBOTS[S.key].cam;
+    camT = { ...camT, az: (v === 'top' ? -90 : v === 'front' ? -90 : base.az) * D2R, el: (v === 'top' ? 89 : v === 'front' ? 3 : base.el) * D2R };
+  });
+  $('#bFrames').onclick = () => { S.frames = !S.frames; $('#bFrames').classList.toggle('on', S.frames); };
+  $('#bWork').onclick = () => { S.work = !S.work; $('#bWork').classList.toggle('on', S.work); };
+  $('#bTrail').onclick = () => { S.trail = !S.trail; $('#bTrail').classList.toggle('on', S.trail); if (!S.trail) S.trailPts = []; };
+
+  // IK each frame
+  function runIK() {
+    const t = currentTask();
+    const res = solveIK(t, S.q, { iters: S.key === 'puma' ? 25 : 30 });
+    const r = Math.hypot(t.p[0], t.p[1]);
+    S.q = res.q; fk();
+    const err = norm(sub(t.p, K.tip));
+    S.ikOk = err < 3e-3 && (res.ok !== false);
+    const rows = S.rob.rows;
+    let msg;
+    if (S.ikOk) msg = `Reachable · error ${SL.fmt(err * 1000, 2)} mm` + (S.key !== 'puma' && S.ikMethod === 'analytic' && S.key !== 'scara' ? ` · D = cos θ₂ = ${SL.fmt(res.D, 3)}` : '');
+    else if (S.key === 'rr' || S.key === 'rrr' || S.key === 'scara') {
+      const a1 = rows[0].a, a2 = rows[1].a;
+      msg = res.lim ? 'Outside the joint limits (prismatic stroke or joint range).' : `Unreachable: ${S.key === 'rrr' ? 'wrist point' : 'target'} lies outside the annulus ${SL.fmt(Math.abs(a1 - a2), 2)} ≤ r ≤ ${SL.fmt(a1 + a2, 2)} m${isFinite(res.D) ? ` (|D| = ${SL.fmt(Math.abs(res.D), 3)} > 1)` : ''}. The arm points towards it.`;
+    } else msg = `Not reached: residual ${SL.fmt(err * 1000, 1)} mm. Target outside the workspace or blocked by joint limits; DLS gives the closest least-squares pose.`;
+    $('#ikLed').className = 'led ' + (S.ikOk ? 'on' : 'bad'); $('#ikTxt').textContent = msg;
+  }
+
+  /* ============================== trajectory ================================== */
+  const sFun = (tau, kind) => kind === 'cubic' ? [3 * tau * tau - 2 * tau ** 3, 6 * tau - 6 * tau * tau] : [10 * tau ** 3 - 15 * tau ** 4 + 6 * tau ** 5, 30 * tau ** 2 - 60 * tau ** 3 + 30 * tau ** 4];
+  function taskOf(q) { const k = fkq(q); const t = { p: k.tip }; if (S.key === 'rrr') t.phi = planarPhi(q); if (S.key === 'scara') t.psi = scaraPsi(q); if (S.key === 'puma') t.R = rotOf(k.T); return t; }
+  function buildTraj(qA, qB, interp, kind, T) {
+    const N = 160, out = { t: [], q: [], qd: [], path: [], ok: true, maxErr: 0 };
+    const tA = taskOf(qA), tB = taskOf(qB);
+    let RA, kk, ang; if (S.key === 'puma') { RA = tA.R; [kk, ang] = axisAngle(m3(tr(RA), tB.R)); }
+    let prev = [...qA];
+    const dq = qB.map((v, i) => v - qA[i]);
+    for (let i = 0; i <= N; i++) {
+      const tau = i / N, [s, sd] = sFun(tau, kind); let q;
+      if (interp === 'joint') { q = qA.map((v, j) => v + s * dq[j]); out.qd.push(dq.map(v => v * sd / T)); }
+      else {
+        const tg = { p: add(tA.p, sc(sub(tB.p, tA.p), s)) };
+        if (S.key === 'rrr') tg.phi = tA.phi + s * wrapDeg(tB.phi - tA.phi);
+        if (S.key === 'scara') tg.psi = tA.psi + s * (tB.psi - tA.psi);
+        if (S.key === 'puma') tg.R = m3(RA, rodrigues(kk, ang * s));
+        const elbow = S.key === 'puma' ? null : (qA[1] >= 0 ? 'down' : 'up');
+        const res = solveIK(tg, prev, { iters: 60, lam: 0.01, method: S.key === 'puma' ? 'dls' : 'analytic', elbow });
+        q = res.q;
+        // keep continuity of wrapped angles
+        q = q.map((v, j) => S.rob.rows[j].type === 'R' ? prev[j] + wrapDeg(v - prev[j]) : v);
+        const e = norm(sub(tg.p, fkq(q).tip)); out.maxErr = Math.max(out.maxErr, e); if (e > 3e-3) out.ok = false;
+      }
+      out.t.push(tau * T); out.q.push(q); out.path.push(fkq(q).tip); prev = q;
+    }
+    if (interp === 'cart') { // finite-difference velocities
+      const dt = T / N;
+      out.qd = out.q.map((q, i) => { const a = out.q[Math.max(0, i - 1)], b = out.q[Math.min(N, i + 1)]; const h = (Math.min(N, i + 1) - Math.max(0, i - 1)) * dt; return b.map((v, j) => (v - a[j]) / h); });
+    }
+    return out;
+  }
+  function planTraj() {
+    if (!S.A || !S.B) return;
+    S.traj = buildTraj(S.A, S.B, S.interp, S.scaling, S.dur);
+    S.traj.alt = buildTraj(S.A, S.B, S.interp === 'joint' ? 'cart' : 'joint', S.scaling, S.dur);
+    const vmax = Math.max(...S.traj.qd.flat().map(Math.abs));
+    const L = S.traj.path.reduce((s, p, i) => i ? s + norm(sub(p, S.traj.path[i - 1])) : 0, 0);
+    const straight = norm(sub(S.traj.path[S.traj.path.length - 1], S.traj.path[0]));
+    $('#trLed').className = 'led ' + (S.traj.ok ? 'on' : 'warn');
+    $('#trTxt').innerHTML = (S.traj.ok ? '' : '<b>Part of the straight line is unreachable</b>: IK could not follow it exactly. ') + `Tool path ${SL.fmt(L, 3)} m (straight-line distance ${SL.fmt(straight, 3)} m). Peak joint speed ${SL.fmt(vmax, 1)} ${S.rob.rows.every(r => r.type === 'R') ? '°/s' : 'units/s'}.`;
+    drawPlots(0);
+  }
+  $('#bSetA').onclick = () => { S.A = [...S.q]; planTraj(); SL.toast('Pose A stored.', 'ok', 1600); };
+  $('#bSetB').onclick = () => { S.B = [...S.q]; planTraj(); SL.toast('Pose B stored.', 'ok', 1600); };
+  $('#interpSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.interp = b.dataset.i; $$('#interpSeg button').forEach(x => x.classList.toggle('on', x === b)); planTraj(); });
+  $('#scaleSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.scaling = b.dataset.s; $$('#scaleSeg button').forEach(x => x.classList.toggle('on', x === b)); planTraj(); });
+  SL.bind('#dur', v => { S.dur = v; if (S.mode === 'traj') planTraj(); }, v => SL.fmt(v, 1) + ' s');
+  SL.bind('#ghost', v => { S.ghost = v; });
+  $('#bPlay').onclick = () => { planTraj(); S.trailPts = []; S.playing = { t: 0, rev: false, traj: S.traj }; };
+  $('#bBack').onclick = () => { planTraj(); S.trailPts = []; S.playing = { t: 0, rev: true, traj: S.traj }; };
+  const pq = SL.canvas($('#pq'), () => setTimeout(() => drawPlots(S.playing ? null : 0), 0)), pv = SL.canvas($('#pv'), () => setTimeout(() => drawPlots(S.playing ? null : 0), 0));
+  function drawPlots(tNow) {
+    if (!S.traj || $('#plotPanel').hidden) return;
+    const tj = S.traj, n = S.rob.rows.length;
+    const ser = (arr) => Array.from({ length: n }, (_, j) => ({ data: tj.t.map((t, i) => [t, arr[i][j]]), color: COL.link[j % 6], label: jointLabel(j) }));
+    const isR = j => S.rob.rows[j].type === 'R';
+    const conv = arr => arr.map(r => r.map((v, j) => isR(j) ? v : v * 100));
+    const a = SL.chart(pq, ser(conv(tj.q)), { xlabel: 't (s)', pad: [34, 12, 30, 48] });
+    const b = SL.chart(pv, ser(conv(tj.qd)), { xlabel: 't (s)', pad: [34, 12, 30, 48] });
+    const hasP = S.rob.rows.some(r => r.type === 'P');
+    [[pq, 'Joint position ' + (hasP ? '(°, cm)' : '(°)')], [pv, 'Joint velocity ' + (hasP ? '(°/s, cm/s)' : '(°/s)')]].forEach(([c, t]) => { c.ctx.font = '600 11px Inter, sans-serif'; c.ctx.fillStyle = '#c9d3e6'; c.ctx.textAlign = 'right'; c.ctx.fillText(t, c.w - 12, 14); });
+    [[pq, a], [pv, b]].forEach(([c, m]) => { if (tNow == null) return; const x = m.X(tNow); c.ctx.strokeStyle = 'rgba(255,255,255,.6)'; c.ctx.setLineDash([3, 3]); c.ctx.beginPath(); c.ctx.moveTo(x, 20); c.ctx.lineTo(x, c.h - 30); c.ctx.stroke(); c.ctx.setLineDash([]); });
+  }
+  document.querySelector('.tabs').addEventListener('tab', () => {});
+
+  /* ============================= pick & place ================================= */
+  S.pickIK = true;
+  function newLayout(silent) {
+    // random reachable block and bin positions on the table
+    const rows = S.rob.rows; const z = S.rob.planar ? 0 : 0.025;
+    const reachMax = S.key === 'puma' ? 0.62 : S.key === 'scara' ? rows[0].a + rows[1].a : rows[0].a + rows[1].a + (S.key === 'rrr' ? rows[2].a * 0.6 : 0);
+    const reachMin = S.key === 'puma' ? 0.28 : Math.abs(rows[0].a - rows[1].a) + 0.05;
+    const pick = () => { const r = reachMin + (reachMax * 0.88 - reachMin) * Math.random(), a = (Math.random() * 2 - 1) * Math.PI * 0.8; return [r * Math.cos(a), r * Math.sin(a)]; };
+    let b, c, tries = 0;
+    do { b = pick(); c = pick(); tries++; } while (Math.hypot(b[0] - c[0], b[1] - c[1]) < 0.3 && tries < 60);
+    S.block = { p: [b[0], b[1], z], vz: 0 }; S.bin = c; S.held = false; S.pickDone = false; S.pickT0 = performance.now(); S.seq = null;
+    $('#bGrip').querySelector('span').textContent = 'Grip';
+    if (!silent) setPickMsg('Block on the table. Reach it and grip.', '');
+  }
+  function setPickMsg(t, led) { $('#pkTxt').innerHTML = t; $('#pkLed').className = 'led ' + (led || ''); }
+  function gripPoint() { return K.tip; }
+  function blockGrabbable() {
+    const g = gripPoint(), b = S.block.p;
+    if (S.rob.planar) return Math.hypot(g[0] - b[0], g[1] - b[1]) < 0.035;
+    return norm(sub(g, [b[0], b[1], b[2] + 0.02])) < 0.045;
+  }
+  function inBin(p) { return Math.abs(p[0] - S.bin[0]) < 0.08 && Math.abs(p[1] - S.bin[1]) < 0.08; }
+  function toggleGrip() {
+    if (S.mode !== 'pick' || S.pickDone) return;
+    if (!S.held) {
+      if (blockGrabbable()) { S.held = true; $('#bGrip').querySelector('span').textContent = 'Release'; setPickMsg('Holding the block. Carry it over the bin and release.', 'warn'); }
+      else { const g = gripPoint(), b = S.block.p; setPickMsg(`Too far from the block: ${SL.fmt(norm(sub(S.rob.planar ? [g[0], g[1], 0] : g, S.rob.planar ? [b[0], b[1], 0] : [b[0], b[1], b[2] + 0.02])) * 100, 1)} cm. Get within ${S.rob.planar ? 3.5 : 4.5} cm.`, 'bad'); }
+    } else {
+      S.held = false; $('#bGrip').querySelector('span').textContent = 'Grip';
+      if (inBin(S.block.p)) {
+        S.pickDone = true; S.block.p = [S.bin[0], S.bin[1], S.block.p[2]];
+        const secs = (performance.now() - S.pickT0) / 1000;
+        setPickMsg(`Delivered in ${SL.fmt(secs, 1)} s. Press New layout to go again.`, 'on');
+        SL.toast(`Block delivered in ${SL.fmt(secs, 1)} s`, 'ok');
+        S.lastPick = { key: S.key, secs, auto: !!S.autoUsed };
+      } else setPickMsg('Dropped outside the bin. Pick it up again.', 'warn');
+    }
+  }
+  $('#bGrip').onclick = toggleGrip;
+  $('#bNew').onclick = () => { S.autoUsed = false; newLayout(); };
+  document.addEventListener('keydown', e => { if ((e.key === 'g' || e.key === 'G') && !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) toggleGrip(); });
+  SL.bind('#pickIK', v => { S.pickIK = v; if (!ready) return; if (v && K) { S.target = [...K.tip]; syncTaskSliders(); } updateModeUI(); });
+  $('#bAuto').onclick = () => {
+    stopMotion(); S.autoUsed = true;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      if (S.pickDone || attempt > 0) newLayout(true);
+      const b = S.block.p, lift = S.rob.planar ? 0 : 0.14, z = S.rob.planar ? 0 : b[2] + 0.02;
+      const tgtAt = (x, y, zz) => { const t = { p: [x, y, zz] }; if (S.key === 'rrr') t.phi = wrapDeg(Math.atan2(y, x) * R2D); if (S.key === 'scara') t.psi = S.psi; if (S.key === 'puma') t.R = [[1, 0, 0], [0, -1, 0], [0, 0, -1]]; return t; };
+      let q = [...S.q], ok = true; const pts = [];
+      const add_ = (t, act) => { let r = solveIK(t, q, { iters: 400, lam: 0.02, elbow: S.elbow }); if (!r.ok && S.key === 'puma') r = solveIK({ p: t.p }, q, { iters: 400, lam: 0.02 }); if (!r.ok) ok = false; q = r.q; pts.push({ q: [...q], act }); };
+      if (!S.rob.planar) add_(tgtAt(b[0], b[1], z + lift));
+      add_(tgtAt(b[0], b[1], z), 'grip');
+      if (!S.rob.planar) add_(tgtAt(b[0], b[1], z + lift));
+      if (!S.rob.planar) add_(tgtAt(S.bin[0], S.bin[1], z + lift)); else add_(tgtAt(S.bin[0], S.bin[1], 0));
+      pts[pts.length - 1].act = 'release';
+      if (!ok) continue;
+      S.seq = { list: pts, i: 0, t: 0, from: [...S.q] };
+      S.held = false; setPickMsg('Demo: joint-space quintic moves between IK waypoints (approach, grip, lift, carry, release).', 'warn');
+      return;
+    }
+    setPickMsg('Could not plan a demo for this layout. Try New layout.', 'bad');
+  };
+
+  /* ============================== interaction ================================= */
+  const ptrs = new Map(); let drag = null;
+  function targetScreen() { camBasis(); return P(currentTask().p); }
+  cv.addEventListener('pointerdown', e => {
+    cv.setPointerCapture(e.pointerId); const p = SL.ptr(e, cv); ptrs.set(e.pointerId, p);
+    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; drag = { type: 'pinch', d0: Math.hypot(a.x - b.x, a.y - b.y), D0: camT.D }; return; }
+    const ikActive = S.mode === 'ik' || (S.mode === 'pick' && S.pickIK);
+    if (ikActive) {
+      const T = targetScreen();
+      if (Math.hypot(p.x - T.x, p.y - T.y) < 26) { drag = { type: 'target', moved: false }; cv.classList.add('drag'); stopMotion(); return; }
+    }
+    drag = { type: 'orbit', x: p.x, y: p.y, az: camT.az, el: camT.el, moved: false, click: ikActive && (S.rob.planar || S.key === 'scara') };
+    cv.classList.add('drag');
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!ptrs.has(e.pointerId)) return;
+    const p = SL.ptr(e, cv); ptrs.set(e.pointerId, p);
+    if (!drag) return;
+    if (drag.type === 'pinch' && ptrs.size === 2) { const [a, b] = [...ptrs.values()]; camT.D = SL.clamp(drag.D0 * drag.d0 / Math.max(10, Math.hypot(a.x - b.x, a.y - b.y)), 0.8, 6); return; }
+    if (drag.type === 'orbit') {
+      if (Math.abs(p.x - drag.x) + Math.abs(p.y - drag.y) > 4) drag.moved = true;
+      camT.az = drag.az - (p.x - drag.x) * 0.008; camT.el = SL.clamp(drag.el + (p.y - drag.y) * 0.006, 0.03, 1.55); return;
+    }
+    if (drag.type === 'target') moveTargetTo(p);
+  });
+  function moveTargetTo(p) {
+    camBasis(); const rr = ray(p.x, p.y);
+    if (S.rob.planar) { const h = hitPlane(rr, [0, 0, 1], [0, 0, 0]); if (h) S.target = [h[0], h[1], 0]; }
+    else if (S.key === 'scara') { const h = hitPlane(rr, [0, 0, 1], [0, 0, S.tz]); if (h) S.target = [h[0], h[1], S.tz]; }
+    else { const h = hitPlane(rr, CB.f, S.target); if (h) S.target = [h[0], h[1], Math.max(0.0, h[2])]; }
+    const lim = 1.2; S.target = S.target.map(v => SL.clamp(v, -lim, lim));
+  }
+  const endPtr = e => {
+    const p = ptrs.get(e.pointerId); ptrs.delete(e.pointerId);
+    if (drag && drag.type === 'orbit' && !drag.moved && drag.click && p) { stopMotion(); moveTargetTo(p); }
+    if (ptrs.size < 2) { drag = null; cv.classList.remove('drag'); }
+  };
+  cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
+  cv.addEventListener('wheel', e => { e.preventDefault(); camT.D = SL.clamp(camT.D * Math.exp(e.deltaY * 0.0012), 0.8, 6); }, { passive: false });
+
+  /* ================================ main loop ================================= */
+  function frame(dt) {
+    if (!K) return;
+    // camera easing
+    const k = 0.2; cam.az += (camT.az - cam.az) * k; cam.el += (camT.el - cam.el) * k; cam.D += (camT.D - cam.D) * k;
+    let moved = false;
+    if (S.playing) {
+      const P0 = S.playing; P0.t += dt; const tj = P0.traj, T = S.dur;
+      const tt = Math.min(P0.t, T), idx = Math.round(tt / T * (tj.q.length - 1));
+      S.q = [...tj.q[P0.rev ? tj.q.length - 1 - idx : idx]];
+      drawPlots(P0.rev ? T - tt : tt);
+      if (P0.t >= T) S.playing = null;
+      moved = true;
+    } else if (S.seq) {
+      const sq = S.seq, cur = sq.list[sq.i], Tm = 1.1; sq.t += dt;
+      const tau = Math.min(1, sq.t / Tm), [s] = sFun(tau, 'quintic');
+      S.q = sq.from.map((v, j) => v + s * (S.rob.rows[j].type === 'R' ? wrapDeg(cur.q[j] - v) : cur.q[j] - v));
+      moved = true;
+      if (tau >= 1) {
+        fk();
+        if (cur.act === 'grip' || cur.act === 'release') toggleGrip();
+        sq.i++; sq.t = 0; sq.from = [...S.q];
+        if (sq.i >= sq.list.length) { S.seq = null; S.target = [...K.tip]; syncTaskSliders(); }
+      }
+    } else if (S.mode === 'ik' || (S.mode === 'pick' && S.pickIK)) {
+      const before = S.q.join(); runIK(); moved = before !== S.q.join();
+    }
+    if (moved) { fk(); syncJointSliders(); S.dirty = true; }
+    // carried block follows gripper
+    if (S.mode === 'pick' && S.block) {
+      if (S.held) { const g = gripPoint(); S.block.p = S.rob.planar ? [g[0], g[1], 0] : [g[0], g[1], g[2] - 0.02]; }
+      else if (!S.rob.planar) { const floor = 0.025 + (S.pickDone || inBin(S.block.p) ? 0.005 : 0); if (S.block.p[2] > floor) { S.block.vz -= 9.81 * dt; S.block.p[2] = Math.max(floor, S.block.p[2] + S.block.vz * dt); } else S.block.vz = 0; }
+    }
+    if (S.dirty) {
+      if (S.trail) { const tp = K.tip, last = S.trailPts[S.trailPts.length - 1]; if (!last || norm(sub(last, tp)) > 0.004) { S.trailPts.push([...tp]); if (S.trailPts.length > 400) S.trailPts.shift(); } }
+      refresh(); S.dirty = false;
+    }
+    try { drawScene(st.ctx); } catch (e) { console.warn(e); }
+  }
+
+  /* ============================= matrices by hand ============================= */
+  function symA(i, r) {
+    const n = i + 1, al = r.alpha;
+    const exact = v => { const c = Math.round(Math.cos(v * D2R) * 1e6) / 1e6, s = Math.round(Math.sin(v * D2R) * 1e6) / 1e6; return [c, s]; };
+    const [ca, sa] = exact(al);
+    const isR = r.type === 'R';
+    const C = isR ? `c_{${n}}` : (Math.round(Math.cos(r.theta * D2R) * 1e6) / 1e6), Sn = isR ? `s_{${n}}` : (Math.round(Math.sin(r.theta * D2R) * 1e6) / 1e6);
+    const prod = (...fs) => { let k = 1, sy = []; for (const f of fs) { if (typeof f === 'number') k *= f; else sy.push(f); } if (Math.abs(k) < 1e-9) return '0'; const kk = Math.round(k * 1000) / 1000; const pre = sy.length ? (kk === 1 ? '' : kk === -1 ? '-' : kk + '\\,') : String(kk); return pre + sy.join(''); };
+    const aS = Math.abs(r.a) < 1e-9 ? 0 : `a_{${n}}`, dS = isR ? (Math.abs(r.d) < 1e-9 ? 0 : `d_{${n}}`) : `d_{${n}}^{*}`;
+    const M = [[prod(C), prod(-1, Sn, ca), prod(Sn, sa), prod(aS, C)], [prod(Sn), prod(C, ca), prod(-1, C, sa), prod(aS, Sn)], ['0', prod(sa), prod(ca), typeof dS === 'number' ? '0' : dS], ['0', '0', '0', '1']];
+    return `A_{${n}} = \\begin{bmatrix}${M.map(r => r.join('&')).join('\\\\')}\\end{bmatrix}`;
+  }
+  function buildByHand() {
+    const rows = S.rob.rows, n = rows.length, el = $('#byHand');
+    const tbl = `<table class="data"><tr><th>Link i</th><th>$a_i$</th><th>$\\alpha_i$</th><th>$d_i$</th><th>$\\theta_i$</th></tr>${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${Math.abs(r.a) < 1e-9 ? '0' : `$a_{${i + 1}} = ${r.a}$ m`}</td><td>${r.alpha}°</td><td>${r.type === 'P' ? `$d_{${i + 1}}^{*}$` : Math.abs(r.d) < 1e-9 ? '0' : `$d_{${i + 1}} = ${r.d}$ m`}</td><td>${r.type === 'R' ? `$\\theta_{${i + 1}}^{*}$` : r.theta + '°'}</td></tr>`).join('')}</table>`;
+    const closed = {
+      rr: `$$T^0_2 = A_1A_2 = \\begin{bmatrix}c_{12}&-s_{12}&0&a_1c_1+a_2c_{12}\\\\ s_{12}&c_{12}&0&a_1s_1+a_2s_{12}\\\\0&0&1&0\\\\0&0&0&1\\end{bmatrix}$$<p>Multiply it out yourself: the top-left block is $R_z(\\theta_1)R_z(\\theta_2) = R_z(\\theta_1+\\theta_2)$ using $c_1c_2 - s_1s_2 = c_{12}$ and $s_1c_2 + c_1s_2 = s_{12}$. The translation column is $R_z(\\theta_1)\\,(a_2c_2, a_2s_2, 0)^{\\mathsf T} + (a_1c_1, a_1s_1, 0)^{\\mathsf T}$.</p>`,
+      rrr: `$$T^0_3 = \\begin{bmatrix}c_{123}&-s_{123}&0&a_1c_1+a_2c_{12}+a_3c_{123}\\\\ s_{123}&c_{123}&0&a_1s_1+a_2s_{12}+a_3s_{123}\\\\0&0&1&0\\\\0&0&0&1\\end{bmatrix}$$<p>All $z$ axes are parallel, so rotations simply add: $\\phi = \\theta_1+\\theta_2+\\theta_3$.</p>`,
+      scara: `$$T^0_4 = \\begin{bmatrix}c_{12-4}&s_{12-4}&0&a_1c_1+a_2c_{12}\\\\ s_{12-4}&-c_{12-4}&0&a_1s_1+a_2s_{12}\\\\0&0&-1&d_1-d_3-d_4\\\\0&0&0&1\\end{bmatrix},\\qquad c_{12-4}=\\cos(\\theta_1+\\theta_2-\\theta_4)$$<p>The $\\alpha_2 = 180°$ row turns $z_2$ upside down, so the quill moves down as $d_3$ grows and the tool yaw is $\\theta_1+\\theta_2-\\theta_4$.</p>`,
+      puma: `<p>The full product is long, so it is split at the wrist (kinematic decoupling). The first three links place the <b>wrist centre</b> $\\mathbf o_c = \\mathbf o^0_4$:</p>$$\\mathbf o_c = \\begin{bmatrix}c_1(a_2c_2+d_4s_{23})\\\\ s_1(a_2c_2+d_4s_{23})\\\\ d_1+a_2s_2-d_4c_{23}\\end{bmatrix}$$<p>and the spherical wrist contributes a ZYZ Euler rotation</p>$$R^3_6 = \\begin{bmatrix}c_4c_5c_6-s_4s_6&-c_4c_5s_6-s_4c_6&c_4s_5\\\\ s_4c_5c_6+c_4s_6&-s_4c_5s_6+c_4c_6&s_4s_5\\\\-s_5c_6&s_5s_6&c_5\\end{bmatrix}$$<p>so $T^0_6 = \\begin{bmatrix}R^0_3R^3_6 & \\mathbf o_c + d_6\\,R^0_3R^3_6\\,\\hat{\\mathbf z}\\\\ \\mathbf 0^{\\mathsf T}&1\\end{bmatrix}$. For IK, $\\theta_1 = \\operatorname{atan2}(y_c, x_c)$; $\\theta_2,\\theta_3$ come from the 2-link problem in the arm plane; $\\theta_5 = \\operatorname{atan2}(\\sqrt{1-r_{33}^2},\\, r_{33})$ of $R^3_6$. When $s_5 = 0$, $\\theta_4$ and $\\theta_6$ cannot be separated: the wrist singularity.</p>`,
+    }[S.key];
+    const q = S.q, k = K;
+    el.innerHTML = `<h3>Setting up the matrices for the ${S.rob.name}</h3>
+      <p>This page rebuilds itself for whichever robot is selected above, so you can follow the recipe for each one. Work through it with pencil and paper, then compare with the live matrices beneath the simulator.</p>
+      <h4>Step 1: the DH table</h4><p>Starred entries are joint variables. Every other entry is a fixed design parameter.</p>${tbl}
+      <h4>Step 2: substitute each row into the DH matrix</h4><p>Use $c_i = \\cos\\theta_i$, $s_i = \\sin\\theta_i$. With $\\alpha$ at 0°, ±90° or 180°, $\\cos\\alpha$ and $\\sin\\alpha$ are 0 or ±1, so many entries vanish:</p>
+      ${rows.map((r, i) => `<div class="eq">$$${symA(i, r)}$$</div>`).join('')}
+      <h4>Step 3: multiply in order</h4><p>$T^0_${n} = ${rows.map((_, i) => `A_{${i + 1}}`).join('')}$. Matrix multiplication is not commutative: keep the order base to tool.</p>${closed}
+      <h4>Step 4: check with numbers</h4><p>At the current pose ${rows.map((r, i) => `${jointLabel(i)} = ${fmtQ(i, q[i])}`).join(', ')}, the simulator gives</p>
+      <div class="eq">$$T^0_${n} = ${texM(k.T)}$$</div>
+      <p>so the tool is at $(${num(k.tip[0])},\\ ${num(k.tip[1])},\\ ${num(k.tip[2])})$ m. Move a joint and press the tab again to refresh the numbers.</p>
+      <h4>Step 5: the Jacobian, column by column</h4><p>From the same $T^0_{i}$ matrices read $\\mathbf z_{i-1}$ (third column) and $\\mathbf o_{i-1}$ (fourth column), then use $J_i = [\\mathbf z_{i-1}\\times(\\mathbf o_n-\\mathbf o_{i-1});\\ \\mathbf z_{i-1}]$ for revolute joints, $[\\mathbf z_{i-1}; \\mathbf 0]$ for prismatic. For example, column 1 here is $\\mathbf z_0 = (0,0,1)$ crossed with $\\mathbf o_n$: $(${num(-k.tip[1])},\\ ${num(k.tip[0])},\\ 0)$ for the linear part.</p>`;
+    SL.renderMath(el);
+  }
+  document.querySelector('.tabs').addEventListener('tab', e => { if (e.detail === 1) buildByHand(); });
+
+  /* =============================== examples =================================== */
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-load]'); if (!b) return; const k = b.dataset.load;
+    const go = (rob, mode, q) => { if (S.key !== rob) setRobot(rob); stopMotion(); S.mode = mode; S.q = [...q]; fk(); S.target = [...K.tip]; syncTaskSliders(); updateModeUI(); afterQ(false); refresh(true); };
+    if (k === 'ex1') go('rr', 'fk', [30, 45]);
+    if (k === 'ex2') { go('rr', 'ik', [0, 60]); S.target = [0.5, 0.2, 0]; S.elbow = 'down'; S.ikMethod = 'analytic'; $$('#elbowSeg button').forEach(x => x.classList.toggle('on', x.dataset.e === 'down')); $$('#ikMethod button').forEach(x => x.classList.toggle('on', x.dataset.k === 'analytic')); updateModeUI(); }
+    if (k === 'ex4') go('scara', 'fk', [20, 40, 0.15, 10]);
+    $('#stage').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    SL.toast('Loaded. Compare the DH table and live matrices with the example.', 'ok');
+  });
+
+  /* ============================== challenges ================================== */
+  const CH = [
+    { t: 'Hit the spot', d: '2R arm, Joints mode: put the tool at (0.50, 0.20) m within 1 cm using only the sliders.', ok: () => S.key === 'rr' && S.mode === 'fk' && Math.hypot(K.tip[0] - 0.5, K.tip[1] - 0.2) < 0.01 },
+    { t: 'Find a singularity', d: '2R arm: reach a configuration where |det J| < 0.002.', ok: () => S.key === 'rr' && Math.abs(K.det) < 0.002 },
+    { t: 'Two ways there', d: '2R arm, IK: with the target at (0.30, 0.40) ± 1 cm, show both the elbow-down and elbow-up solutions.', ok: () => { if (S.key !== 'rr' || S.mode !== 'ik' || Math.hypot(S.target[0] - 0.3, S.target[1] - 0.4) > 0.01 || !S.ikOk) return false; S._eb = S._eb || new Set(); S._eb.add(S.q[1] > 0 ? 'd' : 'u'); return S._eb.size === 2; } },
+    { t: 'No hole in the middle', d: 'Edit the 2R DH table so the workspace becomes a full disc (a₁ = a₂ within 5 mm).', ok: () => S.key === 'rr' && Math.abs(S.rob.rows[0].a - S.rob.rows[1].a) < 0.005 },
+    { t: 'Wrist singularity', d: '6-DOF arm: set θ₅ within ±1° of zero and confirm the singularity indicator turns red.', ok: () => S.key === 'puma' && Math.abs(S.q[4]) < 1 && K.w / S.wMax < 0.03 },
+    { t: 'Straight-line move', d: 'Run a Cartesian straight-line trajectory on the 6-DOF arm that IK follows the whole way.', ok: () => S.key === 'puma' && S.playing && S.interp === 'cart' && S.traj && S.traj.ok },
+    { t: 'Pick and place', d: 'Deliver the block to the bin yourself (not with Demo) with any robot.', ok: () => S.lastPick && !S.lastPick.auto },
+    { t: 'Speed run', d: 'Deliver the block with the 6-DOF arm in under 40 s (not with Demo).', ok: () => S.lastPick && !S.lastPick.auto && S.lastPick.key === 'puma' && S.lastPick.secs < 40 },
+  ];
+  const done = new Set(); let chalReady = false;
+  $('#chalTotal').textContent = CH.length;
+  function renderChal() { $('#chalList').innerHTML = CH.map((c, i) => `<div class="chal"><span class="led ${done.has(i) ? 'on' : ''}"></span><div><b>${c.t}</b><span class="small">${c.d}</span></div></div>`).join(''); $('#chalCount').textContent = done.size; }
+  function checkChallenges() {
+    let ch = false;
+    CH.forEach((c, i) => { if (done.has(i)) return; let ok = false; try { ok = c.ok(); } catch (e) {} if (ok) { done.add(i); ch = true; if (chalReady) SL.toast(`<b>Challenge solved:</b> ${c.t}`, 'ok'); } });
+    if (ch) renderChal();
+  }
+
+  /* ================================== quiz ==================================== */
+  const QUIZ = [
+    { q: 'In the standard DH convention, which parameter is the joint variable of a prismatic joint?', options: ['θᵢ', 'dᵢ', 'aᵢ', 'αᵢ'], answer: 1, why: 'A prismatic joint slides along zᵢ₋₁, which changes dᵢ. For a revolute joint the variable is θᵢ.' },
+    { q: 'What is aᵢ in a DH table?', options: ['The angle between zᵢ₋₁ and zᵢ', 'The distance between zᵢ₋₁ and zᵢ measured along xᵢ', 'The distance along zᵢ₋₁', 'The joint angle'], answer: 1, why: 'aᵢ (link length) is the common-normal distance from zᵢ₋₁ to zᵢ along xᵢ; αᵢ is the twist angle about xᵢ.' },
+    { q: 'A 2R arm has a₁ = 0.5 m and a₂ = 0.3 m. Which set of points can the tool reach?', options: ['A disc of radius 0.8 m', 'An annulus 0.2 m ≤ r ≤ 0.8 m', 'An annulus 0.3 m ≤ r ≤ 0.5 m', 'Only the circle r = 0.8 m'], answer: 1, why: 'With unlimited joints the reachable radii run from |a₁ − a₂| = 0.2 m to a₁ + a₂ = 0.8 m.' },
+    { q: 'For the 2R arm, cos θ₂ = D = (x² + y² − a₁² − a₂²)/(2a₁a₂). If D = 1.2, the target is…', options: ['Reachable with elbow up only', 'Reachable with elbow down only', 'Unreachable', 'At a singularity'], answer: 2, why: 'A cosine cannot exceed 1, so no real θ₂ exists: the target lies outside the workspace.' },
+    { q: 'Why is atan2(y, x) used instead of atan(y/x) in IK?', options: ['It is faster', 'It returns the angle in the correct quadrant over −180° to 180°', 'It avoids degrees', 'It only works for positive angles'], answer: 1, why: 'atan(y/x) cannot tell (1, 1) from (−1, −1). atan2 uses the signs of both arguments.' },
+    { q: 'det J = a₁a₂ sin θ₂ for the 2R arm. The arm is singular when…', options: ['θ₁ = 0', 'θ₂ = 90°', 'θ₂ = 0° or 180°', 'never'], answer: 2, why: 'sin θ₂ = 0 when the arm is fully stretched (0°) or folded back (180°): the tool cannot move radially.' },
+    { q: 'For a homogeneous transform T with rotation R and translation p, T⁻¹ equals…', options: ['Tᵀ', '[Rᵀ, −Rᵀp; 0, 1]', '[Rᵀ, −p; 0, 1]', '[R, −p; 0, 1]'], answer: 1, why: 'Rotations invert by transposing; the translation must be rotated back as well: −Rᵀp.' },
+    { q: 'What does the damping term λ² in damped least squares IK do?', options: ['Makes the solution exact', 'Keeps the joint step bounded near singularities at the cost of some accuracy', 'Speeds up convergence everywhere', 'Enforces joint limits'], answer: 1, why: '(JJᵀ + λ²I) stays invertible even when JJᵀ is singular, so steps stay finite. Too much damping slows convergence and leaves residual error.' },
+    { q: 'Compared with a cubic, a quintic time-scaling polynomial additionally guarantees…', options: ['Zero velocity at the ends', 'Zero acceleration at the ends', 'A straight-line tool path', 'A shorter travel time'], answer: 1, why: 'A cubic matches position and velocity at both ends (4 conditions); a quintic also matches acceleration (6 conditions), avoiding torque jumps.' },
+    { q: 'Joint-space interpolation between two poses generally makes the tool move…', options: ['In a straight line', 'Along a curve', 'Not at all', 'Along a circle centred on the base'], answer: 1, why: 'Linear motion of the joint angles maps through nonlinear FK, so the Cartesian path is curved. Straight lines need Cartesian interpolation with IK.' },
+  ];
+
+  /* ================================== init ==================================== */
+  function init() {
+    ready = true;
+    setRobot('rr');
+    SL.quiz('#quiz', QUIZ); renderChal(); chalReady = true;
+    const lp = SL.loop(frame).start();
+    document.addEventListener('visibilitychange', () => document.hidden ? lp.stop() : lp.start());
+    window.__robot = { S, proj: p => { camBasis(); return P(p); }, get K() { return K; }, setRobot, solveIK, fkq, cam, camT, planTraj, updateModeUI, afterQ };
+  }
+  document.addEventListener('sl:ready', init);
+})();
+</script>
+</body>
+</html>

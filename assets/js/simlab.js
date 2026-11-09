@@ -331,7 +331,7 @@
       qd.classList.add('done'); answered++;
       qd.querySelectorAll('.opt')[q.answer].classList.add('right');
       if (j === q.answer) score++; else b.classList.add('wrong');
-      el.querySelector('.score').textContent = `Score: ${score} / ${answered}${answered === questions.length ? (score === questions.length ? ' 🎉 Perfect!' : '') : ''}`;
+      el.querySelector('.score').textContent = `Score: ${score} / ${answered}${answered === questions.length ? (score === questions.length ? ' · Perfect score!' : '') : ''}`;
     });
     renderMath(el);
   }
@@ -369,7 +369,7 @@
     if (o.xlabel) { ctx.textAlign = 'right'; ctx.fillText(o.xlabel, w - pr, h - 4); }
     if (o.ylabel) { ctx.textAlign = 'left'; ctx.fillText(o.ylabel, pl, pt - 10); }
     series.forEach(s => { ctx.strokeStyle = s.color || '#22d3ee'; ctx.lineWidth = s.width || 2; ctx.setLineDash(s.dash || []); ctx.beginPath(); s.data.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))); ctx.stroke(); ctx.setLineDash([]); });
-    let lx = pl + 8; series.filter(s => s.label).forEach(s => { ctx.fillStyle = s.color; ctx.fillRect(lx, pt - 16, 10, 3); ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'left'; ctx.fillText(s.label, lx + 14, pt - 12); lx += ctx.measureText(s.label).width + 30; });
+    let lx = w - pr; ctx.textAlign = 'left'; series.filter(s => s.label).reverse().forEach(s => { lx -= ctx.measureText(s.label).width + 30; ctx.fillStyle = s.color; ctx.fillRect(lx, pt - 16, 10, 3); ctx.fillStyle = '#93a1bd'; ctx.fillText(s.label, lx + 14, pt - 12); });
     return { X, Y };
   }
 

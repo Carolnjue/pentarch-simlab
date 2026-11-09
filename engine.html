@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Four-Stroke Engine · Pentarch SimLab</title>
+<meta name="description" content="Animated four-stroke petrol engine with exact slider-crank kinematics, valve timing and a live P–V diagram; compare Otto, realistic and Diesel cycles, efficiency, work, MEP, power and torque.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .stage.split{display:grid;grid-template-columns:1fr 1fr;height:600px}
+  .stage.split .cell{position:relative;min-width:0;min-height:0}
+  .stage.split .cell+.cell{border-left:1px solid var(--line)}
+  .stage.split canvas{width:100%;height:100%;display:block}
+  .seg.full{display:flex;width:100%}
+  .seg.full button{flex:1;text-align:center}
+  .charts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:18px}
+  .charts .panel{padding:12px}
+  .charts canvas{width:100%;height:250px;display:block;background:#050913;border:1px solid var(--line);border-radius:10px}
+  .charts h3{margin-bottom:8px}
+  .chal{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px dashed var(--line)}
+  .chal .led{margin-top:6px;flex:none}
+  .chal b{display:block}
+  .chal .small{color:var(--muted)}
+  .stroke-badge{position:absolute;left:50%;transform:translateX(-50%);top:12px;font:600 .74rem var(--mono);letter-spacing:.1em;text-transform:uppercase;padding:5px 12px;border-radius:99px;background:rgba(5,9,19,.8);border:1px solid var(--line2);pointer-events:none;white-space:nowrap}
+  .hud-cell{position:absolute;left:10px;bottom:10px;display:flex;flex-wrap:wrap;gap:6px;pointer-events:none;max-width:calc(100% - 20px)}
+  .playbar{position:absolute;right:10px;top:10px;display:flex;gap:6px}
+  @media (max-width:1100px){.charts{grid-template-columns:1fr 1fr}}
+  @media (max-width:980px){.stage.split{grid-template-columns:1fr;height:auto}.stage.split .cell{height:430px}.stage.split .cell+.cell{border-left:0;border-top:1px solid var(--line);height:340px}}
+  @media (max-width:700px){.charts{grid-template-columns:1fr}}
+</style>
+</head>
+<body data-page="engine">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab wide-controls">
+    <div class="stage split" id="stage">
+      <div class="cell">
+        <canvas id="eng" aria-label="Engine cross-section animation"></canvas>
+        <div class="stroke-badge" id="badge">Intake</div>
+        <div class="playbar"><button class="btn sm" id="bPause" title="Pause"><i data-lucide="pause"></i></button><button class="btn sm" id="bStep" title="Step 5°"><i data-lucide="step-forward"></i></button></div>
+        <div class="hud-cell"><span class="readout">θ <b id="hTh">0</b>°</span><span class="readout">p <b id="hP">1</b> bar</span><span class="readout">T <b id="hT">300</b> K</span></div>
+      </div>
+      <div class="cell">
+        <canvas id="pv" aria-label="Pressure–volume diagram"></canvas>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="sliders-horizontal"></i> Engine</h3>
+        <div class="ctl"><label for="rpm">Engine speed N</label><output></output><input type="range" id="rpm" min="800" max="7000" step="100" value="3000"></div>
+        <div class="ctl"><label for="cr">Compression ratio r</label><output></output><input type="range" id="cr" min="4" max="14" step="0.1" value="10"></div>
+        <div class="ctl"><label for="bore">Bore B</label><output></output><input type="range" id="bore" min="50" max="110" step="1" value="86"></div>
+        <div class="ctl"><label for="stroke">Stroke S</label><output></output><input type="range" id="stroke" min="40" max="110" step="1" value="86"></div>
+        <div class="ctl"><label for="thr">Throttle</label><output></output><input type="range" id="thr" min="0.1" max="1" step="0.01" value="1"></div>
+        <div class="ctl"><label for="gam">Ratio of specific heats γ</label><output></output><input type="range" id="gam" min="1.25" max="1.4" step="0.01" value="1.4"></div>
+        <div class="ctl"><label for="lam">Rod ratio l/r</label><output></output><input type="range" id="lam" min="2.6" max="5" step="0.1" value="3.5"></div>
+        <div class="ctl"><label for="adv">Spark advance</label><output></output><input type="range" id="adv" min="0" max="45" step="1" value="20"></div>
+        <div class="panel-title">Cylinders · firing order</div>
+        <div class="seg full" id="cylSeg"><button data-n="1" class="on">1</button><button data-n="2">2 (360°)</button><button data-n="4">4 (1-3-4-2)</button></div>
+        <div class="panel-title">P–V curve</div>
+        <div class="seg full" id="cycSeg"><button data-c="ideal">Ideal Otto</button><button data-c="real">Realistic</button><button data-c="both" class="on">Both</button></div>
+        <label class="toggle" style="margin-top:6px">Diesel cycle comparison <input type="checkbox" id="dsl"></label>
+        <div class="ctl" id="rdCtl" style="display:none"><label for="rd">Diesel compression ratio r<sub>D</sub></label><output></output><input type="range" id="rd" min="12" max="24" step="0.5" value="18"></div>
+        <label class="toggle">Logarithmic axes (log p – log V) <input type="checkbox" id="logp"></label>
+        <div class="ctl"><label for="spd">Animation speed</label><output></output><input type="range" id="spd" min="0.1" max="3" step="0.1" value="0.6"></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="gauge"></i> Results <span class="small muted" style="margin-left:auto;font-weight:500" id="resNote"></span></h3>
+        <div class="stats" id="stats"></div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="charts">
+    <div class="panel"><h3><i data-lucide="clock-3"></i> Valve timing (cyl. 1)</h3><canvas id="vt" aria-label="Valve timing diagram"></canvas></div>
+    <div class="panel"><h3><i data-lucide="thermometer"></i> T–s diagram (ideal)</h3><canvas id="ts" aria-label="Temperature entropy diagram"></canvas></div>
+    <div class="panel"><h3><i data-lucide="activity"></i> Crankshaft torque</h3><canvas id="tq" aria-label="Instantaneous torque"></canvas></div>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. The four strokes</h3>
+      <p>One thermodynamic cycle takes two crank revolutions (720°). With crank angle $\theta$ measured from top dead centre (TDC) at the start of intake:</p>
+      <table class="data">
+        <tr><th>Stroke</th><th>Crank angle</th><th>Valves</th><th>What happens</th></tr>
+        <tr><td>Intake</td><td>0–180°</td><td>Inlet open</td><td>Piston descends, fresh air–fuel charge drawn in through the throttle.</td></tr>
+        <tr><td>Compression</td><td>180–360°</td><td>Both closed</td><td>Charge compressed by the ratio $r$; spark fires shortly before TDC.</td></tr>
+        <tr><td>Power (expansion)</td><td>360–540°</td><td>Both closed</td><td>Burning gas pushes the piston down: the only stroke that produces work.</td></tr>
+        <tr><td>Exhaust</td><td>540–720°</td><td>Exhaust open</td><td>Piston rises and pushes the burnt gas out.</td></tr>
+      </table>
+      <p>In a real engine the valves open early and close late to use the gas momentum: here IVO 10° before TDC, IVC 40° after BDC, EVO 40° before BDC, EVC 10° after TDC. The period when both valves are open around TDC is the <b>valve overlap</b>.</p>
+
+      <h3>2. Slider-crank kinematics</h3>
+      <p>Crank radius $r_c = S/2$, connecting rod length $l$, rod ratio $\lambda = l/r_c$. The piston's distance below TDC is exact geometry, not a sine wave:</p>
+      <div class="eq">$$x(\theta) = r_c(1-\cos\theta) + l - \sqrt{l^2 - r_c^2\sin^2\theta}$$</div>
+      <div class="eq">$$V(\theta) = V_c + \frac{\pi B^2}{4}x(\theta),\qquad V_d = \frac{\pi B^2}{4}S,\qquad r = \frac{V_c+V_d}{V_c}\Rightarrow V_c = \frac{V_d}{r-1}$$</div>
+      <p>Because the rod is inclined, the piston covers more than half the stroke in the first 90° after TDC: it moves faster near TDC than near BDC. The velocity is $\dot x = \omega\,r_c\sin\theta\left(1+\frac{r_c\cos\theta}{\sqrt{l^2-r_c^2\sin^2\theta}}\right)$ and the mean piston speed is $\bar U_p = 2SN/60$.</p>
+
+      <h3>3. The ideal Otto cycle</h3>
+      <p>The air-standard model replaces combustion by heat addition at constant volume and uses an ideal gas with constant $\gamma = c_p/c_v$:</p>
+      <ol class="steps">
+        <li>1→2 isentropic compression: $p_2 = p_1 r^{\gamma}$, $T_2 = T_1 r^{\gamma-1}$.</li>
+        <li>2→3 constant-volume heat addition: $Q_{in} = m c_v (T_3 - T_2)$.</li>
+        <li>3→4 isentropic expansion: $T_4 = T_3 / r^{\gamma-1}$.</li>
+        <li>4→1 constant-volume heat rejection: $Q_{out} = m c_v (T_4 - T_1)$.</li>
+      </ol>
+      <div class="eq">$$\eta_{Otto} = 1 - \frac{Q_{out}}{Q_{in}} = 1-\frac{1}{r^{\gamma-1}},\qquad W = \oint p\,dV = \eta_{Otto}\,Q_{in}$$</div>
+      <p>Efficiency depends only on the compression ratio and $\gamma$. Petrol engines are limited to $r\approx 9$–$13$ by <b>knock</b> (auto-ignition of the end gas). The simulator uses $T_1 = 300$ K, $R = 287$ J/(kg·K) and adds $q_{in} = 1800$ kJ per kg of charge, a typical air-standard figure for a stoichiometric petrol mixture.</p>
+
+      <h3>4. Work, mean effective pressure, power and torque</h3>
+      <div class="eq">$$\text{MEP} = \frac{W_{cycle}}{V_d},\qquad P_i = \frac{W_{cycle}\,n_{cyl}\,N}{2\times60},\qquad \bar T = \frac{W_{cycle}\,n_{cyl}}{4\pi}$$</div>
+      <p>The factor 2 (or $4\pi$ rad) appears because a four-stroke engine fires each cylinder once every two revolutions. MEP is the constant pressure that would do the same work in one stroke; it lets you compare engines of different size (good naturally aspirated petrol engines: 10–13 bar indicated).</p>
+      <p>The instantaneous torque from one cylinder (gas forces only, ignoring inertia and friction) is</p>
+      <div class="eq">$$T(\theta) = (p - p_{cc})\,A_p\,\frac{dx}{d\theta},\qquad \frac{dx}{d\theta}=r_c\sin\theta\left(1+\frac{r_c\cos\theta}{\sqrt{l^2-r_c^2\sin^2\theta}}\right)$$</div>
+
+      <h3>5. The realistic cycle</h3>
+      <p>The realistic curve is a single-zone model. Between inlet closing and exhaust opening the cylinder is a closed system, and the first law gives</p>
+      <div class="eq">$$\frac{dp}{d\theta} = -\gamma\frac{p}{V}\frac{dV}{d\theta} + \frac{\gamma-1}{V}\frac{dQ}{d\theta},\qquad x_b(\theta) = 1-\exp\!\left[-5\left(\frac{\theta-\theta_s}{\Delta\theta}\right)^{3}\right]$$</div>
+      <p>where $x_b$ is the Wiebe mass-fraction-burned curve, starting at spark timing $\theta_s$ and lasting $\Delta\theta = 50°$. About 20% of the fuel energy is lost to heat transfer and incomplete combustion. Burning takes time, so the peak pressure is lower and later than in the ideal cycle. Firing too early wastes work pushing against the rising piston; too late wastes expansion. The best compromise is <b>MBT timing</b> (minimum advance for best torque).</p>
+      <p>The lower loop is the <b>pumping loop</b>: the piston draws charge in at manifold pressure below atmospheric (because of the throttle) and pushes exhaust out above atmospheric. It is traced anticlockwise and its area is <b>negative work</b>. At part throttle it becomes large: this is why petrol engines are inefficient at light load and why diesels, which have no throttle, are not.</p>
+
+      <h3>6. The Diesel cycle</h3>
+      <p>In a compression-ignition engine fuel is injected into hot compressed air and burns roughly at constant pressure. With cut-off ratio $\rho = V_3/V_2$:</p>
+      <div class="eq">$$\eta_{Diesel} = 1 - \frac{1}{r^{\gamma-1}}\,\frac{\rho^{\gamma}-1}{\gamma(\rho-1)}$$</div>
+      <p>The bracket is greater than 1, so <b>at the same compression ratio</b> the Otto cycle is more efficient. But diesels run at $r = 15$–$22$ without knock, so in practice they are more efficient. Turn on the Diesel comparison to see both effects.</p>
+      <div class="callout warn"><i data-lucide="triangle-alert"></i><div><b>Model limits.</b> Constant $\gamma$, no dissociation, a single gas zone, a fixed 20% heat loss, simplified gas exchange (prescribed pressures instead of flow through valves) and no friction. Torque is indicated torque from gas pressure; brake torque is lower by friction and pumping losses, and real engines also have inertia torques from the reciprocating masses.</div></div>
+    </div>
+
+    <div class="tabpanel prose" id="worked"></div>
+
+    <div class="tabpanel">
+      <div class="grid2">
+        <div class="prose">
+          <h3>Challenges</h3>
+          <p class="muted">Checked live as you change the engine.</p>
+          <div id="chalList"></div>
+          <p class="small muted" style="margin-top:10px">Solved <b id="chalCount">0</b> of <span id="chalTotal">0</span>.</p>
+        </div>
+        <div class="prose">
+          <h3>Guided experiments</h3>
+          <ol class="steps">
+            <li><b>Efficiency vs compression.</b> Record η<sub>Otto</sub> at r = 6, 8, 10, 12, 14. Plot it. Why does the curve flatten?</li>
+            <li><b>γ matters.</b> At r = 10, change γ from 1.40 (air) to 1.30 (closer to real burning mixture). How much efficiency is "lost"?</li>
+            <li><b>Part load.</b> Select Realistic. Close the throttle from 100% to 20% and watch the pumping loop grow (use log axes to see it clearly). Note how indicated efficiency drops.</li>
+            <li><b>Spark timing.</b> Sweep spark advance from 0° to 45° at full throttle and note net work. Where is the maximum? What happens to peak pressure?</li>
+            <li><b>Rod ratio.</b> At 90° crank angle compare the piston position for l/r = 2.6 and 5. Which is closer to half stroke, and why?</li>
+            <li><b>Smoothness.</b> Compare the crankshaft torque chart for 1, 2 and 4 cylinders at the same total displacement. Why do larger engines usually have more cylinders?</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+  const D2R = Math.PI / 180, TAU = Math.PI * 2, Rg = 287, PATM = 1e5, T1 = 300, QIN = 1.8e6, TIN = 320, ETA_C = 0.8;
+  const TIMING = { IVO: 710, IVC: 220, EVO: 500, EVC: 10, BURN: 50 };
+  const S = { N: 3000, r: 10, B: 86, St: 86, thr: 1, g: 1.4, lam: 3.5, adv: 20, ncyl: 1, cyc: 'both', dsl: false, rd: 18, logp: false, spd: 0.6, paused: false };
+  let M = null, ready = false, theta = 0;
+
+  /* =============================== model ================================== */
+  function geom() {
+    const B = S.B / 1000, St = S.St / 1000, A = Math.PI * B * B / 4, rc = St / 2, l = S.lam * rc, Vd = A * St, Vc = Vd / (S.r - 1);
+    return { B, St, A, rc, l, Vd, Vc, V1: Vd + Vc };
+  }
+  const xPist = (G, th) => G.rc * (1 - Math.cos(th)) + G.l - Math.sqrt(G.l * G.l - G.rc * G.rc * Math.sin(th) ** 2);
+  const dxdth = (G, th) => G.rc * Math.sin(th) * (1 + G.rc * Math.cos(th) / Math.sqrt(G.l * G.l - G.rc * G.rc * Math.sin(th) ** 2));
+  const Vof = (G, thDeg) => G.Vc + G.A * xPist(G, thDeg * D2R);
+  const pMan = () => PATM * (0.2 + 0.8 * S.thr);
+  const inWin = (t, a, b) => { t = ((t % 720) + 720) % 720; return a <= b ? t >= a && t <= b : t >= a || t <= b; };
+  function lift(t, open, close) { // normalised valve lift 0..1
+    t = ((t % 720) + 720) % 720; let span = close - open; if (span < 0) span += 720; let u = t - open; if (u < 0) u += 720; if (u > span) return 0; return Math.sin(Math.PI * u / span) ** 2;
+  }
+
+  function compute() {
+    const G = geom(), g = S.g, cv = Rg / (g - 1), cp = g * cv;
+    // ---- ideal Otto
+    const p1 = pMan(), m = p1 * G.V1 / (Rg * T1);
+    const T2 = T1 * S.r ** (g - 1), p2 = p1 * S.r ** g, T3 = T2 + QIN / cv, p3 = p2 * T3 / T2, T4 = T3 / S.r ** (g - 1), p4 = p3 / S.r ** g;
+    const Qin = m * QIN, etaO = 1 - 1 / S.r ** (g - 1), Wid = etaO * Qin;
+    const ideal = { p1, p2, p3, p4, T2, T3, T4, m, Qin, W: Wid, eta: etaO };
+    ideal.curve = [];
+    for (let t = 0; t <= 720; t += 2) ideal.curve.push([t, Vof(G, t), idealP(t)]);
+    function idealP(t) {
+      const V = Vof(G, t);
+      if (t <= 180) return p1; if (t <= 360) return p1 * (G.V1 / V) ** g; if (t <= 540) return p3 * (G.Vc / V) ** g; return p1;
+    }
+    ideal.pAt = idealP;
+    ideal.TAt = t => { const V = Vof(G, t); if (t <= 180 || t > 540) return T1; if (t <= 360) return T1 * (G.V1 / V) ** (g - 1); return T3 * (G.Vc / V) ** (g - 1); };
+    // ---- realistic single-zone
+    const pe = PATM * (1.05 + 0.08 * (S.N / 6000) ** 2), pm = pMan();
+    const flow = PATM * 0.04 * (S.N / 6000) ** 2;
+    const VIVC = Vof(G, TIMING.IVC), mt = pm * VIVC / (Rg * TIN), Qt = mt * QIN * ETA_C;
+    const ths = 360 - S.adv, dth = TIMING.BURN;
+    const xb = t => t < ths ? 0 : 1 - Math.exp(-5 * ((t - ths) / dth) ** 3);
+    const real = [];
+    let p = pm, pEVO = 0, peak = 0, Tpk = 0;
+    for (let t = 0; t <= 720; t += 1) {
+      let pp;
+      if (t >= TIMING.IVC && t <= TIMING.EVO) {
+        if (t === TIMING.IVC) p = pm - flow * Math.abs(Math.sin(t * D2R));
+        else {
+          // integrate from t-1 to t in sub-steps
+          const n = 4;
+          for (let k = 0; k < n; k++) {
+            const a = t - 1 + k / n, b = a + 1 / n, Va = Vof(G, a), Vb = Vof(G, b), Vm = (Va + Vb) / 2;
+            const dQ = Qt * (xb(b) - xb(a));
+            p += -g * p / Vm * (Vb - Va) + (g - 1) / Vm * dQ;
+          }
+        }
+        pp = p; if (t === TIMING.EVO) pEVO = p;
+      } else if (t > TIMING.EVO) {
+        const bd = pe + (pEVO - pe) * Math.exp(-(t - TIMING.EVO) / 16);
+        pp = t >= TIMING.IVO ? pe + (pm - pe) * (t - TIMING.IVO) / (720 - TIMING.IVO + TIMING.EVC) : bd;
+      } else { // 0 .. IVC
+        if (t <= TIMING.EVC) pp = pe + (pm - pe) * (t + 720 - TIMING.IVO) / (720 - TIMING.IVO + TIMING.EVC);
+        else pp = pm - flow * Math.abs(Math.sin(t * D2R));
+      }
+      const V = Vof(G, t), T = t >= TIMING.IVC && t <= TIMING.EVO ? pp * V / (mt * Rg) : (t > TIMING.EVO || t < TIMING.EVC ? Math.max(700, 1100 - (t > TIMING.EVO ? t - TIMING.EVO : t + 220) * 1.5) : TIN);
+      peak = Math.max(peak, pp); if (t >= TIMING.IVC && t <= TIMING.EVO) Tpk = Math.max(Tpk, T);
+      real.push([t, V, pp, T, xb(t)]);
+    }
+    let Wn = 0, Wg = 0;
+    for (let i = 1; i < real.length; i++) { const dW = (real[i][2] + real[i - 1][2]) / 2 * (real[i][1] - real[i - 1][1]); Wn += dW; if (real[i][0] > 180 && real[i][0] <= 540) Wg += dW; }
+    const Wp = Wn - Wg;
+    const R = { pe, pm, mt, Qt, peak, Tpk, Wn, Wg, Wp, eta: Wn / (mt * QIN), ths, curve: real, pAt: t => real[Math.round(((t % 720) + 720) % 720)][2], TAt: t => real[Math.round(((t % 720) + 720) % 720)][3], xbAt: t => xb(((t % 720) + 720) % 720) };
+    // ---- diesel
+    let dsl = null;
+    if (S.dsl) {
+      const Vc2 = G.Vd / (S.rd - 1), V1 = G.Vd + Vc2, pd1 = PATM, md = pd1 * V1 / (Rg * T1);
+      const Td2 = T1 * S.rd ** (g - 1), pd2 = pd1 * S.rd ** g, Td3 = Td2 + QIN / cp, rho = Td3 / Td2, V3 = Vc2 * rho, Td4 = Td3 * (V3 / V1) ** (g - 1), pd4 = pd2 * (V3 / V1) ** g;
+      const eta = 1 - (1 / S.rd ** (g - 1)) * (rho ** g - 1) / (g * (rho - 1));
+      const etaSameR = (() => { const T2b = T1 * S.r ** (g - 1), rb = (T2b + QIN / cp) / T2b; return 1 - (1 / S.r ** (g - 1)) * (rb ** g - 1) / (g * (rb - 1)); })();
+      const curve = []; const N = 120;
+      for (let i = 0; i <= N; i++) { const V = V1 - (V1 - Vc2) * i / N; curve.push([V, pd1 * (V1 / V) ** g]); }
+      for (let i = 0; i <= 20; i++) { const V = Vc2 + (V3 - Vc2) * i / 20; curve.push([V, pd2]); }
+      for (let i = 0; i <= N; i++) { const V = V3 + (V1 - V3) * i / N; curve.push([V, pd2 * (V3 / V) ** g]); }
+      curve.push([V1, pd1]);
+      dsl = { eta, etaSameR, rho, W: eta * md * QIN, curve, pd2, Td3, Vc2, V1, Td2, Td4, md, etaOttoRd: 1 - 1 / S.rd ** (g - 1) };
+    }
+    // torque vs crank angle (sum over cylinders)
+    const off = { 1: [0], 2: [0, 360], 4: [0, 540, 180, 360] }[S.ncyl]; // delay of each cylinder (cyl 1,2,3,4)
+    const tq = [];
+    for (let t = 0; t < 720; t += 2) {
+      let sum = 0;
+      off.forEach(d => { const tc = ((t - d) % 720 + 720) % 720; const pc = useReal() ? R.pAt(tc) : ideal.pAt(tc); sum += (pc - PATM) * G.A * dxdth(G, tc * D2R); });
+      tq.push([t, sum]);
+    }
+    const W = useReal() ? Wn : Wid;
+    const Tmean = W * S.ncyl / (4 * Math.PI);
+    const tqs = tq.map(x => x[1]);
+    M = { G, ideal, real: R, dsl, off, tq, Tmean, tqMax: Math.max(...tqs), tqMin: Math.min(...tqs), W, P: W * S.ncyl * S.N / 120, Up: 2 * G.St * S.N / 60, cv, cp };
+    return M;
+  }
+  const useReal = () => S.cyc !== 'ideal';
+  function mbt() { // spark advance maximising net work
+    const save = S.adv; let best = 0, bw = -1e9;
+    for (let a = 0; a <= 45; a++) { S.adv = a; const w = compute().real.Wn; if (w > bw) { bw = w; best = a; } }
+    S.adv = save; compute(); return { best, bw };
+  }
+
+  /* ============================== UI binding ============================== */
+  const f = SL.fmt;
+  SL.bind('#rpm', v => { S.N = v; update(); }, v => v + ' rpm');
+  SL.bind('#cr', v => { S.r = v; update(); }, v => f(v, 1) + ' : 1');
+  SL.bind('#bore', v => { S.B = v; update(); }, v => v + ' mm');
+  SL.bind('#stroke', v => { S.St = v; update(); }, v => v + ' mm');
+  SL.bind('#thr', v => { S.thr = v; update(); }, v => Math.round(v * 100) + '%');
+  SL.bind('#gam', v => { S.g = v; update(); }, v => f(v, 2));
+  SL.bind('#lam', v => { S.lam = v; update(); }, v => f(v, 1));
+  SL.bind('#adv', v => { S.adv = v; update(); }, v => v + '° BTDC');
+  SL.bind('#rd', v => { S.rd = v; update(); }, v => f(v, 1) + ' : 1');
+  SL.bind('#dsl', v => { S.dsl = v; $('#rdCtl').style.display = v ? '' : 'none'; update(); });
+  SL.bind('#logp', v => { S.logp = v; });
+  SL.bind('#spd', v => { S.spd = v; }, v => f(v, 1) + ' rev/s');
+  $('#cylSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.ncyl = +b.dataset.n; $$('#cylSeg button').forEach(x => x.classList.toggle('on', x === b)); update(); });
+  $('#cycSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.cyc = b.dataset.c; $$('#cycSeg button').forEach(x => x.classList.toggle('on', x === b)); update(); });
+  $('#bPause').onclick = () => { S.paused = !S.paused; $('#bPause').innerHTML = SL.icon(S.paused ? 'play' : 'pause'); SL.refreshIcons($('#bPause')); };
+  $('#bStep').onclick = () => { S.paused = true; $('#bPause').innerHTML = SL.icon('play'); SL.refreshIcons($('#bPause')); theta = (theta + 5) % 720; };
+
+  const stat = (k, v, u) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u ? `<small>${u}</small>` : ''}</div></div>`;
+  function update() {
+    if (!ready) return;
+    compute();
+    const G = M.G, id = M.ideal, R = M.real, real = useReal();
+    let h = stat('Displacement', f(G.Vd * 1e6 * S.ncyl, 0), S.ncyl > 1 ? 'cm³ total' : 'cm³') + stat('Clearance V<sub>c</sub>', f(G.Vc * 1e6, 1), 'cm³') +
+      stat('Otto efficiency', f(id.eta * 100, 1), '%') + stat(real ? 'Indicated eff.' : 'Heat in', real ? f(R.eta * 100, 1) : f(id.Qin, 0), real ? '%' : 'J') +
+      stat('Work / cycle', f(M.W, 0), 'J') + stat('IMEP', f(M.W / G.Vd / 1e5, 2), 'bar') +
+      stat('Indicated power', f(M.P / 1000, 2), 'kW') + stat('Mean torque', f(M.Tmean, 1), 'N·m') +
+      stat('Mean piston speed', f(M.Up, 2), 'm/s') + stat('Peak pressure', f((real ? R.peak : id.p3) / 1e5, 1), 'bar');
+    if (real) h += stat('Pumping work', f(R.Wp, 1), 'J') + stat('Peak gas T', f(R.Tpk, 0), 'K');
+    else h += stat('T₃ (ideal)', f(id.T3, 0), 'K') + stat('p₂ / p₁', f(id.p2 / id.p1, 1));
+    if (M.dsl) h += stat('Diesel eff. at r<sub>D</sub>', f(M.dsl.eta * 100, 1), '%') + stat('Diesel eff. at r', f(M.dsl.etaSameR * 100, 1), '%') + stat('Cut-off ratio ρ', f(M.dsl.rho, 2));
+    $('#stats').innerHTML = h;
+    $('#resNote').textContent = (real ? 'realistic' : 'ideal Otto') + (S.ncyl > 1 ? ' · P, T: all cyl.' : ' · per cylinder');
+    drawTs(); drawTq(); drawVT();
+    checkChallenges();
+  }
+
+  /* ================================ drawing =============================== */
+  const ce = SL.canvas($('#eng')), cpv = SL.canvas($('#pv'));
+  const cvt = SL.canvas($('#vt'), () => ready && drawVT()), cts = SL.canvas($('#ts'), () => ready && drawTs()), ctq = SL.canvas($('#tq'), () => ready && drawTq());
+  const phaseName = t => t < 180 ? 'Intake' : t < 360 ? 'Compression' : t < 540 ? 'Power' : 'Exhaust';
+  const phaseCol = t => t < 180 ? '#60a5fa' : t < 360 ? '#34d399' : t < 540 ? '#f5a524' : '#94a3b8';
+  // gas colour from state
+  function gasColor(t, T, xbv) {
+    const tt = ((t % 720) + 720) % 720;
+    const fresh = [70, 140, 255], burnt = [255, 150, 40], hot = [255, 235, 140], exh = [130, 120, 110];
+    let c;
+    if (tt < TIMING.IVC && tt > TIMING.EVC) c = fresh;
+    else if (tt >= TIMING.IVC && tt <= TIMING.EVO) {
+      const warm = SL.clamp((T - 300) / 500, 0, 1);
+      const pre = fresh.map((v, i) => v * (1 - warm * 0.4) + [120, 200, 255][i] * warm * 0.4);
+      const flame = SL.clamp((T - 1200) / 1600, 0, 1);
+      const b = burnt.map((v, i) => v + (hot[i] - v) * flame);
+      c = pre.map((v, i) => v + (b[i] - v) * xbv);
+    } else c = exh;
+    return c;
+  }
+  const rgba = (c, a) => `rgba(${c.map(Math.round).join(',')},${a})`;
+
+  function drawCylinder(ctx, cx, top, sc, tc, idx) {
+    const G = M.G, B = S.B, rc = S.St / 2, l = S.lam * rc; // mm
+    const th = tc * D2R;
+    const yPin = rc * Math.cos(th) + Math.sqrt(l * l - rc * rc * Math.sin(th) ** 2); // pin above crank centre
+    const pinToCrown = 0.42 * B, pistonH = 0.62 * B;
+    const hc = G.Vc / G.A * 1000; // clearance height mm
+    const deck = rc + l + pinToCrown + hc;
+    const headH = 0.55 * B, camY = deck + headH + 0.14 * B;
+    // map mm (y up from crank centre) to px
+    const Y = y => top + (camY + 0.2 * B - y) * sc, X = x => cx + x * sc;
+    const crown = yPin + pinToCrown;
+    const realState = M.real, T = realState.TAt(tc), p = realState.pAt(tc), xbv = realState.xbAt(tc);
+    // crankcase
+    ctx.save();
+    const ccR = rc + 0.35 * B;
+    ctx.fillStyle = '#0d1424'; ctx.strokeStyle = '#2a3a5c'; ctx.lineWidth = 2;
+    const ccTop = rc + l - rc - pistonH * 0.55, ccW = Math.max(B * 0.74, ccR * 1.12);
+    ctx.beginPath(); ctx.moveTo(X(-ccW), Y(ccTop)); ctx.lineTo(X(-ccW), Y(0)); ctx.arc(X(0), Y(0), ccW * sc, Math.PI, 0, true); ctx.lineTo(X(ccW), Y(ccTop)); ctx.closePath(); ctx.fill(); ctx.stroke();
+    // cylinder block & water jacket
+    const wall = 0.12 * B, jacket = 0.12 * B, cylBot = rc + l - rc - pistonH * 0.55;
+    const blockG = ctx.createLinearGradient(X(-B / 2 - wall - jacket), 0, X(B / 2 + wall + jacket), 0);
+    blockG.addColorStop(0, '#3b4a63'); blockG.addColorStop(0.5, '#526079'); blockG.addColorStop(1, '#2e3a50');
+    ctx.fillStyle = blockG;
+    [-1, 1].forEach(sg => { ctx.fillRect(X(sg > 0 ? B / 2 : -B / 2 - wall - jacket), Y(deck), (wall + jacket) * sc, (deck - cylBot) * sc); });
+    ctx.fillStyle = 'rgba(56,189,248,.18)';
+    [-1, 1].forEach(sg => ctx.fillRect(X(sg > 0 ? B / 2 + wall * 0.5 : -B / 2 - wall * 0.5 - jacket * 0.7), Y(deck - 0.1 * B), jacket * 0.7 * sc, (deck - cylBot - 0.35 * B) * sc));
+    // gas
+    const gc = gasColor(tc, T, xbv);
+    const gasG = ctx.createLinearGradient(0, Y(deck), 0, Y(crown));
+    gasG.addColorStop(0, rgba(gc, 0.85)); gasG.addColorStop(1, rgba(gc, 0.55));
+    ctx.fillStyle = gasG; ctx.fillRect(X(-B / 2), Y(deck), B * sc, (deck - crown) * sc);
+    // flame front from plug during combustion
+    if (xbv > 0.001 && xbv < 0.999 && inWin(tc, realState.ths, TIMING.EVO)) {
+      const rad = (0.15 + 0.9 * Math.sqrt(xbv)) * B * 0.75;
+      ctx.save(); ctx.beginPath(); ctx.rect(X(-B / 2), Y(deck), B * sc, (deck - crown) * sc); ctx.clip();
+      const fg = ctx.createRadialGradient(X(0), Y(deck), 2, X(0), Y(deck), rad * sc);
+      fg.addColorStop(0, 'rgba(255,255,220,.95)'); fg.addColorStop(0.6, 'rgba(255,170,40,.75)'); fg.addColorStop(0.95, 'rgba(255,90,20,.5)'); fg.addColorStop(1, 'rgba(255,90,20,0)');
+      ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(X(0), Y(deck), rad * sc, 0, TAU); ctx.fill(); ctx.restore();
+    }
+    // particles
+    const nP = 26, seed = idx * 97;
+    for (let k = 0; k < nP; k++) {
+      const u = ((Math.sin(k * 12.9898 + seed) * 43758.5453) % 1 + 1) % 1, v = ((Math.sin(k * 78.233 + seed) * 12345.678) % 1 + 1) % 1;
+      const jit = Math.sin(performance.now() / 300 + k) * 0.03;
+      const px = (u - 0.5 + jit) * B * 0.92, py = crown + (deck - crown) * SL.clamp(v + jit, 0.03, 0.97);
+      ctx.fillStyle = rgba(gc.map(c => Math.min(255, c + 60)), 0.7); ctx.fillRect(X(px) - 1, Y(py) - 1, 2, 2);
+    }
+    // cylinder liner lines
+    ctx.strokeStyle = '#7b8aa6'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(X(-B / 2), Y(deck)); ctx.lineTo(X(-B / 2), Y(cylBot)); ctx.moveTo(X(B / 2), Y(deck)); ctx.lineTo(X(B / 2), Y(cylBot)); ctx.stroke();
+    // TDC / BDC marks
+    if (idx === 0 && S.ncyl === 1) {
+      const tdc = rc + l + pinToCrown, bdc = -rc + l + pinToCrown;
+      ctx.setLineDash([3, 3]); ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 1;
+      [[tdc, 'TDC'], [bdc, 'BDC']].forEach(([y, s]) => { ctx.beginPath(); ctx.moveTo(X(-B / 2 - wall - jacket - 0.05 * B), Y(y)); ctx.lineTo(X(-B / 2 - wall - jacket - 0.3 * B), Y(y)); ctx.stroke(); ctx.fillStyle = '#93a1bd'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'right'; ctx.fillText(s, X(-B / 2 - wall - jacket - 0.33 * B), Y(y) + 3); });
+      ctx.setLineDash([]);
+      const xa = X(-B / 2 - wall - jacket - 0.18 * B); SL.arrow(ctx, xa, Y(tdc - 1), xa, Y(bdc + 1), '#5f6d8a', 1, 5); SL.arrow(ctx, xa, Y(bdc + 1), xa, Y(tdc - 1), '#5f6d8a', 1, 5);
+    }
+    // head
+    const headG = ctx.createLinearGradient(0, Y(deck + headH), 0, Y(deck));
+    headG.addColorStop(0, '#3a475f'); headG.addColorStop(1, '#55637d');
+    ctx.fillStyle = headG; ctx.beginPath(); ctx.rect(X(-B / 2 - wall - jacket), Y(deck + headH), (B + 2 * (wall + jacket)) * sc, headH * sc); ctx.fill();
+    // cam cover
+    const hw = B / 2 + wall + jacket;
+    ctx.fillStyle = '#1b2436'; ctx.strokeStyle = '#3b4a63'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(X(-hw + 0.04 * B), Y(camY + 0.24 * B), (2 * hw - 0.08 * B) * sc, (camY + 0.24 * B - deck - headH) * sc, [10, 10, 0, 0]); else ctx.rect(X(-hw + 0.04 * B), Y(camY + 0.24 * B), (2 * hw - 0.08 * B) * sc, (camY + 0.24 * B - deck - headH) * sc); ctx.fill(); ctx.stroke();
+    // manifold pipes
+    [[-1, 'rgba(70,140,255,.35)'], [1, 'rgba(140,120,105,.45)']].forEach(([sg, c]) => { ctx.fillStyle = c; const x0 = sg < 0 ? -hw - 0.32 * B : hw; ctx.fillRect(X(x0), Y(deck + headH * 0.85), 0.32 * B * sc, headH * 0.5 * sc); ctx.strokeStyle = '#3b4a63'; ctx.strokeRect(X(x0), Y(deck + headH * 0.85), 0.32 * B * sc, headH * 0.5 * sc); });
+    // ports (intake left, exhaust right) cut into head
+    const vx = 0.25 * B, vh = 0.34 * B, Lmax = 0.11 * B;
+    const li = lift(tc, TIMING.IVO, TIMING.IVC), le = lift(tc, TIMING.EVO, TIMING.EVC);
+    [[-1, li, '#60a5fa', 'INTAKE'], [1, le, '#f87171', 'EXHAUST']].forEach(([sg, lf, colr, name]) => {
+      const portW = vh * 0.92, x0 = sg * vx;
+      // port channel from valve seat curving outwards
+      const fresh = sg < 0;
+      const portColor = fresh ? rgba([70, 140, 255], lf > 0.02 ? 0.55 : 0.28) : rgba([140, 120, 105], lf > 0.02 ? 0.65 : 0.3);
+      ctx.fillStyle = portColor;
+      ctx.beginPath();
+      ctx.moveTo(X(x0 - portW / 2), Y(deck)); ctx.quadraticCurveTo(X(x0 - portW / 2), Y(deck + headH * 0.7), X(sg * (B / 2 + wall + jacket)), Y(deck + headH * (sg < 0 ? 0.85 : 0.85)));
+      ctx.lineTo(X(sg * (B / 2 + wall + jacket)), Y(deck + headH * 0.35));
+      ctx.quadraticCurveTo(X(x0 + portW / 2), Y(deck + headH * 0.35), X(x0 + portW / 2), Y(deck));
+      ctx.closePath(); ctx.fill();
+      // flow arrows when open
+      if (lf > 0.15) { const ph = (performance.now() / 400) % 1; ctx.fillStyle = colr; for (let k = 0; k < 3; k++) { const s = (k / 3 + ph) % 1; const px = fresh ? X(-(B / 2 + wall + jacket) + s * ((B / 2 + wall + jacket) - vx)) : X(vx + s * ((B / 2 + wall + jacket) - vx)); ctx.beginPath(); ctx.arc(px, Y(deck + headH * 0.6), 2.5, 0, TAU); ctx.fill(); } }
+      // valve (opens downward)
+      const yl = deck - lf * Lmax;
+      ctx.fillStyle = '#d1d5db'; ctx.strokeStyle = '#1f2937'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(X(x0 - vh / 2), Y(yl)); ctx.lineTo(X(x0 + vh / 2), Y(yl)); ctx.lineTo(X(x0 + 0.05 * B), Y(yl + 0.09 * B)); ctx.lineTo(X(x0 - 0.05 * B), Y(yl + 0.09 * B)); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillRect(X(x0 - 0.025 * B), Y(camY - 0.12 * B), 0.05 * B * sc, (camY - 0.12 * B - yl - 0.09 * B) * sc);
+      // spring and bucket
+      ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1.2; ctx.beginPath();
+      const sTop = camY - 0.18 * B - lf * Lmax, sBot = deck + headH;
+      for (let k = 0; k <= 10; k++) { const y = sBot + (sTop - sBot) * k / 10, xx = x0 + (k % 2 ? 0.08 : -0.08) * B; k ? ctx.lineTo(X(xx), Y(y)) : ctx.moveTo(X(xx), Y(y)); }
+      ctx.stroke();
+      ctx.fillStyle = '#64748b'; ctx.fillRect(X(x0 - 0.1 * B), Y(camY - 0.12 * B - lf * Lmax), 0.2 * B * sc, 0.06 * B * sc);
+      // camshaft (half crank speed); lobe points down at max lift
+      const open = fresh ? TIMING.IVO : TIMING.EVO, close = fresh ? TIMING.IVC : TIMING.EVC;
+      let span = close - open; if (span < 0) span += 720; const mid = open + span / 2;
+      const ca = (tc - mid) / 2 * D2R * (sg < 0 ? 1 : 1);
+      ctx.save(); ctx.translate(X(x0), Y(camY + 0.06 * B)); ctx.rotate(-ca);
+      ctx.fillStyle = '#9ca3af'; ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 1;
+      const br = 0.09 * B * sc, lobe = (0.09 * B + Lmax) * sc;
+      ctx.beginPath(); ctx.arc(0, 0, br, -0.15 * Math.PI, 1.15 * Math.PI, true); ctx.quadraticCurveTo(-br * 0.4, lobe * 0.9, 0, lobe); ctx.quadraticCurveTo(br * 0.4, lobe * 0.9, br * Math.cos(0.15 * Math.PI), br * Math.sin(0.15 * Math.PI)); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#1f2937'; ctx.beginPath(); ctx.arc(0, 0, br * 0.35, 0, TAU); ctx.fill(); ctx.restore();
+      if (idx === 0 && S.ncyl === 1) { ctx.fillStyle = colr; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(name, X(sg * (B / 2 + wall + jacket + 0.16 * B)), Y(deck + headH * 0.35) + 14); }
+    });
+    // spark plug
+    ctx.fillStyle = '#e5e7eb'; ctx.fillRect(X(-0.05 * B), Y(deck + headH * 1.15), 0.1 * B * sc, headH * 1.15 * sc - 2);
+    ctx.fillStyle = '#b45309'; ctx.fillRect(X(-0.07 * B), Y(deck + headH * 1.15), 0.14 * B * sc, 0.12 * B * sc);
+    const sparkOn = inWin(tc, realState.ths, realState.ths + 8);
+    if (sparkOn) { ctx.save(); ctx.shadowColor = '#fff'; ctx.shadowBlur = 25; ctx.fillStyle = '#fffbe6'; ctx.beginPath(); ctx.arc(X(0), Y(deck) + 3, 0.06 * B * sc + 3, 0, TAU); ctx.fill(); ctx.strokeStyle = '#a5f3fc'; ctx.lineWidth = 1.5; ctx.beginPath(); for (let k = 0; k < 4; k++) { const a = k * 1.6 + performance.now() / 50; ctx.moveTo(X(0), Y(deck) + 3); ctx.lineTo(X(0) + Math.cos(a) * 14, Y(deck) + 3 + Math.sin(a) * 14); } ctx.stroke(); ctx.restore(); }
+    // piston
+    const pg = ctx.createLinearGradient(X(-B / 2), 0, X(B / 2), 0);
+    pg.addColorStop(0, '#6b7280'); pg.addColorStop(0.35, '#e5e7eb'); pg.addColorStop(0.6, '#cbd5e1'); pg.addColorStop(1, '#4b5563');
+    ctx.fillStyle = pg; ctx.fillRect(X(-B / 2 + 0.5), Y(crown), (B - 1) * sc, pistonH * sc);
+    ctx.strokeStyle = '#374151'; ctx.lineWidth = 1.2;
+    for (let k = 1; k <= 3; k++) { const y = crown - k * 0.05 * B; ctx.beginPath(); ctx.moveTo(X(-B / 2 + 0.5), Y(y)); ctx.lineTo(X(B / 2 - 0.5), Y(y)); ctx.stroke(); }
+    // connecting rod
+    const cpx = rc * Math.sin(th), cpy = rc * Math.cos(th);
+    const ang = Math.atan2(cpy - yPin, cpx), w1 = 0.09 * B, w2 = 0.16 * B, nx = -Math.sin(ang), ny = Math.cos(ang);
+    const rg = ctx.createLinearGradient(X(cpx - nx * w2), Y(cpy - ny * w2), X(cpx + nx * w2), Y(cpy + ny * w2));
+    rg.addColorStop(0, '#475569'); rg.addColorStop(0.5, '#cbd5e1'); rg.addColorStop(1, '#475569');
+    ctx.fillStyle = rg; ctx.beginPath();
+    ctx.moveTo(X(nx * w1), Y(yPin + ny * w1)); ctx.lineTo(X(cpx + nx * w2), Y(cpy + ny * w2)); ctx.lineTo(X(cpx - nx * w2), Y(cpy - ny * w2)); ctx.lineTo(X(-nx * w1), Y(yPin - ny * w1)); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.arc(X(0), Y(yPin), 0.12 * B * sc, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#111827'; ctx.beginPath(); ctx.arc(X(0), Y(yPin), 0.06 * B * sc, 0, TAU); ctx.fill();
+    // crank web with counterweight
+    ctx.save(); ctx.translate(X(0), Y(0)); ctx.rotate(th);
+    const wg = ctx.createRadialGradient(-5, -5, 2, 0, 0, (rc + 0.3 * B) * sc);
+    wg.addColorStop(0, '#9ca3af'); wg.addColorStop(1, '#374151');
+    ctx.fillStyle = wg; ctx.beginPath(); ctx.arc(0, 0, (rc * 1.05) * sc, Math.PI * 0.15, Math.PI * 0.85); ctx.lineTo(-0.15 * B * sc, -rc * sc); ctx.arc(0, -rc * sc, 0.18 * B * sc, Math.PI, 0); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#e5e7eb'; ctx.beginPath(); ctx.arc(X(cpx), Y(cpy), 0.13 * B * sc, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#1f2937'; ctx.beginPath(); ctx.arc(X(0), Y(0), 0.1 * B * sc, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#64748b'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(X(0), Y(0), 0.1 * B * sc, 0, TAU); ctx.stroke();
+    // label
+    ctx.textAlign = 'center'; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.fillStyle = phaseCol(tc);
+    if (S.ncyl > 1) { ctx.fillText(`#${idx + 1} ${phaseName(tc)}`, X(0), Y(camY + 0.2 * B) - 4); }
+    ctx.restore();
+    return { totalH: camY + 0.2 * B + ccR * 1.15 };
+  }
+
+  function drawEngine() {
+    const { ctx, w, h } = ce;
+    const bg = ctx.createRadialGradient(w / 2, h * 0.4, 10, w / 2, h / 2, Math.max(w, h));
+    bg.addColorStop(0, '#0e1730'); bg.addColorStop(1, '#03060d'); ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+    const G = M.G, B = S.B, rc = S.St / 2, l = S.lam * rc, hc = G.Vc / G.A * 1000;
+    const H = (rc + l + 0.42 * B + hc + 0.55 * B + 0.34 * B) + (rc + 0.35 * B) * 1.15;
+    const Wd = B * 2.3 + (S.ncyl === 1 ? B * 0.9 : 0);
+    const n = S.ncyl, pitch = B * 1.85;
+    const totalW = (n - 1) * pitch + Wd;
+    const sc = Math.min((h - 70) / H, (w - 24) / totalW);
+    const top = 44 + ((h - 70) - H * sc) / 2;
+    M.off.forEach((d, i) => {
+      const cx = w / 2 + (i - (n - 1) / 2) * pitch * sc + (n === 1 ? B * 0.25 * sc : 0);
+      const tc = ((theta - d) % 720 + 720) % 720;
+      drawCylinder(ctx, cx, top, sc, tc, i);
+    });
+  }
+
+  // P-V diagram
+  function drawPV() {
+    const { ctx, w, h } = cpv; ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#050913'; ctx.fillRect(0, 0, w, h);
+    const G = M.G, id = M.ideal, R = M.real;
+    const pad = [34, 16, 40, 52];
+    const Vs = [G.V1 * 1.04]; if (M.dsl) Vs.push(M.dsl.V1 * 1.04);
+    const Vmax = Math.max(...Vs) * 1e6, Vmin = Math.min(G.Vc, M.dsl ? M.dsl.Vc2 : G.Vc) * 1e6;
+    let pmax = 0; if (S.cyc !== 'real') pmax = Math.max(pmax, id.p3); if (S.cyc !== 'ideal') pmax = Math.max(pmax, R.peak); if (M.dsl) pmax = Math.max(pmax, M.dsl.pd2);
+    pmax = pmax / 1e5 * 1.08;
+    const lg = S.logp;
+    const xm = lg ? Math.log10(Vmin * 0.8) : 0, xM = lg ? Math.log10(Vmax) : Vmax;
+    const ym = lg ? Math.log10(0.1) : 0, yM = lg ? Math.log10(pmax * 1.2) : pmax;
+    const X = V => pad[3] + ((lg ? Math.log10(V) : V) - xm) / (xM - xm) * (w - pad[1] - pad[3]);
+    const Y = p => h - pad[2] - ((lg ? Math.log10(Math.max(p, 0.1)) : p) - ym) / (yM - ym) * (h - pad[0] - pad[2]);
+    // grid
+    ctx.font = '10px JetBrains Mono, monospace'; ctx.fillStyle = '#5f6d8a'; ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1;
+    const yt = lg ? [0.2, 0.5, 1, 2, 5, 10, 20, 50, 100].filter(v => v < pmax * 1.2) : niceTicks(0, pmax, 5);
+    yt.forEach(v => { const y = Y(v); ctx.beginPath(); ctx.moveTo(pad[3], y); ctx.lineTo(w - pad[1], y); ctx.stroke(); ctx.textAlign = 'right'; ctx.fillText(SL.fmt(v, 1), pad[3] - 5, y + 3); });
+    const xt = lg ? [20, 50, 100, 200, 500, 1000].filter(v => v > Vmin * 0.8 && v < Vmax) : niceTicks(0, Vmax, 5);
+    xt.forEach(v => { const x = X(v); ctx.beginPath(); ctx.moveTo(x, pad[0]); ctx.lineTo(x, h - pad[2]); ctx.stroke(); ctx.textAlign = 'center'; ctx.fillText(SL.fmt(v, 0), x, h - pad[2] + 14); });
+    ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'right'; ctx.fillText('V (cm³)', w - pad[1], h - 8); ctx.fillText('bar', pad[3] - 5, pad[0] - 4);
+    // atmospheric line
+    ctx.setLineDash([2, 4]); ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.beginPath(); ctx.moveTo(pad[3], Y(1)); ctx.lineTo(w - pad[1], Y(1)); ctx.stroke(); ctx.setLineDash([]);
+    // Vc & V1 markers
+    [[G.Vc * 1e6, 'V꜀'], [G.V1 * 1e6, 'V₁']].forEach(([v, s]) => { ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.moveTo(X(v), pad[0]); ctx.lineTo(X(v), h - pad[2]); ctx.stroke(); });
+    const tNow = ((theta % 720) + 720) % 720;
+    // diesel
+    if (M.dsl) { ctx.strokeStyle = '#a78bfa'; ctx.lineWidth = 1.8; ctx.setLineDash([6, 3]); ctx.beginPath(); M.dsl.curve.forEach(([V, p], i) => { const x = X(V * 1e6), y = Y(p / 1e5); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); ctx.setLineDash([]); }
+    // ideal
+    if (S.cyc !== 'real') {
+      ctx.strokeStyle = S.cyc === 'both' ? 'rgba(34,211,238,.6)' : '#22d3ee'; ctx.lineWidth = S.cyc === 'both' ? 1.5 : 2.2;
+      ctx.beginPath(); id.curve.forEach(([t, V, p], i) => { const x = X(V * 1e6), y = Y(p / 1e5); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.lineTo(X(G.Vc * 1e6), Y(id.p1 / 1e5)); ctx.stroke();
+      if (S.cyc === 'ideal') { ctx.fillStyle = 'rgba(34,211,238,.08)'; ctx.beginPath(); id.curve.filter(c => c[0] >= 180 && c[0] <= 540).forEach(([t, V, p], i) => { const x = X(V * 1e6), y = Y(p / 1e5); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); ctx.fill(); }
+      // state labels
+      ctx.fillStyle = '#22d3ee'; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'left';
+      [[G.V1, id.p1, '1', 6, 14], [G.Vc, id.p2, '2', -14, 4], [G.Vc, id.p3, '3', 6, 4], [G.V1, id.p4, '4', 6, -4]].forEach(([V, p, s, dx, dy]) => ctx.fillText(s, X(V * 1e6) + dx, Y(p / 1e5) + dy));
+    }
+    // realistic, coloured by stroke, brighter up to current angle
+    if (S.cyc !== 'ideal') {
+      ctx.lineWidth = 2.4; ctx.lineJoin = 'round';
+      for (let i = 1; i < R.curve.length; i++) {
+        const a = R.curve[i - 1], b = R.curve[i]; const done = b[0] <= tNow;
+        ctx.strokeStyle = phaseCol(a[0]) + (done ? '' : '55');
+        ctx.beginPath(); ctx.moveTo(X(a[1] * 1e6), Y(a[2] / 1e5)); ctx.lineTo(X(b[1] * 1e6), Y(b[2] / 1e5)); ctx.stroke();
+      }
+    }
+    // current marker
+    const V = Vof(G, tNow) * 1e6, p = (S.cyc === 'ideal' ? id.pAt(tNow) : R.pAt(tNow)) / 1e5;
+    ctx.save(); ctx.fillStyle = '#fff'; ctx.shadowColor = phaseCol(tNow); ctx.shadowBlur = 14; ctx.beginPath(); ctx.arc(X(V), Y(p), 5.5, 0, TAU); ctx.fill(); ctx.restore();
+    // legend
+    const items = [];
+    if (S.cyc !== 'real') items.push(['#22d3ee', 'Ideal Otto']);
+    if (S.cyc !== 'ideal') items.push(['#60a5fa', 'Intake'], ['#34d399', 'Comp.'], ['#f5a524', 'Power'], ['#94a3b8', 'Exhaust']);
+    if (M.dsl) items.push(['#a78bfa', 'Diesel r=' + S.rd]);
+    ctx.font = '10px JetBrains Mono, monospace'; let lx = w - pad[1], ly = pad[0] + 4;
+    ctx.textAlign = 'right';
+    items.forEach(([c, s]) => { ctx.fillStyle = '#c9d3e6'; ctx.fillText(s, lx - 14, ly + 4); ctx.fillStyle = c; ctx.fillRect(lx - 10, ly, 10, 3); ly += 14; });
+    // title
+    ctx.fillStyle = '#e6ecf7'; ctx.font = '600 12px Inter, sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('P–V diagram' + (S.logp ? ' (log–log)' : ''), pad[3] + 4, pad[0] - 12);
+    ctx.font = '10px JetBrains Mono, monospace'; ctx.fillStyle = '#93a1bd';
+    ctx.fillText(`W = ${SL.fmt(M.W, 0)} J${S.cyc !== 'ideal' ? `  (pumping ${SL.fmt(M.real.Wp, 1)} J)` : ''}`, pad[3] + 4, pad[0] + 4);
+  }
+  function niceTicks(a, b, n) { const span = b - a, step0 = span / n, mag = 10 ** Math.floor(Math.log10(step0)), st = [1, 2, 2.5, 5, 10].map(k => k * mag).find(s => s >= step0) || mag * 10; const out = []; for (let v = Math.ceil(a / st) * st; v <= b + 1e-9; v += st) out.push(+v.toFixed(6)); return out; }
+
+  function drawTs() {
+    const { ctx, w, h } = cts; if (!M || w < 10) return;
+    const id = M.ideal, cv = M.cv, g = S.g;
+    const s3 = cv * Math.log(id.T3 / id.T2);
+    const pts = [];
+    const N = 40;
+    for (let i = 0; i <= N; i++) pts.push([0, 300 + (id.T2 - 300) * i / N]);
+    for (let i = 0; i <= N; i++) { const T = id.T2 + (id.T3 - id.T2) * i / N; pts.push([cv * Math.log(T / id.T2), T]); }
+    for (let i = 0; i <= N; i++) pts.push([s3, id.T3 + (id.T4 - id.T3) * i / N]);
+    for (let i = 0; i <= N; i++) { const T = id.T4 + (T1 - id.T4) * i / N; pts.push([cv * Math.log(T / T1), T]); }
+    const series = [{ data: pts, color: '#22d3ee', label: 'Otto · T in K' }];
+    if (M.dsl) {
+      const d = M.dsl, cp = M.cp, sd3 = cp * Math.log(d.Td3 / d.Td2), dp = [];
+      for (let i = 0; i <= N; i++) dp.push([0, 300 + (d.Td2 - 300) * i / N]);
+      for (let i = 0; i <= N; i++) { const T = d.Td2 + (d.Td3 - d.Td2) * i / N; dp.push([cp * Math.log(T / d.Td2), T]); }
+      for (let i = 0; i <= N; i++) dp.push([sd3, d.Td3 + (d.Td4 - d.Td3) * i / N]);
+      for (let i = 0; i <= N; i++) { const T = d.Td4 + (T1 - d.Td4) * i / N; dp.push([cv * Math.log(T / T1), T]); }
+      series.push({ data: dp, color: '#a78bfa', label: 'Diesel' });
+    }
+    const m = SL.chart(cts, series, { xlabel: 's − s₁ (J/kg·K)', ylabel: '', xmin: 0, ymin: 0, pad: [34, 12, 30, 62] });
+    // marker
+    const t = ((theta % 720) + 720) % 720; let sx, T;
+    if (t <= 180 || t > 540) { sx = 0; T = T1; if (t > 540) { sx = 0; } }
+    if (t > 180 && t <= 360) { sx = 0; T = id.TAt(t); }
+    if (t > 360 && t <= 540) { sx = s3; T = id.TAt(t); }
+    const ctx2 = cts.ctx; ctx2.fillStyle = '#fff'; ctx2.beginPath(); ctx2.arc(m.X(sx), m.Y(T), 4.5, 0, TAU); ctx2.fill();
+    ctx2.fillStyle = '#93a1bd'; ctx2.font = '10px JetBrains Mono, monospace'; ctx2.textAlign = 'right'; ctx2.fillText(`η = 1 − T₁/T₂ = ${SL.fmt(id.eta * 100, 1)}%`, cts.w - 14, cts.h - 40);
+  }
+  function drawTq() {
+    if (!M || ctq.w < 10) return;
+    const data = M.tq.map(([t, v]) => [t, v]);
+    const m = SL.chart(ctq, [{ data, color: '#f5a524', label: `${S.ncyl}-cyl` }, { data: [[0, M.Tmean], [720, M.Tmean]], color: '#22d3ee', dash: [5, 4], label: `mean ${SL.fmt(M.Tmean, 1)} N·m` }], { xlabel: 'θ (°)', ylabel: '', xmin: 0, xmax: 720, pad: [30, 12, 30, 58] });
+    const ctx = ctq.ctx, x = m.X(((theta % 720) + 720) % 720);
+    ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x, 24); ctx.lineTo(x, ctq.h - 30); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#93a1bd'; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'right';
+    ctx.fillText(`(max − min)/mean = ${SL.fmt((M.tqMax - M.tqMin) / Math.abs(M.Tmean || 1), 1)}`, ctq.w - 14, 44);
+  }
+  function drawVT() {
+    const { ctx, w, h } = cvt; if (!M || w < 10) return;
+    ctx.clearRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2 + 4, R = Math.min(w, h) / 2 - 26;
+    // angle mapping: TDC at top, clockwise, 0-360 outer ring (first rev), 360-720 inner ring
+    const pos = (t, rr) => { const a = (t % 360) * D2R - Math.PI / 2; return [cx + rr * Math.cos(a), cy + rr * Math.sin(a)]; };
+    const arc = (a, b, rr, col, lw) => { ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath(); ctx.arc(cx, cy, rr, (a % 360) * D2R - Math.PI / 2, (b % 360) * D2R - Math.PI / 2 + (b % 360 < a % 360 ? TAU : 0)); ctx.stroke(); };
+    ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.stroke(); ctx.beginPath(); ctx.arc(cx, cy, R * 0.72, 0, TAU); ctx.stroke();
+    // intake 710 -> 220 : 710-720 on inner (second rev) ring, 0-220 on outer
+    arc(350, 360, R * 0.72, '#60a5fa', 7); arc(0, 220, R, '#60a5fa', 7);
+    arc(500 - 360, 180, R * 0.72, '#f87171', 7); arc(180, 360, R * 0.72, '#f87171', 7); arc(0, 10, R, '#f87171', 5);
+    // compression / power regions (thin)
+    arc(220, 360, R, 'rgba(52,211,153,.5)', 2); arc(0, 140, R * 0.72, 'rgba(245,165,36,.5)', 2);
+    // spark
+    const sp = pos(M.real.ths, R); ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.arc(sp[0], sp[1], 4, 0, TAU); ctx.fill();
+    // labels
+    ctx.font = '600 10px JetBrains Mono, monospace'; ctx.fillStyle = '#c9d3e6'; ctx.textAlign = 'center';
+    ctx.fillText('TDC', cx, cy - R - 10); ctx.fillText('BDC', cx, cy + R + 18);
+    const lab = (t, rr, s, c) => { const p = pos(t, rr); ctx.fillStyle = c; ctx.fillText(s, p[0], p[1] + 3); };
+    lab(TIMING.IVC, R + 16, 'IVC', '#60a5fa'); lab(-10, R * 0.72 - 18, 'IVO', '#60a5fa'); lab(TIMING.EVO - 360, R * 0.72 - 16, 'EVO', '#f87171'); lab(TIMING.EVC + 8, R + 16, 'EVC', '#f87171');
+    lab(M.real.ths - 360 - 18, R + 14, 'spark', '#facc15');
+    // crank pointer
+    const t = ((theta % 720) + 720) % 720, rr = t < 360 ? R : R * 0.72, p = pos(t, rr);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(p[0], p[1]); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(p[0], p[1], 4, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#93a1bd'; ctx.font = '10px JetBrains Mono, monospace'; ctx.fillText(t < 360 ? 'rev 1 (outer)' : 'rev 2 (inner)', cx, cy + 4);
+    ctx.fillText(`overlap ${720 - TIMING.IVO + TIMING.EVC}°`, cx, cy + 18);
+  }
+
+  function frame(dt) {
+    if (!M) return;
+    if (!S.paused) theta = (theta + dt * S.spd * 360) % 720;
+    drawEngine(); drawPV();
+    const t = ((theta % 720) + 720) % 720;
+    $('#badge').textContent = phaseName(t) + ' stroke'; $('#badge').style.color = phaseCol(t);
+    $('#hTh').textContent = Math.round(t);
+    const p = (S.cyc === 'ideal' ? M.ideal.pAt(t) : M.real.pAt(t)), T = (S.cyc === 'ideal' ? M.ideal.TAt(t) : M.real.TAt(t));
+    $('#hP').textContent = SL.fmt(p / 1e5, 2); $('#hT').textContent = SL.fmt(T, 0);
+    frameN++; if (frameN % 3 === 0) { drawVT(); drawTs(); drawTq(); }
+  }
+  let frameN = 0;
+
+  /* ============================== challenges ============================== */
+  const near = (a, b, tol) => Math.abs(a - b) <= tol;
+  const CH = [
+    { t: 'Fifty-five per cent', d: 'With γ = 1.40, find the compression ratio that gives η Otto = 55.0% (±0.3%).', ok: () => near(S.g, 1.4, 1e-6) && near(M.ideal.eta * 100, 55, 0.3) },
+    { t: 'Design a 1.6 litre four', d: 'Four cylinders, 1550–1650 cm³ total, mean piston speed ≤ 20 m/s at 6000 rpm.', ok: () => S.ncyl === 4 && S.N === 6000 && M.G.Vd * 4e6 >= 1550 && M.G.Vd * 4e6 <= 1650 && M.Up <= 20 },
+    { t: 'Find MBT timing', d: 'Realistic cycle, full throttle: set the spark advance within ±2° of the timing that gives maximum net work.', ok: () => S.cyc !== 'ideal' && S.thr >= 0.99 && Math.abs(S.adv - mbtCache()) <= 2 },
+    { t: 'See the pumping loss', d: 'Realistic cycle: make the pumping work at least 8% of the gross work.', ok: () => S.cyc !== 'ideal' && -M.real.Wp >= 0.08 * M.real.Wg },
+    { t: 'Power density', d: 'Produce at least 50 kW indicated power (realistic) from no more than 1.2 litres in total.', ok: () => S.cyc !== 'ideal' && M.G.Vd * S.ncyl <= 1.2e-3 + 1e-9 && M.P >= 50e3 },
+    { t: 'Why diesels win', d: 'Turn on the Diesel comparison and choose r<sub>D</sub> so the Diesel efficiency beats the Otto efficiency at r = 10 by at least 3 percentage points.', ok: () => M.dsl && near(S.r, 10, 1e-6) && (M.dsl.eta - M.ideal.eta) * 100 >= 3 },
+    { t: 'Smooth operator', d: 'Get the crankshaft torque fluctuation (max − min)/mean below 6.', ok: () => (M.tqMax - M.tqMin) / Math.abs(M.Tmean) < 6 && M.Tmean > 0 },
+  ];
+  let mbtKey = '', mbtVal = 20;
+  function mbtCache() { const k = [S.N, S.r, S.B, S.St, S.thr, S.g, S.lam].join(); if (k !== mbtKey) { mbtKey = k; mbtVal = mbt().best; } return mbtVal; }
+  const done = new Set(); let chalReady = false;
+  $('#chalTotal').textContent = CH.length;
+  function renderChal() { $('#chalList').innerHTML = CH.map((c, i) => `<div class="chal"><span class="led ${done.has(i) ? 'on' : ''}"></span><div><b>${c.t}</b><span class="small">${c.d}</span></div></div>`).join(''); $('#chalCount').textContent = done.size; }
+  function checkChallenges() {
+    let ch = false;
+    CH.forEach((c, i) => { if (done.has(i)) return; let ok = false; try { ok = c.ok(); } catch (e) {} if (ok) { done.add(i); ch = true; if (chalReady) SL.toast(`<b>Challenge solved:</b> ${c.t}`, 'ok'); } });
+    if (ch || !$('#chalList').innerHTML) renderChal();
+  }
+
+  /* ============================ worked examples =========================== */
+  function buildWorked() {
+    const save = { ...S };
+    Object.assign(S, { N: 3000, r: 10, B: 86, St: 86, thr: 1, g: 1.4, lam: 3.5, adv: 20, ncyl: 1, dsl: true, rd: 18 });
+    const m = compute(), G = m.G, id = m.ideal, d = m.dsl, R = m.real;
+    const x90 = xPist(G, Math.PI / 2) * 1000, l = G.l * 1000;
+    const fm = (v, k = 2) => (+v).toFixed(k);
+    $('#worked').innerHTML = `
+      <div class="worked"><h4>Example 1: geometry of the default engine</h4>
+      <p>Bore $B = 86$ mm, stroke $S = 86$ mm (a "square" engine), $r = 10$, rod ratio $l/r_c = 3.5$.</p>
+      <ol class="steps">
+        <li>Piston area $A = \\pi(0.086)^2/4 = ${fm(G.A * 1e3, 3)}\\times10^{-3}$ m², i.e. ${fm(G.A * 1e4, 2)} cm².</li>
+        <li>Displacement $V_d = A S = ${fm(G.Vd * 1e6, 1)}$ cm³ (about half a litre).</li>
+        <li>Clearance volume $V_c = V_d/(r-1) = ${fm(G.Vd * 1e6, 1)}/9 = ${fm(G.Vc * 1e6, 1)}$ cm³; total $V_1 = ${fm(G.V1 * 1e6, 1)}$ cm³.</li>
+        <li>Piston position at $\\theta = 90°$: $r_c = 43$ mm, $l = ${fm(l, 1)}$ mm, $x = 43 + ${fm(l, 1)} - \\sqrt{${fm(l, 1)}^2-43^2} = ${fm(x90, 2)}$ mm, which is ${fm(x90 / 86 * 100, 1)}% of the stroke, not 50%.</li>
+        <li>Mean piston speed at 3000 rpm: $\\bar U_p = 2(0.086)(3000)/60 = ${fm(2 * 0.086 * 50, 2)}$ m/s.</li>
+      </ol><button class="btn sm" data-load="def"><i data-lucide="upload"></i> Load into the simulator</button></div>
+
+      <div class="worked" style="margin-top:14px"><h4>Example 2: the ideal Otto cycle</h4>
+      <p>$p_1 = 1.00$ bar, $T_1 = 300$ K, $\\gamma = 1.4$, $c_v = R/(\\gamma-1) = 717.5$ J/(kg·K), $q_{in} = 1800$ kJ/kg.</p>
+      <ol class="steps">
+        <li>Mass of charge: $m = p_1V_1/(RT_1) = (10^5)(${fm(G.V1 * 1e6, 1)}\\times10^{-6})/(287\\times300) = ${fm(id.m * 1e4, 3)}\\times10^{-4}$ kg.</li>
+        <li>Compression: $T_2 = 300\\times10^{0.4} = ${fm(id.T2, 1)}$ K, $p_2 = 1\\times10^{1.4} = ${fm(id.p2 / 1e5, 2)}$ bar.</li>
+        <li>Combustion: $T_3 = ${fm(id.T2, 1)} + 1.8\\times10^6/717.5 = ${fm(id.T3, 0)}$ K, $p_3 = p_2T_3/T_2 = ${fm(id.p3 / 1e5, 1)}$ bar. $Q_{in} = mq_{in} = ${fm(id.Qin, 1)}$ J.</li>
+        <li>Efficiency $\\eta = 1 - 10^{-0.4} = ${fm(id.eta * 100, 2)}\\%$, so $W = ${fm(id.W, 1)}$ J per cycle.</li>
+        <li>IMEP $= W/V_d = ${fm(id.W / G.Vd / 1e5, 2)}$ bar. Indicated power at 3000 rpm $= ${fm(id.W, 1)}\\times3000/120 = ${fm(id.W * 25 / 1000, 2)}$ kW; mean torque $= W/4\\pi = ${fm(id.W / (4 * Math.PI), 1)}$ N·m.</li>
+      </ol><p class="small muted">Select <i>Ideal Otto</i> in the simulator to see these exact values in the results panel.</p></div>
+
+      <div class="worked" style="margin-top:14px"><h4>Example 3: what the realistic cycle loses</h4>
+      <ol class="steps">
+        <li>Trapped mass at inlet closing (IVC = 220°, intake at ${SL.fmt(TIN, 0)} K): $${fm(R.mt * 1e4, 3)}\\times10^{-4}$ kg, smaller than the ideal ${fm(id.m * 1e4, 3)}×10⁻⁴ kg because compression only starts at IVC and the charge is warmer.</li>
+        <li>Heat actually released (80% after losses): ${fm(R.Qt, 0)} J.</li>
+        <li>With 20° spark advance: gross work ${fm(R.Wg, 0)} J, pumping work ${fm(R.Wp, 1)} J, net ${fm(R.Wn, 0)} J, indicated efficiency ${fm(R.eta * 100, 1)}% of fuel energy (versus ${fm(id.eta * 100, 1)}% ideal).</li>
+        <li>Peak pressure ${fm(R.peak / 1e5, 1)} bar versus ${fm(id.p3 / 1e5, 1)} bar ideal: finite burning time spreads the heat release over ${TIMING.BURN}° of crank rotation.</li>
+      </ol></div>
+
+      <div class="worked" style="margin-top:14px"><h4>Example 4: Otto versus Diesel</h4>
+      <ol class="steps">
+        <li>Diesel at $r_D = 18$: $T_2 = 300\\times18^{0.4} = ${fm(d.Td2, 1)}$ K. Heat at constant pressure: $T_3 = T_2 + q/c_p = ${fm(d.Td2, 1)} + 1.8\\times10^6/1004.5 = ${fm(d.Td3, 0)}$ K.</li>
+        <li>Cut-off ratio $\\rho = T_3/T_2 = ${fm(d.rho, 3)}$.</li>
+        <li>$\\eta_D = 1 - \\dfrac{1}{18^{0.4}}\\cdot\\dfrac{${fm(d.rho, 3)}^{1.4}-1}{1.4(${fm(d.rho, 3)}-1)} = ${fm(d.eta * 100, 1)}\\%$, about the same as Otto at $r = 10$ (${fm(id.eta * 100, 1)}%): with this much heat per kilogram the large cut-off ratio penalises the Diesel cycle. Real diesels run lean (less fuel per kg of air, so smaller $\\rho$) and have no throttle, so in service they are clearly more efficient.</li>
+        <li>At equal ratio the order flips: Diesel at $r = 10$ gives ${fm(d.etaSameR * 100, 1)}% (below Otto's ${fm(id.eta * 100, 1)}%), while Otto at 18 would be ${fm(d.etaOttoRd * 100, 1)}% but would knock.</li>
+      </ol><button class="btn sm" data-load="dsl"><i data-lucide="upload"></i> Load into the simulator</button></div>`;
+    Object.assign(S, save); compute();
+    SL.renderMath($('#worked')); SL.refreshIcons($('#worked'));
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-load]'); if (!b) return;
+    const set = (sel, v) => { const el = $(sel); if (el.type === 'checkbox') el.checked = v; else el.value = v; el.dispatchEvent(new Event('input')); };
+    set('#rpm', 3000); set('#cr', 10); set('#bore', 86); set('#stroke', 86); set('#thr', 1); set('#gam', 1.4); set('#lam', 3.5); set('#adv', 20);
+    $('#cylSeg [data-n="1"]').click();
+    set('#dsl', b.dataset.load === 'dsl'); if (b.dataset.load === 'dsl') set('#rd', 18);
+    $('#stage').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    SL.toast('Loaded. Compare the results panel with the example.', 'ok');
+  });
+
+  /* ================================= quiz ================================= */
+  const QUIZ = [
+    { q: 'How many crankshaft revolutions does one complete four-stroke cycle take?', options: ['One', 'Two', 'Four', 'Half'], answer: 1, why: 'Four strokes of 180° each = 720° = two revolutions. Hence the factor 2 in the power formula.' },
+    { q: 'The ideal Otto efficiency with r = 8 and γ = 1.4 is about…', options: ['44%', '56%', '64%', '87.5%'], answer: 1, why: 'η = 1 − 8^(−0.4) = 1 − 0.435 = 0.565.' },
+    { q: 'A 2.0 L four-cylinder engine has a bore of 86 mm. What is its stroke?', options: ['43 mm', '86 mm', '172 mm', '68 mm'], answer: 1, why: 'Per cylinder 500 cm³ = π(8.6)²/4 × S → S = 8.6 cm = 86 mm.' },
+    { q: 'At a crank angle of 90° after TDC, the piston has travelled…', options: ['Exactly half the stroke', 'More than half the stroke', 'Less than half the stroke', 'The full stroke'], answer: 1, why: 'Rod obliquity adds l − √(l² − r²) to the r(1 − cos θ) term, so the piston is past mid-stroke.' },
+    { q: 'What is the pumping loop on a P–V diagram?', options: ['Positive work from combustion', 'Negative work spent drawing in charge and expelling exhaust', 'Heat lost to the coolant', 'The work done by the valves'], answer: 1, why: 'Intake below and exhaust above atmospheric pressure form an anticlockwise loop: work done on the gas. It grows as the throttle closes.' },
+    { q: 'An engine produces 600 J of indicated work per cylinder per cycle. Four cylinders at 4000 rpm give an indicated power of…', options: ['40 kW', '80 kW', '160 kW', '20 kW'], answer: 1, why: 'P = W n N/120 = 600 × 4 × 4000/120 = 80 000 W.' },
+    { q: 'Why does a petrol engine not use r = 18 like a diesel?', options: ['It would be less efficient', 'The fuel–air mixture would auto-ignite (knock)', 'The valves would hit the piston', 'Petrol cannot be compressed'], answer: 1, why: 'Higher compression raises end-gas temperature until it self-ignites before the flame arrives: knock, which damages the engine.' },
+    { q: 'At the same compression ratio, which ideal cycle is more efficient?', options: ['Diesel', 'Otto', 'They are equal', 'It depends on engine speed'], answer: 1, why: 'The Diesel efficiency has an extra factor (ρ^γ − 1)/(γ(ρ − 1)) > 1. Diesels win in practice only because they use higher r.' },
+    { q: 'IMEP is defined as…', options: ['Peak cylinder pressure', 'Net indicated work per cycle divided by displacement', 'Average pressure in the inlet manifold', 'Pressure at the end of compression'], answer: 1, why: 'Mean effective pressure = W/V_d; it compares engines independently of size.' },
+    { q: 'Firing the spark too early (excess advance) mainly…', options: ['Increases work without limit', 'Raises pressure while the piston is still rising, opposing it and wasting work', 'Has no effect', 'Lowers peak pressure'], answer: 1, why: 'Pressure built before TDC pushes against the upward-moving piston (negative work) and raises knock risk; MBT is the best compromise.' },
+  ];
+
+  /* ================================= init ================================= */
+  function init() {
+    ready = true; update(); buildWorked();
+    SL.quiz('#quiz', QUIZ); renderChal(); chalReady = true;
+    const lp = SL.loop(frame).start();
+    document.addEventListener('visibilitychange', () => document.hidden ? lp.stop() : lp.start());
+    window.__engine = { S, get M() { return M; }, compute, update, mbt, setTheta: t => { theta = t; } };
+  }
+  document.addEventListener('sl:ready', init);
+})();
+</script>
+</body>
+</html>
