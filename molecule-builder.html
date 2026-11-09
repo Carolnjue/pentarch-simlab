@@ -1,0 +1,949 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Molecule Builder · Pentarch SimLab</title>
+<meta name="description" content="Build molecules atom by atom in 3D: valence checking, automatic hydrogens, VSEPR shapes with lone pairs, hybridisation, polarity, Lewis structures and challenges.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .mb-stage{height:600px;touch-action:none;background:radial-gradient(700px 420px at 50% 45%,rgba(163,230,53,.07),transparent 70%),#050913}
+  .mb-stage canvas{cursor:crosshair}
+  .stage .hint{position:absolute;left:12px;bottom:12px;font:500 .74rem var(--mono);color:var(--dim);pointer-events:none;max-width:calc(100% - 180px)}
+  .lab>aside{min-width:0}
+  .palette-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+  .pel{all:unset;box-sizing:border-box;cursor:pointer;aspect-ratio:1;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;font:700 .95rem var(--display);
+       background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--c) 55%,#fff 10%),color-mix(in srgb,var(--c) 30%,#0b1222) 70%);border:1px solid color-mix(in srgb,var(--c) 50%,transparent);color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6);transition:.15s}
+  .pel small{font:500 .5rem var(--mono);opacity:.8;max-width:100%;overflow:hidden;white-space:nowrap}
+  @media (min-width:981px) and (min-height:760px){.lab>.stage{position:sticky;top:calc(var(--hdr) + 14px);align-self:start}}
+  .pel:hover{transform:translateY(-2px)}
+  .pel.on{outline:2px solid #fff;outline-offset:2px;box-shadow:0 0 16px -2px var(--c)}
+  .seg.full{display:flex;width:100%}
+  .seg.full button{flex:1;text-align:center}
+  .vsepr{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:.86rem}
+  .vsepr .shape{font:700 1.1rem var(--display);color:var(--accent)}
+  .vsepr table{width:100%;border-collapse:collapse;margin-top:6px}
+  .vsepr td{padding:3px 0;border-bottom:1px solid var(--line)}
+  .vsepr td:last-child{text-align:right;font-family:var(--mono)}
+  .warns{font-size:.82rem;margin-top:8px;display:flex;flex-direction:column;gap:4px}
+  .warns div{display:flex;gap:6px;align-items:flex-start}
+  .warns .led{margin-top:5px;flex:none}
+  .presets{display:flex;flex-wrap:wrap;gap:5px}
+  .presets .btn{padding:5px 9px;font-size:.78rem}
+  .formula{font:600 1.25rem var(--mono)}
+  .centres{max-height:170px;overflow:auto;font-size:.8rem;margin-top:8px}
+  .centres div{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px dashed var(--line);cursor:pointer}
+  .centres div:hover{color:var(--accent)}
+  .lewis-wrap{position:relative;height:460px;background:#050913;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .lewis-wrap canvas{width:100%;height:100%;display:block}
+  .chal{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
+  .chal .led{margin-top:6px;flex:none}
+  .chal b{display:block}
+  .chal span{color:var(--muted);font-size:.9rem}
+  .shape-table td .btn{padding:4px 8px;font-size:.75rem}
+  .tablewrap{overflow-x:auto}
+  @media (max-width:980px){.mb-stage{height:440px}}
+  @media (max-width:600px){.stage .hint{display:none}}
+</style>
+</head>
+<body data-page="molecule-builder">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <section class="lab wide-controls">
+    <div class="stage mb-stage" id="stage">
+      <canvas id="cv"></canvas>
+      <div class="hud"><span class="readout">Formula <b id="hudF">–</b></span><span class="readout">M <b id="hudM">0</b> g/mol</span><span class="readout" id="hudSel">Centre <b>–</b></span></div>
+      <div class="stage-toolbar">
+        <button class="btn sm" id="undo" title="Undo"><i data-lucide="undo-2"></i></button>
+        <button class="btn sm" id="shake" title="Shake and relax"><i data-lucide="wand-sparkles"></i></button>
+        <button class="btn sm" id="fit" title="Reset view"><i data-lucide="scan"></i></button>
+        <button class="btn sm" id="clear" title="Clear"><i data-lucide="trash-2"></i></button>
+      </div>
+      <div class="hint" id="hint">Drag to rotate · wheel or pinch to zoom · click an atom to bond a new atom to it</div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="atom"></i> Build</h3>
+        <div class="palette-grid" id="pal"></div>
+        <div class="panel-title">Tool</div>
+        <div class="seg full" id="toolSeg"><button data-t="add" class="on">Add atom</button><button data-t="bond">Bond</button><button data-t="del">Delete</button></div>
+        <div class="panel-title">New bond order</div>
+        <div class="seg full" id="ordSeg"><button data-o="1" class="on">Single</button><button data-o="2">Double</button><button data-o="3">Triple</button></div>
+        <div style="margin-top:8px">
+          <label class="toggle">Automatic hydrogens <input type="checkbox" id="autoH" checked></label>
+          <label class="toggle">Show lone pairs <input type="checkbox" id="showLP" checked></label>
+          <label class="toggle">Bond dipoles and net dipole <input type="checkbox" id="showDip"></label>
+          <label class="toggle">Atom labels <input type="checkbox" id="showLab"></label>
+          <label class="toggle">Auto-rotate <input type="checkbox" id="spin"></label>
+        </div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="shapes"></i> VSEPR at selected centre</h3>
+        <div class="vsepr" id="vsepr"></div>
+        <div class="centres" id="centres"></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="gauge"></i> Molecule</h3>
+        <div class="formula" id="formula">–</div>
+        <div class="stats" style="margin-top:8px">
+          <div class="stat"><div class="k">Molar mass</div><div class="v" id="sM">0<small>g/mol</small></div></div>
+          <div class="stat"><div class="k">Atoms</div><div class="v" id="sN">0</div></div>
+          <div class="stat"><div class="k">Polarity</div><div class="v" id="sPol" style="font-size:.95rem">–</div></div>
+          <div class="stat"><div class="k">Net dipole*</div><div class="v" id="sMu">0</div></div>
+        </div>
+        <div class="warns" id="warns"></div>
+        <p class="small dim" style="margin:8px 0 0">* vector sum of bond dipoles in units of Δχ (Pauling); a qualitative estimate, not a dipole moment in debye.</p>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="library"></i> Presets</h3>
+        <div class="presets" id="presets"></div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tabs" data-tabs id="mainTabs">
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="pen-tool"></i> Lewis structure</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+    </div>
+
+    <!-- THEORY -->
+    <div class="tabpanel prose">
+      <h3>Covalent bonds</h3>
+      <p>A covalent bond is a pair of electrons shared between two nuclei. Both nuclei are attracted to the shared density between them, which lowers the energy. Atoms in period 2 (C, N, O, F) can hold at most eight valence electrons (the <b>octet rule</b>), so carbon forms 4 bonds, nitrogen 3, oxygen 2 and fluorine 1. That is exactly the valence check the builder applies; break it and you get a warning.</p>
+      <p>Sharing two or three pairs gives double and triple bonds. Higher bond order means a shorter, stronger bond:</p>
+      <table class="data">
+        <tr><th>Bond</th><th>Order</th><th>Typical length</th><th>Mean bond enthalpy</th></tr>
+        <tr><td>C–C</td><td>1</td><td class="num">154 pm</td><td class="num">347 kJ/mol</td></tr>
+        <tr><td>C=C</td><td>2</td><td class="num">134 pm</td><td class="num">614 kJ/mol</td></tr>
+        <tr><td>C≡C</td><td>3</td><td class="num">120 pm</td><td class="num">839 kJ/mol</td></tr>
+      </table>
+      <p>Elements of period 3 and below (P, S, Cl, Br, I, Xe) can have more than eight electrons around them in Lewis structures (an <b>expanded octet</b>), as in PCl<sub>5</sub>, SF<sub>6</sub>, ClF<sub>3</sub> and XeF<sub>4</sub>. Modern bonding theory explains these with delocalised (3-centre, 4-electron) bonding rather than d-orbital use, but the Lewis/VSEPR bookkeeping still predicts the shapes correctly.</p>
+
+      <h3>Counting electrons: the Lewis structure</h3>
+      <p>For a neutral molecule the total number of valence electrons is $\sum_i v_i$ (group number for main-group atoms). Each bond uses 2 electrons; the rest are placed as lone pairs. For an atom with $v$ valence electrons forming bonds of total order $b$, the number of lone pairs is</p>
+      <div class="eq">$$\text{LP} = \frac{v - b}{2}, \qquad \text{formal charge} = v - 2\,\text{LP} - b$$</div>
+
+      <h3>VSEPR: Valence Shell Electron Pair Repulsion</h3>
+      <p>Electron domains around a central atom (bonded atoms, counted once whatever the bond order, plus lone pairs) repel and spread as far apart as possible. The <b>steric number</b> is</p>
+      <div class="eq">$$\text{SN} = (\text{number of bonded atoms}) + (\text{number of lone pairs})$$</div>
+      <p>The domains take the electron geometry for that SN; the <b>molecular shape</b> is named from the atom positions only. Using AX<sub>m</sub>E<sub>n</sub> notation (A central atom, X bonded atoms, E lone pairs):</p>
+      <div class="tablewrap">
+      <table class="data shape-table">
+        <tr><th>SN</th><th>AXE</th><th>Shape</th><th>Ideal angle(s)</th><th>Hybrid</th><th>Example</th></tr>
+        <tr><td>2</td><td>AX<sub>2</sub></td><td>Linear</td><td>180°</td><td>sp</td><td><button class="btn" data-load="CO2">CO₂</button></td></tr>
+        <tr><td>3</td><td>AX<sub>3</sub></td><td>Trigonal planar</td><td>120°</td><td>sp²</td><td><button class="btn" data-load="BF3">BF₃</button></td></tr>
+        <tr><td>3</td><td>AX<sub>2</sub>E</td><td>Bent</td><td>&lt;120° (SO₂ 119°)</td><td>sp²</td><td><button class="btn" data-load="SO2">SO₂</button></td></tr>
+        <tr><td>4</td><td>AX<sub>4</sub></td><td>Tetrahedral</td><td>109.5°</td><td>sp³</td><td><button class="btn" data-load="CH4">CH₄</button></td></tr>
+        <tr><td>4</td><td>AX<sub>3</sub>E</td><td>Trigonal pyramidal</td><td>&lt;109.5° (NH₃ 107°)</td><td>sp³</td><td><button class="btn" data-load="NH3">NH₃</button></td></tr>
+        <tr><td>4</td><td>AX<sub>2</sub>E<sub>2</sub></td><td>Bent</td><td>&lt;109.5° (H₂O 104.5°)</td><td>sp³</td><td><button class="btn" data-load="H2O">H₂O</button></td></tr>
+        <tr><td>5</td><td>AX<sub>5</sub></td><td>Trigonal bipyramidal</td><td>90°, 120°, 180°</td><td>sp³d</td><td><button class="btn" data-load="PCl5">PCl₅</button></td></tr>
+        <tr><td>5</td><td>AX<sub>4</sub>E</td><td>See-saw</td><td>~90°, ~120°, ~180°</td><td>sp³d</td><td><button class="btn" data-load="SF4">SF₄</button></td></tr>
+        <tr><td>5</td><td>AX<sub>3</sub>E<sub>2</sub></td><td>T-shaped</td><td>~90°, ~180°</td><td>sp³d</td><td><button class="btn" data-load="ClF3">ClF₃</button></td></tr>
+        <tr><td>5</td><td>AX<sub>2</sub>E<sub>3</sub></td><td>Linear</td><td>180°</td><td>sp³d</td><td><button class="btn" data-load="XeF2">XeF₂</button></td></tr>
+        <tr><td>6</td><td>AX<sub>6</sub></td><td>Octahedral</td><td>90°, 180°</td><td>sp³d²</td><td><button class="btn" data-load="SF6">SF₆</button></td></tr>
+        <tr><td>6</td><td>AX<sub>5</sub>E</td><td>Square pyramidal</td><td>~90°</td><td>sp³d²</td><td><button class="btn" data-load="BrF5">BrF₅</button></td></tr>
+        <tr><td>6</td><td>AX<sub>4</sub>E<sub>2</sub></td><td>Square planar</td><td>90°, 180°</td><td>sp³d²</td><td><button class="btn" data-load="XeF4">XeF₄</button></td></tr>
+      </table>
+      </div>
+      <p>Repulsion strength is ordered lone pair–lone pair &gt; lone pair–bond pair &gt; bond pair–bond pair, because a lone pair is held by only one nucleus and spreads out closer to it. That is why H<sub>2</sub>O (104.5°) and NH<sub>3</sub> (107°) are squeezed below 109.5°, and why lone pairs in a trigonal bipyramid always sit in the roomier equatorial positions (see-saw, T-shape, linear XeF<sub>2</sub>), while the two lone pairs of an octahedral centre sit opposite each other (square planar XeF<sub>4</sub>).</p>
+
+      <h3>Hybridisation</h3>
+      <p>Valence bond theory describes the domains with hybrid orbitals mixed from the atom's s, p (and, formally, d) orbitals. The number of hybrids equals the steric number:</p>
+      <div class="eq">$$\text{sp}:\ 2\ (180°)\quad \text{sp}^2:\ 3\ (120°)\quad \text{sp}^3:\ 4\ (109.5°)\quad \text{sp}^3\text{d}:\ 5\quad \text{sp}^3\text{d}^2:\ 6$$</div>
+      <p>Hybrids form σ bonds along the bond axis. The unhybridised p orbitals left on sp and sp² atoms overlap sideways to form π bonds: a double bond is σ + π, a triple bond σ + 2π. Because sideways overlap needs parallel p orbitals, the atoms around a C=C double bond lie in one plane (try ethene) and rotation about it is blocked. The angle between hybrids with fractional s character $s$ obeys $\cos\theta = -\dfrac{s}{1-s}$, so sp³ ($s = \tfrac14$) gives $\cos\theta = -\tfrac13$, $\theta = 109.47°$.</p>
+
+      <h3>Polarity</h3>
+      <p>When two atoms of different electronegativity share electrons, the pair is pulled towards the more electronegative atom, giving partial charges $\delta^+$ and $\delta^-$ and a <b>bond dipole</b>. Dipole moment is $\mu = q\,d$ (unit: debye, 1 D = 3.336×10<sup>−30</sup> C m). Rough guide to bond type by $\Delta\chi$: below 0.4 essentially nonpolar covalent, 0.4–1.7 polar covalent, above about 1.7 largely ionic.</p>
+      <p>The molecular dipole is the <b>vector sum</b> of bond dipoles (plus a contribution from lone pairs). Symmetric shapes cancel: CO<sub>2</sub>, BF<sub>3</sub>, CH<sub>4</sub>, PCl<sub>5</sub>, SF<sub>6</sub> and XeF<sub>4</sub> have polar bonds but are nonpolar molecules. H<sub>2</sub>O, NH<sub>3</sub> and ClF<sub>3</sub> do not cancel and are polar. The builder estimates this as $\vec\mu \approx \sum \Delta\chi\,\hat{\mathbf u}$, each unit vector pointing from the less to the more electronegative atom, and draws the result with the chemist's crossed arrow (pointing to the δ− end).</p>
+      <div class="callout warn"><i data-lucide="triangle-alert"></i><div><b>Model limits.</b> The 3D shapes come from a simplified force field (bond springs, VSEPR domain templates with lone-pair compression for SN 3–4, planar double bonds, soft non-bonded repulsion); it is not a quantum calculation. Stereochemistry (R/S, cis/trans, chair conformers) is not controlled. Resonance is not modelled: nitrogen next to C=O or in aromatic rings (amides, caffeine) is really planar sp², though simple VSEPR counts it as pyramidal. The net-dipole estimate ignores lone-pair dipoles, so it under-estimates NH<sub>3</sub> and misses the small dipole of molecules like CO.</div></div>
+    </div>
+
+    <!-- LEWIS -->
+    <div class="tabpanel">
+      <div class="lewis-wrap"><canvas id="lcv"></canvas></div>
+      <p class="small muted" style="margin-top:10px" id="lewisInfo"></p>
+    </div>
+
+    <!-- WORKED -->
+    <div class="tabpanel prose">
+      <h3>1. Molar mass of caffeine, C<sub>8</sub>H<sub>10</sub>N<sub>4</sub>O<sub>2</sub></h3>
+      <div class="worked">
+        <div class="eq">$$M = 8(12.011) + 10(1.008) + 4(14.007) + 2(15.999)$$</div>
+        <div class="eq">$$= 96.088 + 10.080 + 56.028 + 31.998 = 194.19\ \text{g mol}^{-1}$$</div>
+        <p>Load the caffeine preset: the molecule panel shows the same value. One 95 mg dose (a strong cup of Kenyan coffee) is $0.095/194.19 = 4.9\times10^{-4}$ mol.</p>
+      </div>
+      <h3>2. Predicting the shape of ClF<sub>3</sub></h3>
+      <div class="worked">
+        <ol>
+          <li>Valence electrons: Cl 7 + 3 × F 7 = 28.</li>
+          <li>Three Cl–F single bonds use 6. Each F takes 3 lone pairs (18 electrons). The remaining 28 − 6 − 18 = 4 go on Cl as 2 lone pairs.</li>
+          <li>Cl: 3 bonded atoms + 2 lone pairs, SN = 5, AX<sub>3</sub>E<sub>2</sub>. Electron geometry trigonal bipyramidal, hybridisation sp³d.</li>
+          <li>Lone pairs take equatorial positions (each then has only two 90° neighbours instead of three). The atoms form a <b>T-shape</b> with F–Cl–F angles near 90° (measured 87.5°) and 180° (175°).</li>
+        </ol>
+        <p>Load ClF<sub>3</sub>, select the Cl and compare the VSEPR panel.</p>
+      </div>
+      <h3>3. Why water is polar and CO<sub>2</sub> is not</h3>
+      <div class="worked">
+        <p>CO<sub>2</sub>: $\Delta\chi(\text{C–O}) = 3.44 - 2.55 = 0.89$. The molecule is linear, the two bond vectors are equal and opposite: $\vec\mu = 0.89\hat{\mathbf u} - 0.89\hat{\mathbf u} = 0$. Nonpolar.</p>
+        <p>H<sub>2</sub>O: $\Delta\chi(\text{O–H}) = 3.44 - 2.20 = 1.24$, bent at $\theta = 104.5°$. The components along the bisector add:</p>
+        <div class="eq">$$|\vec\mu| = 2(1.24)\cos\left(\tfrac{104.5°}{2}\right) = 2(1.24)(0.612) = 1.52$$</div>
+        <p>Turn on <i>Bond dipoles</i> with the water preset; the panel shows a net value of about 1.52 Δχ units. (The measured dipole moment of water is 1.85 D.)</p>
+      </div>
+      <h3>4. Hybridisation in aspirin</h3>
+      <div class="worked">
+        <p>Aspirin, C<sub>9</sub>H<sub>8</sub>O<sub>4</sub> (M = 180.16 g/mol), has 9 carbons: the six ring carbons and the two C=O carbons have SN = 3 (sp², trigonal planar, 120°); the methyl carbon has SN = 4 (sp³, tetrahedral). The ester oxygen and the O–H oxygen have 2 bonds and 2 lone pairs: SN = 4, sp³, bent. Click the centres list in the VSEPR panel to check each one.</p>
+      </div>
+      <h3>5. Counting σ and π bonds in ethyne, C<sub>2</sub>H<sub>2</sub></h3>
+      <div class="worked">
+        <p>H–C≡C–H: two C–H σ bonds, plus the triple bond (1 σ + 2 π). Total 3 σ and 2 π. Each carbon has SN = 2 (sp), so the molecule is linear with 180° angles.</p>
+      </div>
+    </div>
+
+    <!-- CHALLENGES -->
+    <div class="tabpanel prose">
+      <p>Build in the lab above. Challenges are checked automatically every time the molecule changes; there must be no valence warnings.</p>
+      <div id="chals"></div>
+      <h3>Investigations</h3>
+      <ol class="steps">
+        <li>Start from methane, then click one H and replace it with Cl, then with F, I and so on. Watch the net dipole change. Why is CCl<sub>4</sub> nonpolar while CH<sub>3</sub>Cl is polar?</li>
+        <li>Build NH<sub>3</sub>, then use the Bond tool to change N–H bonds, or add a fourth atom to N. Read the warning and explain it with the octet rule.</li>
+        <li>Load SF<sub>6</sub>, then delete F atoms one at a time with Automatic hydrogens off. Follow the shapes: octahedral → square pyramidal (SF<sub>5</sub>, a radical) → see-saw (SF<sub>4</sub>) → bent (SF<sub>2</sub>).</li>
+        <li>Load ethene and ethane (build C–C). Drag to rotate and compare: why are all six atoms of ethene in one plane?</li>
+        <li>Load glucose. How many sp³ centres does it have? Which atoms carry lone pairs?</li>
+      </ol>
+    </div>
+
+    <!-- QUIZ -->
+    <div class="tabpanel"><div id="quiz"></div></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  /* ===================== ELEMENT DATA ===================== */
+  // mass (IUPAC), Pauling EN, covalent radius (Å, Cordero 2008), valence electrons, allowed valences, colour
+  const EL = {
+    H: { n: 'Hydrogen', m: 1.008, en: 2.20, r: 0.31, ve: 1, val: [1], c: '#e5e7eb' },
+    B: { n: 'Boron', m: 10.81, en: 2.04, r: 0.84, ve: 3, val: [3], c: '#fda4af' },
+    C: { n: 'Carbon', m: 12.011, en: 2.55, r: 0.76, ve: 4, val: [4], c: '#64748b' },
+    N: { n: 'Nitrogen', m: 14.007, en: 3.04, r: 0.71, ve: 5, val: [3], c: '#3b82f6' },
+    O: { n: 'Oxygen', m: 15.999, en: 3.44, r: 0.66, ve: 6, val: [2], c: '#ef4444' },
+    F: { n: 'Fluorine', m: 18.998, en: 3.98, r: 0.57, ve: 7, val: [1], c: '#a3e635' },
+    Si: { n: 'Silicon', m: 28.085, en: 1.90, r: 1.11, ve: 4, val: [4], c: '#d6b48c' },
+    P: { n: 'Phosphorus', m: 30.974, en: 2.19, r: 1.07, ve: 5, val: [3, 5], c: '#f97316' },
+    S: { n: 'Sulfur', m: 32.06, en: 2.58, r: 1.05, ve: 6, val: [2, 4, 6], c: '#facc15' },
+    Cl: { n: 'Chlorine', m: 35.45, en: 3.16, r: 1.02, ve: 7, val: [1, 3, 5, 7], c: '#22c55e' },
+    Br: { n: 'Bromine', m: 79.904, en: 2.96, r: 1.20, ve: 7, val: [1, 3, 5, 7], c: '#c2410c' },
+    I: { n: 'Iodine', m: 126.90, en: 2.66, r: 1.39, ve: 7, val: [1, 3, 5, 7], c: '#a855f7' },
+    Xe: { n: 'Xenon', m: 131.29, en: 2.6, r: 1.40, ve: 8, val: [0, 2, 4, 6, 8], c: '#22d3ee' },
+  };
+  const PAL = ['H', 'C', 'N', 'O', 'F', 'P', 'S', 'Cl', 'Br', 'I', 'B', 'Si', 'Xe'];
+  const maxVal = e => Math.max(...EL[e].val);
+
+  /* ===================== VECTOR HELPERS ===================== */
+  const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]], sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const len = a => Math.hypot(a[0], a[1], a[2]), norm = a => { const l = len(a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+  const angle = (a, b) => Math.acos(SL.clamp(dot(norm(a), norm(b)), -1, 1)) * 180 / Math.PI;
+  function perp(a) { const t = Math.abs(a[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]; return norm(cross(a, t)); }
+  function frame(a, b) { const e1 = norm(a); let e2 = sub(b, mul(e1, dot(b, e1))); e2 = len(e2) < 1e-3 ? perp(e1) : norm(e2); return [e1, e2, cross(e1, e2)]; }
+  const matMulV = (M, v) => [dot(M[0], v), dot(M[1], v), dot(M[2], v)]; // M rows
+  // rotation taking frame A to frame B: R = B^T-columns * A ; apply: v -> sum_k (A_k . v) B_k
+  const rotApply = (A, B, v) => { const c = [dot(A[0], v), dot(A[1], v), dot(A[2], v)]; return add(add(mul(B[0], c[0]), mul(B[1], c[1])), mul(B[2], c[2])); };
+  function outerSum(B, A, w) { const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]; for (let k = 0; k < 3; k++) for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) M[i][j] += w * B[k][i] * A[k][j]; return M; }
+  function inv3T(m) { // inverse transpose of a 3x3 matrix
+    const [a, b, c] = m[0], [d, e, f] = m[1], [g, h, i] = m[2];
+    const A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g, det = a * A + b * B + c * C;
+    if (Math.abs(det) < 1e-12) return null;
+    return [[A / det, B / det, C / det], [-(b * i - c * h) / det, (a * i - c * g) / det, -(a * h - b * g) / det], [(b * f - c * e) / det, -(a * f - c * d) / det, (a * e - b * d) / det]];
+  }
+  function polar(M) { let X = M; for (let it = 0; it < 12; it++) { const Y = inv3T(X); if (!Y) break; X = X.map((r, i) => r.map((v, j) => 0.5 * (v + Y[i][j]))); } return X; }
+  const C2D = Array.from({ length: 48 }, (_, i) => [Math.cos(i * Math.PI / 24 + .01), Math.sin(i * Math.PI / 24 + .01), 0]);
+  const FIB = (() => { const out = [], N = 96; for (let i = 0; i < N; i++) { const y = 1 - 2 * (i + .5) / N, r = Math.sqrt(1 - y * y), t = i * 2.39996; out.push([r * Math.cos(t), y, r * Math.sin(t)]); } return out; })();
+
+  /* ===================== VSEPR TEMPLATES ===================== */
+  function baseSlots(sn) {
+    if (sn === 2) return [[1, 0, 0], [-1, 0, 0]];
+    if (sn === 3) return [0, 1, 2].map(i => [Math.cos(i * 2 * Math.PI / 3), Math.sin(i * 2 * Math.PI / 3), 0]);
+    if (sn === 4) return [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]].map(norm);
+    if (sn === 5) return [[1, 0, 0], [Math.cos(2.0944), Math.sin(2.0944), 0], [Math.cos(4.18879), Math.sin(4.18879), 0], [0, 0, 1], [0, 0, -1]]; // 3 equatorial then 2 axial
+    if (sn === 6) return [[0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]]; // lone pairs fill +z then -z (trans)
+    return null;
+  }
+  const TPL = {};
+  function template(sn, nl) {
+    const key = sn + '-' + nl; if (TPL[key]) return TPL[key];
+    const v = baseSlots(sn); if (!v) return null;
+    const lp = v.map((_, i) => i < nl);
+    if ((sn === 3 || sn === 4) && nl > 0 && nl < sn) {
+      // lone pairs repel more strongly: relax the domains on a sphere (tuned to H2O 104.5°, NH3 107°)
+      for (let it = 0; it < 2500; it++) {
+        const F = v.map(() => [0, 0, 0]);
+        for (let i = 0; i < sn; i++) for (let j = i + 1; j < sn; j++) {
+          const d = sub(v[i], v[j]), m = Math.max(.05, len(d)), w = lp[i] && lp[j] ? 1.55 : (lp[i] || lp[j]) ? 1.27 : 1, f = w / m ** 4;
+          F[i] = add(F[i], mul(d, f)); F[j] = sub(F[j], mul(d, f));
+        }
+        for (let i = 0; i < sn; i++) v[i] = norm(add(v[i], mul(sub(F[i], mul(v[i], dot(F[i], v[i]))), 0.01)));
+      }
+    }
+    return (TPL[key] = { lp: v.slice(0, nl), bond: v.slice(nl) });
+  }
+  const SHAPES = {
+    '2-0': ['Linear', 'Linear', 'sp', '180°'],
+    '3-0': ['Trigonal planar', 'Trigonal planar', 'sp²', '120°'], '2-1': ['Bent', 'Trigonal planar', 'sp²', '<120° (SO₂ 119°)'],
+    '4-0': ['Tetrahedral', 'Tetrahedral', 'sp³', '109.5°'], '3-1': ['Trigonal pyramidal', 'Tetrahedral', 'sp³', '<109.5° (NH₃ 107°)'], '2-2': ['Bent', 'Tetrahedral', 'sp³', '<109.5° (H₂O 104.5°)'],
+    '5-0': ['Trigonal bipyramidal', 'Trigonal bipyramidal', 'sp³d', '90°, 120°, 180°'], '4-1': ['See-saw', 'Trigonal bipyramidal', 'sp³d', '~90°, ~120°, ~180°'],
+    '3-2': ['T-shaped', 'Trigonal bipyramidal', 'sp³d', '~90°, ~180°'], '2-3': ['Linear', 'Trigonal bipyramidal', 'sp³d', '180°'],
+    '6-0': ['Octahedral', 'Octahedral', 'sp³d²', '90°, 180°'], '5-1': ['Square pyramidal', 'Octahedral', 'sp³d²', '~90°'], '4-2': ['Square planar', 'Octahedral', 'sp³d²', '90°, 180°'],
+  };
+
+  /* ===================== MOLECULE MODEL ===================== */
+  let atoms = [], bonds = [], uid = 1;
+  let info = { nb: new Map(), bsum: new Map(), lp: new Map(), warn: [] };
+  const neighbours = a => info.nb.get(a) || [];
+  const bondBetween = (a, b) => bonds.find(x => (x.a === a && x.b === b) || (x.a === b && x.b === a));
+  function newAtom(el, p, auto) { return { id: uid++, el, p: p.slice(), auto: !!auto, lpv: [] }; }
+  function r0(a, b, o) { return (EL[a.el].r + EL[b.el].r) * (o === 3 ? 0.78 : o === 2 ? 0.87 : 1); }
+
+  function computeTopology() {
+    const nb = new Map(), bs = new Map();
+    atoms.forEach(a => { nb.set(a, []); bs.set(a, 0); });
+    bonds.forEach(b => { nb.get(b.a).push(b.b); nb.get(b.b).push(b.a); bs.set(b.a, bs.get(b.a) + b.o); bs.set(b.b, bs.get(b.b) + b.o); });
+    info.nb = nb; info.bsum = bs;
+  }
+  function freeDir(a, extra) {
+    const dirs = neighbours(a).map(n => norm(sub(n.p, a.p))).concat(extra || []);
+    if (!dirs.length) return norm([Math.random() - .5, Math.random() - .5, Math.random() - .5]);
+    let best = FIB[0], bs = -2;
+    FIB.forEach(f => { const s = -Math.max(...dirs.map(d => dot(d, f))); if (s > bs) { bs = s; best = f; } });
+    return best;
+  }
+  function fillHydrogens() {
+    computeTopology();
+    const autoOn = document.getElementById('autoH').checked;
+    if (!autoOn) return;
+    // remove auto H that are orphaned
+    atoms.filter(a => a.auto && neighbours(a).length === 0).forEach(removeAtomRaw);
+    computeTopology();
+    atoms.filter(a => a.el !== 'H' || !a.auto).slice().forEach(a => {
+      if (a.el === 'H') return;
+      const nbs = neighbours(a), autoH = nbs.filter(n => n.auto && n.el === 'H');
+      const heavy = info.bsum.get(a) - autoH.length;
+      const tv = EL[a.el].val.find(v => v >= heavy);
+      const need = tv == null ? 0 : tv - heavy;
+      if (autoH.length > need) autoH.slice(need).forEach(removeAtomRaw);
+      else for (let k = autoH.length; k < need; k++) {
+        computeTopology();
+        const d = freeDir(a);
+        const h = newAtom('H', add(a.p, mul(d, EL[a.el].r + EL.H.r)), true);
+        atoms.push(h); bonds.push({ a, b: h, o: 1 });
+      }
+      computeTopology();
+    });
+  }
+  function removeAtomRaw(a) { atoms = atoms.filter(x => x !== a); bonds = bonds.filter(b => b.a !== a && b.b !== a); }
+
+  function analyse() {
+    computeTopology();
+    const warn = [];
+    atoms.forEach(a => {
+      const s = info.bsum.get(a), e = EL[a.el];
+      const lp = Math.max(0, Math.floor((e.ve - s) / 2));
+      info.lp.set(a, lp);
+      // keep lone-pair vectors array the right length
+      while (a.lpv.length > lp) a.lpv.pop();
+      while (a.lpv.length < lp) a.lpv.push(freeDir(a, a.lpv));
+      a.bad = false;
+      if (s > maxVal(a.el)) {
+        a.bad = true;
+        const why = { C: 'carbon has only 4 valence electrons to share and no room beyond an octet', N: 'nitrogen would need a positive formal charge (as in NH₄⁺)', O: 'oxygen would need a positive formal charge (as in H₃O⁺)', H: 'hydrogen holds only 2 electrons (1s)', F: 'fluorine forms only one bond', B: 'boron has only 3 valence electrons' }[a.el] || 'more than its valence electrons allow';
+        warn.push({ t: 'bad', m: `${e.n} with ${s} bonds: ${why}.`, a });
+      } else if (s > 0 && !e.val.includes(s)) {
+        if (a.el === 'B' && s < 3) warn.push({ t: 'warn', m: `Boron with ${s} bond${s > 1 ? 's' : ''}: incomplete valence.`, a });
+        else if ((e.ve - s) % 2 === 1) warn.push({ t: 'warn', m: `${e.n} has an unpaired electron (radical) with ${s} bond${s > 1 ? 's' : ''}.`, a });
+        else if (s < Math.min(...e.val.filter(v => v > 0))) warn.push({ t: 'warn', m: `${e.n} has free valence (${s} of ${e.val.find(v => v >= s)} bonds).`, a });
+        else warn.push({ t: 'warn', m: `${e.n} with ${s} bonds is unusual.`, a });
+      } else if (s === 0 && atoms.length > 1 && a.el !== 'Xe') warn.push({ t: 'warn', m: `An unbonded ${e.n.toLowerCase()} atom.`, a });
+      if (neighbours(a).length + lp > 6) warn.push({ t: 'warn', m: `${e.n} has more than six electron domains; beyond this VSEPR model.`, a });
+    });
+    // connected?
+    if (atoms.length) { const seen = new Set([atoms[0]]), st = [atoms[0]]; while (st.length) { const x = st.pop(); neighbours(x).forEach(n => { if (!seen.has(n)) { seen.add(n); st.push(n); } }); } if (seen.size < atoms.length) warn.push({ t: 'warn', m: 'The structure is in more than one piece; the formula counts all pieces.' }); }
+    info.warn = warn;
+  }
+
+  function vseprOf(a) {
+    const x = neighbours(a).length, e = info.lp.get(a) || 0, key = x + '-' + e;
+    if (x < 2) return null;
+    const s = SHAPES[key];
+    return { x, e, sn: x + e, key, shape: s ? s[0] : 'Outside VSEPR table', geo: s ? s[1] : '–', hyb: s ? s[2] : '–', ideal: s ? s[3] : '–' };
+  }
+
+  function formula() {
+    const cnt = {}; atoms.forEach(a => cnt[a.el] = (cnt[a.el] || 0) + 1);
+    let keys = Object.keys(cnt);
+    if (cnt.C) keys = ['C'].concat(cnt.H ? ['H'] : [], keys.filter(k => k !== 'C' && k !== 'H').sort()); // Hill order for carbon compounds
+    else { // inorganic convention: less electronegative element first; H first in acids and water
+      const heavy = keys.filter(k => k !== 'H').sort((x, y) => EL[x].en - EL[y].en);
+      const acid = heavy.length && ['O', 'S', 'F', 'Cl', 'Br', 'I'].includes(heavy[heavy.length - 1]) && heavy.length <= 2 && !heavy.some(k => ['N', 'P', 'B', 'Si', 'Xe'].includes(k));
+      keys = cnt.H ? (acid ? ['H'].concat(heavy) : heavy.concat(['H'])) : heavy;
+    }
+    const txt = keys.map(k => k + (cnt[k] > 1 ? cnt[k] : '')).join('');
+    const htm = keys.map(k => k + (cnt[k] > 1 ? `<sub>${cnt[k]}</sub>` : '')).join('');
+    const M = atoms.reduce((s, a) => s + EL[a.el].m, 0);
+    return { txt, htm, M, cnt };
+  }
+
+  function dipole() {
+    let mu = [0, 0, 0]; const bd = [];
+    bonds.forEach(b => {
+      const d = EL[b.b.el].en - EL[b.a.el].en; if (Math.abs(d) < 1e-6) return;
+      const from = d > 0 ? b.a : b.b, to = d > 0 ? b.b : b.a;
+      const u = norm(sub(to.p, from.p)); mu = add(mu, mul(u, Math.abs(d))); bd.push({ from, to, m: Math.abs(d) });
+    });
+    return { mu, mag: len(mu), bd };
+  }
+
+  /* ===================== FORCE FIELD ===================== */
+  let rot = 0;
+  function relax(iters) {
+    const n = atoms.length; if (!n) return 0;
+    let maxF = 0;
+    for (let it = 0; it < iters; it++) {
+      rot++;
+      const F = new Map(atoms.map(a => [a, [0, 0, 0]]));
+      const push = (a, f) => { const v = F.get(a); v[0] += f[0]; v[1] += f[1]; v[2] += f[2]; };
+      // bond springs
+      bonds.forEach(b => {
+        const d = sub(b.b.p, b.a.p), L = len(d) || 1e-3, k = 0.5 * (L - r0(b.a, b.b, b.o)) / L;
+        push(b.a, mul(d, k)); push(b.b, mul(d, -k));
+      });
+      // VSEPR templates
+      atoms.forEach(c => {
+        const nbs = neighbours(c), nl = info.lp.get(c) || 0, sn = nbs.length + nl;
+        if (nbs.length < 2 && !(nbs.length === 1 && nl > 0)) return;
+        const T = template(sn, nl); if (!T) return;
+        if (nbs.length === 1) { // only orient lone pairs for drawing
+          const u = norm(sub(nbs[0].p, c.p)); const A = frame(T.bond[0], perp(T.bond[0])), B = frame(u, c.lpv.length ? sub(c.lpv[0], mul(u, dot(c.lpv[0], u))) : perp(u));
+          c.lpv = T.lp.map(s => rotApply(A, B, s)); return;
+        }
+        const U = nbs.map(nb => norm(sub(nb.p, c.p)));
+        const i0 = rot % nbs.length; let i1 = -1, md = 2;
+        U.forEach((u, k) => { if (k !== i0 && Math.abs(dot(u, U[i0])) < md) { md = Math.abs(dot(u, U[i0])); i1 = k; } });
+        let best = null, bc = -1e9;
+        const S = T.bond, onlyLinear = S.length === 2;
+        for (let a = 0; a < S.length; a++) for (let b = 0; b < S.length; b++) {
+          if (a === b || (!onlyLinear && Math.abs(dot(S[a], S[b])) > 0.95)) continue;
+          const A = frame(S[a], S[b]), B = frame(U[i0], U[i1]);
+          const R = S.map(s => rotApply(A, B, s));
+          // greedy assignment of the remaining neighbours
+          const used = new Set([a, b]), asg = []; asg[i0] = a; asg[i1] = b; let cost = dot(R[a], U[i0]) + dot(R[b], U[i1]);
+          for (let k = 0; k < U.length; k++) { if (k === i0 || k === i1) continue; let bj = -1, bd = -2; for (let j = 0; j < R.length; j++) if (!used.has(j) && dot(R[j], U[k]) > bd) { bd = dot(R[j], U[k]); bj = j; } used.add(bj); asg[k] = bj; cost += bd; }
+          if (cost > bc) { bc = cost; best = { A, B, R, asg }; }
+        }
+        // least-squares rotation over all neighbours (polar decomposition), seeded by the two-vector frame
+        let Mx = outerSum(best.B, best.A, 0.02);
+        U.forEach((u, k) => { const sv = S[best.asg[k]]; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) Mx[i][j] += u[i] * sv[j]; });
+        Mx = polar(Mx);
+        { // re-assign globally (best pairs first) with the fitted rotation, then refit
+          const Rt0 = S.map(sv => matMulV(Mx, sv)), pairs = [];
+          U.forEach((u, k) => Rt0.forEach((r, j) => pairs.push([dot(u, r), k, j])));
+          pairs.sort((x, y) => y[0] - x[0]); const uk = new Set(), uj = new Set();
+          pairs.forEach(([d, k, j]) => { if (!uk.has(k) && !uj.has(j)) { uk.add(k); uj.add(j); best.asg[k] = j; } });
+          const M2 = Mx.map(r => r.map(v => v * 0.02));
+          U.forEach((u, k) => { const sv = S[best.asg[k]]; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) M2[i][j] += u[i] * sv[j]; });
+          Mx = polar(M2);
+        }
+        const Rt = S.map(sv => matMulV(Mx, sv));
+        best.R = Rt;
+        nbs.forEach((nb, k) => {
+          const L = len(sub(nb.p, c.p)), target = add(c.p, mul(best.R[best.asg[k]], L));
+          const f = mul(sub(target, nb.p), 0.6 / (1 + nbs.length)); push(nb, f); push(c, mul(f, -1));
+        });
+        c.lpv = T.lp.map(sv => matMulV(Mx, sv));
+      });
+      // planarity across double bonds (p orbitals must be parallel)
+      bonds.forEach(b => {
+        if (b.o !== 2) return;
+        [[b.a, b.b], [b.b, b.a]].forEach(([x, y]) => {
+          const nx = neighbours(x).filter(q => q !== y); const ny = neighbours(y).filter(q => q !== x);
+          if (nx.length < 1 || ny.length < 1 || (info.lp.get(x) || 0) > 0 && nx.length < 2) return;
+          if (neighbours(x).length + (info.lp.get(x) || 0) !== 3) return;
+          let nrm = nx.length >= 2 ? cross(sub(nx[0].p, x.p), sub(nx[1].p, x.p)) : cross(sub(y.p, x.p), sub(nx[0].p, x.p));
+          if (len(nrm) < 1e-3) return; nrm = norm(nrm);
+          ny.forEach(q => { const off = dot(sub(q.p, x.p), nrm); const f = mul(nrm, -off * 0.08); push(q, f); push(y, mul(f, -0.5)); push(x, mul(f, -0.5)); });
+        });
+      });
+      // non-bonded repulsion (beyond 1-3)
+      const near = new Map(); atoms.forEach(a => { const s = new Set([a]); neighbours(a).forEach(b => { s.add(b); neighbours(b).forEach(c => s.add(c)); }); near.set(a, s); });
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+        const a = atoms[i], b = atoms[j]; if (near.get(a).has(b)) continue;
+        const d = sub(b.p, a.p), L = len(d) || 1e-3, lim = (a.el === 'H' || b.el === 'H') ? 2.1 : 2.6;
+        if (L < lim) { const k = 0.08 * (lim - L) / L; push(a, mul(d, -k)); push(b, mul(d, k)); }
+      }
+      maxF = 0;
+      atoms.forEach(a => { let f = F.get(a); const m = len(f); if (m > 0.15) f = mul(f, 0.15 / m); maxF = Math.max(maxF, m); a.p = add(a.p, f); });
+    }
+    // recentre
+    const c = atoms.reduce((s, a) => add(s, a.p), [0, 0, 0]); const cc = mul(c, 1 / n); atoms.forEach(a => a.p = sub(a.p, cc));
+    return maxF;
+  }
+
+  /* ===================== PRESETS ===================== */
+  // heavy-atom skeletons; hydrogens are added automatically
+  const PRESETS = {
+    H2O: { name: 'H₂O', a: ['O'], b: [] }, CO2: { name: 'CO₂', a: ['C', 'O', 'O'], b: [[0, 1, 2], [0, 2, 2]] },
+    NH3: { name: 'NH₃', a: ['N'], b: [] }, CH4: { name: 'CH₄', a: ['C'], b: [] },
+    C2H4: { name: 'C₂H₄', a: ['C', 'C'], b: [[0, 1, 2]] }, C2H2: { name: 'C₂H₂', a: ['C', 'C'], b: [[0, 1, 3]] },
+    benzene: { name: 'Benzene', a: ['C', 'C', 'C', 'C', 'C', 'C'], b: [[0, 1, 2], [1, 2, 1], [2, 3, 2], [3, 4, 1], [4, 5, 2], [5, 0, 1]] },
+    ethanol: { name: 'Ethanol', a: ['C', 'C', 'O'], b: [[0, 1, 1], [1, 2, 1]] },
+    glucose: { name: 'Glucose', a: ['C', 'C', 'C', 'C', 'C', 'O', 'O', 'O', 'O', 'O', 'C', 'O'], b: [[0, 1, 1], [1, 2, 1], [2, 3, 1], [3, 4, 1], [4, 5, 1], [5, 0, 1], [0, 6, 1], [1, 7, 1], [2, 8, 1], [3, 9, 1], [4, 10, 1], [10, 11, 1]] },
+    caffeine: { name: 'Caffeine', a: ['N', 'C', 'N', 'C', 'C', 'C', 'N', 'C', 'N', 'O', 'O', 'C', 'C', 'C'], b: [[0, 1, 1], [1, 2, 1], [2, 3, 1], [3, 4, 2], [4, 5, 1], [5, 0, 1], [4, 6, 1], [6, 7, 1], [7, 8, 2], [8, 3, 1], [1, 9, 2], [5, 10, 2], [0, 11, 1], [2, 12, 1], [6, 13, 1]] },
+    aspirin: { name: 'Aspirin', a: ['C', 'C', 'C', 'C', 'C', 'C', 'C', 'O', 'O', 'O', 'C', 'O', 'C'], b: [[0, 1, 2], [1, 2, 1], [2, 3, 2], [3, 4, 1], [4, 5, 2], [5, 0, 1], [0, 6, 1], [6, 7, 2], [6, 8, 1], [1, 9, 1], [9, 10, 1], [10, 11, 2], [10, 12, 1]] },
+    SF6: { name: 'SF₆', a: ['S', 'F', 'F', 'F', 'F', 'F', 'F'], b: [1, 2, 3, 4, 5, 6].map(i => [0, i, 1]) },
+    PCl5: { name: 'PCl₅', a: ['P', 'Cl', 'Cl', 'Cl', 'Cl', 'Cl'], b: [1, 2, 3, 4, 5].map(i => [0, i, 1]) },
+    XeF4: { name: 'XeF₄', a: ['Xe', 'F', 'F', 'F', 'F'], b: [1, 2, 3, 4].map(i => [0, i, 1]) },
+    ClF3: { name: 'ClF₃', a: ['Cl', 'F', 'F', 'F'], b: [1, 2, 3].map(i => [0, i, 1]) },
+    BF3: { name: 'BF₃', a: ['B', 'F', 'F', 'F'], b: [1, 2, 3].map(i => [0, i, 1]), extra: 1 },
+    SO2: { name: 'SO₂', a: ['S', 'O', 'O'], b: [[0, 1, 2], [0, 2, 2]], extra: 1 },
+    SF4: { name: 'SF₄', a: ['S', 'F', 'F', 'F', 'F'], b: [1, 2, 3, 4].map(i => [0, i, 1]), extra: 1 },
+    XeF2: { name: 'XeF₂', a: ['Xe', 'F', 'F'], b: [[0, 1, 1], [0, 2, 1]], extra: 1 },
+    BrF5: { name: 'BrF₅', a: ['Br', 'F', 'F', 'F', 'F', 'F'], b: [1, 2, 3, 4, 5].map(i => [0, i, 1]), extra: 1 },
+    HCN: { name: 'HCN', a: ['C', 'N'], b: [[0, 1, 3]], extra: 1 },
+  };
+  function loadPreset(key, quiet) {
+    const P = PRESETS[key]; snapshot();
+    document.getElementById('autoH').checked = true;
+    atoms = P.a.map(e => newAtom(e, [0, 0, 0])); bonds = P.b.map(([i, j, o]) => ({ a: atoms[i], b: atoms[j], o }));
+    computeTopology();
+    // breadth-first placement from the most connected atom
+    const root = atoms.slice().sort((x, y) => neighbours(y).length - neighbours(x).length)[0];
+    const placed = new Set([root]), q = [root];
+    while (q.length) {
+      const c = q.shift();
+      neighbours(c).forEach(nb => {
+        if (placed.has(nb)) return;
+        const ds = neighbours(c).filter(x => placed.has(x) && x !== c).map(x => norm(sub(x.p, c.p)));
+        let best = C2D[0], bs = -2; C2D.forEach(f => { const s = ds.length ? -Math.max(...ds.map(d => dot(d, f))) : f[1]; if (s > bs) { bs = s; best = f; } });
+        nb.p = add(c.p, mul(best, r0(c, nb, bondBetween(c, nb).o))); placed.add(nb); q.push(nb);
+      });
+    }
+    atoms.forEach(a => { a.p = add(a.p, [(Math.random() - .5) * .05, (Math.random() - .5) * .05, (Math.random() - .5) * .3]); });
+    fillHydrogens(); analyse(); relax(600);
+    selected = centralAtom(); fitView(true); presetName = P.name; update();
+    if (!quiet) SL.toast(`Loaded ${P.name}`);
+  }
+  let presetName = '';
+  function centralAtom() { let best = null, bs = -1; atoms.forEach(a => { const k = neighbours(a).length * 10 + (a.el === 'H' ? 0 : 1) + (info.lp.get(a) || 0); if (k > bs) { bs = k; best = a; } }); return best; }
+
+  /* ===================== EDITING ===================== */
+  const hist = [];
+  function snapshot() {
+    const idx = new Map(atoms.map((a, i) => [a, i]));
+    hist.push({ a: atoms.map(a => ({ el: a.el, p: a.p.slice(), auto: a.auto })), b: bonds.map(b => [idx.get(b.a), idx.get(b.b), b.o]) });
+    if (hist.length > 60) hist.shift();
+  }
+  function undo() {
+    const s = hist.pop(); if (!s) { SL.toast('Nothing to undo', 'warn'); return; }
+    atoms = s.a.map(x => newAtom(x.el, x.p, x.auto)); bonds = s.b.map(([i, j, o]) => ({ a: atoms[i], b: atoms[j], o }));
+    selected = null; computeTopology(); analyse(); selected = centralAtom(); update();
+  }
+  let tool = 'add', order = 1, palEl = 'C', selected = null, bondStart = null;
+
+  function edited(sel) {
+    fillHydrogens(); analyse(); relax(40);
+    if (sel !== undefined) selected = sel;
+    if (selected && !atoms.includes(selected)) selected = centralAtom();
+    presetName = ''; update();
+  }
+  function clickAtom(a) {
+    if (tool === 'add') {
+      snapshot();
+      if (a.el === 'H' && neighbours(a).length === 1 && palEl !== 'H') {
+        // grow from a hydrogen: replace it with the new atom
+        const parent = neighbours(a)[0], b = bondBetween(parent, a);
+        a.el = palEl; a.auto = false; b.o = order;
+        a.p = add(parent.p, mul(norm(sub(a.p, parent.p)), r0(parent, a, order)));
+        // free valence on the parent for higher order bonds
+        edited(neighbours(parent).length >= 2 ? parent : a);
+        afterAddCheck(parent, a); return;
+      }
+      if (palEl === 'H' && document.getElementById('autoH').checked) { SL.toast('Hydrogens are being added automatically. Turn off <b>Automatic hydrogens</b> to place H atoms by hand.', 'warn'); hist.pop(); return; }
+      // make room: drop auto hydrogens if they would block the new bond
+      const d = freeDir(a);
+      const na = newAtom(palEl, add(a.p, mul(d, EL[a.el].r + EL[palEl].r)));
+      atoms.push(na); bonds.push({ a, b: na, o: order });
+      edited(a); afterAddCheck(a, na);
+    } else if (tool === 'del') {
+      snapshot(); const nbs = neighbours(a); removeAtomRaw(a); neighbours(a).forEach(n => { if (n.auto && n.el === 'H') removeAtomRaw(n); });
+      edited(nbs.find(x => atoms.includes(x)) || null);
+    } else if (tool === 'bond') {
+      if (!bondStart) { bondStart = a; selected = a; update(); hintSet(`Now click a second atom to bond it to this ${EL[a.el].n.toLowerCase()} (or click a bond to change its order).`); return; }
+      if (bondStart === a) { bondStart = null; hintSet(); update(); return; }
+      snapshot();
+      const ex = bondBetween(bondStart, a);
+      if (ex) ex.o = ex.o % 3 + 1; else {
+        bonds.push({ a: bondStart, b: a, o: order });
+        if (document.getElementById('autoH').checked) { computeTopology(); [bondStart, a].forEach(x => { const hs = neighbours(x).filter(h => h.auto); const s = info.bsum.get(x); const mx = maxVal(x.el); if (s > mx) hs.slice(0, s - mx).forEach(removeAtomRaw); }); }
+      }
+      const s0 = bondStart; bondStart = null; hintSet(); edited(s0);
+    }
+  }
+  function afterAddCheck(a) { const w = info.warn.find(x => x.t === 'bad'); if (w) SL.toast(w.m, 'bad'); }
+  function clickBond(b) {
+    if (tool === 'del') { snapshot(); bonds = bonds.filter(x => x !== b); [b.a, b.b].forEach(x => { if (x.auto && x.el === 'H') removeAtomRaw(x); }); edited(); return; }
+    snapshot();
+    b.o = b.o % 3 + 1;
+    if (document.getElementById('autoH').checked) { computeTopology(); [b.a, b.b].forEach(x => { const hs = neighbours(x).filter(h => h.auto); const s = info.bsum.get(x); const mx = maxVal(x.el); if (s > mx) hs.slice(0, s - mx).forEach(removeAtomRaw); }); }
+    edited(); SL.toast(`Bond order set to ${['', 'single', 'double', 'triple'][b.o]}`);
+  }
+  function clickEmpty() {
+    if (tool === 'bond' && bondStart) { bondStart = null; hintSet(); return; }
+    if (!atoms.length && tool === 'add') { snapshot(); atoms.push(newAtom(palEl, [0, 0, 0])); edited(atoms[0]); fitView(); }
+  }
+
+  /* ===================== RENDERING ===================== */
+  const cv = document.getElementById('cv');
+  const S = SL.canvas(cv);
+  let R = [[1, 0, 0], [0, 1, 0], [0, 0, 1]], scale = 60, autoRot = false, lastInteract = 0;
+  function rotate(ax, ang) { // rotate camera matrix about screen axis
+    const c = Math.cos(ang), s = Math.sin(ang);
+    const M = ax === 'y' ? [[c, 0, s], [0, 1, 0], [-s, 0, c]] : [[1, 0, 0], [0, c, -s], [0, s, c]];
+    R = M.map(row => [0, 1, 2].map(j => row[0] * R[0][j] + row[1] * R[1][j] + row[2] * R[2][j]));
+  }
+  rotate('y', 0.5); rotate('x', 0.35);
+  function fitView(orient) {
+    const ext = Math.max(1.2, ...atoms.map(a => len(a.p))); scale = SL.clamp(Math.min(S.w, S.h) * 0.42 / (ext + 0.5), 18, 150);
+    if (orient && atoms.length > 2) { // face the molecule's broadest plane towards the viewer
+      const C = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]; atoms.forEach(a => { for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) C[i][j] += a.p[i] * a.p[j]; });
+      const ev = []; for (let k = 0; k < 2; k++) { let v = norm([1, .6 + k, .2 + k * .5]); for (let it = 0; it < 80; it++) { v = norm(matMulV(C, v)); if (k) v = norm(sub(v, mul(ev[0], dot(v, ev[0])))); } ev.push(v); }
+      R = [ev[0], ev[1], cross(ev[0], ev[1])]; rotate('x', 0.45); rotate('y', 0.3);
+    }
+  }
+  function proj(p) { const v = matMulV(R, p); const f = 1 / (1 - v[2] / 16); return { x: S.w / 2 + v[0] * scale * f, y: S.h / 2 - v[1] * scale * f, z: v[2], f }; }
+  const radius = el => 0.17 + 0.3 * EL[el].r;
+  function shade(hex, k) { const n = parseInt(hex.slice(1), 16); let r = n >> 16, g = (n >> 8) & 255, b = n & 255; if (k > 0) { r += (255 - r) * k; g += (255 - g) * k; b += (255 - b) * k; } else { r *= 1 + k; g *= 1 + k; b *= 1 + k; } return `rgb(${r | 0},${g | 0},${b | 0})`; }
+  function drawSphere(ctx, x, y, r, col, depthK) {
+    const g = ctx.createRadialGradient(x - r * .38, y - r * .42, r * .08, x, y, r);
+    g.addColorStop(0, shade(col, .55)); g.addColorStop(.45, shade(col, depthK)); g.addColorStop(1, shade(col, -.62 + depthK * .5));
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.ellipse(x - r * .36, y - r * .42, r * .2, r * .13, -.6, 0, 7); ctx.fill();
+  }
+  function drawStick(ctx, p1, p2, col, w, depthK) {
+    const dx = p2.x - p1.x, dy = p2.y - p1.y, L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L;
+    const g = ctx.createLinearGradient(p1.x + nx * w / 2, p1.y + ny * w / 2, p1.x - nx * w / 2, p1.y - ny * w / 2);
+    g.addColorStop(0, shade(col, -.55)); g.addColorStop(.35, shade(col, .35 + depthK)); g.addColorStop(1, shade(col, -.6));
+    ctx.strokeStyle = g; ctx.lineWidth = w; ctx.lineCap = 'butt'; ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+  }
+  let hover = null, flash = 0, dip = null;
+  function draw(t) {
+    const { ctx, w, h } = S; ctx.clearRect(0, 0, w, h);
+    if (!atoms.length) {
+      ctx.fillStyle = '#5f6d8a'; ctx.font = '500 14px Inter, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('Empty workspace: choose an element and click here, or load a preset', w / 2, h / 2);
+      return;
+    }
+    const P = new Map(atoms.map(a => [a, proj(a.p)]));
+    const zs = atoms.map(a => P.get(a).z), zmin = Math.min(...zs), zmax = Math.max(...zs), dz = (zmax - zmin) || 1;
+    const dk = z => -0.35 * (1 - (z - zmin) / dz);
+    const items = [];
+    bonds.forEach(b => {
+      const pa = P.get(b.a), pb = P.get(b.b);
+      const ra = radius(b.a.el) * scale * pa.f * 0.7, rb = radius(b.b.el) * scale * pb.f * 0.7;
+      const mid = { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2, z: (pa.z + pb.z) / 2 };
+      items.push({ z: (pa.z + mid.z) / 2 - 0.01, f: () => drawBond(ctx, pa, mid, b.a, b, (pa.f + pb.f) / 2, dk((pa.z + mid.z) / 2)) });
+      items.push({ z: (pb.z + mid.z) / 2 - 0.01, f: () => drawBond(ctx, pb, mid, b.b, b, (pa.f + pb.f) / 2, dk((pb.z + mid.z) / 2)) });
+    });
+    const showLP = document.getElementById('showLP').checked;
+    atoms.forEach(a => {
+      const p = P.get(a);
+      items.push({ z: p.z, f: () => {
+        const r = radius(a.el) * scale * p.f;
+        if (a === selected || a === bondStart) { ctx.strokeStyle = a === bondStart ? '#22d3ee' : 'rgba(163,230,53,.9)'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.arc(p.x, p.y, r + 6 + Math.sin(t * 4) * 1.5, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+        if (a.bad) { const g = ctx.createRadialGradient(p.x, p.y, r, p.x, p.y, r * 2.2); g.addColorStop(0, 'rgba(239,68,68,.6)'); g.addColorStop(1, 'transparent'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, r * 2.2, 0, 7); ctx.fill(); }
+        if (a === hover) { ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.arc(p.x, p.y, r + 4, 0, 7); ctx.fill(); }
+        drawSphere(ctx, p.x, p.y, r, EL[a.el].c, dk(p.z));
+        if (document.getElementById('showLab').checked || r > 22) labels.push(() => { ctx.fillStyle = a.el === 'H' || a.el === 'F' || a.el === 'S' ? '#0b1222' : '#fff'; ctx.font = `600 ${Math.max(9, Math.min(15, r * 0.7))}px Inter, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(a.el, p.x, p.y + 1); ctx.textBaseline = 'alphabetic'; });
+      } });
+      if (showLP && neighbours(a).length >= 2) {
+        a.lpv.forEach(v => {
+          const tip = add(a.p, mul(v, radius(a.el) + 0.42)), q = proj(tip), base = proj(add(a.p, mul(v, radius(a.el) * 0.6)));
+          items.push({ z: q.z, f: () => drawLP(ctx, base, q, scale * q.f) });
+        });
+      }
+    });
+    const labels = [];
+    items.sort((a, b) => a.z - b.z).forEach(it => it.f());
+    labels.forEach(f => f());
+    // bond angle arc at the selected centre
+    if (selected && atoms.includes(selected) && neighbours(selected).length >= 2) {
+      const nbs = neighbours(selected), c = P.get(selected);
+      const a1 = P.get(nbs[0]), a2 = P.get(nbs[1]);
+      const ang = angle(sub(nbs[0].p, selected.p), sub(nbs[1].p, selected.p));
+      const t1 = Math.atan2(a1.y - c.y, a1.x - c.x), t2 = Math.atan2(a2.y - c.y, a2.x - c.x);
+      let d = t2 - t1; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
+      const rr = radius(selected.el) * scale * c.f + 16;
+      ctx.strokeStyle = '#a3e635'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(c.x, c.y, rr, t1, t1 + d, d < 0); ctx.stroke();
+      const tm = t1 + d / 2; ctx.fillStyle = '#a3e635'; ctx.font = '600 12px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+      ctx.fillText(SL.fmt(ang, 1) + '°', c.x + Math.cos(tm) * (rr + 18), c.y + Math.sin(tm) * (rr + 18) + 4);
+    }
+    // dipoles
+    if (document.getElementById('showDip').checked && dip) {
+      dip.bd.forEach(d => {
+        const a = d.from.p, b = d.to.p, u = norm(sub(b, a)), off = mul(perp(u), 0);
+        const p1 = proj(add(add(a, mul(sub(b, a), .25)), off)), p2 = proj(add(add(a, mul(sub(b, a), .75)), off));
+        const sx = p2.x - p1.x, sy = p2.y - p1.y, L = Math.hypot(sx, sy) || 1, nx = -sy / L * 12, ny = sx / L * 12;
+        if (L > 8) { SL.arrow(ctx, p1.x + nx, p1.y + ny, p2.x + nx, p2.y + ny, 'rgba(250,204,21,.85)', 1.6, 6); ctx.strokeStyle = 'rgba(250,204,21,.85)'; ctx.beginPath(); ctx.moveTo(p1.x + nx + ny * .3, p1.y + ny - nx * .3); ctx.lineTo(p1.x + nx - ny * .3, p1.y + ny + nx * .3); ctx.stroke(); }
+      });
+      if (dip.mag > 0.05) {
+        const c = proj([0, 0, 0]), e = proj(mul(norm(dip.mu), 0.9 + dip.mag * 0.55));
+        ctx.save(); ctx.shadowColor = '#f472b6'; ctx.shadowBlur = 12; SL.arrow(ctx, c.x, c.y, e.x, e.y, '#f472b6', 4, 14); ctx.restore();
+        const sx = e.x - c.x, sy = e.y - c.y, L = Math.hypot(sx, sy) || 1, nx = -sy / L * 9, ny = sx / L * 9, bx = c.x + sx / L * 10, by = c.y + sy / L * 10;
+        ctx.strokeStyle = '#f472b6'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(bx + nx, by + ny); ctx.lineTo(bx - nx, by - ny); ctx.stroke();
+        ctx.fillStyle = '#f472b6'; ctx.font = '600 12px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText('δ−', e.x + 8, e.y);
+      }
+    }
+  }
+  function drawBond(ctx, pEnd, mid, atom, b, f, depthK) {
+    const w = Math.max(3, 0.16 * scale * f), col = EL[atom.el].c;
+    if (b.o === 1) { drawStick(ctx, pEnd, mid, col, w, depthK); return; }
+    const dx = mid.x - pEnd.x, dy = mid.y - pEnd.y, L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L;
+    const offs = b.o === 2 ? [-0.62, 0.62] : [-1.05, 0, 1.05], ww = w * (b.o === 2 ? 0.62 : 0.5);
+    offs.forEach(o => drawStick(ctx, { x: pEnd.x + nx * o * w, y: pEnd.y + ny * o * w }, { x: mid.x + nx * o * w, y: mid.y + ny * o * w }, col, ww, depthK));
+  }
+  function drawLP(ctx, base, tip, s) {
+    const dx = tip.x - base.x, dy = tip.y - base.y, L = Math.hypot(dx, dy);
+    const ang = Math.atan2(dy, dx), rw = Math.max(4, 0.2 * s);
+    ctx.save(); ctx.translate((base.x + tip.x) / 2, (base.y + tip.y) / 2); ctx.rotate(ang);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.max(L / 2 + 4, rw));
+    g.addColorStop(0, 'rgba(192,132,252,.45)'); g.addColorStop(1, 'rgba(192,132,252,.05)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, 0, Math.max(L / 2 + 3, rw * .8), rw, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(192,132,252,.5)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = '#e9d5ff'; const dd = Math.max(2, rw * .32);
+    ctx.beginPath(); ctx.arc(L * .12, -rw * .35, dd * .7, 0, 7); ctx.arc(L * .12, rw * .35, dd * .7, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  /* ===================== POINTER ===================== */
+  const pts = new Map(); let dragMoved = 0, pinch0 = 0, scale0 = 0;
+  function pick(x, y) {
+    let best = null, bz = -1e9;
+    atoms.forEach(a => { const p = proj(a.p), r = radius(a.el) * scale * p.f + 3; if ((p.x - x) ** 2 + (p.y - y) ** 2 < r * r && p.z > bz) { bz = p.z; best = a; } });
+    if (best) return { atom: best };
+    let bb = null, bd = 7;
+    bonds.forEach(b => { const p = proj(b.a.p), q = proj(b.b.p); const dx = q.x - p.x, dy = q.y - p.y, L2 = dx * dx + dy * dy || 1; const t = SL.clamp(((x - p.x) * dx + (y - p.y) * dy) / L2, 0, 1); const d = Math.hypot(p.x + t * dx - x, p.y + t * dy - y); if (d < bd) { bd = d; bb = b; } });
+    return bb ? { bond: bb } : null;
+  }
+  cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); const p = SL.ptr(e, cv); pts.set(e.pointerId, p); dragMoved = 0; if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); scale0 = scale; } lastInteract = performance.now(); });
+  cv.addEventListener('pointermove', e => {
+    const p = SL.ptr(e, cv);
+    if (!pts.has(e.pointerId)) { const k = pick(p.x, p.y); hover = k && k.atom || null; cv.style.cursor = k ? 'pointer' : 'grab'; return; }
+    const prev = pts.get(e.pointerId); pts.set(e.pointerId, p);
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch0) scale = SL.clamp(scale0 * d / pinch0, 12, 220); dragMoved += 10; return; }
+    const dx = p.x - prev.x, dy = p.y - prev.y; dragMoved += Math.abs(dx) + Math.abs(dy);
+    if (dragMoved > 4) { rotate('y', dx * 0.01); rotate('x', dy * 0.01); }
+    lastInteract = performance.now();
+  });
+  const up = e => {
+    const had = pts.has(e.pointerId); pts.delete(e.pointerId); if (pts.size < 2) pinch0 = 0;
+    if (had && dragMoved <= 4 && e.type === 'pointerup') { const p = SL.ptr(e, cv); const k = pick(p.x, p.y); if (k && k.atom) { if (tool === 'add' || tool === 'del' || tool === 'bond') clickAtom(k.atom); } else if (k && k.bond) clickBond(k.bond); else clickEmpty(); }
+  };
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+  cv.addEventListener('wheel', e => { e.preventDefault(); scale = SL.clamp(scale * Math.exp(-e.deltaY * 0.0012), 12, 220); }, { passive: false });
+
+  /* ===================== UI ===================== */
+  document.getElementById('pal').innerHTML = PAL.map(e => `<button class="pel ${e === palEl ? 'on' : ''}" data-e="${e}" style="--c:${EL[e].c}" title="${EL[e].n}">${e}<small>${EL[e].val.join('/')}</small></button>`).join('');
+  document.getElementById('pal').addEventListener('click', e => { const b = e.target.closest('.pel'); if (!b) return; palEl = b.dataset.e; document.querySelectorAll('.pel').forEach(x => x.classList.toggle('on', x === b)); if (tool !== 'add') setTool('add'); hintSet(); });
+  function setTool(t) { tool = t; bondStart = null; document.querySelectorAll('#toolSeg button').forEach(x => x.classList.toggle('on', x.dataset.t === t)); hintSet(); }
+  document.querySelectorAll('#toolSeg button').forEach(b => b.onclick = () => setTool(b.dataset.t));
+  document.querySelectorAll('#ordSeg button').forEach(b => b.onclick = () => { order = +b.dataset.o; document.querySelectorAll('#ordSeg button').forEach(x => x.classList.toggle('on', x === b)); hintSet(); });
+  function hintSet(msg) {
+    const el = document.getElementById('hint');
+    if (msg) { el.textContent = msg; return; }
+    el.textContent = tool === 'add' ? `Click an atom to bond a new ${EL[palEl].n.toLowerCase()} to it (${['', 'single', 'double', 'triple'][order]}); click an H to replace it · drag to rotate · wheel or pinch to zoom`
+      : tool === 'bond' ? 'Click two atoms to join them (ring closure), or click a bond to cycle single → double → triple'
+      : 'Click an atom or a bond to delete it';
+  }
+  document.getElementById('autoH').addEventListener('change', () => { snapshot(); edited(); });
+  ['showLP', 'showDip', 'showLab'].forEach(id => document.getElementById(id).addEventListener('change', () => {}));
+  document.getElementById('spin').addEventListener('change', e => autoRot = e.target.checked);
+  document.getElementById('undo').onclick = undo;
+  document.getElementById('shake').onclick = () => { atoms.forEach(a => a.p = add(a.p, [(Math.random() - .5) * .6, (Math.random() - .5) * .6, (Math.random() - .5) * .6])); };
+  document.getElementById('fit').onclick = () => fitView(true);
+  document.getElementById('clear').onclick = () => { snapshot(); atoms = []; bonds = []; selected = null; edited(); };
+  const PRESET_ORDER = ['H2O', 'CO2', 'NH3', 'CH4', 'C2H4', 'C2H2', 'benzene', 'ethanol', 'glucose', 'caffeine', 'aspirin', 'SF6', 'PCl5', 'XeF4', 'ClF3', 'BF3', 'SO2', 'SF4', 'XeF2', 'BrF5', 'HCN'];
+  document.getElementById('presets').innerHTML = PRESET_ORDER.map(k => `<button class="btn" data-load="${k}">${PRESETS[k].name}</button>`).join('');
+  document.addEventListener('click', e => { const b = e.target.closest('[data-load]'); if (!b) return; loadPreset(b.dataset.load); if (b.closest('.tabpanel')) document.getElementById('stage').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+  document.getElementById('centres').addEventListener('click', e => { const d = e.target.closest('[data-id]'); if (!d) return; selected = atoms.find(a => a.id === +d.dataset.id); update(); });
+
+  function atomLabel(a) { const same = atoms.filter(x => x.el === a.el); return a.el + (same.length > 1 ? same.indexOf(a) + 1 : ''); }
+  function update() {
+    computeTopology(); analyse();
+    const f = formula(); dip = dipole();
+    document.getElementById('formula').innerHTML = f.htm || '–';
+    document.getElementById('hudF').innerHTML = f.htm || '–';
+    document.getElementById('hudM').textContent = SL.fmt(f.M, 2);
+    document.getElementById('sM').innerHTML = `${SL.fmt(f.M, 2)}<small>g/mol</small>`;
+    document.getElementById('sN').textContent = atoms.length;
+    const polar = dip.mag > 0.05;
+    document.getElementById('sPol').innerHTML = atoms.length < 2 ? '–' : (polar ? '<span style="color:#f472b6">Polar</span>' : (dip.bd.length ? 'Nonpolar*' : 'Nonpolar'));
+    document.getElementById('sMu').textContent = SL.fmt(dip.mag, 2);
+    document.getElementById('warns').innerHTML = info.warn.length ? info.warn.map(w => `<div><span class="led ${w.t}"></span><span>${w.m}</span></div>`).join('') : (atoms.length ? '<div><span class="led on"></span><span>All valences satisfied.</span></div>' : '');
+    // VSEPR panel
+    if (!selected || !atoms.includes(selected) || neighbours(selected).length < 2) { const c = centralAtom(); if (c && neighbours(c).length >= 2) selected = selected && atoms.includes(selected) ? selected : c; }
+    const v = selected && atoms.includes(selected) ? vseprOf(selected) : null;
+    const box = document.getElementById('vsepr');
+    if (selected && atoms.includes(selected) && v) {
+      const nbs = neighbours(selected); const angs = [];
+      for (let i = 0; i < nbs.length; i++) for (let j = i + 1; j < nbs.length; j++) angs.push(angle(sub(nbs[i].p, selected.p), sub(nbs[j].p, selected.p)));
+      const mn = Math.min(...angs), mx = Math.max(...angs);
+      box.innerHTML = `<div class="small muted">${EL[selected.el].n} (${atomLabel(selected)})</div><div class="shape">${v.shape}</div>
+        <table><tr><td>AXE class</td><td>AX<sub>${v.x}</sub>${v.e ? 'E' + (v.e > 1 ? `<sub>${v.e}</sub>` : '') : ''}</td></tr>
+        <tr><td>Steric number</td><td>${v.sn}</td></tr><tr><td>Electron geometry</td><td>${v.geo}</td></tr>
+        <tr><td>Hybridisation</td><td>${v.hyb}</td></tr><tr><td>Ideal angle</td><td>${v.ideal}</td></tr>
+        <tr><td>Measured angles</td><td>${angs.length > 1 ? SL.fmt(mn, 1) + '° – ' + SL.fmt(mx, 1) + '°' : SL.fmt(mn, 1) + '°'}</td></tr></table>`;
+      document.getElementById('hudSel').innerHTML = `${atomLabel(selected)} <b>${v.shape}</b>`;
+    } else {
+      box.innerHTML = `<div class="small muted">${selected && atoms.includes(selected) ? EL[selected.el].n + ' is a terminal atom.' : 'No centre selected.'} Click an atom with two or more neighbours to see its shape.</div>`;
+      document.getElementById('hudSel').innerHTML = 'Centre <b>–</b>';
+    }
+    const cs = atoms.filter(a => neighbours(a).length >= 2);
+    document.getElementById('centres').innerHTML = cs.length ? cs.map(a => { const q = vseprOf(a); return `<div data-id="${a.id}" style="${a === selected ? 'color:var(--accent)' : ''}"><span>${atomLabel(a)}</span><span class="muted">${q.hyb} · ${q.shape}</span></div>`; }).join('') : '';
+    lewisDirty = true;
+    checkChallenges(f);
+  }
+
+  /* ===================== LEWIS STRUCTURE (2D) ===================== */
+  const lcv = document.getElementById('lcv'); let lewisDirty = true; const LS = SL.canvas(lcv, () => lewisDirty = true);
+  document.getElementById('mainTabs').addEventListener('tab', () => lewisDirty = true);
+  function drawLewis() {
+    lewisDirty = false;
+    const { ctx, w, h } = LS; if (w < 10) return; ctx.clearRect(0, 0, w, h);
+    const info2 = document.getElementById('lewisInfo');
+    if (!atoms.length) { info2.textContent = 'Build or load a molecule to see its Lewis structure.'; return; }
+    // project on the two principal axes, then relax in 2D
+    const n = atoms.length; const C = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    atoms.forEach(a => { for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) C[i][j] += a.p[i] * a.p[j]; });
+    const eig = []; let M = C.map(r => r.slice());
+    for (let k = 0; k < 2; k++) { let v = norm([1, .7 + k, .3]); for (let it = 0; it < 60; it++) { v = norm(matMulV(M, v)); if (k === 1) v = norm(sub(v, mul(eig[0], dot(v, eig[0])))); } eig.push(v); }
+    const P = atoms.map(a => [dot(a.p, eig[0]), dot(a.p, eig[1])]);
+    const idx = new Map(atoms.map((a, i) => [a, i]));
+    for (let it = 0; it < 400; it++) {
+      const F = P.map(() => [0, 0]);
+      bonds.forEach(b => { const i = idx.get(b.a), j = idx.get(b.b); const dx = P[j][0] - P[i][0], dy = P[j][1] - P[i][1], L = Math.hypot(dx, dy) || 1e-3, k = 0.3 * (L - 1.35) / L; F[i][0] += dx * k; F[i][1] += dy * k; F[j][0] -= dx * k; F[j][1] -= dy * k; });
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) { const dx = P[j][0] - P[i][0], dy = P[j][1] - P[i][1], L = Math.hypot(dx, dy) || 1e-3; if (L < 2.2) { const k = 0.05 * (2.2 - L) / L; F[i][0] -= dx * k; F[i][1] -= dy * k; F[j][0] += dx * k; F[j][1] += dy * k; } }
+      P.forEach((p, i) => { p[0] += F[i][0]; p[1] += F[i][1]; });
+    }
+    const xs = P.map(p => p[0]), ys = P.map(p => p[1]);
+    const minx = Math.min(...xs), maxx = Math.max(...xs), miny = Math.min(...ys), maxy = Math.max(...ys);
+    const sc = Math.min((w - 90) / Math.max(1, maxx - minx), (h - 90) / Math.max(1, maxy - miny), 70);
+    const X = p => [w / 2 + (p[0] - (minx + maxx) / 2) * sc, h / 2 - (p[1] - (miny + maxy) / 2) * sc];
+    const Q = P.map(X);
+    ctx.lineCap = 'round';
+    bonds.forEach(b => {
+      const p = Q[idx.get(b.a)], q = Q[idx.get(b.b)], dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L;
+      const sh = Math.min(15, L * 0.3), ux = dx / L * sh, uy = dy / L * sh;
+      const offs = b.o === 1 ? [0] : b.o === 2 ? [-3.5, 3.5] : [-6, 0, 6];
+      ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2;
+      offs.forEach(o => { ctx.beginPath(); ctx.moveTo(p[0] + ux + nx * o, p[1] + uy + ny * o); ctx.lineTo(q[0] - ux + nx * o, q[1] - uy + ny * o); ctx.stroke(); });
+    });
+    let lpTot = 0;
+    atoms.forEach((a, i) => {
+      const [x, y] = Q[i];
+      ctx.fillStyle = a.bad ? '#ef4444' : shade(EL[a.el].c, .35); ctx.font = '700 20px Space Grotesk, Inter, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(a.el, x, y + 1); ctx.textBaseline = 'alphabetic';
+      const lp = info.lp.get(a) || 0; lpTot += lp;
+      const bd = neighbours(a).map(nb => { const q = Q[idx.get(nb)]; return Math.atan2(q[1] - y, q[0] - x); });
+      const chosen = [];
+      for (let k = 0; k < lp; k++) {
+        let best = 0, bs = -1;
+        for (let s = 0; s < 72; s++) { const t = s * Math.PI / 36; const all = bd.concat(chosen); const m = all.length ? Math.min(...all.map(u => { let d = Math.abs(t - u) % (2 * Math.PI); return d > Math.PI ? 2 * Math.PI - d : d; })) : (s === 18 ? 9 : 1); if (m > bs + 1e-6) { bs = m; best = t; } }
+        chosen.push(best);
+        const cx = x + Math.cos(best) * 17, cy = y + Math.sin(best) * 17, px = -Math.sin(best) * 4.5, py = Math.cos(best) * 4.5;
+        ctx.fillStyle = '#c084fc'; ctx.beginPath(); ctx.arc(cx + px, cy + py, 2.6, 0, 7); ctx.arc(cx - px, cy - py, 2.6, 0, 7); ctx.fill();
+      }
+      const fc = EL[a.el].ve - 2 * lp - info.bsum.get(a);
+      if (fc !== 0) { ctx.fillStyle = '#f59e0b'; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.fillText(fc > 0 ? '•' : '', x + 13, y - 12); }
+    });
+    const ve = atoms.reduce((s, a) => s + EL[a.el].ve, 0), bp = bonds.reduce((s, b) => s + b.o, 0);
+    info2.innerHTML = `Valence electrons: <b>${ve}</b> = bonding ${2 * bp} (${bp} pairs) + lone pairs ${2 * lpTot} (${lpTot} pairs)${ve - 2 * bp - 2 * lpTot ? ` + ${ve - 2 * bp - 2 * lpTot} unpaired (radical)` : ''}. Purple dots are lone pairs. Layout is a 2D projection of the 3D model; all formal charges are zero for the neutral structures built here, and resonance forms are not shown.`;
+  }
+
+  /* ===================== CHALLENGES ===================== */
+  const done = {};
+  const found = { ethanol: false, ether: false };
+  const CH = [
+    { id: 'c2h6o', t: 'Isomers of C₂H₆O', d: 'Build a molecule with formula C₂H₆O. Then build the other isomer: both ethanol and dimethyl ether count.', ok: f => {
+      if (presetName || f.txt !== 'C2H6O') return false;
+      const O = atoms.find(a => a.el === 'O'); const cs = neighbours(O).filter(x => x.el === 'C').length;
+      const k = cs === 2 ? 'ether' : 'ethanol';
+      if (!found[k]) { found[k] = true; SL.toast(`You built ${k === 'ether' ? 'dimethyl ether, CH₃–O–CH₃' : 'ethanol, CH₃CH₂OH'}. ${found.ethanol && found.ether ? 'Both isomers found.' : 'Now build the other isomer.'}`, 'ok'); }
+      return found.ethanol && found.ether;
+    } },
+    { id: 'pyr', t: 'Trigonal pyramid', d: 'Build a molecule with a trigonal pyramidal centre (AX₃E) yourself, for example NH₃, PCl₃ or methylamine.', ok: () => !presetName && atoms.some(a => { const v = vseprOf(a); return v && v.key === '3-1'; }) },
+    { id: 'sp', t: 'Go linear', d: 'Build a molecule containing a triple bond (for example HC≡N or ethyne).', ok: () => !presetName && bonds.some(b => b.o === 3) },
+    { id: 'np', t: 'Polar bonds, nonpolar molecule', d: 'Build something with polar bonds (Δχ ≥ 0.4) whose dipoles cancel, such as CCl₄ or CO₂, by hand.', ok: () => !presetName && atoms.length > 2 && dip && dip.mag < 0.05 && dip.bd.some(b => b.m >= 0.4) },
+    { id: 'hyp', t: 'Expanded octet', d: 'Build a molecule with a see-saw, T-shaped or square planar centre (turn off automatic hydrogens and use F).', ok: () => !presetName && atoms.some(a => { const v = vseprOf(a); return v && ['4-1', '3-2', '4-2'].includes(v.key); }) },
+    { id: 'chain', t: 'Carbon chain', d: 'Build butane, C₄H₁₀ (or its isomer methylpropane).', ok: f => !presetName && f.txt === 'C4H10' },
+  ];
+  document.getElementById('chals').innerHTML = CH.map(c => `<div class="chal"><span class="led" id="ch-${c.id}"></span><div><b>${c.t}</b><span>${c.d}</span></div></div>`).join('');
+  function checkChallenges(f) {
+    if (info.warn.some(w => w.t === 'bad' || /radical|free valence|incomplete/.test(w.m))) return;
+    CH.forEach(c => { if (done[c.id]) return; if (c.ok(f)) { done[c.id] = true; document.getElementById('ch-' + c.id).classList.add('on'); SL.toast(`Challenge complete: <b>${c.t}</b>`, 'ok'); } });
+  }
+
+  /* ===================== QUIZ ===================== */
+  SL.quiz('#quiz', [
+    { q: 'What is the shape of NH<sub>3</sub>?', options: ['Trigonal planar', 'Trigonal pyramidal', 'Tetrahedral', 'T-shaped'], answer: 1, why: 'N has 3 bonded atoms and 1 lone pair: SN = 4, AX<sub>3</sub>E. The electron geometry is tetrahedral but the atoms form a pyramid with H–N–H ≈ 107°.' },
+    { q: 'Why is the H–O–H angle in water (104.5°) smaller than 109.5°?', options: ['Hydrogen atoms attract each other', 'The two lone pairs repel the bonding pairs more strongly than bonding pairs repel each other', 'Oxygen is sp² hybridised', 'The O–H bonds are double bonds'], answer: 1, why: 'Lone pairs are closer to the nucleus and spread wider, so LP–LP > LP–BP > BP–BP repulsion squeezes the bond angle.' },
+    { q: 'XeF<sub>4</sub> has 4 bonds and 2 lone pairs on Xe. Its shape is…', options: ['Tetrahedral', 'See-saw', 'Square planar', 'Square pyramidal'], answer: 2, why: 'SN = 6 (octahedral electron geometry). The two lone pairs go opposite each other (180° apart) to minimise repulsion, leaving the four F atoms in a square plane.' },
+    { q: 'What is the hybridisation of each carbon in ethyne, HC≡CH?', options: ['sp', 'sp²', 'sp³', 'sp³d'], answer: 0, why: 'Each C has 2 domains (H and the triple-bonded C), so 2 sp hybrids at 180°. The two remaining p orbitals form the two π bonds.' },
+    { q: 'Which molecule is nonpolar even though it contains polar bonds?', options: ['H<sub>2</sub>O', 'NH<sub>3</sub>', 'CO<sub>2</sub>', 'ClF<sub>3</sub>'], answer: 2, why: 'CO<sub>2</sub> is linear, so its two C=O bond dipoles are equal and opposite and cancel. The others are bent, pyramidal or T-shaped and do not cancel.' },
+    { q: 'In SF<sub>4</sub> (AX<sub>4</sub>E), where does the lone pair go?', options: ['An axial position of the trigonal bipyramid', 'An equatorial position', 'It is shared between two positions', 'Above the centre of a square'], answer: 1, why: 'An equatorial lone pair has two neighbours at 90°; an axial one would have three. Fewer 90° repulsions means lower energy, so the molecule is see-saw shaped.' },
+    { q: 'How many σ and π bonds are in ethene, C<sub>2</sub>H<sub>4</sub>?', options: ['4 σ, 1 π', '5 σ, 1 π', '6 σ, 0 π', '5 σ, 2 π'], answer: 1, why: 'Four C–H σ bonds plus the C=C double bond (1 σ + 1 π): 5 σ and 1 π.' },
+    { q: 'Why does the builder warn when carbon has five bonds?', options: ['Carbon is too large', 'Carbon has only four valence electrons and no low-lying orbitals to exceed an octet', 'Five bonds would make carbon ionic', 'It is allowed only for double bonds'], answer: 1, why: 'Carbon (2s<sup>2</sup> 2p<sup>2</sup>) has four valence orbitals in the n = 2 shell, so at most four bonds (8 electrons). Elements in period 3 and below can exceed the octet in Lewis structures.' },
+    { q: 'What is the molar mass of ethanol, C<sub>2</sub>H<sub>6</sub>O?', options: ['30.07 g/mol', '44.05 g/mol', '46.07 g/mol', '60.05 g/mol'], answer: 2, why: '2(12.011) + 6(1.008) + 15.999 = 24.022 + 6.048 + 15.999 = 46.07 g/mol. Dimethyl ether has the same formula and the same molar mass.' },
+  ]);
+
+  /* ===================== LOOP ===================== */
+  SL.loop((dt, t) => {
+    if (document.hidden) return;
+    const mf = relax(atoms.length > 30 ? 3 : 6);
+    if (autoRot && pts.size === 0) rotate('y', dt * 0.5);
+    draw(t);
+    if (lewisDirty) drawLewis();
+    // refresh the measured angles while the shape is settling
+    if (mf > 0.002 && (t * 4 | 0) !== (update.last || 0)) { update.last = t * 4 | 0; updateVsepOnly(); }
+  }).start();
+  function updateVsepOnly() {
+    if (!selected || !atoms.includes(selected)) return;
+    const v = vseprOf(selected); if (!v) return;
+    const nbs = neighbours(selected); const angs = [];
+    for (let i = 0; i < nbs.length; i++) for (let j = i + 1; j < nbs.length; j++) angs.push(angle(sub(nbs[i].p, selected.p), sub(nbs[j].p, selected.p)));
+    const cells = document.querySelectorAll('#vsepr td'); if (cells.length < 12) return;
+    cells[11].textContent = angs.length > 1 ? SL.fmt(Math.min(...angs), 1) + '° – ' + SL.fmt(Math.max(...angs), 1) + '°' : SL.fmt(angs[0], 1) + '°';
+    dip = dipole(); document.getElementById('sMu').textContent = SL.fmt(dip.mag, 2);
+  }
+
+  window.MB = { get atoms() { return atoms; }, get bonds() { return bonds; }, loadPreset, formula, vseprOf, dipole, angle, sub, neighbours: a => neighbours(a), relax, analyse: () => info, clickAtom, setTool, setPal: e => { palEl = e; }, setOrder: o => { order = o; }, update };
+  hintSet();
+  loadPreset('aspirin', true); hist.length = 0;
+})();
+</script>
+</body>
+</html>
