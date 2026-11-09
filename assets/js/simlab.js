@@ -1,0 +1,376 @@
+/* ==========================================================================
+   Pentarch SimLab — shared core (registry, header/mega menu, hero, footer,
+   search palette, and helpers every lab uses).  Exposes window.SL
+   ========================================================================== */
+(function () {
+  'use strict';
+
+  /* ---------------- Registry ---------------- */
+  const DEPTS = [
+    { id: 'engineering', name: 'Engineering', icon: 'cog', blurb: 'Mechanical, civil, electrical and mechatronics labs: gears, robots, structures, engines and circuits.' },
+    { id: 'physics', name: 'Physics & Aerospace', icon: 'rocket', blurb: 'Motion, flight, orbits, waves and optics. Build machines and fly them.' },
+    { id: 'life', name: 'Life Sciences & Anatomy', icon: 'dna', blurb: 'Explore the body organ by organ, then go down to cells, chromosomes and genes.' },
+    { id: 'health', name: 'Medicine & Health', icon: 'heart-pulse', blurb: 'Pharmacology, epidemiology and clinical decision-making simulators.' },
+    { id: 'chemistry', name: 'Chemistry', icon: 'flask-conical', blurb: 'Atoms, molecules, reactions and the wet lab, without the broken glassware.' },
+    { id: 'computing', name: 'Computing & Maths', icon: 'binary', blurb: 'Algorithms, logic, networks and the mathematics behind everything else.' },
+    { id: 'media', name: 'Media & Creative Arts', icon: 'clapperboard', blurb: 'Run a TV gallery, a radio desk and a mixing console; learn camera, light and music.' },
+    { id: 'operations', name: 'Operations & Emergency', icon: 'siren', blurb: 'Control rooms under pressure: plants, grids, dispatch and air traffic.' },
+    { id: 'earth', name: 'Earth & Agriculture', icon: 'sprout', blurb: 'Ecosystems, climate, farming and the restless planet beneath us.' },
+    { id: 'business', name: 'Business & Economics', icon: 'trending-up', blurb: 'Markets, money and decisions, modelled and made visible.' },
+  ];
+
+  const MODULES = [
+    // Engineering
+    { id: 'gears', dept: 'engineering', title: 'Gear Trains & Torque', icon: 'cog', desc: 'Build gear trains, compute ratios, speed and torque, and watch the teeth mesh.', level: 'Year 1–2' },
+    { id: 'robot-arm', dept: 'engineering', title: 'Robot Arm Kinematics', icon: 'bot', desc: 'Denavit–Hartenberg matrices, forward and inverse kinematics, Jacobians and workspace.', level: 'Year 2–4' },
+    { id: 'engine', dept: 'engineering', title: 'Four-Stroke Engine', icon: 'flame', desc: 'Animated piston engine with a live P–V diagram, Otto cycle efficiency and power.', level: 'Year 1–3' },
+    { id: 'beams', dept: 'engineering', title: 'Beam Bending & Statics', icon: 'ruler', desc: 'Place supports and loads; get reactions, shear force and bending moment diagrams.', level: 'Year 1–2' },
+    { id: 'truss-bridge', dept: 'engineering', title: 'Bridge Builder', icon: 'construction', desc: 'Design a truss bridge, load it, and see member forces in tension and compression.', level: 'Year 1–3' },
+    { id: 'circuits', dept: 'engineering', title: 'Circuit Lab', icon: 'zap', desc: 'DC, RC and RLC circuits with a virtual oscilloscope and multimeter.', level: 'Year 1–2' },
+    // Physics & Aerospace
+    { id: 'projectile', dept: 'physics', title: 'Projectile Motion', icon: 'target', desc: 'Throw a stone, kick a ball or fire a cannon, with and without air resistance.', level: 'Foundation' },
+    { id: 'wind-tunnel', dept: 'physics', title: 'Wind Tunnel & Airfoils', icon: 'wind', desc: 'Shape an airfoil, set the angle of attack and watch streamlines, pressure and lift.', level: 'Year 2–3' },
+    { id: 'plane-builder', dept: 'physics', title: 'Build & Fly a Plane', icon: 'plane', desc: 'Design wings, engine and mass, then take off, fly and land your aircraft.', level: 'All levels' },
+    { id: 'helicopter', dept: 'physics', title: 'Helicopter Flight', icon: 'fan', desc: 'Collective, cyclic and tail rotor: learn to hover, translate and land.', level: 'All levels' },
+    { id: 'oscillations', dept: 'physics', title: 'Springs, Pendulums & Resonance', icon: 'activity', desc: 'Simple harmonic motion, damping, driven oscillators and resonance curves.', level: 'Year 1' },
+    { id: 'orbits', dept: 'physics', title: 'Orbits & Rocket Launch', icon: 'orbit', desc: 'Newtonian gravity, Kepler’s laws, orbital transfers and launching to orbit.', level: 'Year 1–3' },
+    { id: 'waves-optics', dept: 'physics', title: 'Waves & Optics', icon: 'waves', desc: 'Interference, the double slit, lenses and mirrors with live ray tracing.', level: 'Year 1–2' },
+    // Life sciences
+    { id: 'ear', dept: 'life', title: 'The Human Ear', icon: 'ear', desc: 'Navigate the outer, middle and inner ear and follow a sound wave to the brain.', level: 'All levels' },
+    { id: 'eye', dept: 'life', title: 'The Eye & Vision', icon: 'eye', desc: 'Anatomy of the eye, accommodation, and how lenses correct myopia and hyperopia.', level: 'All levels' },
+    { id: 'heart', dept: 'life', title: 'Heart & Circulation', icon: 'heart-pulse', desc: 'A beating heart, blood flow through the chambers and the ECG it produces.', level: 'All levels' },
+    { id: 'skeleton', dept: 'life', title: 'Skeleton & Muscles', icon: 'bone', desc: 'Explore bones and joints, and the lever mechanics of muscles in motion.', level: 'All levels' },
+    { id: 'cell', dept: 'life', title: 'Cell Explorer', icon: 'microscope', desc: 'Animal and plant cells, organelle by organelle, with transport across membranes.', level: 'Foundation' },
+    { id: 'neuron', dept: 'life', title: 'Neurons & Action Potentials', icon: 'brain', desc: 'Stimulate a neuron and watch ion channels fire (Hodgkin–Huxley model).', level: 'Year 2–3' },
+    { id: 'chromosomes', dept: 'life', title: 'Chromosomes, Mitosis & Meiosis', icon: 'split', desc: 'Karyotypes, cell division step by step, crossing over and nondisjunction.', level: 'Year 1–2' },
+    { id: 'dna-lab', dept: 'life', title: 'DNA Lab: Splicing & Protein Synthesis', icon: 'dna', desc: 'Transcribe, splice out introns, translate codons and engineer mutations.', level: 'Year 1–3' },
+    { id: 'gene-mixer', dept: 'life', title: 'Gene Mixer', icon: 'git-merge', desc: 'Cross organisms, mix alleles and predict outcomes with Punnett squares and pedigrees.', level: 'Year 1–2' },
+    // Medicine & health
+    { id: 'pharmacology', dept: 'health', title: 'Pharmacokinetics', icon: 'pill', desc: 'Absorption, half-life and steady state: model drug concentration over time.', level: 'Year 2–4' },
+    { id: 'epidemic', dept: 'health', title: 'Epidemic Simulator', icon: 'shield-plus', desc: 'SIR/SEIR outbreaks, R₀, vaccination thresholds and public health measures.', level: 'Year 1–3' },
+    { id: 'vitals', dept: 'health', title: 'Patient Monitor & Triage', icon: 'monitor-dot', desc: 'Read a bedside monitor, recognise deterioration and prioritise patients.', level: 'Clinical years' },
+    // Chemistry
+    { id: 'periodic-table', dept: 'chemistry', title: 'Periodic Table Explorer', icon: 'grid-3x3', desc: 'Every element with electron configurations, Bohr models and periodic trends.', level: 'Foundation' },
+    { id: 'molecule-builder', dept: 'chemistry', title: 'Molecule Builder', icon: 'atom', desc: 'Bond atoms together, check valence and see 3D VSEPR shapes.', level: 'Year 1' },
+    { id: 'titration', dept: 'chemistry', title: 'Titration Lab', icon: 'beaker', desc: 'Run an acid–base titration drop by drop, plot the pH curve and pick indicators.', level: 'Year 1' },
+    { id: 'gas-laws', dept: 'chemistry', title: 'Gas Laws & Kinetic Theory', icon: 'thermometer', desc: 'A box of molecules: pressure, volume, temperature and the Maxwell–Boltzmann spread.', level: 'Year 1' },
+    { id: 'reaction-kinetics', dept: 'chemistry', title: 'Reaction Rates & Equilibrium', icon: 'flask-round', desc: 'Arrhenius, catalysts, rate laws and Le Chatelier’s principle in action.', level: 'Year 1–2' },
+    // Computing & maths
+    { id: 'algorithms', dept: 'computing', title: 'Algorithm Visualizer', icon: 'bar-chart-3', desc: 'Sorting, searching and pathfinding animated step by step, with complexity.', level: 'Year 1–2' },
+    { id: 'logic-gates', dept: 'computing', title: 'Logic Circuit Builder', icon: 'cpu', desc: 'Wire gates into adders, latches and counters; generate truth tables.', level: 'Year 1' },
+    { id: 'networking', dept: 'computing', title: 'Networks & Packets', icon: 'network', desc: 'Watch packets travel the OSI layers, get routed, lost and retransmitted.', level: 'Year 1–2' },
+    { id: 'calculus', dept: 'computing', title: 'Calculus Visualizer', icon: 'sigma', desc: 'Derivatives as slopes, integrals as areas, limits and Taylor series.', level: 'Foundation' },
+    { id: 'fourier', dept: 'computing', title: 'Fourier & Signals', icon: 'audio-waveform', desc: 'Build waves from sines, see spectra, sampling and aliasing.', level: 'Year 2' },
+    { id: 'matrices', dept: 'computing', title: 'Matrix Transformations', icon: 'move-3d', desc: 'Drag a 2×2 or 3×3 matrix and see the space bend; eigenvectors and determinants.', level: 'Year 1' },
+    // Media & creative arts
+    { id: 'tv-studio', dept: 'media', title: 'TV Match Director', icon: 'tv', desc: 'Direct a live football broadcast: cut cameras, run replays, graphics and audio.', level: 'All levels' },
+    { id: 'radio-studio', dept: 'media', title: 'Radio Studio On-Air', icon: 'radio', desc: 'Present a live show: mic, jingles, ad breaks, callers and the clock.', level: 'All levels' },
+    { id: 'mixer', dept: 'media', title: 'Audio Mixing Desk', icon: 'sliders-horizontal', desc: 'A real-sounding multitrack mixer: gain, EQ, compression, panning and meters.', level: 'All levels' },
+    { id: 'piano', dept: 'media', title: 'Piano & Music Theory', icon: 'piano', desc: 'Play a full keyboard and learn notes, scales, chords and progressions.', level: 'All levels' },
+    { id: 'camera', dept: 'media', title: 'Camera & Exposure', icon: 'camera', desc: 'Aperture, shutter and ISO: the exposure triangle with depth of field and motion blur.', level: 'All levels' },
+    { id: 'lighting', dept: 'media', title: 'Studio Lighting', icon: 'lightbulb', desc: 'Set key, fill and back lights; learn classic portrait and interview setups.', level: 'All levels' },
+    { id: 'newsroom', dept: 'media', title: 'Newsroom & Crisis Comms', icon: 'newspaper', desc: 'Verify sources, write to deadline and handle a PR crisis as it unfolds.', level: 'All levels' },
+    // Operations
+    { id: 'plant-operator', dept: 'operations', title: 'Plant Operator Console', icon: 'gauge', desc: 'Run a water treatment and borehole plant; diagnose alarms and recover from faults.', level: 'All levels' },
+    { id: 'power-grid', dept: 'operations', title: 'Power Grid Control', icon: 'zap', desc: 'Balance supply and demand, hold 50 Hz and respond to generator trips.', level: 'Year 2–4' },
+    { id: 'dispatch', dept: 'operations', title: 'Emergency Dispatch Centre', icon: 'phone-call', desc: 'Take calls, triage incidents and send ambulances, fire and police in time.', level: 'All levels' },
+    { id: 'air-traffic', dept: 'operations', title: 'Air Traffic Control', icon: 'radar', desc: 'Sequence arrivals and departures, keep separation and land them safely.', level: 'All levels' },
+    // Earth & agriculture
+    { id: 'ecosystem', dept: 'earth', title: 'Predator–Prey Ecosystem', icon: 'rabbit', desc: 'Lotka–Volterra dynamics and an agent-based savannah you can disturb.', level: 'Year 1' },
+    { id: 'climate', dept: 'earth', title: 'Climate & Carbon Budget', icon: 'cloud-sun', desc: 'Energy balance, greenhouse forcing and emission pathways to 2100.', level: 'Year 1–3' },
+    { id: 'farm', dept: 'earth', title: 'Crop & Water Balance', icon: 'sprout', desc: 'Plan a season: rainfall, irrigation, soil moisture and crop yield.', level: 'All levels' },
+    { id: 'earthquake', dept: 'earth', title: 'Earthquakes & Seismic Waves', icon: 'mountain', desc: 'P and S waves, seismograms, locating epicentres and magnitude.', level: 'Year 1–2' },
+    // Business & economics
+    { id: 'market', dept: 'business', title: 'Supply & Demand Market', icon: 'scale', desc: 'Shift curves, add taxes and price controls, and measure surplus and deadweight loss.', level: 'Year 1' },
+    { id: 'business-finance', dept: 'business', title: 'Business Finance Lab', icon: 'calculator', desc: 'Break-even, cash flow, loans and NPV for a small business you design.', level: 'Year 1–2' },
+  ];
+
+  const byId = Object.fromEntries(MODULES.map(m => [m.id, m]));
+  const deptById = Object.fromEntries(DEPTS.map(d => [d.id, d]));
+  const PARENT = 'https://pentarchcommunications.com/';
+
+  /* ---------------- Icons (Lucide, loaded from CDN) ---------------- */
+  function icon(name, cls) { return `<i data-lucide="${name}"${cls ? ` class="${cls}"` : ''}></i>`; }
+  function refreshIcons(root) {
+    if (window.lucide && window.lucide.createIcons) {
+      try { window.lucide.createIcons({ attrs: { 'stroke-width': 1.9 }, nameAttr: 'data-lucide', root: root || document }); } catch (e) { try { window.lucide.createIcons(); } catch (_) {} }
+    }
+  }
+  const LOGO = `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6"/><path d="M10 3v6.5L4.6 18.2A1.9 1.9 0 0 0 6.2 21h11.6a1.9 1.9 0 0 0 1.6-2.8L14 9.5V3"/><path d="M7.5 15h9"/></svg>`;
+
+  /* ---------------- Header ---------------- */
+  function header() {
+    const deptItems = DEPTS.map(d => {
+      const mods = MODULES.filter(m => m.dept === d.id);
+      return `<div class="item" data-dept="${d.id}"><button aria-haspopup="true">${d.name.split(' ')[0].replace('&', '')}${icon('chevron-down', 'chev')}</button>
+        <div class="mega" data-dept="${d.id}"><div class="container mega-inner">
+          <div class="mega-intro"><div class="tag" style="color:var(--accent);font:600 .7rem var(--mono);letter-spacing:.14em;text-transform:uppercase;margin-bottom:8px">${icon(d.icon)} Department</div><h4>${d.name}</h4><p>${d.blurb}</p><a class="btn sm" href="index.html#${d.id}">All ${mods.length} labs ${icon('arrow-right')}</a></div>
+          <div class="mega-grid">${mods.map(m => `<a class="mlink" href="${m.id}.html"><span class="ic">${icon(m.icon)}</span><span><b>${m.title}</b><span>${m.desc}</span></span></a>`).join('')}</div>
+        </div></div></div>`;
+    });
+    // Split: first 4 departments get their own tabs; the rest grouped under "More"
+    const main = deptItems.slice(0, 5).join('');
+    const more = `<div class="item"><button aria-haspopup="true">More labs${icon('chevron-down', 'chev')}</button>
+      <div class="mega"><div class="container mega-inner">
+        <div class="mega-intro"><h4>Every discipline</h4><p>${MODULES.length} interactive labs across ${DEPTS.length} departments. Press <kbd>/</kbd> anywhere to search.</p><a class="btn sm" href="index.html#labs">Browse all ${icon('arrow-right')}</a></div>
+        <div class="mega-depts">${DEPTS.slice(5).map(d => `<div data-dept="${d.id}"><h5>${icon(d.icon)}${d.name}</h5>${MODULES.filter(m => m.dept === d.id).map(m => `<a href="${m.id}.html">${m.title}</a>`).join('')}</div>`).join('')}</div>
+      </div></div></div>`;
+    return `<header class="sl-header" id="slHeader"><div class="container bar">
+      <a class="sl-logo" href="index.html"><span class="mark">${LOGO}</span><span>Pentarch SimLab<small>Learn by doing</small></span></a>
+      <nav class="sl-nav" aria-label="Departments">${main}${more}</nav>
+      <button class="sl-search" id="slSearchBtn" aria-label="Search labs">${icon('search')}<span>Search</span><kbd>/</kbd></button>
+      <button class="sl-burger" id="slBurger" aria-label="Menu">${icon('menu')}</button>
+    </div></header>`;
+  }
+
+  function footer() {
+    const cols = [['Engineering', 'engineering'], ['Science', 'life'], ['Media', 'media'], ['Operations', 'operations']];
+    const groups = {
+      engineering: ['engineering', 'physics', 'computing'],
+      life: ['life', 'health', 'chemistry', 'earth'],
+      media: ['media', 'business'],
+      operations: ['operations'],
+    };
+    return `<footer class="sl-footer"><div class="container">
+      <div class="cols">
+        <div><a class="sl-logo" href="index.html" style="padding:0"><span class="mark">${LOGO}</span><span>Pentarch SimLab<small>Learn by doing</small></span></a>
+          <p class="muted small" style="margin-top:14px;max-width:330px">Interactive simulations for university and college students. Experiment, build, break things and understand why. A learning platform by Pentarch Communications.</p>
+          <a href="${PARENT}" style="display:inline-flex;align-items:center;gap:6px">${icon('arrow-up-left')} pentarchcommunications.com</a></div>
+        ${cols.map(([t, k]) => `<div><h5>${t}</h5>${MODULES.filter(m => groups[k].includes(m.dept)).slice(0, 9).map(m => `<a href="${m.id}.html">${m.title}</a>`).join('')}</div>`).join('')}
+      </div>
+      <div class="base"><span>© ${new Date().getFullYear()} Pentarch Communications · Pentarch SimLab</span><span>Simulations are simplified models for learning. Always follow your institution’s lab and safety procedures.</span></div>
+    </div></footer>`;
+  }
+
+  function pageHero(m) {
+    const d = deptById[m.dept];
+    return `<section class="page-hero"><div class="container">
+      <div class="crumbs"><a href="index.html">SimLab</a> / <a href="index.html#${d.id}">${d.name}</a> / ${m.title}</div>
+      <div class="tag">${icon(m.icon)} ${d.name}</div>
+      <h1>${m.title}</h1>
+      <p class="lead">${m.desc}</p>
+      <div class="meta"><span class="chip">${icon('graduation-cap')} ${m.level}</span><span class="chip">${icon('mouse-pointer-click')} Interactive</span><span class="chip">${icon('book-open')} Theory, worked examples & quiz</span></div>
+    </div></section>`;
+  }
+
+  /* ---------------- Search palette ---------------- */
+  function palette() {
+    const el = document.createElement('div');
+    el.className = 'palette'; el.id = 'slPalette';
+    el.innerHTML = `<div class="box"><input placeholder="Search ${MODULES.length} labs: gears, DNA, mixer, orbit…" aria-label="Search labs"><ul></ul></div>`;
+    document.body.appendChild(el);
+    const input = el.querySelector('input'), ul = el.querySelector('ul');
+    let sel = 0, list = [];
+    const render = () => {
+      const q = input.value.trim().toLowerCase();
+      list = MODULES.filter(m => !q || (m.title + ' ' + m.desc + ' ' + deptById[m.dept].name).toLowerCase().includes(q)).slice(0, 12);
+      sel = Math.min(sel, Math.max(0, list.length - 1));
+      ul.innerHTML = list.map((m, i) => `<li class="${i === sel ? 'sel' : ''}" data-dept="${m.dept}"><a href="${m.id}.html"><span class="ic">${icon(m.icon)}</span><span><b>${m.title}</b><br><span class="small muted">${deptById[m.dept].name}</span></span></a></li>`).join('') || '<li class="muted small" style="padding:12px">No labs match.</li>';
+      refreshIcons(ul);
+    };
+    input.addEventListener('input', () => { sel = 0; render(); });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown') { sel = Math.min(sel + 1, list.length - 1); render(); e.preventDefault(); }
+      if (e.key === 'ArrowUp') { sel = Math.max(sel - 1, 0); render(); e.preventDefault(); }
+      if (e.key === 'Enter' && list[sel]) location.href = list[sel].id + '.html';
+      if (e.key === 'Escape') hide();
+    });
+    el.addEventListener('click', e => { if (e.target === el) hide(); });
+    const show = () => { el.classList.add('show'); input.value = ''; render(); setTimeout(() => input.focus(), 30); };
+    const hide = () => el.classList.remove('show');
+    document.addEventListener('keydown', e => {
+      const t = e.target.tagName;
+      if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(t) && !e.target.isContentEditable) { e.preventDefault(); show(); }
+    });
+    return show;
+  }
+
+  /* ---------------- Mount ---------------- */
+  function mount() {
+    const page = document.body.dataset.page;
+    const m = byId[page];
+    if (m && !document.body.dataset.dept) document.body.dataset.dept = m.dept;
+    const h = document.getElementById('sl-header'); if (h) h.outerHTML = header();
+    const hero = document.getElementById('sl-hero'); if (hero && m) hero.outerHTML = pageHero(m);
+    const f = document.getElementById('sl-footer'); if (f) f.outerHTML = footer();
+    if (m) document.title = document.title || `${m.title} · Pentarch SimLab`;
+    const showPalette = palette();
+    const sb = document.getElementById('slSearchBtn'); if (sb) sb.onclick = showPalette;
+    const hdr = document.getElementById('slHeader');
+    const burger = document.getElementById('slBurger');
+    if (burger) burger.onclick = () => hdr.classList.toggle('mobile-open');
+    document.querySelectorAll('.sl-nav>.item>button').forEach(b => b.addEventListener('click', () => {
+      const it = b.parentElement, was = it.classList.contains('open');
+      document.querySelectorAll('.sl-nav>.item.open').forEach(x => x.classList.remove('open'));
+      if (!was) it.classList.add('open');
+    }));
+    document.addEventListener('click', e => { if (!e.target.closest('.sl-nav')) document.querySelectorAll('.sl-nav>.item.open').forEach(x => x.classList.remove('open')); });
+    // tabs
+    document.querySelectorAll('[data-tabs]').forEach(tabs);
+    // reveal on scroll
+    const io = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: .12 }) : null;
+    document.querySelectorAll('.reveal').forEach(el => io ? io.observe(el) : el.classList.add('in'));
+    // range fill
+    document.querySelectorAll('input[type=range]').forEach(rangeFill);
+    document.addEventListener('input', e => { if (e.target.type === 'range') rangeFill(e.target); });
+    refreshIcons();
+    renderMath();
+    document.dispatchEvent(new CustomEvent('sl:ready'));
+  }
+
+  /* ---------------- Helpers ---------------- */
+  function rangeFill(r) { const min = +r.min || 0, max = +r.max || 100; r.style.setProperty('--p', ((r.value - min) / (max - min) * 100) + '%'); }
+
+  function tabs(root) {
+    const btns = root.querySelectorAll(':scope > .tablist > button');
+    const panels = root.querySelectorAll(':scope > .tabpanel');
+    btns.forEach((b, i) => b.addEventListener('click', () => {
+      btns.forEach(x => x.classList.remove('on')); panels.forEach(x => x.classList.remove('on'));
+      b.classList.add('on'); if (panels[i]) { panels[i].classList.add('on'); renderMath(panels[i]); }
+      root.dispatchEvent(new CustomEvent('tab', { detail: i }));
+    }));
+    if (!root.querySelector('.tablist > button.on') && btns[0]) { btns[0].classList.add('on'); panels[0] && panels[0].classList.add('on'); }
+  }
+
+  /** Render LaTeX with KaTeX auto-render ($...$ inline, $$...$$ display, \( \) and \[ \]). */
+  function renderMath(el) {
+    const go = () => {
+      if (!window.renderMathInElement) return false;
+      try {
+        window.renderMathInElement(el || document.body, {
+          delimiters: [{ left: '$$', right: '$$', display: true }, { left: '\\[', right: '\\]', display: true }, { left: '$', right: '$', display: false }, { left: '\\(', right: '\\)', display: false }],
+          throwOnError: false, ignoredClasses: ['no-math'],
+        });
+      } catch (e) { console.warn(e); }
+      return true;
+    };
+    if (!go()) { let n = 0; const t = setInterval(() => { if (go() || ++n > 40) clearInterval(t); }, 150); }
+  }
+  /** Render a single TeX string into an element. */
+  function tex(el, s, display) {
+    if (window.katex) { try { window.katex.render(s, el, { throwOnError: false, displayMode: !!display }); return; } catch (e) {} }
+    el.textContent = s;
+  }
+
+  /** Bind a range/select/input to a callback; updates a sibling <output>. */
+  function bind(sel, cb, fmt) {
+    const el = typeof sel === 'string' ? document.querySelector(sel) : sel;
+    if (!el) return null;
+    const out = el.closest('.ctl') && el.closest('.ctl').querySelector('output');
+    const upd = () => { const v = el.type === 'checkbox' ? el.checked : (el.type === 'range' || el.type === 'number' ? parseFloat(el.value) : el.value); if (out) out.textContent = fmt ? fmt(v) : v; cb && cb(v, el); };
+    el.addEventListener('input', upd); el.addEventListener('change', upd); upd();
+    return el;
+  }
+
+  /** HiDPI canvas that tracks its container size. onResize(w,h) is called with CSS pixel size. */
+  function canvas(cv, onResize) {
+    const ctx = cv.getContext('2d');
+    const state = { ctx, w: 0, h: 0, dpr: 1 };
+    const fit = () => {
+      const r = cv.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+      if (w === state.w && h === state.h && dpr === state.dpr) return;
+      cv.width = w * dpr; cv.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      Object.assign(state, { w, h, dpr });
+      onResize && onResize(w, h);
+    };
+    if ('ResizeObserver' in window) new ResizeObserver(fit).observe(cv); else window.addEventListener('resize', fit);
+    fit();
+    return state;
+  }
+
+  /** requestAnimationFrame loop with dt in seconds (clamped). Returns {start,stop,running}. */
+  function loop(fn) {
+    let id = 0, last = 0, running = false;
+    const tick = t => { const dt = Math.min(0.05, (t - (last || t)) / 1000); last = t; fn(dt, t / 1000); if (running) id = requestAnimationFrame(tick); };
+    return {
+      start() { if (!running) { running = true; last = 0; id = requestAnimationFrame(tick); } return this; },
+      stop() { running = false; cancelAnimationFrame(id); return this; },
+      get running() { return running; },
+    };
+  }
+
+  function fmt(n, d = 2) {
+    if (n === null || n === undefined || !isFinite(n)) return '—';
+    const a = Math.abs(n);
+    if (a !== 0 && (a >= 1e6 || a < 1e-3)) return n.toExponential(Math.max(1, d - 1)).replace('e+', 'e');
+    return n.toLocaleString('en', { maximumFractionDigits: d, minimumFractionDigits: 0 });
+  }
+
+  function toast(msg, type, ms) {
+    let box = document.querySelector('.toasts');
+    if (!box) { box = document.createElement('div'); box.className = 'toasts'; document.body.appendChild(box); }
+    const t = document.createElement('div'); t.className = 'toast ' + (type || ''); t.innerHTML = msg;
+    box.appendChild(t); setTimeout(() => { t.style.opacity = 0; t.style.transition = '.3s'; setTimeout(() => t.remove(), 300); }, ms || 3800);
+  }
+
+  function modal(html, opts) {
+    const m = document.createElement('div'); m.className = 'modal show';
+    m.innerHTML = `<div class="box">${html}<div class="btn-row" style="margin-top:16px;justify-content:flex-end"><button class="btn primary" data-close>${(opts && opts.ok) || 'Close'}</button></div></div>`;
+    document.body.appendChild(m); refreshIcons(m); renderMath(m);
+    const close = () => { m.remove(); opts && opts.onClose && opts.onClose(); };
+    m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-close]')) close(); });
+    return { el: m, close };
+  }
+
+  /** Quiz: questions = [{q, options:[...], answer:index, why}] */
+  function quiz(container, questions) {
+    const el = typeof container === 'string' ? document.querySelector(container) : container;
+    if (!el) return;
+    let score = 0, answered = 0;
+    el.classList.add('quiz');
+    el.innerHTML = questions.map((q, i) => `<div class="q" data-i="${i}"><p>${i + 1}. ${q.q}</p><div class="opts">${q.options.map((o, j) => `<button class="opt" data-j="${j}">${o}</button>`).join('')}</div><div class="why">${q.why || ''}</div></div>`).join('') + `<p class="score"></p>`;
+    el.addEventListener('click', e => {
+      const b = e.target.closest('.opt'); if (!b) return;
+      const qd = b.closest('.q'); if (qd.classList.contains('done')) return;
+      const q = questions[+qd.dataset.i]; const j = +b.dataset.j;
+      qd.classList.add('done'); answered++;
+      qd.querySelectorAll('.opt')[q.answer].classList.add('right');
+      if (j === q.answer) score++; else b.classList.add('wrong');
+      el.querySelector('.score').textContent = `Score: ${score} / ${answered}${answered === questions.length ? (score === questions.length ? ' 🎉 Perfect!' : '') : ''}`;
+    });
+    renderMath(el);
+  }
+
+  /** Lazily create a shared AudioContext (must be called from a user gesture first time). */
+  let _ac = null;
+  function audio() { if (!_ac) { const C = window.AudioContext || window.webkitAudioContext; _ac = C ? new C() : null; } if (_ac && _ac.state === 'suspended') _ac.resume(); return _ac; }
+
+  // Small numeric helpers
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const deg = r => r * 180 / Math.PI, rad = d => d * Math.PI / 180;
+  function cssVar(name, el) { return getComputedStyle(el || document.body).getPropertyValue(name).trim(); }
+  /** Pointer helper: returns {x,y} in CSS pixels relative to element */
+  function ptr(e, el) { const r = el.getBoundingClientRect(); const p = e.touches ? e.touches[0] : e; return { x: p.clientX - r.left, y: p.clientY - r.top }; }
+  /** Draw an arrow on a 2D context */
+  function arrow(ctx, x1, y1, x2, y2, color, w, head) {
+    const a = Math.atan2(y2 - y1, x2 - x1), hl = head || 9;
+    ctx.save(); ctx.strokeStyle = ctx.fillStyle = color || '#fff'; ctx.lineWidth = w || 2;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - hl * Math.cos(a - .4), y2 - hl * Math.sin(a - .4)); ctx.lineTo(x2 - hl * Math.cos(a + .4), y2 - hl * Math.sin(a + .4)); ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+  /** Simple line chart into a canvas state {ctx,w,h}: series=[{data:[[x,y]...], color, label}] */
+  function chart(st, series, o) {
+    o = Object.assign({ pad: [28, 14, 30, 46], grid: true, xlabel: '', ylabel: '' }, o || {});
+    const { ctx, w, h } = st, [pt, pr, pb, pl] = o.pad;
+    let xs = [], ys = []; series.forEach(s => s.data.forEach(p => { xs.push(p[0]); ys.push(p[1]); }));
+    const xmin = o.xmin ?? Math.min(...xs), xmax = o.xmax ?? Math.max(...xs);
+    let ymin = o.ymin ?? Math.min(...ys), ymax = o.ymax ?? Math.max(...ys); if (ymin === ymax) { ymin -= 1; ymax += 1; }
+    const X = x => pl + (x - xmin) / (xmax - xmin || 1) * (w - pl - pr), Y = y => h - pb - (y - ymin) / (ymax - ymin) * (h - pt - pb);
+    ctx.clearRect(0, 0, w, h);
+    ctx.font = '11px JetBrains Mono, monospace'; ctx.fillStyle = '#5f6d8a'; ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) { const yv = ymin + (ymax - ymin) * i / 4, y = Y(yv); ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(w - pr, y); ctx.stroke(); ctx.textAlign = 'right'; ctx.fillText(fmt(yv, 2), pl - 6, y + 4); }
+    for (let i = 0; i <= 5; i++) { const xv = xmin + (xmax - xmin) * i / 5, x = X(xv); ctx.textAlign = 'center'; ctx.fillText(fmt(xv, 2), x, h - pb + 15); }
+    if (o.xlabel) { ctx.textAlign = 'right'; ctx.fillText(o.xlabel, w - pr, h - 4); }
+    if (o.ylabel) { ctx.textAlign = 'left'; ctx.fillText(o.ylabel, pl, pt - 10); }
+    series.forEach(s => { ctx.strokeStyle = s.color || '#22d3ee'; ctx.lineWidth = s.width || 2; ctx.setLineDash(s.dash || []); ctx.beginPath(); s.data.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))); ctx.stroke(); ctx.setLineDash([]); });
+    let lx = pl + 8; series.filter(s => s.label).forEach(s => { ctx.fillStyle = s.color; ctx.fillRect(lx, pt - 16, 10, 3); ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'left'; ctx.fillText(s.label, lx + 14, pt - 12); lx += ctx.measureText(s.label).width + 30; });
+    return { X, Y };
+  }
+
+  window.SL = { DEPTS, MODULES, byId, deptById, icon, refreshIcons, bind, canvas, loop, fmt, toast, modal, quiz, audio, clamp, lerp, deg, rad, cssVar, ptr, arrow, chart, renderMath, tex, tabs };
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
+})();
