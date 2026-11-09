@@ -1,0 +1,935 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patient Monitor & Triage · Pentarch SimLab</title>
+<meta name="description" content="Bedside monitor simulator with ECG, SpO2, arterial and respiratory traces, alarms, eight deteriorating-patient scenarios, a NEWS2 calculator and emergency department triage practice.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .modebar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:22px}
+  .modebar .seg button{padding:8px 16px;font-size:.9rem;display:inline-flex;align-items:center;gap:7px}
+  .modebar .seg svg{width:16px;height:16px}
+  .edu{display:flex;gap:10px;align-items:flex-start;font-size:.84rem;color:var(--muted);background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:9px 12px;flex:1;min-width:260px}
+  .edu svg{width:17px;height:17px;color:var(--warn);flex:none;margin-top:2px}
+  .lab[hidden]{display:none}
+  .mon-stage{height:580px;background:#010403;border:6px solid #1a2130;border-radius:18px;box-shadow:0 0 0 1px #2a3448,var(--shadow),inset 0 0 60px rgba(0,0,0,.8)}
+  .mon-stage canvas{position:absolute;inset:0}
+  .mon-tools{position:absolute;left:10px;bottom:10px;display:flex;gap:6px;flex-wrap:wrap}
+  .mon-tools .btn{background:rgba(15,23,41,.85)}
+  .seg.full{display:flex}.seg.full button{flex:1;text-align:center}
+  .acts{display:flex;flex-direction:column;gap:10px}
+  .acts .grp h5{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin:0 0 5px}
+  .acts .grp div{display:flex;flex-wrap:wrap;gap:5px}
+  .acts .btn{font-size:.76rem;padding:6px 9px;font-weight:500}
+  .acts .btn.used{border-color:color-mix(in srgb,var(--ok) 60%,transparent);color:#bbf7d0}
+  .brief{font-size:.88rem;color:var(--muted);background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0}
+  .brief b{color:var(--text)}
+  .log{max-height:180px;overflow:auto;font:500 .76rem var(--mono);display:flex;flex-direction:column;gap:3px}
+  .log div{display:grid;grid-template-columns:52px 1fr 34px;gap:6px;padding:3px 0;border-bottom:1px dashed var(--line)}
+  .log .p{text-align:right}.log .pos{color:var(--ok)}.log .neg{color:var(--bad)}
+  .n2grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-top:8px}
+  .n2grid .c{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:.78rem;display:flex;justify-content:space-between;gap:6px}
+  .n2grid .c b{font-family:var(--mono)}
+  .sc0{color:var(--muted)}.sc1{color:#fde047}.sc2{color:#fb923c}.sc3{color:#ef4444}
+  .risk{border-radius:12px;padding:14px 16px;margin-top:10px;border:1px solid var(--line)}
+  .risk .big{font:700 2.4rem var(--display);line-height:1}
+  .lim{display:grid;grid-template-columns:auto 1fr 1fr;gap:6px 8px;align-items:center;font-size:.82rem}
+  .lim input{padding:5px 7px;font:500 .82rem var(--mono)}
+  .lim span.h{font:600 .64rem var(--mono);letter-spacing:.1em;color:var(--dim);text-transform:uppercase}
+  /* NEWS2 calculator */
+  .calc{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+  .calc .f label{display:block;font-size:.84rem;color:var(--muted);margin-bottom:4px}
+  .calc .f .row{display:flex;gap:8px;align-items:center}
+  .calc .f .pts{font:700 .9rem var(--mono);min-width:26px;text-align:center;border-radius:6px;padding:4px 0}
+  .ptsbg0{background:rgba(255,255,255,.05)}.ptsbg1{background:rgba(250,204,21,.18);color:#fde047}.ptsbg2{background:rgba(251,146,60,.2);color:#fdba74}.ptsbg3{background:rgba(239,68,68,.22);color:#fca5a5}
+  /* triage */
+  .ed{position:relative;min-height:520px;padding:16px;background:radial-gradient(800px 300px at 50% 0,rgba(248,113,113,.07),transparent),#050913}
+  .ed-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .queue{display:flex;gap:8px;flex-wrap:wrap}
+  .qdot{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:600 .74rem var(--mono);background:var(--panel2);border:1px solid var(--line2);color:var(--muted)}
+  .qdot.cur{border-color:var(--accent);color:#fff;box-shadow:0 0 12px color-mix(in srgb,var(--accent) 60%,transparent)}
+  .qdot.t-red{background:#b91c1c;color:#fff;border-color:#ef4444}.qdot.t-orange{background:#c2410c;color:#fff;border-color:#fb923c}.qdot.t-yellow{background:#a16207;color:#fff;border-color:#facc15}.qdot.t-green{background:#15803d;color:#fff;border-color:#22c55e}
+  .pcard{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line2);border-radius:14px;padding:16px;animation:slideIn .4s ease}
+  .pcard h4{margin:0 0 4px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .pcard .cc{color:var(--muted);font-size:.92rem;margin-bottom:10px}
+  .vrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:6px;margin:8px 0}
+  .vrow div{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+  .vrow div small{display:block;font:500 .62rem var(--mono);letter-spacing:.08em;color:var(--dim);text-transform:uppercase}
+  .vrow div b{font:600 .95rem var(--mono)}
+  .tbtns{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+  .tbtn{all:unset;cursor:pointer;border-radius:10px;padding:12px 6px;text-align:center;font-weight:700;font-size:.86rem;color:#fff;transition:.15s;box-sizing:border-box}
+  .tbtn small{display:block;font-weight:500;font-size:.7rem;opacity:.85}
+  .tbtn:hover{transform:translateY(-2px);filter:brightness(1.15)}
+  .tbtn.red{background:#b91c1c}.tbtn.orange{background:#c2410c}.tbtn.yellow{background:#a16207}.tbtn.green{background:#15803d}
+  .tbtn:disabled{opacity:.4;pointer-events:none}
+  .tbtn.picked{opacity:1;outline:3px solid #fff;outline-offset:2px}
+  .tbtn.correct{opacity:1}
+  .reveal-box{margin-top:12px;font-size:.88rem}
+  .tewst{width:100%;border-collapse:collapse;font-size:.8rem;margin:6px 0}
+  .tewst td{padding:4px 8px;border-bottom:1px solid var(--line)}
+  .tewst td:last-child{text-align:right;font-family:var(--mono)}
+  .chal{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:12px 0}
+  .chal h4{display:flex;align-items:center;gap:8px;margin-bottom:.4em}
+  .chal p{margin-bottom:.4em;color:var(--muted);font-size:.92rem}
+  table.news{font-size:.8rem}
+  table.news td,table.news th{text-align:center;padding:6px}
+  table.news td:first-child{text-align:left}
+  .b3{background:rgba(239,68,68,.25)}.b2{background:rgba(251,146,60,.22)}.b1{background:rgba(250,204,21,.16)}
+  @media (min-width:981px){#monLab>.stage{position:sticky;top:84px;align-self:start}}
+  @media (max-width:980px){.mon-stage{height:600px}}
+  @media (max-width:520px){.tbtns{grid-template-columns:1fr 1fr}.mon-stage{border-width:4px}}
+</style>
+</head>
+<body data-page="vitals">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <div class="modebar">
+    <div class="seg" id="mode">
+      <button class="on" data-m="mon"><i data-lucide="monitor-dot"></i> Bedside monitor</button>
+      <button data-m="news"><i data-lucide="calculator"></i> NEWS2 calculator</button>
+      <button data-m="tri"><i data-lucide="siren"></i> ED triage</button>
+    </div>
+    <div class="edu"><i data-lucide="triangle-alert"></i><span><b>Educational simulation, not a clinical tool.</b> Patients and responses are simplified teaching cases. Drug treatments are named generically "per protocol" without doses; always follow local guidelines and senior advice in real practice.</span></div>
+  </div>
+
+  <!-- ================= MONITOR ================= -->
+  <section class="lab wide-controls" id="monLab">
+    <div class="stage mon-stage" id="monStage">
+      <canvas id="cvMon"></canvas>
+      <div class="mon-tools">
+        <button class="btn sm" id="snd"><i data-lucide="volume-x"></i> Sound off</button>
+        <button class="btn sm" id="silence"><i data-lucide="bell-off"></i> Pause alarms 2 min</button>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="user-round"></i> Patient</h3>
+        <select id="scen"></select>
+        <div class="brief" id="brief"></div>
+        <div class="btn-row" id="scenBtns">
+          <button class="btn primary" id="start"><i data-lucide="play"></i> Start scenario</button>
+          <button class="btn" id="endBtn" disabled><i data-lucide="flag"></i> End &amp; debrief</button>
+        </div>
+        <div class="panel-title">Simulation speed</div>
+        <div class="seg full" id="spd"><button data-v="1">Real time</button><button data-v="6" class="on">×6</button><button data-v="20">×20</button></div>
+      </div>
+      <div class="panel" id="manualPanel">
+        <h3><i data-lucide="sliders-horizontal"></i> Set the vital signs</h3>
+        <div class="ctl"><label for="mHR">Heart rate</label><output></output><input type="range" id="mHR" min="20" max="200" value="72"></div>
+        <div class="ctl"><label for="mSBP">Systolic BP</label><output></output><input type="range" id="mSBP" min="50" max="230" value="122"></div>
+        <div class="ctl"><label for="mDBP">Diastolic BP</label><output></output><input type="range" id="mDBP" min="20" max="140" value="78"></div>
+        <div class="ctl"><label for="mSpO2">SpO₂</label><output></output><input type="range" id="mSpO2" min="60" max="100" value="98"></div>
+        <div class="ctl"><label for="mRR">Respiratory rate</label><output></output><input type="range" id="mRR" min="0" max="45" value="14"></div>
+        <div class="ctl"><label for="mT">Temperature</label><output></output><input type="range" id="mT" min="33" max="42" step="0.1" value="36.8"></div>
+        <div class="ctl"><label for="mST">ST segment (lead II)</label><output></output><input type="range" id="mST" min="-2" max="5" step="0.5" value="0"></div>
+        <div class="panel-title">Rhythm</div>
+        <div class="seg full" id="mRhythm"><button data-v="sinus" class="on">Sinus</button><button data-v="pvc">Sinus + PVCs</button><button data-v="af">AF</button></div>
+        <div class="panel-title">Consciousness & oxygen</div>
+        <div class="seg full" id="mAVPU"><button data-v="A" class="on">A</button><button data-v="C">C</button><button data-v="V">V</button><button data-v="P">P</button><button data-v="U">U</button></div>
+        <label class="toggle"><span>On supplemental oxygen</span><input type="checkbox" id="mO2"></label>
+      </div>
+      <div class="panel" id="actPanel" hidden>
+        <h3><i data-lucide="hand-heart"></i> Interventions (ABCDE)</h3>
+        <div class="acts" id="acts"></div>
+        <div class="panel-title">Your actions</div>
+        <div class="log" id="log"><div class="muted" style="display:block">No actions yet.</div></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="clipboard-list"></i> NEWS2 from the monitor</h3>
+        <div id="liveNews"></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="bell-ring"></i> Alarm limits</h3>
+        <div class="lim" id="limits"></div>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ================= NEWS2 CALCULATOR ================= -->
+  <section class="lab full" id="newsLab" hidden>
+    <div class="panel">
+      <h3><i data-lucide="calculator"></i> National Early Warning Score 2 (NEWS2)</h3>
+      <p class="small muted" style="margin-top:-6px">Royal College of Physicians (2017) scoring for adults. Enter observations; every parameter's points and the aggregate update instantly. Not for use in pregnancy or under 16s.</p>
+      <div class="calc" id="calc"></div>
+      <div class="grid2" style="margin-top:12px">
+        <div class="risk" id="calcRisk"></div>
+        <div class="risk" style="background:var(--bg2)">
+          <h4 style="margin-bottom:6px">Practice</h4>
+          <p class="small muted">Generate a random set of observations, work out the NEWS2 yourself, then check.</p>
+          <div class="btn-row"><button class="btn" id="rnd"><i data-lucide="dices"></i> Random patient</button><input type="number" id="guess" placeholder="Your total" style="width:120px"><button class="btn primary" id="chk">Check</button></div>
+          <p class="small" id="pracMsg" style="margin:8px 0 0"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= TRIAGE ================= -->
+  <section class="lab full" id="triLab" hidden>
+    <div class="stage ed">
+      <div class="ed-head">
+        <div><h3 style="margin:0">Emergency department: triage desk</h3><span class="small muted">Teaching adaptation of the South African Triage Scale (SATS): TEWS score plus clinical discriminators.</span></div>
+        <div class="btn-row"><span class="chip" id="triScore">Score 0 / 0</span><button class="btn sm" id="newShift"><i data-lucide="rotate-ccw"></i> New shift</button></div>
+      </div>
+      <div class="queue" id="queue"></div>
+      <div id="pcard" style="margin-top:14px"></div>
+    </div>
+  </section>
+
+  <!-- ================= TABS ================= -->
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+      <button><i data-lucide="file-text"></i> Scenario debriefs</button>
+    </div>
+    <div class="tabpanel prose">
+      <h3>Reading a bedside monitor</h3>
+      <ul>
+        <li><b style="color:#4ade80">ECG (green)</b>: usually lead II. Each beat shows a P wave (atrial depolarisation), QRS complex (ventricular depolarisation) and T wave (repolarisation). Heart rate is counted from R–R intervals. The ST segment should sit on the baseline; elevation in two contiguous leads with chest pain suggests ST-elevation myocardial infarction (STEMI).</li>
+        <li><b style="color:#facc15">SpO₂ plethysmograph (yellow)</b>: pulse oximetry compares red and infrared light absorption to estimate the percentage of haemoglobin carrying oxygen. A small, flat pleth means poor peripheral perfusion (cold, shocked patient) and an unreliable reading.</li>
+        <li><b style="color:#f87171">Arterial pressure (red)</b>: a sharp upstroke, a peak (systolic), a dicrotic notch (aortic valve closure) and a diastolic run-off.</li>
+        <li><b>Respiration (white)</b>: chest impedance changes with breathing. Rate and depth matter: a slow, shallow trace is a warning sign.</li>
+      </ul>
+      <div class="eq">$$\text{MAP}\approx \text{DBP}+\tfrac13(\text{SBP}-\text{DBP}),\qquad CO = HR\times SV,\qquad \text{Shock index}=\frac{HR}{SBP}$$</div>
+      <p>The body defends blood pressure: when stroke volume falls, heart rate and vascular resistance rise. That is why <b>tachycardia and a rising respiratory rate often come before hypotension</b>. A falling blood pressure is a late sign. A shock index above about 0.9–1.0 is concerning even when the SBP looks "normal".</p>
+      <h3>Normal adult ranges (resting)</h3>
+      <table class="data"><tr><th>Parameter</th><th>Typical normal</th><th>Concerning</th></tr>
+        <tr><td>Heart rate</td><td class="num">51–90 /min</td><td class="num">≤ 40 or ≥ 131</td></tr>
+        <tr><td>Respiratory rate</td><td class="num">12–20 /min</td><td class="num">≤ 8 or ≥ 25</td></tr>
+        <tr><td>Systolic BP</td><td class="num">111–219 mmHg</td><td class="num">≤ 90</td></tr>
+        <tr><td>SpO₂ (scale 1)</td><td class="num">≥ 96%</td><td class="num">≤ 91%</td></tr>
+        <tr><td>Temperature</td><td class="num">36.1–38.0 °C</td><td class="num">≤ 35.0 or ≥ 39.1</td></tr></table>
+      <h3>The ABCDE approach</h3>
+      <p>Assess and treat in order of what kills first: <b>A</b>irway, <b>B</b>reathing, <b>C</b>irculation, <b>D</b>isability (consciousness, glucose, pupils), <b>E</b>xposure. Call for help early, treat problems as you find them, and reassess after every intervention.</p>
+      <h3>NEWS2</h3>
+      <p>The National Early Warning Score 2 adds points for each of seven parameters. Higher scores predict deterioration (cardiac arrest, ICU admission, death) and trigger a graded response.</p>
+      <div style="overflow-x:auto"><table class="data news">
+        <tr><th>Parameter</th><th>3</th><th>2</th><th>1</th><th>0</th><th>1</th><th>2</th><th>3</th></tr>
+        <tr><td>Resp. rate /min</td><td class="b3">≤8</td><td></td><td class="b1">9–11</td><td>12–20</td><td></td><td class="b2">21–24</td><td class="b3">≥25</td></tr>
+        <tr><td>SpO₂ scale 1 (%)</td><td class="b3">≤91</td><td class="b2">92–93</td><td class="b1">94–95</td><td>≥96</td><td></td><td></td><td></td></tr>
+        <tr><td>SpO₂ scale 2 (%)</td><td class="b3">≤83</td><td class="b2">84–85</td><td class="b1">86–87</td><td>88–92, ≥93 on air</td><td class="b1">93–94 on O₂</td><td class="b2">95–96 on O₂</td><td class="b3">≥97 on O₂</td></tr>
+        <tr><td>Air or oxygen?</td><td></td><td class="b2">Oxygen</td><td></td><td>Air</td><td></td><td></td><td></td></tr>
+        <tr><td>Systolic BP (mmHg)</td><td class="b3">≤90</td><td class="b2">91–100</td><td class="b1">101–110</td><td>111–219</td><td></td><td></td><td class="b3">≥220</td></tr>
+        <tr><td>Pulse /min</td><td class="b3">≤40</td><td></td><td class="b1">41–50</td><td>51–90</td><td class="b1">91–110</td><td class="b2">111–130</td><td class="b3">≥131</td></tr>
+        <tr><td>Consciousness</td><td></td><td></td><td></td><td>Alert</td><td></td><td></td><td class="b3">CVPU</td></tr>
+        <tr><td>Temperature (°C)</td><td class="b3">≤35.0</td><td></td><td class="b1">35.1–36.0</td><td>36.1–38.0</td><td class="b1">38.1–39.0</td><td class="b2">≥39.1</td><td></td></tr>
+      </table></div>
+      <table class="data"><tr><th>Aggregate</th><th>Clinical risk</th><th>Response</th></tr>
+        <tr><td>0</td><td>Low</td><td>Routine monitoring, at least 12-hourly</td></tr>
+        <tr><td>1–4</td><td>Low</td><td>Inform registered nurse; at least 4–6-hourly observations</td></tr>
+        <tr><td>3 in any single parameter</td><td>Low–medium</td><td>Urgent ward-based review by a clinician; at least hourly</td></tr>
+        <tr><td>5–6</td><td>Medium</td><td>Urgent review by a clinician competent in acute illness; at least hourly</td></tr>
+        <tr><td>≥ 7</td><td>High</td><td>Emergency assessment by a critical-care-competent team; continuous monitoring</td></tr></table>
+      <p>"C" stands for new confusion (ACVPU). Scale 2 is used only for patients with confirmed hypercapnic respiratory failure (for example some COPD patients) who have a prescribed target saturation of 88–92%.</p>
+      <h3>Triage</h3>
+      <p>Triage sorts patients by urgency, not by order of arrival. The South African Triage Scale (SATS), widely used in African emergency centres, combines a physiological <b>Triage Early Warning Score (TEWS)</b> (mobility, respiratory rate, heart rate, systolic BP, temperature, AVPU, trauma) with <b>clinical discriminators</b> (for example chest pain, active seizure, low glucose) that can raise the category. Target times to be seen: red immediately, orange within 10 minutes, yellow within 60 minutes, green within 4 hours. Under-triage (too low a category) risks harm; over-triage clogs resuscitation areas.</p>
+      <div class="callout warn"><i data-lucide="triangle-alert"></i><div>The triage tab is a simplified teaching adaptation. Real SATS training uses the official chart, paediatric versions and senior clinical judgement.</div></div>
+      <h3>Alarm fatigue</h3>
+      <p>Monitors alarm often, and most alarms are not clinically important. Staff can become desensitised. Setting sensible, patient-specific limits and responding to trends, not single numbers, makes alarms meaningful.</p>
+    </div>
+    <div class="tabpanel prose">
+      <h3>1. NEWS2 for the sepsis patient at the start</h3>
+      <div class="worked"><p>RR 24, SpO₂ 93% on air, SBP 89, HR 121, new confusion, temperature 39.2 °C.</p><ol>
+        <li>RR 24 → 2. SpO₂ 93 (scale 1) → 2. Air → 0.</li>
+        <li>SBP 89 → 3. HR 121 → 2. Confusion (C) → 3. Temp 39.2 → 2.</li>
+        <li>Total = 2+2+0+3+2+3+2 = <b>14</b>: high risk, emergency response.</li></ol></div>
+      <h3>2. Shock index in haemorrhage</h3>
+      <div class="worked"><ol><li>The motorcyclist starts with HR 106, SBP 120: shock index = 106/120 = 0.88.</li><li>Ten minutes later, uncontrolled: HR 137, SBP 87: index = 1.57. The SBP fell late; the index rose early.</li><li>MAP at 87/57 ≈ 57 + (87−57)/3 = 67 mmHg.</li></ol></div>
+      <h3>3. Opioid toxicity and oxygen</h3>
+      <div class="worked"><ol><li>RR 7, SpO₂ 86% on air, responds to voice: NEWS2 = 3 (RR) + 3 (SpO₂) + 0 + … + 3 (V) = at least 9.</li><li>After high-flow oxygen, SpO₂ 95%, RR still 7. NEWS2: RR 3 + SpO₂ 1 + oxygen 2 + V 3 = still ≥ 9. The saturation looks better but ventilation (and CO₂ clearance) has not improved. Treat the cause.</li></ol></div>
+      <h3>4. TEWS in the triage tab</h3>
+      <div class="worked"><p>Woman, 70, febrile and confused, brought on a stretcher: RR 26, HR 124, SBP 86, T 39.0 °C, confused.</p><ol>
+        <li>Mobility stretcher 2; RR 21–29 → 2; HR 111–129 → 2; SBP 81–100 → 1; Temp ≥ 38.5 → 2; confused → 1; no trauma 0.</li>
+        <li>TEWS = 10 ≥ 7 → <b>red</b> (immediate).</li></ol></div>
+      <h3>5. Pulse oximeter pitch</h3>
+      <div class="worked"><p>Many monitors lower the pitch of the pulse "beep" as SpO₂ falls, so you can hear desaturation without looking. In this simulator the tone is 300 Hz + 12 Hz per % above 70%: 98% → 636 Hz, 85% → 480 Hz.</p></div>
+    </div>
+    <div class="tabpanel prose">
+      <p>Your best results are kept in this browser. Complete a scenario with at least 80% to tick it off.</p>
+      <div id="chalList"></div>
+      <h3>Guided experiments</h3>
+      <ol class="steps">
+        <li><b>Compensated shock.</b> In free play, raise HR to 125 and keep SBP at 115. Note NEWS2 and the shock index. Now drop SBP to 88: what changes?</li>
+        <li><b>Pleth and perfusion.</b> Lower the SBP below 80 and watch the pleth trace shrink.</li>
+        <li><b>Alarm limits.</b> Set the SpO₂ low limit to 94 and the heart-rate high limit to 100. Turn on sound and push a value across a limit; compare the medium and high-priority alarm tones.</li>
+        <li><b>STEMI.</b> Set ST to +3 mm. Compare the shape with a normal ECG.</li>
+        <li><b>AF.</b> Select AF: no P waves and an irregularly irregular rhythm.</li>
+      </ol>
+    </div>
+    <div class="tabpanel"><div id="quiz"></div></div>
+    <div class="tabpanel prose" id="debriefLib"></div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+  const clamp = SL.clamp;
+  const store = { get(k, d) { try { const v = localStorage.getItem('sl-vitals-' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('sl-vitals-' + k, JSON.stringify(v)); } catch (e) {} } };
+
+  /* =================== NEWS2 (RCP 2017) =================== */
+  function news2(o) {
+    // o: {rr, spo2, scale (1|2), o2 (bool), sbp, hr, avpu ('A'|'C'|'V'|'P'|'U'), temp}
+    const rr = Math.round(o.rr), sp = Math.round(o.spo2), sbp = Math.round(o.sbp), hr = Math.round(o.hr), t = Math.round(o.temp * 10) / 10;
+    const s = {};
+    s.rr = rr <= 8 ? 3 : rr <= 11 ? 1 : rr <= 20 ? 0 : rr <= 24 ? 2 : 3;
+    if (o.scale === 2) {
+      if (sp <= 83) s.spo2 = 3; else if (sp <= 85) s.spo2 = 2; else if (sp <= 87) s.spo2 = 1; else if (sp <= 92 || !o.o2) s.spo2 = 0; else if (sp <= 94) s.spo2 = 1; else if (sp <= 96) s.spo2 = 2; else s.spo2 = 3;
+    } else s.spo2 = sp <= 91 ? 3 : sp <= 93 ? 2 : sp <= 95 ? 1 : 0;
+    s.o2 = o.o2 ? 2 : 0;
+    s.sbp = sbp <= 90 ? 3 : sbp <= 100 ? 2 : sbp <= 110 ? 1 : sbp <= 219 ? 0 : 3;
+    s.hr = hr <= 40 ? 3 : hr <= 50 ? 1 : hr <= 90 ? 0 : hr <= 110 ? 1 : hr <= 130 ? 2 : 3;
+    s.avpu = o.avpu === 'A' ? 0 : 3;
+    s.temp = t <= 35.0 ? 3 : t <= 36.0 ? 1 : t <= 38.0 ? 0 : t <= 39.0 ? 1 : 2;
+    const total = Object.values(s).reduce((a, b) => a + b, 0);
+    const red3 = Object.values(s).some(v => v === 3);
+    const band = total >= 7 ? 'high' : total >= 5 ? 'medium' : red3 ? 'low-medium' : 'low';
+    return { s, total, band, red3 };
+  }
+  const BAND = {
+    'low': { col: '#22c55e', label: 'Low', resp: 'Ward-based response: registered nurse assesses; observations at least 4–6-hourly (12-hourly if score 0).' },
+    'low-medium': { col: '#facc15', label: 'Low–medium (single parameter scores 3)', resp: 'Urgent ward-based response: clinician review; observations at least hourly.' },
+    'medium': { col: '#fb923c', label: 'Medium', resp: 'Key threshold for urgent response: urgent review by a clinician competent in acute illness; at least hourly observations; consider critical care outreach.' },
+    'high': { col: '#ef4444', label: 'High', resp: 'Emergency response: immediate assessment by a team with critical-care competencies; continuous monitoring; consider transfer to higher-level care.' },
+  };
+  const PNAMES = { rr: 'Resp. rate', spo2: 'SpO₂', o2: 'Air / O₂', sbp: 'Systolic BP', hr: 'Pulse', avpu: 'ACVPU', temp: 'Temperature' };
+
+  /* =================== Monitor state =================== */
+  const V = { hr: 72, sbp: 122, dbp: 78, spo2: 98, rr: 14, temp: 36.8, st: 0, rhythm: 'sinus', avpu: 'A', o2: false, perf: 1, tv: 1, pvc: 0, glucose: null, tw: 1 };
+  const LIM = store.get('limits', { hr: [50, 120], sbp: [90, 160], spo2: [92, 101], rr: [8, 25], temp: [35.5, 38.5] });
+  let soundOn = false, silencedUntil = 0;
+
+  /* =================== Waveform generation =================== */
+  let rt = 0; // real seconds
+  let beats = [], nextBeat = 0.3, breathPhase = 0;
+  const g = (x, mu, w) => Math.exp(-((x - mu) * (x - mu)) / (2 * w * w));
+  function scheduleBeat() {
+    const RR = 60 / Math.max(15, V.hr);
+    let type = 'N', iv = RR * (1 + (Math.random() - .5) * 0.04);
+    if (V.rhythm === 'af') iv = RR * (0.65 + Math.random() * 0.7);
+    const last = beats[beats.length - 1];
+    if (last && last.type === 'V') iv = RR * 1.45; // compensatory pause
+    else if ((V.rhythm === 'pvc' || V.pvc > 0) && Math.random() < (V.rhythm === 'pvc' ? 0.14 : V.pvc)) { type = 'V'; iv = RR * 0.62; }
+    beats.push({ t: nextBeat, type, rr: RR });
+    if (beats.length > 8) beats.shift();
+    nextBeat += iv;
+    if (soundOn) beep(V.spo2);
+  }
+  function ecgAt(t) {
+    let v = 0;
+    for (const b of beats) {
+      const x = t - b.t; if (x < -0.3 || x > 1.0) continue;
+      const qt = 0.4 * Math.sqrt(b.rr);
+      if (b.type === 'V') { v += 1.1 * g(x, 0.02, 0.035) - 0.35 * g(x, 0.1, 0.04) - 0.45 * g(x, qt * 0.75, 0.07); continue; }
+      if (V.rhythm !== 'af') v += 0.12 * g(x, -0.16, 0.024);
+      v += -0.09 * g(x, -0.028, 0.008) + 1.0 * g(x, 0, 0.011) - 0.24 * g(x, 0.03, 0.01);
+      const st = V.st * 0.1; // mm -> mV (1 mm = 0.1 mV), R ≈ 1 mV
+      if (st) v += st * (1 / (1 + Math.exp(-(x - 0.045) / 0.008))) * (1 / (1 + Math.exp((x - qt * 0.72) / 0.03)));
+      v += 0.28 * V.tw * g(x, qt * 0.62, 0.045 + 0.01 * Math.max(0, V.st));
+    }
+    if (V.rhythm === 'af') v += 0.03 * Math.sin(t * 2 * Math.PI * 6.3) + 0.02 * Math.sin(t * 2 * Math.PI * 8.7);
+    return v + (Math.random() - .5) * 0.015 + 0.02 * Math.sin(t * 0.7);
+  }
+  function plethAt(t) {
+    let v = 0;
+    for (const b of beats) { const x = t - b.t - 0.22; if (x < 0 || x > 1.6) continue; const k = b.type === 'V' ? 0.45 : 1; v += k * (g(x, 0.13, 0.06) * (x < 0.13 ? 1 : 1) + 0.32 * g(x, 0.36, 0.07)) * Math.exp(-Math.max(0, x - 0.5) * 3); }
+    return v * V.perf;
+  }
+  function artAt(t) {
+    // shape returns 0..1 above diastolic
+    let v = 0;
+    for (const b of beats) { const x = t - b.t - 0.12; if (x < 0 || x > 2) continue; const k = b.type === 'V' ? 0.6 : 1; const up = x < 0.09 ? Math.sin(Math.PI / 2 * x / 0.09) : Math.exp(-(x - 0.09) / 0.32) * 0.92 + 0.08 * Math.exp(-(x - 0.09) / 1.2); v = Math.max(v, k * (up + 0.1 * g(x, 0.33, 0.035) - (x > 0.28 && x < 0.32 ? 0.04 : 0))); }
+    return V.dbp + (V.sbp - V.dbp) * clamp(v, 0, 1.1);
+  }
+  function respAt() {
+    if (V.rr < 1) return 0;
+    const ph = breathPhase % 1; const ins = 0.4;
+    const y = ph < ins ? 0.5 - 0.5 * Math.cos(Math.PI * ph / ins) : 0.5 + 0.5 * Math.cos(Math.PI * (ph - ins) / (1 - ins));
+    return y * V.tv;
+  }
+
+  /* =================== Audio =================== */
+  function tone(f, t0, dur, vol, type) {
+    const ac = SL.audio(); if (!ac) return;
+    const o = ac.createOscillator(), gn = ac.createGain();
+    o.type = type || 'sine'; o.frequency.value = f; o.connect(gn); gn.connect(ac.destination);
+    const s = ac.currentTime + t0; gn.gain.setValueAtTime(0, s); gn.gain.linearRampToValueAtTime(vol, s + 0.01); gn.gain.setValueAtTime(vol, s + dur - 0.02); gn.gain.linearRampToValueAtTime(0, s + dur);
+    o.start(s); o.stop(s + dur + 0.02);
+  }
+  function beep(sp) { tone(300 + (clamp(sp, 70, 100) - 70) * 12, 0, 0.07, 0.05); }
+  let lastAlarmSound = -99;
+  function alarmSound(level) {
+    if (!soundOn || rt < silencedUntil) return;
+    if (level === 'red' && rt - lastAlarmSound > 5) { lastAlarmSound = rt; [0, .2, .4, 1.0, 1.2].forEach(d => tone(880, d, 0.14, 0.12, 'square')); }
+    else if (level === 'yellow' && rt - lastAlarmSound > 9) { lastAlarmSound = rt; [0, .3, .6].forEach(d => tone(560, d, 0.2, 0.09, 'triangle')); }
+  }
+  $('#snd').onclick = () => { soundOn = !soundOn; if (soundOn) SL.audio(); $('#snd').innerHTML = `<i data-lucide="${soundOn ? 'volume-2' : 'volume-x'}"></i> Sound ${soundOn ? 'on' : 'off'}`; SL.refreshIcons($('#snd')); $('#snd').classList.toggle('on', soundOn); };
+  $('#silence').onclick = () => { silencedUntil = rt + 120; SL.toast('Alarm audio paused for 2 minutes. Visual alarms stay on.', 'warn'); };
+
+  /* =================== Alarms =================== */
+  function alarms() {
+    const a = [], hr = Math.round(V.hr), sbp = Math.round(V.sbp), sp = Math.round(V.spo2), rr = Math.round(V.rr), t = V.temp;
+    const add = (key, lvl, msg) => a.push({ key, lvl, msg });
+    if (rr < 4) add('rr', 'red', 'APNOEA'); else if (rr < LIM.rr[0]) add('rr', rr < 6 ? 'red' : 'yellow', `RR LOW ${rr}`); else if (rr > LIM.rr[1]) add('rr', rr > 35 ? 'red' : 'yellow', `RR HIGH ${rr}`);
+    if (sp < LIM.spo2[0]) add('spo2', sp < 85 ? 'red' : 'yellow', `SpO₂ LOW ${sp}`);
+    if (hr < LIM.hr[0]) add('hr', hr < 40 ? 'red' : 'yellow', `HR LOW ${hr}`); else if (hr > LIM.hr[1]) add('hr', hr > 150 ? 'red' : 'yellow', `HR HIGH ${hr}`);
+    if (sbp < LIM.sbp[0]) add('sbp', sbp < 80 ? 'red' : 'yellow', `ART SYS LOW ${sbp}`); else if (sbp > LIM.sbp[1]) add('sbp', sbp > 200 ? 'red' : 'yellow', `ART SYS HIGH ${sbp}`);
+    if (t < LIM.temp[0]) add('temp', 'yellow', `TEMP LOW ${t.toFixed(1)}`); else if (t > LIM.temp[1]) add('temp', 'yellow', `TEMP HIGH ${t.toFixed(1)}`);
+    if (V.st >= 1) add('st', 'yellow', `ST-II +${V.st.toFixed(1)} mm`);
+    if (V.rhythm === 'af') add('rhy', 'yellow', 'IRREGULAR HR');
+    return a.sort((x, y) => (x.lvl === 'red' ? 0 : 1) - (y.lvl === 'red' ? 0 : 1));
+  }
+
+  /* =================== Monitor drawing =================== */
+  const TR = [
+    { key: 'ecg', label: 'II  ×1  25 mm/s', col: '#39ff88', fn: t => ecgAt(t), lo: -0.6, hi: 1.25 },
+    { key: 'pleth', label: 'Pleth', col: '#ffe14a', fn: t => plethAt(t), lo: -0.1, hi: 1.25 },
+    { key: 'art', label: 'ART  40–180 mmHg', col: '#ff4d5e', fn: t => artAt(t), lo: 40, hi: 180 },
+    { key: 'resp', label: 'Resp  (impedance)', col: '#e8eef8', fn: () => respAt(), lo: -0.15, hi: 1.25 },
+  ];
+  let L = null, st = null;
+  function layout() {
+    if (!st) return;
+    const { w, h } = st; const narrow = w < 620;
+    const head = 34;
+    if (!narrow) {
+      const numW = Math.min(280, Math.max(220, w * 0.3)); const ww = w - numW - 10;
+      const rows = TR.map((tr, i) => ({ x: 8, y: head + 8 + i * (h - head - 56) / 4, w: ww - 8, h: (h - head - 56) / 4 }));
+      L = { narrow, head, ww, rows, num: { x: ww + 4, y: head + 4, w: numW - 10, h: h - head - 50 } };
+    } else {
+      const wh = Math.round((h - head) * 0.52);
+      const rows = TR.map((tr, i) => ({ x: 6, y: head + 4 + i * wh / 4, w: w - 12, h: wh / 4 }));
+      L = { narrow, head, ww: w, rows, num: { x: 6, y: head + wh + 8, w: w - 12, h: h - head - wh - 54 } };
+    }
+    TR.forEach((tr, i) => { const r = L.rows[i]; tr.buf = new Float32Array(Math.max(10, Math.floor(r.w))).fill(NaN); tr.wp = 0; tr.acc = 0; });
+  }
+  const cv = $('#cvMon'); st = SL.canvas(cv, () => layout());
+  layout();
+  function advanceTraces(dt) {
+    const pxPerSec = L.rows[0].w / (L.narrow ? 4 : 6);
+    TR.forEach(tr => {
+      tr.acc += dt * pxPerSec; let n = Math.floor(tr.acc); tr.acc -= n;
+      for (let k = 0; k < n; k++) { const tt = rt - (n - 1 - k) / pxPerSec; tr.buf[tr.wp] = tr.fn(tt); tr.wp = (tr.wp + 1) % tr.buf.length; for (let gp = 1; gp < 14; gp++) tr.buf[(tr.wp + gp) % tr.buf.length] = NaN; }
+    });
+  }
+  let blink = 0;
+  function drawMonitor(al, n2) {
+    const { ctx, w, h } = st; ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#010403'; ctx.fillRect(0, 0, w, h);
+    // subtle grid
+    ctx.strokeStyle = 'rgba(57,255,136,.035)'; ctx.lineWidth = 1;
+    for (let x = 0; x < L.ww; x += 20) { ctx.beginPath(); ctx.moveTo(x, L.head); ctx.lineTo(x, L.rows[3].y + L.rows[3].h); ctx.stroke(); }
+    // header
+    const top = alarmsTopLevel(al);
+    ctx.fillStyle = '#0b1220'; ctx.fillRect(0, 0, w, L.head);
+    if (al.length) {
+      const a0 = al[0]; const on = a0.lvl === 'red' ? blink % 1 < 0.6 : true;
+      const bx = L.narrow ? 6 : Math.min(260, w * 0.3), bw = L.narrow ? w - 12 : w - bx - 200;
+      ctx.fillStyle = a0.lvl === 'red' ? (on ? '#dc2626' : '#7f1d1d') : '#ca8a04'; ctx.fillRect(bx, 4, bw, L.head - 8);
+      ctx.fillStyle = a0.lvl === 'red' ? '#fff' : '#111'; ctx.font = '700 13px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+      ctx.fillText((a0.lvl === 'red' ? '*** ' : '** ') + a0.msg + (al.length > 1 ? `   +${al.length - 1}` : '') + (rt < silencedUntil ? '  🔕' : ''), bx + bw / 2, L.head / 2 + 5);
+    }
+    ctx.textAlign = 'left'; ctx.font = '600 12px Inter, sans-serif'; ctx.fillStyle = '#93a1bd';
+    if (!L.narrow || !al.length) ctx.fillText(`BED 4 · ${SC ? SC.who : 'Free play'}`, 10, 21);
+    if (!L.narrow) {
+      ctx.textAlign = 'right'; ctx.font = '600 12px JetBrains Mono, monospace'; ctx.fillStyle = '#93a1bd';
+      const tm = run ? simClock() : new Date().toTimeString().slice(0, 5);
+      ctx.fillText(`${run ? 'T+' + tm : tm}  ${V.o2 ? 'O₂ 15 L/min' : 'Air'}  ${V.avpu}`, w - 10, 21);
+    }
+    // traces
+    TR.forEach((tr, i) => {
+      const r = L.rows[i];
+      ctx.fillStyle = tr.col; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.globalAlpha = .8; ctx.fillText(tr.label, r.x + 2, r.y + 12); ctx.globalAlpha = 1;
+      if (tr.key === 'art') { ctx.strokeStyle = 'rgba(255,77,94,.18)'; ctx.setLineDash([3, 5]); [120, 80].forEach(p => { const y = r.y + r.h - (p - tr.lo) / (tr.hi - tr.lo) * r.h; ctx.beginPath(); ctx.moveTo(r.x, y); ctx.lineTo(r.x + r.w, y); ctx.stroke(); }); ctx.setLineDash([]); }
+      ctx.save(); ctx.strokeStyle = tr.col; ctx.lineWidth = 1.8; ctx.shadowColor = tr.col; ctx.shadowBlur = 7; ctx.lineJoin = 'round';
+      ctx.beginPath(); let pen = false;
+      for (let x = 0; x < tr.buf.length; x++) { const v = tr.buf[x]; if (isNaN(v)) { pen = false; continue; } const y = r.y + r.h - 2 - (v - tr.lo) / (tr.hi - tr.lo) * (r.h - 6); if (!pen) { ctx.moveTo(r.x + x, y); pen = true; } else ctx.lineTo(r.x + x, y); }
+      ctx.stroke(); ctx.restore();
+    });
+    // numerics
+    const N = L.num; const alk = new Set(al.map(a => a.key));
+    const box = (x, y, bw, bh, label, col, val, sub, key, unit) => {
+      const flash = alk.has(key) && blink % 1 < 0.5; const lvl = (al.find(a => a.key === key) || {}).lvl;
+      ctx.fillStyle = flash ? (lvl === 'red' ? 'rgba(220,38,38,.45)' : 'rgba(202,138,4,.35)') : 'rgba(255,255,255,.025)'; ctx.fillRect(x, y, bw, bh);
+      ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.strokeRect(x + .5, y + .5, bw - 1, bh - 1);
+      ctx.fillStyle = col; ctx.textAlign = 'left'; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.fillText(label, x + 8, y + 15);
+      if (unit) { ctx.font = '10px JetBrains Mono, monospace'; ctx.globalAlpha = .7; ctx.fillText(unit, x + 8, y + 28); ctx.globalAlpha = 1; }
+      const fs = Math.min(bh * 0.55, bw * (String(val).length > 5 ? 0.17 : 0.3), 64);
+      ctx.font = `600 ${fs}px "JetBrains Mono", monospace`; ctx.textAlign = 'right'; ctx.shadowColor = col; ctx.shadowBlur = 10;
+      ctx.fillText(val, x + bw - 8, y + bh * 0.5 + fs * 0.42); ctx.shadowBlur = 0;
+      if (sub) { ctx.font = `500 ${Math.max(10, fs * 0.32)}px JetBrains Mono, monospace`; ctx.globalAlpha = .8; ctx.fillText(sub, x + bw - 8, y + bh - 7); ctx.globalAlpha = 1; }
+    };
+    const map = Math.round(V.dbp + (V.sbp - V.dbp) / 3);
+    const items = [
+      ['HR', '#39ff88', Math.round(V.hr), V.rhythm === 'af' ? 'AF' : V.rhythm === 'pvc' || V.pvc > .05 ? 'PVCs' : 'sinus', 'hr', 'bpm'],
+      ['ART', '#ff4d5e', `${Math.round(V.sbp)}/${Math.round(V.dbp)}`, `(${map})`, 'sbp', 'mmHg'],
+      ['SpO₂', '#ffe14a', Math.round(V.spo2), `PI ${(V.perf * 3).toFixed(1)}`, 'spo2', '%'],
+      ['RR', '#e8eef8', Math.round(V.rr), V.tv < .5 ? 'shallow' : '', 'rr', 'rpm'],
+      ['TEMP', '#c4b5fd', V.temp.toFixed(1), '', 'temp', '°C'],
+      ['NEWS2', BAND[n2.band].col, n2.total, BAND[n2.band].label.split(' ')[0], 'news', ''],
+    ];
+    if (!L.narrow) {
+      const hs = [1.25, 1.25, 1.1, 1, 0.75, 0.75], tot = hs.reduce((a, b) => a + b); let y = N.y;
+      items.forEach((it, i) => { if (i >= 4) return; const bh = N.h * hs[i] / tot - 4; box(N.x, y, N.w, bh, ...it); y += bh + 4; });
+      const bh = N.h * hs[4] / tot - 4, bw = N.w / 2 - 2; box(N.x, y, bw, bh, ...items[4]); box(N.x + bw + 4, y, bw, bh, ...items[5]);
+    } else {
+      const cols = 3, bw = (N.w - 8) / cols, bh = (N.h - 4) / 2;
+      items.forEach((it, i) => box(N.x + (i % cols) * (bw + 4), N.y + Math.floor(i / cols) * (bh + 4), bw, bh, ...it));
+    }
+  }
+  const alarmsTopLevel = al => al.length ? al[0].lvl : null;
+
+  /* =================== Manual (free play) =================== */
+  const MAN = { mHR: 'hr', mSBP: 'sbp', mDBP: 'dbp', mSpO2: 'spo2', mRR: 'rr', mT: 'temp', mST: 'st' };
+  const MANF = { mHR: v => v + ' bpm', mSBP: v => v + ' mmHg', mDBP: v => v + ' mmHg', mSpO2: v => v + '%', mRR: v => v + ' /min', mT: v => v.toFixed(1) + ' °C', mST: v => (v > 0 ? '+' : '') + v + ' mm' };
+  const manual = { hr: 72, sbp: 122, dbp: 78, spo2: 98, rr: 14, temp: 36.8, st: 0 };
+  Object.entries(MAN).forEach(([id, k]) => SL.bind('#' + id, v => { manual[k] = v; if (k === 'sbp' && manual.dbp >= v - 10) { const d = $('#mDBP'); d.value = v - 10; d.dispatchEvent(new Event('input')); } }, MANF[id]));
+  const segSet = (id, cb) => $$(id + ' button').forEach(b => b.addEventListener('click', () => { $$(id + ' button').forEach(x => x.classList.toggle('on', x === b)); cb(b.dataset.v); }));
+  segSet('#mRhythm', v => V.rhythm = v); segSet('#mAVPU', v => V.avpu = v);
+  $('#mO2').addEventListener('change', e => V.o2 = e.target.checked);
+  segSet('#spd', v => speed = +v);
+
+  /* =================== Alarm limits UI =================== */
+  const LDEF = [['hr', 'Heart rate', 1], ['sbp', 'Systolic BP', 1], ['spo2', 'SpO₂', 1], ['rr', 'Resp. rate', 1], ['temp', 'Temp', 0.1]];
+  $('#limits').innerHTML = '<span></span><span class="h">Low</span><span class="h">High</span>' + LDEF.map(([k, l, s]) => `<span>${l}</span><input type="number" step="${s}" data-k="${k}" data-i="0" value="${LIM[k][0]}"><input type="number" step="${s}" data-k="${k}" data-i="1" value="${LIM[k][1]}" ${k === 'spo2' ? 'disabled title="No high SpO₂ alarm"' : ''}>`).join('') + '<span></span><button class="btn sm" id="limReset" style="grid-column:2/4">Reset defaults</button>';
+  $('#limits').addEventListener('input', e => { const i = e.target; if (!i.dataset.k) return; const v = parseFloat(i.value); if (!isNaN(v)) { LIM[i.dataset.k][+i.dataset.i] = v; store.set('limits', LIM); } });
+  $('#limReset').onclick = () => { Object.assign(LIM, { hr: [50, 120], sbp: [90, 160], spo2: [92, 101], rr: [8, 25], temp: [35.5, 38.5] }); store.set('limits', LIM); $$('#limits input').forEach(i => i.value = LIM[i.dataset.k][+i.dataset.i]); };
+
+  /* =================== Scenarios =================== */
+  const ACTIONS = [
+    ['Help', [['help', 'Call for help / rapid response'], ['observe', 'Reassess (1 min)']]],
+    ['Airway & breathing', [['o2', 'High-flow oxygen'], ['airway', 'Open airway & stimulate'], ['bvm', 'Bag-valve-mask ventilation'], ['situp', 'Sit upright'], ['neb', 'Nebulised bronchodilator'], ['recovery', 'Recovery position']]],
+    ['Circulation', [['iv', 'IV access + bloods'], ['fluids', 'Fluid bolus (crystalloid)'], ['blood', 'Blood / major haemorrhage protocol'], ['bleed', 'Control external bleeding'], ['legs', 'Lie flat, raise legs'], ['ecg12', '12-lead ECG'], ['cultures', 'Blood cultures + lactate']]],
+    ['Disability', [['bm', 'Check capillary glucose'], ['glucose_oral', 'Oral glucose (if safe to swallow)'], ['glucose_iv', 'IV glucose (per protocol)'], ['naloxone', 'Naloxone (per protocol)'], ['stoppca', 'Stop opioid PCA']]],
+    ['Specific treatment', [['abx', 'IV antibiotics (per protocol)'], ['adrenaline', 'IM adrenaline (per protocol)'], ['antihist', 'Antihistamine'], ['steroid', 'Corticosteroid'], ['aspirin', 'Aspirin (per protocol)'], ['analgesia', 'Analgesia'], ['cathlab', 'Activate cath lab (PCI)'], ['stoptrigger', 'Stop the running infusion']]],
+  ];
+  const ALABEL = Object.fromEntries(ACTIONS.flatMap(g => g[1]));
+  const REPEAT = new Set(['observe', 'fluids', 'blood', 'neb', 'naloxone', 'adrenaline', 'glucose_iv', 'glucose_oral', 'airway', 'bvm', 'bm']);
+  const tb = (pts, t) => Math.round(pts * (t < 2 ? 1 : Math.max(0.5, 1 - (t - 2) / 16)));
+  const NI = 'Not indicated for this patient; it costs time.';
+
+  const SCEN = {
+    normal: {
+      name: 'Routine observations (well patient)', who: 'Mr Otieno, 45',
+      brief: '<b>Mr Otieno, 45</b>, day 2 after a knee arthroscopy on the surgical ward in Kisumu. He feels well and is waiting for physiotherapy. You are doing the routine observation round. Decide whether anything needs to be done.',
+      max: 20, dur: 4,
+      init: () => ({}),
+      target: () => ({ hr: 72, sbp: 124, dbp: 78, spo2: 98, rr: 14, temp: 36.8, avpu: 'A', perf: 1, tv: 1 }),
+      on(k, h, t) { if (k === 'observe') return [2, 'Observations are normal. NEWS2 0: routine 12-hourly monitoring.']; if (k === 'bm' || k === 'ecg12') return [0, 'Reasonable if indicated, but nothing suggests a problem.']; return [-4, 'Unnecessary intervention for a well patient.']; },
+      end(h, t) { return t >= 4 ? 'stable' : null; },
+      bonus(h) { return h.bad ? 0 : 16; },
+      key: [],
+      debrief: '<p>A NEWS2 of 0 means routine monitoring at least every 12 hours. Recognising a well patient matters too: unnecessary oxygen, fluids or tests carry costs and risks, and take time from patients who need it.</p>',
+    },
+    bleed: {
+      name: 'Haemorrhagic shock after a road crash', who: 'Brian, 28',
+      brief: '<b>Brian, 28</b>, a boda boda rider hit by a car on Thika Road, arrives with an open fracture of the right thigh. The dressing is soaked and blood is still dripping. He is pale and anxious.',
+      max: 85, dur: 15,
+      init: () => ({ loss: 0.24, rate: 0.024, iv: false, fl: 0, bl: 0, legs: 0 }),
+      prog(h, dt) { h.loss = clamp(h.loss + h.rate * dt, 0, 0.8); h.legs = Math.max(0, h.legs - dt * 0.004); },
+      target(h) { const L = clamp(h.loss - h.legs, 0, 1); const sbp = L < 0.3 ? 122 - 20 * Math.max(0, L - 0.2) : 120 - 250 * (L - 0.3); return { hr: clamp(78 + 190 * Math.max(0, L - 0.1), 60, 170), sbp: clamp(sbp, 40, 130), dbp: clamp(sbp * 0.66 + 4, 25, 85), rr: 14 + 50 * Math.max(0, L - 0.15), spo2: clamp(98 - 14 * Math.max(0, L - 0.35) + (h.o2 ? 1 : 0), 80, 99), temp: 36.0, avpu: L > 0.6 ? 'P' : L > 0.5 ? 'V' : L > 0.4 ? 'C' : 'A', perf: clamp(1.1 - 2 * Math.max(0, L - 0.2), 0.12, 1), tv: 1 }; },
+      on(k, h, t) {
+        switch (k) {
+          case 'help': return [tb(10, t), 'Trauma team called. Haemorrhage needs a team.'];
+          case 'bleed': h.rate = 0.0008; return [tb(25, t), 'Direct pressure and a splint slow the bleeding dramatically. Stopping the loss is the priority ("C before A" in catastrophic haemorrhage).'];
+          case 'iv': return [tb(8, t), 'Two large-bore cannulas; bloods sent for crossmatch.'];
+          case 'fluids': if (!h.iv) return [0, 'You need IV access first.']; h.fl++; h.loss -= 0.05; return h.fl <= 1 ? [5, 'A small crystalloid bolus buys time, but it does not carry oxygen.'] : [-3, 'Avoid repeated crystalloid in haemorrhage: it dilutes clotting factors. Give blood.'];
+          case 'blood': if (!h.iv) return [0, 'You need IV access first.']; h.bl++; h.loss -= 0.12; return h.bl === 1 ? [tb(20, t), 'Major haemorrhage protocol activated: blood and plasma replace what was lost.'] : [4, 'Further blood products given.'];
+          case 'o2': return [5, 'High-flow oxygen maximises oxygen delivery.'];
+          case 'legs': h.legs = 0.04; return [3, 'Lying flat with legs raised briefly increases venous return.'];
+          case 'situp': h.legs = -0.04; return [-6, 'Sitting a shocked patient up drops venous return and blood pressure.'];
+          case 'analgesia': return [2, 'Analgesia is kind and appropriate, once the bleeding is managed.'];
+        }
+      },
+      end(h, t) { if (h.loss > 0.58) return 'arrest'; if (h.rate < 0.002 && h.loss < 0.26 && t > 3) return 'stable'; return t >= 15 ? 'timeout' : null; },
+      key: ['bleed', 'help', 'iv', 'blood'],
+      debrief: '<p><b>Haemorrhagic shock.</b> Blood loss lowers venous return and stroke volume. Baroreceptors raise heart rate and vasoconstrict, so blood pressure is maintained until roughly 30% of blood volume is lost (ATLS class III). Tachycardia, rising respiratory rate, narrow pulse pressure, cool peripheries and a poor pleth trace come first; hypotension and confusion are late.</p><p>Treatment priorities: stop the bleeding (pressure, splinting, tourniquet, surgery), replace losses with blood products rather than large volumes of crystalloid, and keep the patient warm. Watch the shock index (HR/SBP).</p>',
+    },
+    sepsis: {
+      name: 'Sepsis on the medical ward', who: 'Mama Achieng, 68',
+      brief: '<b>Mama Achieng, 68</b>, admitted yesterday with a urinary tract infection. The nurse calls you because she is newly confused, hot and breathing fast. She has not passed urine for 6 hours.',
+      max: 80, dur: 15,
+      init: () => ({ sev: 0.55, vd: 0.35, iv: false, abxT: null, fl: 0, cul: false }),
+      prog(h, dt, t) { h.sev = clamp(h.sev + (h.abxT == null ? 0.035 : t - h.abxT > 2 ? -0.04 : 0.005) * dt, 0.1, 1.4); if (h.fl === 0) h.vd = Math.min(0.7, h.vd + 0.01 * dt); },
+      target(h) { const s = h.sev, v = h.vd; const sbp = 130 - 30 * s - 60 * v; return { temp: 37.8 + 1.6 * Math.min(1, s), hr: 82 + 40 * s + 40 * v, sbp, dbp: sbp * 0.56, rr: 15 + 16 * s, spo2: Math.min(99, 98 - 9 * s + (h.o2 ? 5 : 0)), avpu: s > 0.95 ? 'V' : s > 0.45 || sbp < 85 ? 'C' : 'A', perf: clamp(1 - 0.6 * v - 0.3 * s, 0.2, 1), tv: 1 }; },
+      on(k, h, t) {
+        switch (k) {
+          case 'help': return [tb(10, t), 'Senior review requested: NEWS2 is in the high-risk band.'];
+          case 'o2': return V.spo2 < 94 ? [6, 'Oxygen to keep SpO₂ 94–98%.'] : [1, 'Oxygen is only needed if SpO₂ is below target.'];
+          case 'iv': return [6, 'IV access obtained.'];
+          case 'cultures': h.cul = true; return h.abxT == null ? [tb(10, t), 'Blood cultures and lactate taken before antibiotics. Lactate 4.1 mmol/L.'] : [3, 'Cultures taken, though ideally before antibiotics.'];
+          case 'abx': if (!h.iv) return [0, 'You need IV access first.']; if (h.abxT != null) return [0, 'Already given.']; h.abxT = t; return [tb(22, t), 'Broad-spectrum antibiotics started. Every hour of delay in septic shock raises mortality.'];
+          case 'fluids': if (!h.iv) return [0, 'You need IV access first.']; h.fl++; h.vd = Math.max(0, h.vd - 0.12); return h.fl <= 3 ? [6, 'Fluid bolus given. Reassess: blood pressure and heart rate improve.'] : [-3, 'Further boluses without senior review risk fluid overload.'];
+          case 'bm': return [2, 'Glucose 7.8 mmol/L.'];
+          case 'situp': return [1, 'Comfortable, but a hypotensive patient may need to lie flatter.'];
+        }
+      },
+      end(h, t) { if (h.sev + h.vd > 1.45) return 'arrest'; if (h.abxT != null && h.vd < 0.15 && h.sev < 0.45) return 'stable'; return t >= 15 ? 'timeout' : null; },
+      key: ['help', 'iv', 'cultures', 'abx', 'fluids', 'o2'],
+      debrief: '<p><b>Sepsis</b> is life-threatening organ dysfunction caused by a dysregulated response to infection. Vasodilation and capillary leak cause relative hypovolaemia; tissues become hypoperfused (raised lactate, low urine output, confusion). Fever, tachycardia and tachypnoea are early clues; NEWS2 ≥ 5 should prompt thinking "could this be sepsis?".</p><p>The "Sepsis Six" bundle within the first hour: oxygen to target, blood cultures, IV antibiotics, fluid resuscitation, lactate measurement and urine output monitoring, with early senior input.</p>',
+    },
+    asthma: {
+      name: 'Acute severe asthma', who: 'Faith, 22',
+      brief: '<b>Faith, 22</b>, a university student with known asthma, walked into the clinic short of breath after her inhaler ran out. She is speaking in short phrases and has an audible wheeze.',
+      max: 70, dur: 15,
+      init: () => ({ b: 0.62, rate: 0.04, tachy: 0, pos: 0 }),
+      prog(h, dt) { h.b = clamp(h.b + (h.rate - (h.pos > 0 ? 0.004 : 0) + (h.pos < 0 ? 0.01 : 0)) * dt, 0.05, 1.3); h.tachy = Math.max(0, h.tachy - dt * 3); },
+      target(h) { const b = h.b; const rr = b > 0.9 ? 20 + 16 * 0.9 - (b - 0.9) * 70 : 18 + 16 * b; return { rr: Math.max(6, rr), hr: 88 + 42 * b + h.tachy, sbp: 132, dbp: 82, spo2: Math.min(98, 99 - 14 * b - (b > 0.95 ? 8 : 0) + (h.o2 ? 6 : 0)), temp: 37.0, avpu: b > 1.05 ? 'V' : b > 0.95 ? 'C' : 'A', perf: 1, tv: b > 0.9 ? 0.35 : 1 - 0.4 * b }; },
+      on(k, h, t) {
+        switch (k) {
+          case 'help': return [tb(8, t), 'Senior help called for acute severe asthma.'];
+          case 'situp': h.pos = 1; return [5, 'Sitting upright helps the accessory muscles of breathing.'];
+          case 'o2': return [6, 'Oxygen to SpO₂ 94–98%.'];
+          case 'neb': h.b = Math.max(0.05, h.b - 0.22); h.tachy += 10; return [h.nebs = (h.nebs || 0) + 1, 0][0] === 1 ? [tb(22, t), 'Nebulised bronchodilator: bronchospasm eases. Note the drug-induced tachycardia.'] : [6, 'Repeat (back-to-back) bronchodilator given.'];
+          case 'steroid': h.rate = -0.008; return [tb(12, t), 'Corticosteroid given: it takes hours to act but prevents relapse.'];
+          case 'legs': h.pos = -1; return [-8, 'Lying flat worsens breathlessness.'];
+          case 'fluids': return [0, 'Not a priority unless dehydrated.'];
+          case 'adrenaline': return [-2, 'IM adrenaline is for anaphylaxis; this is asthma.'];
+        }
+      },
+      end(h, t) { if (h.b > 1.18) return 'arrest'; if (h.b < 0.3 && t > 2) return 'stable'; return t >= 15 ? 'timeout' : null; },
+      key: ['neb', 'o2', 'steroid', 'situp', 'help'],
+      debrief: '<p><b>Acute asthma</b>: bronchospasm, mucosal oedema and mucus narrow the airways; expiration is prolonged and air trapping occurs. Early on the patient breathes fast and SpO₂ may be preserved. <b>Life-threatening signs</b> include SpO₂ &lt; 92%, a silent chest, exhaustion, a <i>falling</i> respiratory rate and confusion: a "normalising" RR with worsening consciousness means fatigue, not improvement.</p><p>Treatment: sit up, oxygen to 94–98%, repeated inhaled bronchodilators, early steroids, and senior escalation (further therapy and critical care if not improving).</p>',
+    },
+    opioid: {
+      name: 'Opioid-induced respiratory depression', who: 'Mr Kamau, 72',
+      brief: '<b>Mr Kamau, 72</b>, is the evening after a hip replacement with a morphine PCA (patient-controlled analgesia) pump. His daughter says he is "very sleepy". He is difficult to rouse.',
+      max: 75, dur: 15,
+      init: () => ({ o: 0.72, pca: true, nal: 0, stim: 0, bvm: 0 }),
+      prog(h, dt) { h.o = clamp(h.o + (h.pca ? 0.025 : -0.012) * dt, 0, 1.3); h.nal = Math.max(0, h.nal - 0.045 * dt); h.stim = Math.max(0, h.stim - 0.6 * dt); h.bvm = Math.max(0, h.bvm - 0.3 * dt); },
+      target(h) { const e = Math.max(0, h.o - h.nal); return { rr: Math.max(2, 16 - 13 * e + 4 * h.stim), tv: clamp(1 - 0.6 * e, 0.3, 1), spo2: clamp(97 - 26 * Math.max(0, e - 0.35) + (h.o2 ? 6 : 0) + 7 * h.bvm, 60, 99), hr: 80 - 16 * e, sbp: 126 - 22 * e, dbp: 74 - 10 * e, temp: 36.9, avpu: e > 0.9 ? 'U' : e > 0.7 ? 'P' : e > 0.42 ? 'V' : 'A', perf: 0.9, }; },
+      on(k, h, t) {
+        switch (k) {
+          case 'help': return [tb(10, t), 'Rapid response team called.'];
+          case 'airway': h.stim = 1; return [h.aw = (h.aw || 0) + 1, 0][0] === 1 ? [6, 'Head tilt–chin lift and a firm shake: he takes a few deeper breaths, then drifts off again.'] : [1, 'He responds briefly.'];
+          case 'stoppca': if (!h.pca) return [0, 'Already stopped.']; h.pca = false; return [tb(18, t), 'PCA stopped: the source of the opioid is removed.'];
+          case 'naloxone': h.nal = Math.min(1.2, h.nal + 0.55); h.nx = (h.nx || 0) + 1; return h.nx === 1 ? [tb(22, t), 'Naloxone reverses the opioid: RR and consciousness improve. It wears off sooner than morphine, so watch for re-sedation.'] : [5, 'Further naloxone given for re-sedation.'];
+          case 'o2': return [5, 'Oxygen raises SpO₂, but it can mask hypoventilation: the respiratory rate and CO₂ are what matter.'];
+          case 'bvm': if (V.rr < 9) { h.bvm = 1; return [6, 'Assisted ventilation supports oxygenation and CO₂ clearance.']; } return [-2, 'Breathing is adequate enough; BVM is not needed now.'];
+          case 'bm': return [4, 'Glucose 6.4 mmol/L. Always check glucose in reduced consciousness.'];
+          case 'recovery': return [3, 'Recovery position protects the airway.'];
+          case 'situp': return [-2, 'An obtunded patient may lose their airway sitting slumped.'];
+          case 'analgesia': return [-10, 'More analgesia now would deepen respiratory depression.'];
+        }
+      },
+      end(h, t) { const e = h.o - h.nal; if (e > 1.08) return 'arrest'; if (!h.pca && e < 0.3 && t > 3) return 'stable'; return t >= 15 ? 'timeout' : null; },
+      key: ['stoppca', 'naloxone', 'help', 'airway'],
+      debrief: '<p><b>Opioids</b> act on μ-receptors in the brainstem, blunting the response to CO₂: breathing becomes slow and shallow, CO₂ rises (hypercapnia) and drowsiness follows. Sedation usually precedes respiratory depression, so a rising sedation score is the early warning. Pinpoint pupils support the diagnosis.</p><p>Supplemental oxygen can keep SpO₂ normal while CO₂ climbs, so judge ventilation by rate, depth and consciousness. Stop the opioid, support the airway and breathing, give naloxone in small titrated doses per protocol, and monitor closely: naloxone is shorter-acting than most opioids.</p>',
+    },
+    hypo: {
+      name: 'Hypoglycaemia', who: 'Wanjiku, 30',
+      brief: '<b>Wanjiku, 30</b>, who has type 1 diabetes, took her insulin but skipped lunch during a busy shift. Colleagues bring her in: sweaty, shaky, and talking oddly.',
+      max: 45, dur: 15,
+      init: () => ({ g: 2.6, rate: -0.11, known: false, iv: false, carb: 0 }),
+      prog(h, dt) { if (h.carb > 0) { const d = Math.min(h.carb, 1.1 * dt); h.g += d; h.carb -= d; } else h.g = Math.max(0.6, h.g + h.rate * dt); },
+      target(h) { const a = clamp((4 - h.g) / 2, 0, 1); return { hr: 76 + 34 * a, sbp: 128 + 12 * a, dbp: 80, rr: 18, spo2: 98, temp: 36.4, avpu: h.g < 1.4 ? 'P' : h.g < 2.0 ? 'V' : h.g < 2.9 ? 'C' : 'A', perf: 1, tv: 1, glucose: h.g }; },
+      on(k, h, t) {
+        switch (k) {
+          case 'bm': h.known = true; return h.bmd ? [0, `Glucose ${h.g.toFixed(1)} mmol/L.`] : (h.bmd = 1, [tb(22, t), `Capillary glucose ${h.g.toFixed(1)} mmol/L: hypoglycaemia (below 4.0).`]);
+          case 'glucose_oral': if (V.avpu === 'V' || V.avpu === 'P' || V.avpu === 'U') return [-10, 'Unsafe: with reduced consciousness she cannot protect her airway. Use the IV route.']; h.carb += 3; h.rate = 0; return [tb(18, t), 'Fast-acting oral glucose given; she is able to swallow.'];
+          case 'glucose_iv': if (!h.iv) return [0, 'You need IV access first.']; h.carb += 4; h.rate = 0; return [tb(18, t), 'IV glucose per protocol. Recheck glucose in 10–15 minutes.'];
+          case 'iv': h.iv = true; return [4, 'IV access obtained.'];
+          case 'help': return [5, 'Help called.'];
+          case 'recovery': return V.avpu === 'A' ? [0, 'Not needed while she is alert.'] : [3, 'Airway protected.'];
+          case 'o2': return [0, 'SpO₂ is normal; oxygen does not treat hypoglycaemia.'];
+          case 'naloxone': return [-3, 'There is no opioid involved.'];
+        }
+      },
+      end(h, t) { if (h.g < 1.0) return 'arrest'; if (h.g > 4.6 && t > 2) return 'stable'; return t >= 15 ? 'timeout' : null; },
+      key: ['bm', 'glucose_oral'],
+      debrief: '<p><b>Hypoglycaemia</b> (glucose &lt; 4.0 mmol/L in a person with diabetes) triggers adrenaline release: sweating, tremor, tachycardia, anxiety (autonomic symptoms). As the brain runs short of glucose, confusion, odd behaviour, reduced consciousness and seizures follow (neuroglycopenia). Vital signs may look nearly normal: only a glucose check reveals it, hence "don\'t ever forget glucose" in every patient with altered consciousness.</p><p>If the patient can swallow safely, give fast-acting oral carbohydrate; if not, use IV glucose (or IM glucagon) per protocol. Recheck after 10–15 minutes and follow with longer-acting carbohydrate.</p>',
+    },
+    stemi: {
+      name: 'Chest pain: STEMI', who: 'Mr Mwangi, 58',
+      brief: '<b>Mr Mwangi, 58</b>, a smoker with hypertension, has had crushing central chest pain radiating to his jaw for 40 minutes. He is grey and sweaty. The monitor is attached; his oxygen saturation is normal.',
+      max: 80, dur: 15,
+      init: () => ({ pain: 1, m: 0.15, occl: true, ecg: false, reperT: null }),
+      prog(h, dt, t) { if (h.occl) h.m = clamp(h.m + 0.07 * dt, 0, 1.3); },
+      target(h, t) { const reper = h.reperT != null ? clamp((t - h.reperT) / 3, 0, 1) : 0; return { pain: h.pain, hr: 86 + 14 * h.pain + 30 * h.m, sbp: 150 + 12 * h.pain - 70 * Math.max(0, h.m - 0.3), dbp: 92 - 30 * Math.max(0, h.m - 0.3), spo2: 97 - 6 * Math.max(0, h.m - 0.4) + (h.o2 ? 2 : 0), rr: 18 + 5 * h.pain + 8 * Math.max(0, h.m - 0.4), temp: 36.7, avpu: h.m > 0.9 ? 'C' : 'A', st: 3 * (1 - reper), tw: 1.6 - 0.6 * reper, pvc: h.occl ? 0.05 + 0.1 * h.m : 0.01, perf: clamp(1 - 0.5 * h.m, 0.3, 1), tv: 1 }; },
+      on(k, h, t) {
+        switch (k) {
+          case 'ecg12': if (h.ecg) return [0, 'Already done: ST elevation in II, III and aVF.']; h.ecg = true; return [tb(22, t), '12-lead ECG: ST elevation in II, III and aVF (inferior STEMI). Aim for an ECG within 10 minutes of arrival.'];
+          case 'aspirin': return [tb(10, t), 'Antiplatelet therapy per protocol.'];
+          case 'cathlab': if (!h.ecg) return [0, 'Confirm the STEMI on a 12-lead ECG first.']; if (!h.occl) return [0, 'Already activated.']; h.occl = false; h.reperT = t + 2; return [tb(25, t), 'Primary PCI pathway activated: the artery is reopened. "Time is muscle."'];
+          case 'analgesia': h.pain = 0.3; return [6, 'Analgesia per protocol relieves pain and reduces sympathetic drive (HR and BP fall).'];
+          case 'o2': return V.spo2 >= 94 ? [-3, 'Routine oxygen is not recommended when SpO₂ is 94% or above; it may even be harmful in MI.'] : [5, 'SpO₂ below 94%: oxygen is appropriate.'];
+          case 'iv': return [5, 'IV access and bloods (including troponin).'];
+          case 'help': return [tb(8, t), 'Senior / cardiology help called.'];
+          case 'fluids': return [-3, 'He is not fluid-depleted; extra fluid can worsen pulmonary congestion.'];
+        }
+      },
+      end(h, t) { if (h.m > 1.15) return 'arrest'; if (h.reperT != null && t > h.reperT + 1.5) return 'stable'; return t >= 15 ? 'timeout' : null; },
+      key: ['ecg12', 'cathlab', 'aspirin', 'help', 'analgesia'],
+      debrief: '<p><b>ST-elevation myocardial infarction</b> follows complete occlusion of a coronary artery, usually by thrombus on a ruptured plaque. Transmural ischaemia produces ST elevation (≥ 1 mm in two contiguous limb leads; inferior leads II, III, aVF point to the right coronary artery), hyperacute T waves and, later, Q waves. Myocardium dies progressively: every minute counts.</p><p>Key steps: 12-lead ECG within 10 minutes, antiplatelet therapy and analgesia per protocol, and immediate reperfusion (primary PCI, or thrombolysis where PCI is not available in time). Ventricular ectopics and arrhythmias are common; cardiogenic shock is a feared complication. Oxygen only if hypoxaemic.</p>',
+    },
+    anaph: {
+      name: 'Anaphylaxis', who: 'Grace, 35',
+      brief: '<b>Grace, 35</b>, started an IV antibiotic infusion five minutes ago. She now has widespread hives, swollen lips, a hoarse voice and says she feels "something awful is happening". The infusion is still running.',
+      max: 80, dur: 12,
+      init: () => ({ a: 0.55, trig: true, adrT: [], iv: true, fl: 0, legs: 0 }),
+      prog(h, dt) { h.a = clamp(h.a + (h.trig ? 0.06 : 0.02) * dt, 0, 1.4); h.legs = Math.max(0, h.legs - dt * 0.01); },
+      target(h) { const a = h.a; const sbp = 128 - 80 * a + 40 * h.legs; return { hr: 98 + 52 * a, sbp, dbp: sbp * 0.55, rr: 18 + 14 * a, spo2: clamp(99 - 14 * a + (h.o2 ? 5 : 0), 70, 99), temp: 36.9, avpu: a > 1.0 ? 'V' : sbp < 80 ? 'C' : 'A', perf: clamp(1.1 - a * 0.8, 0.2, 1), tv: 1 - 0.3 * a }; },
+      on(k, h, t) {
+        switch (k) {
+          case 'adrenaline': { const last = h.adrT[h.adrT.length - 1]; if (last != null && t - last < 5) return [-2, 'Allow about 5 minutes before repeating IM adrenaline (per protocol).']; h.adrT.push(t); h.a = Math.max(0, h.a - 0.4); return h.adrT.length === 1 ? [tb(28, t), 'IM adrenaline into the anterolateral thigh: the first-line, life-saving treatment.'] : [8, 'Repeat IM adrenaline after 5 minutes because of persistent signs.']; }
+          case 'stoptrigger': if (!h.trig) return [0, 'Already stopped.']; h.trig = false; return [tb(12, t), 'Infusion stopped: remove the trigger.'];
+          case 'help': return [tb(10, t), 'Resuscitation team called.'];
+          case 'legs': h.legs = 0.3; return V.sbp < 100 ? [5, 'Lying flat with legs raised supports blood pressure.'] : [1, 'Lying flat is reasonable; if breathing is the main problem she may prefer sitting.'];
+          case 'situp': return V.sbp < 90 ? [-5, 'Sitting up with this blood pressure risks collapse.'] : [1, 'Sitting may ease breathing while BP holds.'];
+          case 'o2': return [6, 'High-flow oxygen.'];
+          case 'fluids': h.fl++; h.a = Math.max(0, h.a - 0.06); return h.fl <= 2 ? [6, 'IV fluid bolus for the vasodilated, leaky circulation.'] : [1, 'Further fluid given.'];
+          case 'antihist': return [1, 'Antihistamines help skin symptoms only; they are not life-saving and must never delay adrenaline.'];
+          case 'steroid': return [0, 'Steroids are no longer recommended for the immediate treatment of anaphylaxis.'];
+          case 'neb': return [1, 'May help wheeze, but adrenaline treats the whole reaction.'];
+          case 'iv': return [2, 'IV access already present (infusion line).'];
+        }
+      },
+      end(h, t) { if (h.a > 1.2) return 'arrest'; if (h.adrT.length && h.a < 0.22 && t > 2) return 'stable'; return t >= 12 ? 'timeout' : null; },
+      key: ['adrenaline', 'stoptrigger', 'help', 'o2', 'legs'],
+      debrief: '<p><b>Anaphylaxis</b> is a severe, life-threatening systemic hypersensitivity reaction. Mast cells release histamine and other mediators: vasodilation and capillary leak (hypotension, tachycardia), bronchospasm and airway oedema (stridor, wheeze, hypoxaemia), and skin changes (urticaria, angio-oedema).</p><p><b>IM adrenaline</b> is the first-line treatment: α-effects restore vascular tone, β-effects open the airways and stabilise mast cells. Repeat after 5 minutes if needed. Remove the trigger, call for help, position according to symptoms, give oxygen and IV fluids. Antihistamines and steroids are secondary.</p>',
+    },
+  };
+
+  /* =================== Scenario runtime =================== */
+  let SC = null, H = null, run = false, simT = 0, speed = 6, score = 0, logArr = [], used = {}, outcome = null, failHold = 0;
+  const simClock = () => { const s = Math.floor(simT * 60); return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; };
+  $('#scen').innerHTML = '<option value="free">Free play: set the vital signs yourself</option>' + Object.entries(SCEN).map(([k, s]) => `<option value="${k}">${s.name}</option>`).join('');
+  $('#acts').innerHTML = ACTIONS.map(([g, list]) => `<div class="grp"><h5>${g}</h5><div>${list.map(([k, l]) => `<button class="btn sm" data-a="${k}">${l}</button>`).join('')}</div></div>`).join('');
+  function showBrief() {
+    const k = $('#scen').value;
+    if (k === 'free') { $('#brief').innerHTML = 'Use the sliders to set any combination of vital signs and watch the monitor, alarms and NEWS2 respond. Choose a patient scenario above to practise managing a deteriorating patient.'; $('#start').disabled = true; }
+    else { const best = store.get('best', {})[k]; $('#brief').innerHTML = SCEN[k].brief + (best != null ? `<br><span class="small">Your best: <b>${best}%</b></span>` : ''); $('#start').disabled = false; }
+  }
+  $('#scen').addEventListener('change', () => { if (run) stopScenario(true); showBrief(); setFree($('#scen').value === 'free'); });
+  function setFree(free) { $('#manualPanel').hidden = !free; $('#actPanel').hidden = free; if (free) { SC = null; V.pvc = 0; V.tw = 1; V.glucose = null; } else { SC = SCEN[$('#scen').value]; H = Object.assign({ o2: false }, SC.init()); applyTargets(true); } }
+  function applyTargets(instant) {
+    const tg = SC.target(H, simT);
+    const keys = ['hr', 'sbp', 'dbp', 'spo2', 'rr', 'temp'];
+    keys.forEach(k => { if (tg[k] != null) V[k] = instant ? tg[k] : V[k] + (tg[k] - V[k]) * (1 - Math.exp(-dtSim / 0.3)); });
+    V.avpu = tg.avpu || 'A'; V.perf = tg.perf != null ? tg.perf : 1; V.tv = tg.tv != null ? tg.tv : 1; V.o2 = !!H.o2;
+    V.st = tg.st != null ? (instant ? tg.st : V.st + (tg.st - V.st) * (1 - Math.exp(-dtSim / 0.5))) : 0; V.tw = tg.tw || 1; V.pvc = tg.pvc || 0; V.rhythm = 'sinus';
+  }
+  let dtSim = 0;
+  $('#start').onclick = () => {
+    const k = $('#scen').value; if (k === 'free') return;
+    SC = SCEN[k]; H = Object.assign({ o2: false }, SC.init()); simT = 0; score = 0; logArr = []; used = {}; outcome = null; failHold = 0; run = true;
+    applyTargets(true); renderLog(); $$('#acts .btn').forEach(b => b.classList.remove('used'));
+    $('#endBtn').disabled = false; $('#start').innerHTML = '<i data-lucide="rotate-ccw"></i> Restart'; SL.refreshIcons($('#start'));
+    SL.toast(`Scenario started: ${SC.name}. Assess and act.`, 'ok');
+  };
+  $('#endBtn').onclick = () => finish(outcome || 'ended');
+  $('#acts').addEventListener('click', e => {
+    const b = e.target.closest('[data-a]'); if (!b) return; const k = b.dataset.a;
+    if (!run) { SL.toast('Press <b>Start scenario</b> first.', 'warn'); return; }
+    if (used[k] && !REPEAT.has(k)) { addLog(k, 0, 'Already done.'); return; }
+    let r;
+    if (k === 'o2') H.o2 = true;
+    if (k === 'iv') H.iv = true;
+    if (k === 'observe') simT += 1; // time passes while you reassess
+    r = SC.on(k, H, simT);
+    if (!r) { if (k === 'observe') r = [0, `Reassessed: NEWS2 ${news2(curObs()).total}.`]; else if (k === 'bm') r = [1, `Glucose ${H.glucose != null ? H.glucose.toFixed(1) : (5 + Math.random()).toFixed(1)} mmol/L.`]; else if (k === 'iv') r = [2, 'IV access obtained.']; else if (k === 'o2') r = V.spo2 >= 96 ? [-2, 'SpO₂ is already normal; oxygen is not needed.'] : [3, 'Oxygen applied.']; else r = [-1, NI]; }
+    if (r[0] < 0) H.bad = true;
+    used[k] = true; b.classList.add('used'); score += r[0]; addLog(k, r[0], r[1]);
+  });
+  function addLog(k, p, msg) { logArr.push({ t: simClock(), k, p, msg }); renderLog(); SL.toast(`<b>${ALABEL[k]}</b><br>${msg}`, p > 0 ? 'ok' : p < 0 ? 'bad' : '', 4200); }
+  function renderLog() { $('#log').innerHTML = logArr.length ? logArr.slice().reverse().map(l => `<div><span class="muted">${l.t}</span><span>${ALABEL[l.k]}</span><span class="p ${l.p > 0 ? 'pos' : l.p < 0 ? 'neg' : ''}">${l.p > 0 ? '+' : ''}${l.p}</span></div>`).join('') : '<div class="muted" style="display:block">No actions yet.</div>'; }
+  function curObs() { return { rr: V.rr, spo2: V.spo2, scale: 1, o2: V.o2, sbp: V.sbp, hr: V.hr, avpu: V.avpu, temp: V.temp }; }
+  function stopScenario(silent) { run = false; $('#endBtn').disabled = true; $('#start').innerHTML = '<i data-lucide="play"></i> Start scenario'; SL.refreshIcons($('#start')); }
+  function finish(res) {
+    if (!run) return; stopScenario();
+    const k = $('#scen').value; let bonus = SC.bonus ? SC.bonus(H) : 0;
+    const resPts = res === 'stable' ? 15 : res === 'arrest' ? -20 : 0; const total = score + bonus + resPts;
+    const pct = clamp(Math.round(total / (SC.max + 15) * 100), 0, 100);
+    const best = store.get('best', {}); if (best[k] == null || pct > best[k]) { best[k] = pct; store.set('best', best); }
+    const missed = SC.key.filter(a => !used[a]);
+    const title = { stable: 'Patient stabilised', arrest: 'Patient deteriorated to peri-arrest', timeout: 'Time is up', ended: 'Scenario ended' }[res];
+    SL.modal(`<h3 style="display:flex;gap:8px;align-items:center"><i data-lucide="${res === 'stable' ? 'circle-check' : res === 'arrest' ? 'heart-crack' : 'flag'}"></i> ${title}</h3>
+      <p><b>${SC.name}</b> · simulated time ${simClock()} · score <b>${total}</b> (${pct}%)</p>
+      ${res === 'arrest' ? '<div class="callout bad"><i data-lucide="siren"></i><div>In reality you would now call the cardiac arrest / resuscitation team and start life support.</div></div>' : ''}
+      ${missed.length ? `<p><b>Key actions missed:</b> ${missed.map(a => ALABEL[a]).join(', ')}.</p>` : '<p style="color:var(--ok)"><b>All key actions completed.</b></p>'}
+      <div class="log" style="max-height:160px;margin-bottom:10px">${logArr.map(l => `<div><span class="muted">${l.t}</span><span>${ALABEL[l.k]}<br><span class="muted small">${l.msg}</span></span><span class="p ${l.p > 0 ? 'pos' : l.p < 0 ? 'neg' : ''}">${l.p > 0 ? '+' : ''}${l.p}</span></div>`).join('') || '<div class="muted" style="display:block">No actions taken.</div>'}</div>
+      <h4>Physiology debrief</h4>${SC.debrief}`);
+    updateChallenges();
+  }
+
+  /* =================== Live NEWS2 panel =================== */
+  let lastNews = '';
+  function renderLiveNews(n2) {
+    const o = curObs(); const key = JSON.stringify(n2.s);
+    if (key === lastNews) return; lastNews = key;
+    const val = { rr: Math.round(o.rr), spo2: Math.round(o.spo2) + '%', o2: o.o2 ? 'O₂' : 'Air', sbp: Math.round(o.sbp), hr: Math.round(o.hr), avpu: o.avpu, temp: o.temp.toFixed(1) };
+    $('#liveNews').innerHTML = `<div style="display:flex;align-items:center;gap:12px"><div style="font:700 2rem var(--display);color:${BAND[n2.band].col}">${n2.total}</div><div class="small"><b style="color:${BAND[n2.band].col}">${BAND[n2.band].label} risk</b><br><span class="muted">${BAND[n2.band].resp}</span></div></div>
+      <div class="n2grid">${Object.keys(PNAMES).map(k => `<div class="c"><span>${PNAMES[k]} <span class="muted">${val[k]}</span></span><b class="sc${n2.s[k]}">${n2.s[k]}</b></div>`).join('')}</div>`;
+  }
+
+  /* =================== Main loop =================== */
+  let alarmCache = [], acT = 0;
+  const loop = SL.loop(dt => {
+    if (document.visibilityState !== 'visible' || $('#monLab').hidden) return;
+    rt += dt; blink += dt * 1.6;
+    while (rt >= nextBeat) scheduleBeat();
+    breathPhase += dt * Math.max(0, V.rr) / 60;
+    // vitals
+    if (SC && run) {
+      dtSim = dt * speed / 60; simT += dtSim;
+      SC.prog && SC.prog(H, dtSim, simT); applyTargets(false);
+      const r = SC.end(H, simT);
+      if (r === 'arrest') { failHold += dtSim; if (failHold > 0.3) finish('arrest'); } else failHold = 0;
+      if (r === 'stable' || r === 'timeout') finish(r);
+    } else if (SC && !run) { dtSim = dt * speed / 60; applyTargets(false); }
+    else { const k = 1 - Math.exp(-dt / 1.2); ['hr', 'sbp', 'dbp', 'spo2', 'rr', 'temp'].forEach(p => V[p] += (manual[p] - V[p]) * k); V.st += (manual.st - V.st) * k; V.perf = clamp((V.sbp - 50) / 60, 0.12, 1.1); V.tv = V.rr < 8 ? 0.6 : 1; }
+    advanceTraces(dt);
+    acT += dt; if (acT > 0.25) { acT = 0; alarmCache = alarms(); }
+    const n2 = news2(curObs());
+    drawMonitor(alarmCache, n2); renderLiveNews(n2);
+    if (alarmCache.length) alarmSound(alarmCache[0].lvl);
+  });
+
+  /* =================== NEWS2 calculator =================== */
+  const CF = [
+    ['rr', 'Respiratory rate (/min)', 'number', 18], ['spo2', 'SpO₂ (%)', 'number', 96], ['scale', 'SpO₂ scale', 'select', [['1', 'Scale 1 (most patients)'], ['2', 'Scale 2 (target 88–92%)']]],
+    ['o2', 'Air or oxygen?', 'select', [['0', 'Air'], ['1', 'Supplemental oxygen']]], ['sbp', 'Systolic BP (mmHg)', 'number', 120], ['hr', 'Pulse (/min)', 'number', 80],
+    ['avpu', 'Consciousness (ACVPU)', 'select', [['A', 'Alert'], ['C', 'New confusion'], ['V', 'Responds to voice'], ['P', 'Responds to pain'], ['U', 'Unresponsive']]], ['temp', 'Temperature (°C)', 'number', 37.0],
+  ];
+  $('#calc').innerHTML = CF.map(([k, l, t, d]) => `<div class="f"><label for="c_${k}">${l}</label><div class="row">${t === 'number' ? `<input type="number" id="c_${k}" value="${d}" step="${k === 'temp' ? 0.1 : 1}">` : `<select id="c_${k}">${d.map(([v, n]) => `<option value="${v}">${n}</option>`).join('')}</select>`}${k === 'scale' ? '<span class="pts" style="visibility:hidden">0</span>' : `<span class="pts" id="p_${k}">0</span>`}</div></div>`).join('');
+  function calcObs() { const g = k => $('#c_' + k).value; return { rr: +g('rr'), spo2: +g('spo2'), scale: +g('scale'), o2: g('o2') === '1', sbp: +g('sbp'), hr: +g('hr'), avpu: g('avpu'), temp: +g('temp') }; }
+  function calc() {
+    const r = news2(calcObs());
+    Object.entries(r.s).forEach(([k, v]) => { const el = $('#p_' + k); if (el) { el.textContent = v; el.className = 'pts ptsbg' + v; } });
+    const b = BAND[r.band];
+    $('#calcRisk').style.background = `color-mix(in srgb, ${b.col} 12%, var(--panel))`; $('#calcRisk').style.borderColor = b.col;
+    $('#calcRisk').innerHTML = `<div style="display:flex;gap:16px;align-items:center"><div class="big" style="color:${b.col}">${r.total}</div><div><b style="color:${b.col}">${b.label} clinical risk</b><br><span class="small muted">${b.resp}</span></div></div>`;
+    return r;
+  }
+  $('#calc').addEventListener('input', calc); $('#calc').addEventListener('change', calc); calc();
+  let streak = 0, pracAns = null;
+  $('#rnd').onclick = () => {
+    const pick = a => a[Math.floor(Math.random() * a.length)];
+    const set = (k, v) => $('#c_' + k).value = v;
+    set('rr', pick([7, 10, 14, 16, 19, 22, 24, 27, 31])); set('spo2', pick([88, 91, 93, 94, 95, 96, 98])); set('scale', '1'); set('o2', Math.random() < .3 ? '1' : '0');
+    set('sbp', pick([84, 92, 98, 104, 109, 118, 135, 160, 224])); set('hr', pick([38, 46, 64, 82, 95, 108, 118, 126, 138])); set('avpu', Math.random() < .8 ? 'A' : pick(['C', 'V', 'P']));
+    set('temp', pick([34.8, 35.6, 36.4, 37.2, 38.0, 38.6, 39.3]));
+    pracAns = news2(calcObs()).total; $('#calcRisk').style.visibility = 'hidden'; $$('#calc .pts').forEach(p => p.style.visibility = 'hidden'); $('#guess').value = ''; $('#pracMsg').textContent = 'Work out the total, enter it and press Check.'; calc();
+  };
+  $('#chk').onclick = () => {
+    const ans = news2(calcObs()).total, gss = parseInt($('#guess').value, 10);
+    $('#calcRisk').style.visibility = ''; $$('#calc .pts').forEach((p, i) => { if (p.id) p.style.visibility = ''; });
+    if (isNaN(gss)) { $('#pracMsg').textContent = 'Enter a number first.'; return; }
+    if (gss === ans) { streak++; $('#pracMsg').innerHTML = `<span style="color:var(--ok)">Correct: ${ans}.</span> Streak ${streak}.`; if (streak >= 5) { const d = store.get('done', {}); if (!d.news) { d.news = 1; store.set('done', d); SL.toast('<b>Challenge complete:</b> five NEWS2 scores in a row', 'ok'); updateChallenges(); } } }
+    else { streak = 0; $('#pracMsg').innerHTML = `<span style="color:var(--bad)">Not quite: the total is ${ans}.</span> Check each parameter's points.`; }
+  };
+
+  /* =================== Triage =================== */
+  function tews(p) {
+    const s = {};
+    s.mob = { walk: 0, help: 1, stretcher: 2 }[p.mob];
+    s.rr = p.rr < 9 ? 2 : p.rr <= 14 ? 0 : p.rr <= 20 ? 1 : p.rr <= 29 ? 2 : 3;
+    s.hr = p.hr < 41 ? 2 : p.hr <= 50 ? 1 : p.hr <= 100 ? 0 : p.hr <= 110 ? 1 : p.hr <= 129 ? 2 : 3;
+    s.sbp = p.sbp < 71 ? 3 : p.sbp <= 80 ? 2 : p.sbp <= 100 ? 1 : p.sbp <= 199 ? 0 : 2;
+    s.temp = p.temp < 35 ? 2 : p.temp < 38.5 ? 0 : 2;
+    s.avpu = { A: 0, C: 1, V: 1, P: 2, U: 3 }[p.avpu];
+    s.trauma = p.trauma ? 1 : 0;
+    const total = Object.values(s).reduce((a, b) => a + b, 0);
+    const col = total >= 7 ? 'red' : total >= 5 ? 'orange' : total >= 3 ? 'yellow' : 'green';
+    return { s, total, col };
+  }
+  const RANK = { green: 0, yellow: 1, orange: 2, red: 3 };
+  const CNAME = { red: 'Red · immediate', orange: 'Orange · < 10 min', yellow: 'Yellow · < 60 min', green: 'Green · < 4 h' };
+  const CASES = [
+    { n: 'Kevin, 34', cc: 'Motorcycle crash. Open fracture of the left lower leg, bleeding controlled with a dressing.', mob: 'stretcher', rr: 22, hr: 118, sbp: 104, temp: 36.4, avpu: 'A', trauma: true, disc: ['orange', 'Open fracture'] },
+    { n: 'Amina, 25', cc: 'Twisted ankle playing netball. Swollen, painful (pain 5/10), can bear weight with support.', mob: 'help', rr: 16, hr: 88, sbp: 122, temp: 36.8, avpu: 'A', trauma: true, disc: ['yellow', 'Moderate pain'] },
+    { n: 'Joseph, 60', cc: 'Central chest pain for 1 hour, heavy, spreading to the left arm. Looks unwell.', mob: 'walk', rr: 18, hr: 96, sbp: 150, temp: 36.7, avpu: 'A', trauma: false, disc: ['orange', 'Chest pain'] },
+    { n: 'Mercy, 19', cc: 'Sore throat for 3 days, eating and drinking normally.', mob: 'walk', rr: 14, hr: 92, sbp: 118, temp: 38.1, avpu: 'A', trauma: false, disc: null },
+    { n: 'Peter, 45', cc: 'Brought in by relatives, actively fitting on arrival.', mob: 'stretcher', rr: 28, hr: 132, sbp: 160, temp: 37.2, avpu: 'U', trauma: false, disc: ['red', 'Seizure: current'] },
+    { n: 'Esther, 70', cc: 'Fever and new confusion since this morning; passing little urine.', mob: 'stretcher', rr: 26, hr: 124, sbp: 86, temp: 39.0, avpu: 'C', trauma: false, disc: null },
+    { n: 'Daniel, 28', cc: 'Type 1 diabetes, drowsy and sweaty. Finger-prick glucose 2.1 mmol/L.', mob: 'help', rr: 18, hr: 110, sbp: 130, temp: 36.5, avpu: 'V', trauma: false, disc: ['red', 'Hypoglycaemia (glucose < 3 mmol/L)'] },
+    { n: 'Naomi, 30', cc: '32 weeks pregnant with abdominal pain for 2 hours.', mob: 'walk', rr: 20, hr: 104, sbp: 112, temp: 37.0, avpu: 'A', trauma: false, disc: ['orange', 'Pregnancy with abdominal pain'] },
+    { n: 'Samuel, 52', cc: 'Cut finger with a kitchen knife; bleeding stopped with pressure.', mob: 'walk', rr: 16, hr: 84, sbp: 136, temp: 36.6, avpu: 'A', trauma: true, disc: null },
+    { n: 'Lucy, 40', cc: 'Known asthmatic, too breathless to finish sentences.', mob: 'help', rr: 32, hr: 122, sbp: 128, temp: 37.1, avpu: 'A', trauma: false, disc: ['orange', 'Shortness of breath: acute'] },
+    { n: 'Ian, 22', cc: 'Assaulted, hit on the head with a stick. Vomited twice, now confused.', mob: 'help', rr: 18, hr: 98, sbp: 140, temp: 36.6, avpu: 'C', trauma: true, disc: ['orange', 'Head injury with reduced consciousness'] },
+    { n: 'Rose, 65', cc: 'Swollen, painful right knee for 3 days (pain 6/10). No injury.', mob: 'help', rr: 16, hr: 86, sbp: 156, temp: 37.4, avpu: 'A', trauma: false, disc: ['yellow', 'Moderate pain'] },
+    { n: 'Brian, 35', cc: 'Abdominal pain and vomiting since yesterday.', mob: 'walk', rr: 20, hr: 112, sbp: 118, temp: 38.6, avpu: 'A', trauma: false, disc: null },
+    { n: 'Mzee Ochieng, 80', cc: 'Found collapsed at home this morning, unresponsive, cold.', mob: 'stretcher', rr: 8, hr: 44, sbp: 78, temp: 34.6, avpu: 'U', trauma: false, disc: null },
+    { n: 'Halima, 50', cc: 'Burns to both forearms from a paraffin stove, about 10% of body surface; very painful (8/10).', mob: 'walk', rr: 22, hr: 112, sbp: 130, temp: 36.8, avpu: 'A', trauma: true, disc: ['orange', 'Burn with severe pain'] },
+  ];
+  CASES.forEach(c => { const t = tews(c); c.tews = t; c.ans = c.disc && RANK[c.disc[0]] > RANK[t.col] ? c.disc[0] : t.col; });
+  let shift = [], si = 0, triRes = [];
+  function newShift() { shift = CASES.slice().sort(() => Math.random() - .5).slice(0, 8); si = 0; triRes = []; renderTri(); }
+  const MOB = { walk: 'Walking', help: 'With help', stretcher: 'Stretcher' }, AV = { A: 'Alert', C: 'Confused', V: 'Voice', P: 'Pain', U: 'Unresponsive' };
+  function renderTri(reveal) {
+    $('#queue').innerHTML = shift.map((c, i) => `<span class="qdot ${i === si ? 'cur' : ''} ${triRes[i] ? 't-' + triRes[i].pick : ''}" title="${c.n}">${i + 1}</span>`).join('');
+    const ok = triRes.filter(r => r.pick === r.ans).length; $('#triScore').textContent = `Score ${ok} / ${triRes.length}`;
+    if (si >= shift.length) {
+      const under = triRes.filter(r => RANK[r.pick] < RANK[r.ans]).length, over = triRes.filter(r => RANK[r.pick] > RANK[r.ans]).length;
+      $('#pcard').innerHTML = `<div class="pcard"><h4><i data-lucide="clipboard-check"></i> End of shift</h4><p>You triaged <b>${ok}/${shift.length}</b> patients correctly. Under-triaged: <b style="color:${under ? 'var(--bad)' : 'var(--ok)'}">${under}</b>; over-triaged: <b>${over}</b>.</p><p class="small muted">Under-triage is the more dangerous error: a sick patient waits. Over-triage costs resources but rarely harms the individual.</p><button class="btn primary" id="again"><i data-lucide="rotate-ccw"></i> New shift</button></div>`;
+      $('#again').onclick = newShift; SL.refreshIcons($('#pcard'));
+      if (ok >= 7 && under === 0) { const d = store.get('done', {}); if (!d.triage) { d.triage = 1; store.set('done', d); SL.toast('<b>Challenge complete:</b> safe triage shift', 'ok'); updateChallenges(); } }
+      return;
+    }
+    const c = shift[si], r = triRes[si];
+    $('#pcard').innerHTML = `<div class="pcard"><h4><i data-lucide="user-round"></i> Patient ${si + 1}: ${c.n} ${c.trauma ? '<span class="chip">trauma</span>' : ''}</h4><div class="cc">${c.cc}</div>
+      <div class="vrow"><div><small>Mobility</small><b>${MOB[c.mob]}</b></div><div><small>RR</small><b>${c.rr}</b></div><div><small>HR</small><b>${c.hr}</b></div><div><small>SBP</small><b>${c.sbp}</b></div><div><small>Temp</small><b>${c.temp.toFixed(1)}</b></div><div><small>AVPU</small><b>${AV[c.avpu]}</b></div></div>
+      <div class="tbtns">${['red', 'orange', 'yellow', 'green'].map(k => `<button class="tbtn ${k}${r && r.pick === k ? ' picked' : ''}${r && r.ans === k ? ' correct' : ''}" data-c="${k}" ${r ? 'disabled' : ''}>${k[0].toUpperCase() + k.slice(1)}<small>${CNAME[k].split('· ')[1]}</small></button>`).join('')}</div>
+      ${r ? `<div class="reveal-box"><p><b style="color:${r.pick === r.ans ? 'var(--ok)' : 'var(--bad)'}">${r.pick === r.ans ? 'Correct' : RANK[r.pick] < RANK[r.ans] ? 'Under-triaged' : 'Over-triaged'}:</b> the category is <b>${CNAME[c.ans]}</b>.</p>
+        <table class="tewst">${[['Mobility', MOB[c.mob], 'mob'], ['Resp. rate', c.rr, 'rr'], ['Heart rate', c.hr, 'hr'], ['Systolic BP', c.sbp, 'sbp'], ['Temperature', c.temp.toFixed(1), 'temp'], ['AVPU', AV[c.avpu], 'avpu'], ['Trauma', c.trauma ? 'Yes' : 'No', 'trauma']].map(([l, v, k]) => `<tr><td>${l}</td><td class="muted">${v}</td><td>${c.tews.s[k]}</td></tr>`).join('')}<tr><td><b>TEWS</b></td><td class="muted">→ ${c.tews.col}</td><td><b>${c.tews.total}</b></td></tr></table>
+        <p class="small">${c.disc ? `Discriminator: <b>${c.disc[1]}</b> → at least ${c.disc[0]}.` : 'No discriminator applies; the TEWS decides.'}</p>
+        <button class="btn primary sm" id="nextPt">Next patient <i data-lucide="arrow-right"></i></button></div>` : ''}</div>`;
+    SL.refreshIcons($('#pcard'));
+    if (r) $('#nextPt').onclick = () => { si++; renderTri(); };
+  }
+  $('#pcard').addEventListener('click', e => { const b = e.target.closest('[data-c]'); if (!b || triRes[si]) return; const c = shift[si]; triRes[si] = { pick: b.dataset.c, ans: c.ans }; renderTri(); });
+  $('#newShift').onclick = newShift;
+  newShift();
+
+  /* =================== Modes =================== */
+  $$('#mode button').forEach(b => b.addEventListener('click', () => {
+    $$('#mode button').forEach(x => x.classList.toggle('on', x === b));
+    $('#monLab').hidden = b.dataset.m !== 'mon'; $('#newsLab').hidden = b.dataset.m !== 'news'; $('#triLab').hidden = b.dataset.m !== 'tri';
+  }));
+
+  /* =================== Challenges / debrief library =================== */
+  function updateChallenges() {
+    const best = store.get('best', {}), d = store.get('done', {});
+    const items = Object.entries(SCEN).map(([k, s]) => ({ ok: (best[k] || 0) >= 80, t: s.name, p: best[k] != null ? `Best ${best[k]}%` : 'Not attempted', k }));
+    items.push({ ok: !!d.news, t: 'NEWS2: five correct totals in a row', p: 'Use the practice box in the NEWS2 calculator.' });
+    items.push({ ok: !!d.triage, t: 'A safe triage shift: at least 7/8 correct and no under-triage', p: 'ED triage tab.' });
+    $('#chalList').innerHTML = items.map(i => `<div class="chal"><h4><span class="led ${i.ok ? 'on' : ''}"></span>${i.t}</h4><p>${i.p}</p>${i.k ? `<button class="btn sm" data-go="${i.k}"><i data-lucide="play"></i> Load scenario</button>` : ''}</div>`).join('');
+    SL.refreshIcons($('#chalList'));
+  }
+  $('#chalList').addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (!b) return; $('#mode button[data-m=mon]').click(); $('#scen').value = b.dataset.go; $('#scen').dispatchEvent(new Event('change')); window.scrollTo({ top: $('.modebar').getBoundingClientRect().top + scrollY - 80, behavior: 'smooth' }); });
+  updateChallenges();
+  $('#debriefLib').innerHTML = Object.values(SCEN).map(s => `<h3>${s.name}</h3>${s.debrief}`).join('');
+
+  SL.quiz('#quiz', [
+    { q: 'Which sign usually appears <i>first</i> in haemorrhage?', options: ['Hypotension', 'Tachycardia', 'Bradycardia', 'Fever'], answer: 1, why: 'Baroreceptor reflexes raise heart rate and vascular tone to maintain blood pressure; hypotension is a late sign (around 30% blood volume loss).' },
+    { q: 'RR 22, SpO₂ 95% on air (scale 1), SBP 105, HR 112, alert, temperature 38.4 °C. What is the NEWS2?', options: ['5', '6', '7', '8'], answer: 2, why: 'RR 21–24 → 2; SpO₂ 94–95 → 1; air 0; SBP 101–110 → 1; HR 111–130 → 2; alert 0; temp 38.1–39.0 → 1. Total 7: high risk.' },
+    { q: 'A patient on morphine has SpO₂ 97% on 15 L/min oxygen and RR 6. What is true?', options: ['Ventilation is adequate because SpO₂ is normal', 'Oxygen can mask hypoventilation; CO₂ is likely rising', 'This is normal sleep', 'Increase the morphine'], answer: 1, why: 'SpO₂ reflects oxygenation, not CO₂ clearance. A rate of 6 means hypoventilation and hypercapnia.' },
+    { q: 'What is the first-line drug treatment for anaphylaxis?', options: ['IV antihistamine', 'IV corticosteroid', 'IM adrenaline', 'Nebulised bronchodilator'], answer: 2, why: 'IM adrenaline reverses vasodilation, bronchospasm and mediator release. Other drugs are adjuncts.' },
+    { q: 'In acute severe asthma, the respiratory rate falls from 34 to 14 while consciousness worsens. This most likely means…', options: ['Recovery', 'Exhaustion and impending respiratory arrest', 'Oxygen toxicity', 'Anxiety has settled'], answer: 1, why: 'A falling rate with deteriorating consciousness signals fatigue and hypercapnia: a life-threatening feature.' },
+    { q: 'Which ECG finding with chest pain should trigger immediate reperfusion?', options: ['ST depression in V1', 'ST elevation in II, III and aVF', 'Sinus tachycardia', 'A single ventricular ectopic'], answer: 1, why: 'ST elevation in two or more contiguous leads with symptoms is a STEMI (here inferior).' },
+    { q: 'Why might a NEWS2 of 3 be escalated even though the total is low?', options: ['It never is', 'A single parameter scoring 3 triggers an urgent ward-based review', 'Because scores under 5 are invalid', 'Only in children'], answer: 1, why: 'An extreme value in one parameter (red score) triggers an urgent clinical review regardless of the total.' },
+    { q: 'In SATS-style triage, a patient with TEWS 2 and active chest pain should be…', options: ['Green: TEWS is low', 'Orange: the discriminator overrides upward', 'Blue', 'Sent home'], answer: 1, why: 'Clinical discriminators can raise the category above the TEWS colour. Chest pain is a very urgent discriminator.' },
+    { q: 'MAP for a blood pressure of 90/60 mmHg is approximately…', options: ['60', '70', '75', '150'], answer: 1, why: 'MAP ≈ DBP + (SBP − DBP)/3 = 60 + 10 = 70 mmHg.' },
+    { q: 'A drowsy diabetic patient (responds to voice only) has glucose 2.0 mmol/L. Best immediate treatment?', options: ['Oral sugary drink', 'IV glucose (or IM glucagon) per protocol', 'Insulin', 'Wait and recheck in an hour'], answer: 1, why: 'With impaired consciousness the airway is at risk, so give glucose by a parenteral route.' },
+  ]);
+
+  showBrief(); setFree(true); loop.start();
+  window.__vit = { news2, tews, CASES, SCEN, V, get H() { return H; }, get run() { return run; }, get simT() { return simT; }, setSim(t) { simT = t; } };
+})();
+</script>
+</body>
+</html>

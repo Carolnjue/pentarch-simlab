@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Epidemic Simulator · Pentarch SimLab</title>
+<meta name="description" content="Agent-based town and SEIR(D)+V compartmental epidemic simulator: R0, herd immunity, vaccination, masks, isolation, school closure and hospital capacity.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .modebar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:22px}
+  .modebar .seg button{padding:8px 16px;font-size:.9rem;display:inline-flex;align-items:center;gap:7px}
+  .modebar .seg svg{width:16px;height:16px}
+  .edu{display:flex;gap:10px;align-items:flex-start;font-size:.84rem;color:var(--muted);background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:9px 12px;flex:1;min-width:260px}
+  .edu svg{width:17px;height:17px;color:var(--warn);flex:none;margin-top:2px}
+  .ep-stage{height:660px;display:flex;flex-direction:column}
+  .ep-stage .top{position:relative;flex:1;min-height:0}
+  .ep-stage .bot{position:relative;height:200px;border-top:1px solid var(--line)}
+  .ep-stage canvas{position:absolute;inset:0;width:100%;height:100%}
+  .ep-stage .tool{position:absolute;right:12px;top:12px;display:flex;gap:6px}
+  .legend{display:flex;flex-wrap:wrap;gap:4px 12px;font:500 .74rem var(--mono);color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:5px;cursor:pointer;user-select:none}
+  .legend span.off{opacity:.35}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:50%}
+  .leg-wrap{position:absolute;left:12px;bottom:10px;right:12px;pointer-events:auto}
+  .seg.full{display:flex}.seg.full button{flex:1;text-align:center}
+  .ctl.hide,.hide{display:none!important}
+  .stats .v{font-size:1rem}
+  .hit{margin-top:10px;font-size:.86rem;padding:10px 12px;border-radius:10px;background:var(--bg2);border:1px solid var(--line)}
+  .hit b{font-family:var(--mono)}
+  .chal{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:12px 0}
+  .chal h4{display:flex;align-items:center;gap:8px;margin-bottom:.4em}
+  .chal p{margin-bottom:.6em;color:var(--muted);font-size:.92rem}
+  .tipbox{position:absolute;pointer-events:none;font:500 .74rem var(--mono);background:rgba(5,9,19,.92);border:1px solid var(--line2);border-radius:7px;padding:6px 9px;display:none;z-index:3;line-height:1.5}
+  @media (max-width:640px){.ep-stage .tool{top:50px}#hClock{display:none}.ep-stage .top{height:340px!important}}
+  @media (min-width:981px){.lab>.stage{position:sticky;top:84px;align-self:start}}
+  @media (max-width:980px){.ep-stage{height:auto}.ep-stage .top{flex:none;height:300px}.ep-stage .bot{height:190px}}
+</style>
+</head>
+<body data-page="epidemic">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <div class="modebar">
+    <div class="seg" id="mode">
+      <button class="on" data-m="town"><i data-lucide="map"></i> Town (agent-based)</button>
+      <button data-m="ode"><i data-lucide="line-chart"></i> SEIR model (equations)</button>
+    </div>
+    <div class="edu"><i data-lucide="triangle-alert"></i><span><b>Educational model.</b> Simplified outbreaks with textbook-range parameters, for learning how epidemics and interventions work. Not a forecast or public-health planning tool.</span></div>
+  </div>
+
+  <section class="lab wide-controls">
+    <div class="stage ep-stage">
+      <div class="top"><canvas id="cvTop"></canvas>
+        <div class="hud"><span class="readout">Day <b id="hDay">0</b></span><span class="readout">R<sub>eff</sub> <b id="hReff">–</b></span><span class="readout">Infectious <b id="hInf">–</b></span><span class="readout" id="hClock">06:00</span></div>
+        <div class="tool"><button class="btn sm" id="play" aria-label="Play or pause"><i data-lucide="pause"></i></button><button class="btn sm" id="reset" aria-label="Restart"><i data-lucide="rotate-ccw"></i></button><button class="btn sm" id="spd">1×</button></div>
+        <div class="tipbox" id="tip"></div>
+      </div>
+      <div class="bot"><canvas id="cvBot"></canvas></div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="biohazard"></i> Pathogen</h3>
+        <div class="ctl" style="grid-template-columns:1fr"><label for="preset">Preset (textbook ranges)</label>
+          <select id="preset">
+            <option value="covid">COVID-19, ancestral strain (R₀ ≈ 2.5–3)</option>
+            <option value="measles">Measles (R₀ ≈ 12–18)</option>
+            <option value="flu">Seasonal influenza (R₀ ≈ 1.3–2)</option>
+            <option value="ebola">Ebola virus disease (R₀ ≈ 1.5–2)</option>
+            <option value="custom">Custom</option>
+          </select></div>
+        <div class="ctl"><label for="R0">Basic reproduction number R₀</label><output></output><input type="range" id="R0" min="0.5" max="18" step="0.1" value="2.8"></div>
+        <div class="ctl"><label for="lat">Latent / incubation period (E)</label><output></output><input type="range" id="lat" min="0.5" max="14" step="0.5" value="4"></div>
+        <div class="ctl"><label for="inf">Infectious period (I)</label><output></output><input type="range" id="inf" min="1" max="14" step="0.5" value="7"></div>
+        <div class="ctl"><label for="cfr">Case fatality ratio</label><output></output><input type="range" id="cfr" min="0" max="60" step="0.1" value="0.8"></div>
+        <div class="ctl"><label for="hosp">Cases needing a hospital bed</label><output></output><input type="range" id="hosp" min="0" max="50" step="0.5" value="4"></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="shield-plus"></i> Public health measures</h3>
+        <div class="ctl"><label for="cov">Vaccination coverage</label><output></output><input type="range" id="cov" min="0" max="100" step="1" value="0"></div>
+        <div class="ctl"><label for="eff">Vaccine efficacy</label><output></output><input type="range" id="eff" min="0" max="100" step="1" value="90"></div>
+        <div class="ctl"><label for="mask">Masks & distancing (transmission cut)</label><output></output><input type="range" id="mask" min="0" max="60" step="1" value="0"></div>
+        <div class="ctl"><label for="iso">Cases detected & isolated</label><output></output><input type="range" id="iso" min="0" max="100" step="1" value="0"></div>
+        <div class="ctl"><label for="delay">Testing delay: infectious → isolated</label><output></output><input type="range" id="delay" min="0" max="7" step="0.5" value="3"></div>
+        <label class="toggle"><span>Close schools</span><input type="checkbox" id="school"></label>
+        <label class="toggle"><span>Contact tracing (household quarantine)</span><input type="checkbox" id="trace"></label>
+        <div class="panel-title">Health system</div>
+        <div class="ctl" id="ctlCap"><label for="cap">Hospital beds for this disease</label><output></output><input type="range" id="cap" min="10" max="600" step="5" value="150"></div>
+        <div class="ctl hide" id="ctlBeds"><label for="beds">Town health-centre beds</label><output></output><input type="range" id="beds" min="1" max="20" step="1" value="5"></div>
+        <div class="ctl hide" id="ctlN"><label for="townN">Town households</label><output></output><input type="range" id="townN" min="30" max="90" step="1" value="70"></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="gauge"></i> Results</h3>
+        <div class="stats" id="stats"></div>
+        <div class="hit" id="hit"></div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+      <button><i data-lucide="list"></i> Pathogen table</button>
+    </div>
+    <div class="tabpanel prose">
+      <h3>Compartmental models</h3>
+      <p>Compartmental models split a population of size $N$ into groups by infection status and describe the flows between them with differential equations. The classic <b>SIR</b> model (Kermack and McKendrick, 1927) has Susceptible, Infectious and Removed people:</p>
+      <div class="eq">$$\frac{dS}{dt}=-\beta\frac{SI}{N},\qquad \frac{dI}{dt}=\beta\frac{SI}{N}-\gamma I,\qquad \frac{dR}{dt}=\gamma I$$</div>
+      <p>$\beta$ is the transmission rate (effective contacts per infectious person per day) and $\gamma = 1/D$ is the recovery rate for an average infectious period $D$. The lab uses <b>SEIR(D)+V</b>: an Exposed (latent) stage of mean length $1/\sigma$, a split of removals into recovered and dead, and a vaccinated-and-protected group:</p>
+      <div class="eq">$$\begin{aligned}\frac{dS}{dt}&=-\beta_c\frac{SI}{N} & \frac{dE}{dt}&=\beta_c\frac{SI}{N}-\sigma E & \frac{dI}{dt}&=\sigma E-\gamma I\\ \frac{dR}{dt}&=(1-f)\,\gamma I & \frac{dD}{dt}&=f\,\gamma I & V&=c\,\varepsilon N\ (\text{constant})\end{aligned}$$</div>
+      <p>where $f$ is the case fatality ratio, $c$ the vaccine coverage and $\varepsilon$ the efficacy (an "all-or-nothing" vaccine: a fraction $\varepsilon$ of vaccinees are fully protected, the rest are not).</p>
+      <h3>The basic reproduction number</h3>
+      <div class="eq">$$R_0=\frac{\beta}{\gamma}=\beta D$$</div>
+      <p>$R_0$ is the average number of secondary cases caused by one infectious person in a <i>fully susceptible</i> population. In SEIR without deaths during the latent period it is still $\beta/\gamma$: the latent period changes the <i>speed</i> of the epidemic, not how many people each case infects. As immunity builds up, the <b>effective reproduction number</b> falls:</p>
+      <div class="eq">$$R_\text{eff}(t)=R_c\,\frac{S(t)}{N},\qquad R_c=R_0\times(\text{effect of interventions})$$</div>
+      <p>Cases grow while $R_\text{eff}&gt;1$ and shrink once $R_\text{eff}&lt;1$. The peak of infections happens exactly when $S/N = 1/R_c$.</p>
+      <h3>Herd immunity threshold</h3>
+      <div class="eq">$$\text{HIT}=1-\frac{1}{R_0},\qquad c_\text{crit}=\frac{1-1/R_0}{\varepsilon}$$</div>
+      <p>If more than the HIT fraction is immune, $R_\text{eff}&lt;1$ from the start and an introduced case cannot start a large outbreak. Measles ($R_0 \approx 15$) needs about 93% immune, which is why two-dose coverage of 95% is the target. With an imperfect vaccine, the required coverage is the HIT divided by efficacy, and may exceed 100%: then vaccination alone cannot achieve herd immunity.</p>
+      <h3>Final size relation</h3>
+      <p>Without interventions changing over time, the fraction of the initially susceptible population $s_0$ that is still susceptible at the end, $s_\infty$, satisfies</p>
+      <div class="eq">$$\ln\frac{s_0}{s_\infty}=R_c\,(s_0-s_\infty)\quad\Rightarrow\quad z=1-e^{-R_0 z}\ \ \text{(fully susceptible, } z=\text{attack rate)}$$</div>
+      <p>For $R_0 = 2$ about 80% are eventually infected; for $R_0 = 1.5$, 58%. The epidemic "overshoots" the herd immunity threshold because many people are still infectious when $R_\text{eff}$ passes 1.</p>
+      <h3>The epidemic curve and early growth</h3>
+      <p>Early on, $S\approx N$ and cases grow exponentially at rate $r$. For SEIR, $r$ solves $(1+r/\sigma)(1+r/\gamma) = R_0$; for SIR, simply $r=\gamma(R_0-1)$. The doubling time is $\ln 2/r$. The curve rises, peaks when immunity reaches $1-1/R_c$, and falls as fewer susceptibles remain.</p>
+      <h3>Interventions in this model</h3>
+      <ul>
+        <li><b>Masks and distancing</b> multiply transmission by $(1-m)$.</li>
+        <li><b>School closure</b> removes school contacts, assumed here to be 20% of transmission ($\times 0.8$) in the equation model. In the town, children simply stay home.</li>
+        <li><b>Isolation of detected cases</b>: a fraction $q$ of cases is isolated after a testing delay $d$, so they transmit for only $d/D$ of their infectious period: $\times\,[1-q(1-\min(1, d/D))]$. Fast testing matters as much as finding cases.</li>
+        <li><b>Contact tracing</b> quarantines the household contacts of isolated cases, catching some infections before they spread. In the equations this is approximated as $\times(1-0.4q)$.</li>
+        <li><b>Vaccination</b> removes protected people from $S$ before the outbreak.</li>
+      </ul>
+      <p>Hospital load is approximated as a fixed share of people currently infectious. When demand exceeds beds, the case fatality ratio of the patients without a bed is doubled, a simple way to show why "flattening the curve" saves lives.</p>
+      <h3>Agent-based versus compartmental models</h3>
+      <p>The town view simulates every person: households, school, market, offices, and the matatu stage where commuters meet. Infection passes only between people who are physically close, with a per-contact probability calibrated so that a typical case infects $R_0$ others. Agent-based models capture clustering (households saturate quickly), randomness (an outbreak can die out by chance) and targeted measures, at the cost of more assumptions. Compartmental models assume homogeneous mixing but give clean, analysable results. Real public-health modelling uses both.</p>
+      <div class="callout"><i data-lucide="info"></i><div><b>CFR versus IFR.</b> The case fatality ratio divides deaths by <i>diagnosed</i> cases; the infection fatality ratio divides by <i>all</i> infections, including mild ones never tested. The lab treats every infection as a case.</div></div>
+    </div>
+    <div class="tabpanel prose">
+      <h3>1. Measles vaccination target</h3>
+      <div class="worked"><ol>
+        <li>$R_0 = 15$ gives $\text{HIT} = 1 - 1/15 = 0.933$ (93.3%).</li>
+        <li>With 97% efficacy (two doses), coverage needed $= 0.933/0.97 = 0.962$ (96.2%).</li>
+        <li>With one dose at about 93% efficacy, $0.933/0.93 = 1.003$: more than 100%, so even universal one-dose coverage would not quite reach herd immunity.</li>
+      </ol><p class="small muted">Try it: Measles preset, efficacy 97%, then coverage 95% and 97%. Watch whether the outbreak takes off.</p></div>
+      <h3>2. Final size for R₀ = 2.8</h3>
+      <div class="worked"><ol>
+        <li>Solve $z = 1 - e^{-2.8z}$ by iteration: start $z=0.9$: $1-e^{-2.52} = 0.920$; $1-e^{-2.576} = 0.924$; $1-e^{-2.587}=0.925$.</li>
+        <li>So about 92.5% of a fully susceptible population would be infected without any measures. The SEIR model in the lab gives the same answer.</li>
+        <li>The HIT is only $1-1/2.8 = 64\%$; the remaining 28 percentage points are the "overshoot".</li>
+      </ol></div>
+      <h3>3. Combining interventions</h3>
+      <div class="worked"><ol>
+        <li>COVID-19 preset: $R_0 = 2.8$, infectious period 7 days.</li>
+        <li>Masks/distancing 20%: $\times 0.8$. Isolate 50% of cases after 2 days: $\times[1 - 0.5(1-2/7)] = \times 0.643$.</li>
+        <li>$R_c = 2.8 \times 0.8 \times 0.643 = 1.44$. Still above 1, but the peak is much lower and later.</li>
+        <li>Add contact tracing ($\times 0.8$): $R_c = 1.15$. Add school closure ($\times 0.8$): $R_c = 0.92 &lt; 1$: the outbreak shrinks.</li>
+      </ol></div>
+      <h3>4. Ebola: why isolation works</h3>
+      <div class="worked"><ol>
+        <li>$R_0 = 1.8$, infectious period 10 days.</li>
+        <li>Isolating 70% of cases after 2 days: $\times[1-0.7(1-0.2)] = \times 0.44$, so $R_c = 0.79$.</li>
+        <li>With a 6-day testing delay: $\times[1 - 0.7(1-0.6)] = \times 0.72$, so $R_c = 1.30$ and the outbreak continues. Speed of detection is decisive.</li>
+      </ol></div>
+      <h3>5. When does the epidemic peak?</h3>
+      <div class="worked"><ol>
+        <li>Infections peak when $R_\text{eff} = 1$, i.e. $S/N = 1/R_c$.</li>
+        <li>For influenza with $R_0 = 1.5$, the peak comes when 1/1.5 = 67% are still susceptible: 33% have already been infected or are in the latent stage.</li>
+      </ol></div>
+    </div>
+    <div class="tabpanel prose">
+      <p>Challenges are checked against the model currently loaded. <b>Set up</b> loads the starting conditions.</p>
+      <div id="chalList"></div>
+      <h3>Guided experiments</h3>
+      <ol class="steps">
+        <li><b>Chance extinction.</b> In the town, set R₀ = 1.5 and press restart several times. Some outbreaks fizzle out after a few cases even though R₀ &gt; 1. The equation model can never show this.</li>
+        <li><b>The latent period sets the speed.</b> In the SEIR view, change the latent period from 2 to 10 days. The peak moves later but the final size stays the same.</li>
+        <li><b>Overshoot.</b> With no measures, compare the total infected with the herd immunity threshold shown in the results box.</li>
+        <li><b>Schools.</b> In the town, close schools and watch the school empty; compare the peak with and without closure.</li>
+        <li><b>Testing speed.</b> With 60% isolation, slide the testing delay from 0 to 7 days and watch R<sub>c</sub> rise.</li>
+      </ol>
+    </div>
+    <div class="tabpanel"><div id="quiz"></div></div>
+    <div class="tabpanel prose">
+      <p>Typical textbook values. Real values vary with setting, population and strain.</p>
+      <table class="data">
+        <tr><th>Disease</th><th>R₀</th><th>Latent / incubation</th><th>Infectious period</th><th>HIT (1 − 1/R₀)</th><th>Transmission</th></tr>
+        <tr><td>Measles</td><td class="num">12–18</td><td class="num">~10–12 d</td><td class="num">~8 d</td><td class="num">92–94%</td><td>Airborne</td></tr>
+        <tr><td>COVID-19 (ancestral)</td><td class="num">2.5–3</td><td class="num">~5 d</td><td class="num">~7 d</td><td class="num">60–67%</td><td>Respiratory droplets, aerosols</td></tr>
+        <tr><td>Seasonal influenza</td><td class="num">1.3–2</td><td class="num">1–2 d</td><td class="num">~4–5 d</td><td class="num">23–50%</td><td>Respiratory droplets</td></tr>
+        <tr><td>Ebola virus disease</td><td class="num">1.5–2</td><td class="num">2–21 d (mean ~9)</td><td class="num">~7–10 d</td><td class="num">33–50%</td><td>Contact with body fluids</td></tr>
+      </table>
+      <p class="small muted">The lab's case fatality ratios (COVID-19 0.8%, measles 0.3%, influenza 0.1%, Ebola 50%) are illustrative; they depend strongly on age, health care and nutrition.</p>
+    </div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+  const COL = { S: '#60a5fa', E: '#facc15', I: '#ef4444', R: '#22c55e', V: '#a78bfa', D: '#6b7280' };
+  const NAMES = { S: 'Susceptible', E: 'Exposed', I: 'Infectious', R: 'Recovered', V: 'Vaccinated', D: 'Died' };
+  const PRESETS = {
+    covid: { R0: 2.8, lat: 4, inf: 7, cfr: 0.8, hosp: 4, eff: 90 },
+    measles: { R0: 15, lat: 10, inf: 8, cfr: 0.3, hosp: 5, eff: 97 },
+    flu: { R0: 1.5, lat: 1.5, inf: 4, cfr: 0.1, hosp: 1, eff: 60 },
+    ebola: { R0: 1.8, lat: 9, inf: 10, cfr: 50, hosp: 50, eff: 97 },
+  };
+  const P = { R0: 2.8, lat: 4, inf: 7, cfr: 0.8, hosp: 4, cov: 0, eff: 90, mask: 0, iso: 0, delay: 3, school: false, trace: false, cap: 150, beds: 5, townN: 70 };
+  let mode = 'town';
+
+  const Rc = p => p.R0 * (1 - p.mask / 100) * (p.school ? 0.8 : 1) * (1 - p.iso / 100 * (1 - Math.min(1, p.delay / p.inf))) * (p.trace ? 1 - 0.4 * p.iso / 100 : 1);
+  const disruption = p => Math.min(100, p.mask * 0.8 + (p.school ? 20 : 0) + p.iso * 0.1 + (p.iso > 0 ? Math.max(0, (p.inf - p.delay) / p.inf) * 10 : 0) + (p.trace ? 10 : 0));
+
+  /* ================= ODE model ================= */
+  const N = 1e6, DAYS = 365;
+  let ODE = null;
+  function solveODE(p) {
+    const g = 1 / p.inf, s = 1 / p.lat, b = Rc(p) * g, f = p.cfr / 100, h = p.hosp / 100, cap = p.cap / 1e5 * N;
+    const V = p.cov / 100 * p.eff / 100 * N;
+    let E = 10, I = 10, S = N - V - E - I, R = 0, D = 0;
+    const dt = 0.05, out = { t: [], S: [], E: [], I: [], R: [], D: [], V: [], H: [], Reff: [] };
+    const der = (S, E, I) => { const H = h * I, over = H > cap && H > 0 ? (H - cap) / H : 0, fe = Math.min(1, f * (1 + over)); const inc = b * S * I / N; return [-inc, inc - s * E, s * E - g * I, (1 - fe) * g * I, fe * g * I]; };
+    const steps = DAYS / dt;
+    for (let i = 0; i <= steps; i++) {
+      if (i % 5 === 0) { out.t.push(i * dt); out.S.push(S); out.E.push(E); out.I.push(I); out.R.push(R); out.D.push(D); out.V.push(V); out.H.push(h * I); out.Reff.push(Rc(p) * S / N); }
+      const k1 = der(S, E, I), k2 = der(S + k1[0] * dt / 2, E + k1[1] * dt / 2, I + k1[2] * dt / 2), k3 = der(S + k2[0] * dt / 2, E + k2[1] * dt / 2, I + k2[2] * dt / 2), k4 = der(S + k3[0] * dt, E + k3[1] * dt, I + k3[2] * dt);
+      const d = j => dt / 6 * (k1[j] + 2 * k2[j] + 2 * k3[j] + k4[j]);
+      S += d(0); E += d(1); I += d(2); R += d(3); D += d(4);
+    }
+    // summary
+    let pk = 0, pkd = 0, hmax = 0, over = 0;
+    out.I.forEach((v, i) => { if (v > pk) { pk = v; pkd = out.t[i]; } hmax = Math.max(hmax, out.H[i]); if (out.H[i] > cap) over += 0.25; });
+    const last = out.t.length - 1;
+    out.sum = { pk, pkd, hmax, over, total: out.R[last] + out.D[last] + out.E[last] + out.I[last], deaths: out.D[last], cap };
+    // final size prediction
+    const s0 = (N - V - 20) / N, rc = Rc(p);
+    let lo = 1e-9, hi = s0; const F = x => Math.log(s0 / x) - rc * (s0 + 20 / N - x);
+    for (let k = 0; k < 100; k++) { const m = (lo + hi) / 2; if (F(m) > 0) lo = m; else hi = m; }
+    out.sum.finalPred = rc <= 1 ? null : s0 + 20 / N - (lo + hi) / 2;
+    return out;
+  }
+
+  /* ================= Agent-based town ================= */
+  const MW = 1000, MH = 620, RAD = 14;
+  const PLACES = {
+    school: { x: 40, y: 34, w: 230, h: 140, name: 'School', short: 'School', col: '#60a5fa' },
+    work: { x: 300, y: 34, w: 270, h: 140, name: 'Offices & workshops', short: 'Offices', col: '#a78bfa' },
+    market: { x: 600, y: 34, w: 360, h: 150, name: 'Market', short: 'Market', col: '#facc15' },
+    stage: { x: 420, y: 222, w: 230, h: 100, name: 'Matatu stage', short: 'Matatu', col: '#f472b6' },
+    ward: { x: 690, y: 222, w: 120, h: 120, name: 'Isolation', short: 'Isolate', col: '#ef4444' },
+    beds: { x: 820, y: 222, w: 140, h: 120, name: 'Health centre beds', short: 'Beds', col: '#f87171' },
+  };
+  let T = null; // town state
+  let rng = Math.random;
+  function buildTown(p) {
+    const homes = [];
+    const blocks = [[40, 222, 360, 128, 46, 42], [40, 372, 920, 230, 46, 46]];
+    for (const [bx, by, bw, bh, cw, ch] of blocks) for (let y = by; y + ch <= by + bh + 1; y += ch) for (let x = bx; x + cw <= bx + bw + 1; x += cw) homes.push({ x: x + 5, y: y + 6, w: cw - 10, h: ch - 12 });
+    // pick homes spread over blocks
+    const nH = Math.min(p.townN, homes.length); const idx = homes.map((_, i) => i).sort(() => rng() - .5).slice(0, nH).sort((a, b) => a - b);
+    const H = idx.map(i => homes[i]);
+    const agents = [];
+    H.forEach((hm, hi) => {
+      const size = 3 + Math.floor(rng() * 5); // 3–7
+      for (let k = 0; k < size; k++) {
+        const child = k >= 2 && rng() < 0.7;
+        const r = rng(); const role = child ? 'child' : r < 0.45 ? 'worker' : r < 0.75 ? 'trader' : 'home';
+        const a = { home: hi, role, st: 'S', vac: false, x: 0, y: 0, tx: 0, ty: 0, place: 'h' + hi, tEnd: 0, sec: 0, r1: rng(), r2: rng(), iso: false, bed: false, needBed: false, noBed: false, quar: 0, isoAt: Infinity, bedAt: Infinity };
+        const pt = homePt(hm); a.x = a.tx = pt[0]; a.y = a.ty = pt[1];
+        agents.push(a);
+      }
+    });
+    T = { homes: H, agents, day: 0, hour: 6, hist: [], cbar: 1, pc: 0, deaths: 0, secDone: [], ended: false, peakI: 0, peakDay: 0, bedsUsed: 0, maxBeds: 0, overDays: 0, lastRec: -1 };
+    // vaccination
+    agents.forEach(a => { if (rng() < p.cov / 100) { a.vac = true; if (rng() < p.eff / 100) a.st = 'V'; } });
+    calibrate(p);
+    // seed 3 infections in different homes (adults)
+    const pool = agents.filter(a => a.st === 'S' && a.role !== 'child').sort(() => rng() - .5);
+    pool.slice(0, 3).forEach(a => infect(a, null, p, true));
+    record();
+  }
+  const homePt = hm => [hm.x + 4 + rng() * (hm.w - 8), hm.y + 4 + rng() * (hm.h - 8)];
+  function placeRect(key) { return PLACES[key]; }
+  function placePt(a, key) {
+    if (key[0] === 'h') return homePt(T.homes[+key.slice(1)]);
+    const r = placeRect(key); return [r.x + 10 + rng() * (r.w - 20), r.y + 22 + rng() * (r.h - 30)];
+  }
+  function schedule(a, hr, p, day) {
+    if (a.st === 'D') return null;
+    if (a.bed) return 'beds';
+    if (a.iso) return 'ward';
+    const home = 'h' + a.home;
+    if (a.quar > day) return home;
+    if (a.st === 'I' && a.needBed && a.noBed) return home;
+    if (a.role === 'child') { if (hr >= 7.5 && hr < 15) return p.school ? home : 'school'; if (hr >= 15 && hr < 17 && a.r1 < 0.3) return 'market'; return home; }
+    if (a.role === 'worker') { if (hr >= 7 + a.r2 * 0.4 && hr < 7.9 + a.r2 * 0.4) return 'stage'; if (hr >= 7.9 + a.r2 * 0.4 && hr < 16.5) return 'work'; if (hr >= 16.5 && hr < 17.4) return 'stage'; if (hr >= 17.4 && hr < 19 && a.r1 < 0.4) return 'market'; return home; }
+    if (a.role === 'trader') { if (hr >= 7.5 && hr < 18) return 'market'; return home; }
+    if (hr >= 10 && hr < 12 && a.r1 < 0.5) return 'market';
+    return home;
+  }
+  function calibrate(p) {
+    // run one baseline day of movement (schools open, nobody ill) and count close contacts per person per hour
+    const P0 = Object.assign({}, p, { school: false }); const A = T.agents; let total = 0, n = 0;
+    for (let hr = 0; hr < 24; hr += 0.25) {
+      T.hour = hr;
+      for (const a of A) { const k = schedule(a, hr, P0, -1); if (k !== a.place) { a.place = k; const pt = placePt(a, k); a.tx = pt[0]; a.ty = pt[1]; } }
+      moveAgents(0.25);
+      const grid = new Map();
+      A.forEach((q, i) => { const key = (q.x / RAD | 0) + ',' + (q.y / RAD | 0); (grid.get(key) || grid.set(key, []).get(key)).push(i); });
+      A.forEach((q, i) => { const cx = q.x / RAD | 0, cy = q.y / RAD | 0; for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) { const l = grid.get((cx + dx) + ',' + (cy + dy)); if (l) for (const j of l) if (j !== i && A[j].place === q.place && Math.hypot(A[j].x - q.x, A[j].y - q.y) < RAD) total++; } });
+      n++;
+    }
+    T.cbar = Math.max(0.2, total / (n * A.length));
+    // back to the start of day 0 at 06:00, everyone at home
+    A.forEach(a => { a.place = 'h' + a.home; const pt = homePt(T.homes[a.home]); a.x = a.tx = pt[0]; a.y = a.ty = pt[1]; });
+    T.hour = 6;
+  }
+  function infect(a, src, p, seed) {
+    a.st = seed ? 'I' : 'E'; a.sec = 0;
+    const now = T.day + T.hour / 24;
+    a.tEnd = now + (seed ? p.inf * (0.5 + rng()) * 0.6 : p.lat * (0.5 + rng()));
+    if (seed) startInfectious(a, p, now, a.tEnd - now);
+    if (src) src.sec++;
+  }
+  function startInfectious(a, p, now, durOverride) {
+    a.st = 'I'; const dur = durOverride || p.inf * (0.5 + rng()); a.tEnd = now + dur;
+    a.isoAt = rng() < p.iso / 100 && p.delay < dur ? now + p.delay : Infinity;
+    a.needBed = rng() < p.hosp / 100; a.bedAt = a.needBed ? now + dur * 0.3 : Infinity; a.noBed = false;
+  }
+  function stepTown(dtH, p) {
+    const A = T.agents; let hr = T.hour + dtH; if (hr >= 24) { hr -= 24; T.day++; }
+    T.hour = hr; const now = T.day + hr / 24;
+    // disease progression
+    for (const a of A) {
+      if (a.st === 'E' && now >= a.tEnd) startInfectious(a, p, now);
+      else if (a.st === 'I') {
+        if (!a.iso && !a.bed && now >= a.isoAt) { a.iso = true; if (p.trace) A.forEach(b => { if (b.home === a.home && b !== a && b.st !== 'D') b.quar = Math.max(b.quar, T.day + 10); }); }
+        if (!a.bed && a.needBed && now >= a.bedAt && !a.noBed) { if (T.bedsUsed < p.beds) { a.bed = true; a.iso = false; T.bedsUsed++; } else a.noBed = true; }
+        if (now >= a.tEnd) {
+          const pd = Math.min(1, p.cfr / 100 * (a.noBed ? 2 : 1));
+          if (a.bed) { T.bedsUsed--; a.bed = false; }
+          a.iso = false; a.st = rng() < pd ? 'D' : 'R'; if (a.st === 'D') T.deaths++;
+          T.secDone.push({ d: now, n: a.sec });
+        }
+      }
+    }
+    // movement targets
+    for (const a of A) {
+      if (a.st === 'D') continue;
+      const k = schedule(a, hr, p, T.day);
+      if (k !== a.place) { a.place = k; const pt = placePt(a, k); a.tx = pt[0]; a.ty = pt[1]; a.moving = true; }
+    }
+    // transmission (only infectious, not isolated/in bed)
+    const grid = new Map();
+    A.forEach((a, i) => { if (a.st === 'S' || (a.st === 'V' && false)) { const key = (a.x / RAD | 0) + ',' + (a.y / RAD | 0); (grid.get(key) || grid.set(key, []).get(key)).push(i); } });
+    const pc = p.R0 / (p.inf * 24 * T.cbar) * (1 - p.mask / 100);
+    const prob = 1 - Math.exp(-pc * dtH);
+    let contacts = 0;
+    for (const a of A) {
+      if (a.st !== 'I' || a.iso || a.bed) continue;
+      const cx = a.x / RAD | 0, cy = a.y / RAD | 0;
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) { const l = grid.get((cx + dx) + ',' + (cy + dy)); if (!l) continue; for (const j of l) { const b = A[j]; if (b.st !== 'S' || b.place !== a.place || Math.hypot(b.x - a.x, b.y - a.y) >= RAD) continue; contacts++; if (rng() < prob) infect(b, a, p); } }
+    }
+    // tracking
+    if (Math.floor(now * 4) !== T.lastRec) { T.lastRec = Math.floor(now * 4); record(); }
+  }
+  function moveAgents(dtH) {
+    const sp = 1100 * dtH;
+    for (const a of T.agents) {
+      if (a.st === 'D') continue;
+      const dx = a.tx - a.x, dy = a.ty - a.y, d = Math.hypot(dx, dy);
+      if (d > sp) { a.x += dx / d * sp; a.y += dy / d * sp; }
+      else { a.x = a.tx; a.y = a.ty; a.moving = false; if (rng() < dtH * 1.5) { const pt = placePt(a, a.place); a.tx = SL.lerp(a.x, pt[0], .3); a.ty = SL.lerp(a.y, pt[1], .3); } }
+    }
+  }
+  function counts() { const c = { S: 0, E: 0, I: 0, R: 0, V: 0, D: 0 }; T.agents.forEach(a => c[a.st]++); return c; }
+  function record() {
+    const c = counts(); const now = T.day + T.hour / 24; T.hist.push({ t: now, ...c, beds: T.bedsUsed });
+    if (c.I > T.peakI) { T.peakI = c.I; T.peakDay = now; }
+    T.maxBeds = Math.max(T.maxBeds, T.bedsUsed);
+    if (c.E + c.I === 0 && !T.ended && now > 0.5) { T.ended = true; townEnded(); }
+  }
+
+  /* ================= Rendering ================= */
+  const cvTop = $('#cvTop'), cvBot = $('#cvBot');
+  const sT = SL.canvas(cvTop), sB = SL.canvas(cvBot);
+  let playhead = 0, playing = true, speed = 1; const SPEEDS = [0.5, 1, 3, 10];
+  const show = { S: true, E: true, I: true, R: true, V: true, D: true };
+  let mapGeo = null, hover = null;
+
+  function drawTown() {
+    const { ctx, w, h } = sT; ctx.clearRect(0, 0, w, h);
+    const top = w < 640 ? 92 : 48, sc = Math.min(w / MW, (h - top - 6) / MH), ox = (w - MW * sc) / 2, oy = top + (h - top - MH * sc) / 2;
+    mapGeo = { sc, ox, oy };
+    ctx.save(); ctx.translate(ox, oy); ctx.scale(sc, sc);
+    // day/night tint
+    const hr = T.hour, night = hr < 6 || hr > 19 ? 1 : hr < 7 ? 7 - hr : hr > 18 ? hr - 18 : 0;
+    ctx.fillStyle = '#0c1628'; roundRect(ctx, 0, 0, MW, MH, 14); ctx.fill();
+    // roads
+    ctx.strokeStyle = 'rgba(148,163,184,.13)'; ctx.lineWidth = 16; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(20, 196); ctx.lineTo(980, 196); ctx.moveTo(20, 360); ctx.lineTo(980, 360); ctx.moveTo(535, 196); ctx.lineTo(535, 360); ctx.moveTo(405, 196); ctx.lineTo(405, 360); ctx.stroke();
+    ctx.setLineDash([12, 12]); ctx.strokeStyle = 'rgba(250,204,21,.18)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(20, 196); ctx.lineTo(980, 196); ctx.moveTo(20, 360); ctx.lineTo(980, 360); ctx.stroke(); ctx.setLineDash([]);
+    // places
+    for (const [k, r] of Object.entries(PLACES)) {
+      const closed = k === 'school' && P.school;
+      ctx.fillStyle = r.col + (closed ? '0a' : '22'); ctx.strokeStyle = r.col + (closed ? '40' : '99'); ctx.lineWidth = 1.5;
+      roundRect(ctx, r.x, r.y, r.w, r.h, 10); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = r.col; const small = w < 640; ctx.font = `600 ${small ? 8.5 / sc : Math.max(15, 10.5 / sc)}px Inter, sans-serif`; ctx.textAlign = 'left'; ctx.fillText((small ? r.short : r.name) + (closed ? ' (closed)' : ''), r.x + 8, r.y + (small ? 8.5 / sc + 4 : 19));
+      if (k === 'beds') { ctx.font = `${w < 640 ? 8 / sc : Math.max(12, 9.5 / sc)}px JetBrains Mono, monospace`; ctx.fillStyle = T.bedsUsed >= P.beds ? '#ef4444' : '#93a1bd'; ctx.fillText(`${T.bedsUsed}/${P.beds} beds`, r.x + 10, r.y + r.h - 8); }
+      if (k === 'stage') { // matatus
+        for (let i = 0; i < 3; i++) { const mx = r.x + 30 + i * 62, my = r.y + 70; ctx.fillStyle = ['#facc15', '#22d3ee', '#f472b6'][i] + '55'; roundRect(ctx, mx, my, 44, 18, 4); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fillRect(mx + 5, my + 3, 30, 5); }
+      }
+      if (k === 'market') { for (let i = 0; i < 6; i++) { const sx = r.x + 20 + i * 56, sy = r.y + r.h - 26; ctx.fillStyle = 'rgba(250,204,21,.18)'; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + 20, sy - 12); ctx.lineTo(sx + 40, sy); ctx.fill(); } }
+    }
+    // homes
+    T.homes.forEach((hm, i) => {
+      const q = T.agents.some(a => a.home === i && a.quar > T.day);
+      ctx.fillStyle = q ? 'rgba(167,139,250,.18)' : 'rgba(148,163,184,.12)'; ctx.strokeStyle = q ? 'rgba(167,139,250,.7)' : 'rgba(148,163,184,.35)'; ctx.lineWidth = 1;
+      ctx.fillRect(hm.x, hm.y, hm.w, hm.h); ctx.strokeRect(hm.x, hm.y, hm.w, hm.h);
+      ctx.fillStyle = q ? 'rgba(167,139,250,.6)' : 'rgba(148,163,184,.4)'; ctx.beginPath(); ctx.moveTo(hm.x - 2, hm.y); ctx.lineTo(hm.x + hm.w / 2, hm.y - 6); ctx.lineTo(hm.x + hm.w + 2, hm.y); ctx.fill();
+      if (night > 0.3) { ctx.fillStyle = `rgba(250,204,21,${0.25 * Math.min(1, night)})`; ctx.fillRect(hm.x + hm.w / 2 - 3, hm.y + hm.h / 2 - 3, 6, 6); }
+    });
+    ctx.fillStyle = '#93a1bd'; ctx.font = `600 ${w < 640 ? 8 / sc : Math.max(13, 10 / sc)}px Inter, sans-serif`; ctx.fillText('Homes', 44, 214);
+    // agents
+    const rr = Math.max(3, 3.4 / sc);
+    for (const a of T.agents) {
+      if (a.st === 'D') continue;
+      const c = COL[a.st]; ctx.fillStyle = c;
+      if (a.st === 'I') { ctx.shadowColor = c; ctx.shadowBlur = 10; } else ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.arc(a.x, a.y, a.role === 'child' ? rr * 0.8 : rr, 0, 7); ctx.fill();
+      if (a.vac && a.st === 'S') { ctx.shadowBlur = 0; ctx.strokeStyle = COL.V; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(a.x, a.y, rr + 1.6, 0, 7); ctx.stroke(); }
+    }
+    ctx.shadowBlur = 0;
+    // night overlay
+    if (night > 0) { ctx.fillStyle = `rgba(2,4,12,${0.2 * Math.min(1, night)})`; roundRect(ctx, 0, 0, MW, MH, 14); ctx.fill(); }
+    if (hover) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(hover.x, hover.y, rr + 4, 0, 7); ctx.stroke(); }
+    ctx.restore();
+    const hh = Math.floor(T.hour), mm = Math.floor((T.hour - hh) * 60);
+    $('#hClock').textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} ${night > 0.5 ? 'night' : 'day'}`;
+  }
+  function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+
+  function axes(ctx, w, h, pad, xmax, ymax, yl, xl, yfmt, xstep) {
+    const [pt, pr, pb, pl] = pad;
+    const e = Math.pow(10, Math.floor(Math.log10(ymax / 4))), f = ymax / 4 / e, st = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * e;
+    ymax = st * Math.ceil(ymax / st - 1e-9);
+    const X = x => pl + x / xmax * (w - pl - pr), Y = y => h - pb - y / ymax * (h - pt - pb);
+    ctx.font = '10.5px JetBrains Mono, monospace'; ctx.lineWidth = 1;
+    for (let v = 0; v <= ymax + 1e-9; v += st) { const y = Y(v); ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(w - pr, y); ctx.stroke(); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'right'; ctx.fillText(yfmt(v), pl - 5, y + 4); }
+    const xs = xstep || (xmax > 200 ? 60 : xmax > 60 ? 20 : xmax > 20 ? 5 : 2);
+    for (let v = 0; v <= xmax + 1e-9; v += xs) { const x = X(v); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'center'; ctx.fillText(v, x, h - pb + 14); }
+    ctx.textAlign = 'right'; ctx.fillText(xl, w - pr, h - 3); ctx.textAlign = 'left'; ctx.fillText(yl, pl, pt - 6);
+    return { X, Y };
+  }
+
+  function drawTownChart() {
+    const { ctx, w, h } = sB; ctx.clearRect(0, 0, w, h);
+    const hist = T.hist; const n = T.agents.length; const xmax = Math.max(30, Math.ceil((T.day + 1) / 10) * 10);
+    const { X, Y } = axes(ctx, w, h, [26, 14, 24, 40], xmax, 100, 'people (%)', 'day', v => Math.round(v) + '');
+    const order = ['D', 'R', 'V', 'I', 'E', 'S'];
+    // stacked areas
+    let base = hist.map(() => 0);
+    for (const k of order) {
+      const nb = hist.map((q, i) => base[i] + q[k] / n * 100);
+      ctx.fillStyle = COL[k] + (k === 'I' ? 'cc' : '70'); ctx.beginPath();
+      hist.forEach((q, i) => i ? ctx.lineTo(X(q.t), Y(nb[i])) : ctx.moveTo(X(q.t), Y(nb[i])));
+      for (let i = hist.length - 1; i >= 0; i--) ctx.lineTo(X(hist[i].t), Y(base[i]));
+      ctx.closePath(); ctx.fill(); base = nb;
+    }
+    // infectious line on top
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.4; ctx.beginPath(); hist.forEach((q, i) => { const y = Y(q.I / n * 100); i ? ctx.lineTo(X(q.t), y) : ctx.moveTo(X(q.t), y); }); ctx.stroke();
+    legend(ctx, w, ['S', 'E', 'I', 'R', 'V', 'D'], 40, 14);
+  }
+  function legend(ctx, w, keys, x0, y) {
+    ctx.font = '10.5px JetBrains Mono, monospace'; let x = w - 14; ctx.textAlign = 'right';
+    [...keys].reverse().forEach(k => { const l = w < 520 ? k : NAMES[k]; ctx.fillStyle = show[k] ? '#93a1bd' : '#3b4660'; ctx.fillText(l, x, y); x -= ctx.measureText(l).width + 6; ctx.fillStyle = COL[k]; ctx.beginPath(); ctx.arc(x - 3, y - 4, 4, 0, 7); ctx.fill(); x -= 16; });
+  }
+
+  let odeGeo = null;
+  function drawODE() {
+    const o = ODE; let { ctx, w, h } = sT; ctx.clearRect(0, 0, w, h);
+    const ph = Math.min(DAYS, playhead), iP = Math.min(o.t.length - 1, Math.round(ph / 0.25));
+    const PT = w < 640 ? 118 : 80;
+    const { X, Y } = axes(ctx, w, h, [PT, 16, 26, 44], DAYS, 100, 'population (%)', 'day', v => Math.round(v) + '');
+    odeGeo = { X, pl: 44, pr: 16, pt: PT };
+    // HIT line
+    const hit = (1 - 1 / P.R0) * 100;
+    if (P.R0 > 1) { ctx.strokeStyle = 'rgba(167,139,250,.5)'; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.moveTo(X(0), Y(hit)); ctx.lineTo(X(DAYS), Y(hit)); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = '#a78bfa'; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'right'; ctx.fillText(`herd immunity threshold ${hit.toFixed(1)}%`, X(DAYS) - 4, Y(hit) - 5); }
+    for (const k of ['S', 'V', 'R', 'D', 'E', 'I']) {
+      if (!show[k]) continue; const arr = o[k];
+      ctx.save(); ctx.strokeStyle = COL[k]; ctx.lineWidth = k === 'I' ? 3 : 2; if (k === 'I') { ctx.shadowColor = COL.I; ctx.shadowBlur = 10; }
+      ctx.beginPath(); for (let i = 0; i <= iP; i += 2) { const y = Y(arr[i] / N * 100); i ? ctx.lineTo(X(o.t[i]), y) : ctx.moveTo(X(o.t[i]), y); } ctx.stroke(); ctx.restore();
+      if (k === 'I') { ctx.fillStyle = 'rgba(239,68,68,.12)'; ctx.beginPath(); ctx.moveTo(X(0), Y(0)); for (let i = 0; i <= iP; i += 2) ctx.lineTo(X(o.t[i]), Y(arr[i] / N * 100)); ctx.lineTo(X(o.t[iP]), Y(0)); ctx.fill(); }
+    }
+    // peak marker
+    if (o.sum.pkd <= ph && o.sum.pk > 50) { const x = X(o.sum.pkd), y = Y(o.sum.pk / N * 100); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fill(); ctx.font = '600 10.5px JetBrains Mono, monospace'; ctx.textAlign = x > w - 160 ? 'right' : 'left'; ctx.fillText(`peak day ${Math.round(o.sum.pkd)}: ${(o.sum.pk / N * 100).toFixed(1)}%`, x + (x > w - 160 ? -8 : 8), y - 6); }
+    // playhead
+    ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.beginPath(); ctx.moveTo(X(ph), PT); ctx.lineTo(X(ph), h - 26); ctx.stroke();
+    if (hoverDay != null) { const hd = Math.min(hoverDay, ph); ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(X(hd), PT); ctx.lineTo(X(hd), h - 26); ctx.stroke(); ctx.setLineDash([]); }
+    legend(ctx, w, ['S', 'E', 'I', 'R', 'V', 'D'], 44, PT - 24);
+    // bottom: hospital + Reff
+    ({ ctx, w, h } = sB); ctx.clearRect(0, 0, w, h);
+    const hv = o.H.map(v => v / N * 1e5); const ymax = Math.max(P.cap * 1.3, ...hv) * 1.05;
+    const A = axes(ctx, w, h, [26, 40, 24, 44], DAYS, ymax, w < 640 ? 'beds needed /100k' : 'hospital beds needed / 100 000', 'day', v => SL.fmt(v, 0));
+    const capY = A.Y(P.cap);
+    // over capacity shading
+    ctx.fillStyle = 'rgba(239,68,68,.25)'; ctx.beginPath(); ctx.moveTo(A.X(0), capY); for (let i = 0; i <= iP; i += 2) ctx.lineTo(A.X(o.t[i]), A.Y(Math.max(P.cap, hv[i]))); ctx.lineTo(A.X(o.t[iP]), capY); ctx.fill();
+    ctx.fillStyle = 'rgba(248,113,113,.22)'; ctx.beginPath(); ctx.moveTo(A.X(0), A.Y(0)); for (let i = 0; i <= iP; i += 2) ctx.lineTo(A.X(o.t[i]), A.Y(Math.min(P.cap, hv[i]))); ctx.lineTo(A.X(o.t[iP]), A.Y(0)); ctx.fill();
+    ctx.strokeStyle = '#f87171'; ctx.lineWidth = 2; ctx.beginPath(); for (let i = 0; i <= iP; i += 2) { const y = A.Y(hv[i]); i ? ctx.lineTo(A.X(o.t[i]), y) : ctx.moveTo(A.X(o.t[i]), y); } ctx.stroke();
+    ctx.strokeStyle = '#ef4444'; ctx.setLineDash([6, 4]); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(A.X(0), capY); ctx.lineTo(A.X(DAYS), capY); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#ef4444'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText(`capacity ${P.cap}`, A.X(4), capY - 4);
+    // Reff right axis 0..max(3,Rc)
+    const rmax = Math.max(2, Math.ceil(Rc(P) * 1.1)); const YR = r => h - 24 - r / rmax * (h - 26 - 24);
+    ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 1.6; ctx.beginPath(); for (let i = 0; i <= iP; i += 2) { const y = YR(o.Reff[i]); i ? ctx.lineTo(A.X(o.t[i]), y) : ctx.moveTo(A.X(o.t[i]), y); } ctx.stroke();
+    ctx.strokeStyle = 'rgba(34,211,238,.35)'; ctx.setLineDash([2, 4]); ctx.beginPath(); ctx.moveTo(A.X(0), YR(1)); ctx.lineTo(A.X(DAYS), YR(1)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#22d3ee'; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'left'; for (let r = 0; r <= rmax; r += rmax > 6 ? 5 : 1) ctx.fillText(r, w - 36, YR(r) + 4);
+    ctx.textAlign = 'right'; ctx.fillText(w < 640 ? 'R_eff →' : 'R_eff (right axis), dotted line = 1', w - 40, 18);
+  }
+
+  /* ================= Stats ================= */
+  function stat(k, v, col) { return `<div class="stat"><div class="k">${k}</div><div class="v"${col ? ` style="color:${col}"` : ''}>${v}</div></div>`; }
+  function updateStats() {
+    const rc = Rc(P), hit = 1 - 1 / P.R0, immune = P.cov / 100 * P.eff / 100, need = hit / (P.eff / 100);
+    let h = stat('R₀', SL.fmt(P.R0, 1)) + stat('R<sub>c</sub> (with measures)', SL.fmt(rc, 2), rc < 1 ? 'var(--ok)' : null);
+    if (mode === 'ode') {
+      const s = ODE.sum;
+      h += stat('Peak day', s.pk > 50 ? Math.round(s.pkd) : '–') + stat('Peak infectious', SL.fmt(s.pk / N * 100, 1) + '<small>%</small>')
+        + stat('Total infected', SL.fmt(s.total / N * 100, 1) + '<small>%</small>') + stat('Final size (theory)', s.finalPred == null ? '≈0' : SL.fmt(s.finalPred * 100, 1) + '<small>%</small>')
+        + stat('Deaths / 100k', SL.fmt(s.deaths / N * 1e5, 0)) + stat('Max beds / 100k', SL.fmt(s.hmax / N * 1e5, 0), s.hmax > s.cap ? 'var(--bad)' : 'var(--ok)')
+        + stat('Days over capacity', SL.fmt(s.over, 0)) + stat('Disruption index', SL.fmt(disruption(P), 0) + '<small>/100</small>');
+    } else {
+      const c = counts(), n = T.agents.length;
+      const ever = T.agents.filter(a => a.st !== 'S' && a.st !== 'V').length;
+      h += stat('Population', n) + stat('Infected so far', ever + `<small>${Math.round(ever / n * 100)}%</small>`)
+        + stat('Peak infectious', T.peakI + `<small>day ${Math.floor(T.peakDay)}</small>`) + stat('Deaths', T.deaths)
+        + stat('Beds in use', `${T.bedsUsed}/${P.beds}`, T.bedsUsed >= P.beds ? 'var(--bad)' : null) + stat('Mean secondary cases', T.secDone.length ? SL.fmt(T.secDone.reduce((a, b) => a + b.n, 0) / T.secDone.length, 2) : '–');
+    }
+    $('#stats').innerHTML = h;
+    const ok = immune >= hit;
+    $('#hit').innerHTML = `Herd immunity threshold 1 − 1/R₀ = <b>${(hit * 100).toFixed(1)}%</b>. Coverage needed at ${P.eff}% efficacy: <b>${need > 1 ? '&gt;100% (not achievable by vaccine alone)' : (need * 100).toFixed(1) + '%'}</b>. Protected now: <b style="color:${ok ? 'var(--ok)' : 'var(--bad)'}">${(immune * 100).toFixed(1)}%</b> ${ok ? '(above threshold)' : '(below threshold)'}.`;
+  }
+
+  /* ================= Controls ================= */
+  const fm = { R0: v => SL.fmt(v, 1), lat: v => v + ' d', inf: v => v + ' d', cfr: v => v + '%', hosp: v => v + '%', cov: v => v + '%', eff: v => v + '%', mask: v => v + '%', iso: v => v + '%', delay: v => v + ' d', cap: v => v + ' /100k', beds: v => v, townN: v => v };
+  let init = true;
+  Object.keys(fm).forEach(k => SL.bind('#' + k, v => { P[k] = v; if (['R0', 'lat', 'inf', 'cfr', 'hosp'].includes(k) && !init && !loadingPreset) $('#preset').value = 'custom'; changed(k); }, fm[k]));
+  ['school', 'trace'].forEach(k => $('#' + k).addEventListener('change', e => { P[k] = e.target.checked; changed(k); }));
+  let loadingPreset = false;
+  function setR(id, v) { const el = $('#' + id); el.value = v; el.dispatchEvent(new Event('input')); }
+  function loadPreset(key, extra) {
+    loadingPreset = true; const pr = Object.assign({}, PRESETS[key], extra || {});
+    Object.entries(pr).forEach(([k, v]) => { if (k === 'school' || k === 'trace') { $('#' + k).checked = v; P[k] = v; } else setR(k, v); });
+    $('#preset').value = key; loadingPreset = false; changed('preset');
+  }
+  $('#preset').addEventListener('change', e => { if (e.target.value !== 'custom') loadPreset(e.target.value); });
+  let rq = 0;
+  function changed(k) {
+    if (init) return;
+    cancelAnimationFrame(rq);
+    rq = requestAnimationFrame(() => {
+      ODE = solveODE(P);
+      // town: structural changes need a rebuild
+      if (['cov', 'eff', 'townN', 'preset', 'R0', 'inf', 'lat'].includes(k) && mode === 'town') resetTown();
+      updateStats(); chalAuto();
+    });
+  }
+  function resetTown() { buildTown(P); }
+  $$('#mode button').forEach(b => b.addEventListener('click', () => {
+    $$('#mode button').forEach(x => x.classList.toggle('on', x === b)); mode = b.dataset.m;
+    $('#ctlCap').classList.toggle('hide', mode !== 'ode'); $('#ctlBeds').classList.toggle('hide', mode !== 'town'); $('#ctlN').classList.toggle('hide', mode !== 'town');
+    if (mode === 'town') resetTown(); else { playhead = 0; }
+    $('#hClock').style.display = mode === 'town' ? '' : 'none';
+    if (!playing) $('#play').click();
+    updateStats();
+  }));
+  $('#play').onclick = () => { playing = !playing; $('#play').innerHTML = `<i data-lucide="${playing ? 'pause' : 'play'}"></i>`; SL.refreshIcons($('#play')); if (playing && mode === 'ode' && playhead >= DAYS) playhead = 0; };
+  $('#reset').onclick = () => { if (mode === 'town') resetTown(); else playhead = 0; if (!playing) $('#play').click(); updateStats(); };
+  $('#spd').onclick = () => { speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]; $('#spd').textContent = speed + '×'; };
+  // legend toggles in ODE (click on top area legend)
+  cvTop.addEventListener('click', e => {
+    if (mode !== 'ode') return; const p = SL.ptr(e, cvTop); const ly = odeGeo.pt - 24; if (p.y > ly + 8 || p.y < ly - 14) return;
+    const { ctx, w } = sT; ctx.font = '10.5px JetBrains Mono, monospace'; let x = w - 14;
+    for (const k of ['D', 'V', 'R', 'I', 'E', 'S']) { const l = w < 520 ? k : NAMES[k]; const x0 = x - ctx.measureText(l).width - 22; if (p.x > x0 && p.x < x) { show[k] = !show[k]; break; } x = x0; }
+  });
+  let hoverDay = null; const tip = $('#tip');
+  cvTop.addEventListener('pointermove', e => {
+    const p = SL.ptr(e, cvTop);
+    if (mode === 'ode' && odeGeo) {
+      const d = SL.clamp((p.x - odeGeo.pl) / (sT.w - odeGeo.pl - odeGeo.pr) * DAYS, 0, DAYS); hoverDay = d; const i = Math.round(Math.min(d, playhead) / 0.25);
+      const o = ODE; tip.style.display = 'block'; tip.innerHTML = `Day ${Math.round(o.t[i])}<br>` + ['S', 'E', 'I', 'R', 'V', 'D'].map(k => `<span style="color:${COL[k]}">${k}</span> ${(o[k][i] / N * 100).toFixed(2)}%`).join('<br>') + `<br>R<sub>eff</sub> ${o.Reff[i].toFixed(2)}`;
+      tip.style.left = Math.min(p.x + 14, sT.w - 140) + 'px'; tip.style.top = Math.max(60, p.y - 60) + 'px';
+    } else if (mode === 'town' && mapGeo) {
+      const mx = (p.x - mapGeo.ox) / mapGeo.sc, my = (p.y - mapGeo.oy) / mapGeo.sc; let best = null, bd = 14;
+      T.agents.forEach(a => { if (a.st === 'D') return; const d = Math.hypot(a.x - mx, a.y - my); if (d < bd) { bd = d; best = a; } });
+      hover = best; if (best) { const roles = { child: 'Pupil', worker: 'Commuter', trader: 'Market trader', home: 'Stays near home' }; tip.style.display = 'block'; tip.innerHTML = `${roles[best.role]} · household ${best.home + 1}<br><span style="color:${COL[best.st]}">${NAMES[best.st]}</span>${best.vac ? ' (vaccinated)' : ''}${best.iso ? ' · isolating' : ''}${best.bed ? ' · in hospital' : ''}${best.quar > T.day ? ' · quarantined' : ''}<br>infected ${best.sec} other${best.sec === 1 ? '' : 's'}`; tip.style.left = Math.min(p.x + 14, sT.w - 200) + 'px'; tip.style.top = Math.max(50, p.y - 50) + 'px'; } else tip.style.display = 'none';
+    }
+  });
+  cvTop.addEventListener('pointerleave', () => { hoverDay = null; hover = null; tip.style.display = 'none'; });
+
+  /* ================= Loop ================= */
+  let statT = 0;
+  const loop = SL.loop((dt) => {
+    if (document.visibilityState !== 'visible') return;
+    if (mode === 'town') {
+      if (playing && !T.ended) {
+        const simH = dt * 24 / 10 * speed; // 1 day per 10 s at 1×
+        const n = Math.ceil(simH / 0.25);
+        for (let i = 0; i < n; i++) { stepTown(simH / n, P); moveAgents(simH / n); }
+      } else if (playing) moveAgents(dt * 2.4);
+      drawTown(); drawTownChart();
+      const c = counts(), n = T.agents.length;
+      $('#hDay').textContent = T.day; $('#hReff').textContent = SL.fmt(Rc(P) * c.S / n, 2); $('#hInf').textContent = c.I;
+    } else {
+      if (playing) { playhead += dt * DAYS / 14 * speed; if (playhead >= DAYS) { playhead = DAYS; playing = false; $('#play').innerHTML = '<i data-lucide="play"></i>'; SL.refreshIcons($('#play')); } }
+      drawODE();
+      const i = Math.min(ODE.t.length - 1, Math.round(playhead / 0.25));
+      $('#hDay').textContent = Math.floor(playhead); $('#hReff').textContent = SL.fmt(ODE.Reff[i], 2); { const v = ODE.I[i] / N * 100; $('#hInf').textContent = v < 0.001 ? '<0.001%' : v.toFixed(v < 0.1 ? 3 : 2) + '%'; }
+    }
+    statT += dt; if (statT > 0.5 && mode === 'town') { statT = 0; updateStats(); }
+  });
+  function townEnded() {
+    const n = T.agents.length, inf = T.agents.filter(a => a.st === 'R' || a.st === 'D').length;
+    SL.toast(`Outbreak over on day ${T.day}: ${inf} of ${n} people (${Math.round(inf / n * 100)}%) were infected, ${T.deaths} died.`, inf / n > 0.3 ? 'warn' : 'ok', 6000);
+    chalTown(inf / n);
+  }
+
+  /* ================= Challenges ================= */
+  const done = {};
+  const CH = [
+    { id: 'cap', title: 'Protect the hospitals with the least disruption', text: 'COVID-19-like virus, no vaccine yet, 150 beds per 100 000. Keep hospital demand under capacity for the whole first year (SEIR view) with the lowest disruption index you can. Gold ≤ 18, silver ≤ 25, bronze: any. <br><span class="small">Disruption index (shown in Results): 0.8 per % of masks/distancing, 20 for school closure, 0.1 per % of cases isolated, up to 10 for fast testing, 10 for contact tracing.</span>', setup: () => { $('#mode button[data-m=ode]').click(); loadPreset('covid', { cov: 0, mask: 0, iso: 0, delay: 3, school: false, trace: false, cap: 150 }); },
+      check: () => { if (P.cov > 0) return [false, 'No vaccine is available in this challenge: set coverage to 0.']; if (P.cap > 150) return [false, 'Keep capacity at 150 beds per 100 000.']; if (Math.abs(P.R0 - 2.8) > 0.01 || P.inf !== 7 || P.hosp !== 4) return [false, 'Use the COVID-19 preset values.']; const s = ODE.sum; if (s.hmax > s.cap) return [false, `Peak demand ${Math.round(s.hmax / N * 1e5)} beds per 100 000 exceeds capacity.`]; const d = disruption(P); const medal = d <= 18 ? "Gold" : d <= 25 ? "Silver" : "Bronze"; return [true, `${medal}: under capacity with disruption index ${d.toFixed(0)}. Peak demand ${Math.round(s.hmax / N * 1e5)}/100k.`]; } },
+    { id: 'measles', title: 'Measles: just enough vaccine', text: 'Measles preset, efficacy 97%. Find the lowest coverage that keeps R<sub>eff</sub> below 1 from the start (within 2 percentage points of the critical value).', setup: () => loadPreset('measles', { cov: 80, eff: 97, mask: 0, iso: 0, school: false, trace: false }),
+      check: () => { const need = (1 - 1 / P.R0) / (P.eff / 100) * 100; if (P.R0 < 12) return [false, 'Use the measles preset (R₀ ≥ 12).']; const ok = P.cov >= need && P.cov <= need + 2; return [ok, ok ? `${P.cov}% coverage protects ${(P.cov * P.eff / 100).toFixed(1)}%, above the ${((1 - 1 / P.R0) * 100).toFixed(1)}% threshold.` : `Critical coverage is ${need.toFixed(1)}%; you have ${P.cov}%.`]; }, auto: true },
+    { id: 'ebola', title: 'Stop Ebola without a vaccine', text: 'Ebola preset, coverage 0. Use isolation, testing speed and tracing only (no masks or school closure) to get R<sub>c</sub> below 1.', setup: () => loadPreset('ebola', { cov: 0, mask: 0, iso: 0, delay: 5, school: false, trace: false }),
+      check: () => { if (P.cov > 0 || P.mask > 0 || P.school) return [false, 'Isolation, testing and tracing only.']; if (Math.abs(P.R0 - 1.8) > 0.01) return [false, 'Use the Ebola preset.']; const r = Rc(P); return [r < 1, r < 1 ? `R_c = ${r.toFixed(2)}: each case now causes fewer than one new case.` : `R_c = ${r.toFixed(2)}.`]; }, auto: true },
+    { id: 'town', title: 'Small-town outbreak control', text: 'In the town view with the COVID-19 preset (R₀ 2.8), run an outbreak to the end with fewer than 20% of residents infected, without vaccination.', setup: () => { $('#mode button[data-m=town]').click(); loadPreset('covid', { cov: 0 }); },
+      check: () => [false, 'This one is checked automatically when a town outbreak ends.'] },
+  ];
+  $('#chalList').innerHTML = CH.map(c => `<div class="chal" id="ch-${c.id}"><h4><span class="led"></span>${c.title}</h4><p>${c.text}</p><div class="btn-row"><button class="btn sm" data-setup="${c.id}"><i data-lucide="settings-2"></i> Set up</button>${c.id !== 'town' ? `<button class="btn sm primary" data-check="${c.id}"><i data-lucide="check"></i> Check</button>` : ''}</div><p class="small" data-msg style="margin:8px 0 0"></p></div>`).join('');
+  function runCheck(c, silent) { const [ok, msg] = c.check(); const box = $('#ch-' + c.id); if (!silent || ok) box.querySelector('[data-msg]').innerHTML = msg; if (ok) { box.querySelector('.led').className = 'led on'; if (!done[c.id]) { done[c.id] = 1; SL.toast(`<b>Challenge complete:</b> ${c.title}`, 'ok'); } } else if (!silent) { box.querySelector('.led').className = 'led warn'; SL.toast(msg, 'warn'); } }
+  let userTouched = false; $('aside').addEventListener('input', () => userTouched = true, true);
+  function chalAuto() { if (userTouched) CH.filter(c => c.auto).forEach(c => { if (!done[c.id]) runCheck(c, true); }); }
+  function chalTown(ar) {
+    const box = $('#ch-town'); if (P.cov > 0 || Math.abs(P.R0 - 2.8) > 0.01) return;
+    if (ar < 0.2) { box.querySelector('.led').className = 'led on'; box.querySelector('[data-msg]').textContent = `Done: ${Math.round(ar * 100)}% infected.`; if (!done.town) { done.town = 1; SL.toast('<b>Challenge complete:</b> small-town outbreak control', 'ok'); } }
+    else box.querySelector('[data-msg]').textContent = `Last outbreak infected ${Math.round(ar * 100)}%. Try again.`;
+  }
+  $('#chalList').addEventListener('click', e => {
+    const s = e.target.closest('[data-setup]'), k = e.target.closest('[data-check]');
+    if (s) { CH.find(c => c.id === s.dataset.setup).setup(); window.scrollTo({ top: $('.modebar').getBoundingClientRect().top + scrollY - 80, behavior: 'smooth' }); }
+    if (k) runCheck(CH.find(c => c.id === k.dataset.check));
+  });
+
+  SL.quiz('#quiz', [
+    { q: 'In the SIR model with β = 0.5 per day and an infectious period of 5 days, what is R₀?', options: ['0.1', '2.5', '5.5', '10'], answer: 1, why: 'γ = 1/5 = 0.2 per day, so R₀ = β/γ = 0.5/0.2 = 2.5.' },
+    { q: 'What is the herd immunity threshold for a disease with R₀ = 4?', options: ['25%', '50%', '75%', '400%'], answer: 2, why: 'HIT = 1 − 1/R₀ = 1 − 0.25 = 0.75.' },
+    { q: 'A vaccine is 80% effective. R₀ = 5. What coverage is needed for herd immunity?', options: ['80%', '100%', '64%', '125%'], answer: 1, why: 'HIT = 0.8; coverage = 0.8/0.8 = 100%. Everyone would need vaccinating.' },
+    { q: 'When does the number of infectious people peak in a simple SIR epidemic?', options: ['When half the population has been infected', 'When R_eff = 1, i.e. S/N = 1/R₀', 'When R_eff = 0', 'At day 1/γ'], answer: 1, why: 'dI/dt = γI(R_eff − 1), which is zero when R_eff = 1.' },
+    { q: 'Lengthening the latent period (keeping β and γ fixed) mainly…', options: ['raises R₀', 'slows the epidemic and delays the peak without changing the final size', 'reduces the final size', 'has no effect at all'], answer: 1, why: 'R₀ = β/γ does not depend on the latent period, so the final size is unchanged, but growth is slower.' },
+    { q: 'Why does an epidemic with R₀ = 2 infect about 80% of people, more than the 50% herd immunity threshold?', options: ['Because of reinfection', 'Overshoot: many people are still infectious when R_eff falls below 1', 'Because vaccines fail', 'It does not; it stops at 50%'], answer: 1, why: 'After the peak, the remaining infectious people still cause new infections while the epidemic declines. The final size relation z = 1 − e^(−2z) gives z ≈ 0.80.' },
+    { q: 'Isolating 60% of cases reduces transmission most when…', options: ['testing is slow', 'testing and isolation happen early in the infectious period', 'only children are isolated', 'R₀ is very high'], answer: 1, why: 'Isolated cases still transmit until they are isolated; the reduction factor is 1 − q(1 − d/D).' },
+    { q: 'Which can an agent-based model show that a deterministic ODE model cannot?', options: ['Exponential growth', 'Chance extinction of an outbreak with R₀ > 1', 'Herd immunity', 'A peak in infections'], answer: 1, why: 'Random events in small numbers can end an outbreak early. A deterministic ODE always takes off when R₀ > 1.' },
+  ]);
+
+  // init
+  ODE = solveODE(P); buildTown(P); init = false; updateStats(); loop.start();
+  window.__ep = { P, solveODE, Rc, disruption, get ODE() { return ODE; }, get T() { return T; }, loadPreset, buildTown, stepTown, counts, moveAgents };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,904 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pharmacokinetics · Pentarch SimLab</title>
+<meta name="description" content="Interactive pharmacokinetics lab: one- and two-compartment models, IV bolus, infusion and oral dosing, steady state, loading doses, renal impairment and dose–response curves.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="assets/css/simlab.css">
+<style>
+  .modebar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:22px}
+  .modebar .seg button{padding:8px 16px;font-size:.9rem;display:inline-flex;align-items:center;gap:7px}
+  .modebar .seg svg{width:16px;height:16px}
+  .edu{display:flex;gap:10px;align-items:flex-start;font-size:.84rem;color:var(--muted);background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:9px 12px;flex:1;min-width:260px}
+  .edu svg{width:17px;height:17px;color:var(--warn);flex:none;margin-top:2px}
+  .lab[hidden]{display:none}
+  .pk-stage{height:600px}
+  .pk-grid{position:absolute;inset:0;display:grid;grid-template-columns:270px 1fr}
+  .pk-grid>div{position:relative;min-width:0}
+  .pk-grid .bodyw{border-right:1px solid var(--line);background:radial-gradient(400px 400px at 50% 40%,rgba(248,113,113,.06),transparent 70%)}
+  .pk-grid canvas{position:absolute;inset:0;width:100%;height:100%}
+  .pk-grid .chartw{cursor:crosshair;touch-action:none}
+  .stage-label{position:absolute;left:12px;bottom:10px;font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);pointer-events:none}
+  .chart-hud{position:absolute;right:12px;top:12px;display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;pointer-events:none;max-width:calc(100% - 24px)}
+  .status-in b{color:var(--ok)!important}.status-lo b{color:#60a5fa!important}.status-hi b{color:var(--bad)!important}
+  .ptool{position:absolute;left:12px;top:12px;display:flex;gap:6px}
+  @media (min-width:981px){#pkLab>.stage,#pdLab>.stage{position:sticky;top:84px;align-self:start}}
+  @media (max-width:600px){.chart-hud{top:52px}}
+  .tip{position:absolute;pointer-events:none;font:500 .74rem var(--mono);background:rgba(5,9,19,.92);border:1px solid var(--line2);border-radius:7px;padding:5px 8px;white-space:nowrap;display:none;z-index:3}
+  .pd-stage{height:540px;touch-action:none}
+  .ctl.hide,.only-hide{display:none!important}
+  details.more{border-top:1px dashed var(--line);margin-top:10px;padding-top:8px}
+  details.more summary{cursor:pointer;font-size:.86rem;color:var(--muted);font-weight:600;list-style:none;display:flex;align-items:center;gap:6px}
+  details.more summary::-webkit-details-marker{display:none}
+  details.more summary svg{width:15px;height:15px;transition:.2s}
+  details[open].more summary svg{transform:rotate(90deg)}
+  .seg.full{display:flex}.seg.full button{flex:1;text-align:center}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;font-size:.78rem;color:var(--muted);margin-top:8px}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .legend i{display:inline-block;width:12px;height:12px;border-radius:3px}
+  .chal{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:12px 0}
+  .chal h4{display:flex;align-items:center;gap:8px;margin-bottom:.4em}
+  .chal h4 .led{flex:none}
+  .chal p{margin-bottom:.6em;color:var(--muted);font-size:.92rem}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:.88rem}
+  .kv b{font-family:var(--mono);font-weight:600}
+  .stats .v{font-size:1.02rem}
+  @media (max-width:980px){
+    .pk-stage{height:auto}
+    .pk-grid{position:relative;grid-template-columns:1fr;grid-template-rows:300px 360px}
+    .pk-grid .bodyw{border-right:0;border-bottom:1px solid var(--line)}
+    .pd-stage{height:420px}
+  }
+</style>
+</head>
+<body data-page="pharmacology">
+<div id="sl-header"></div>
+<div id="sl-hero"></div>
+
+<main class="container">
+  <div class="modebar">
+    <div class="seg" id="mode">
+      <button class="on" data-m="pk"><i data-lucide="activity"></i> Concentration–time</button>
+      <button data-m="pd"><i data-lucide="trending-up"></i> Dose–response</button>
+    </div>
+    <div class="edu"><i data-lucide="triangle-alert"></i><span><b>Educational model, not a clinical tool.</b> Drugs T1–T4 are fictional teaching drugs with textbook-typical parameters. Never use these numbers to choose doses for real patients.</span></div>
+  </div>
+
+  <!-- ===================== PK LAB ===================== -->
+  <section class="lab wide-controls" id="pkLab">
+    <div class="stage pk-stage">
+      <div class="pk-grid">
+        <div class="bodyw"><canvas id="cvBody"></canvas><span class="stage-label">Drug particles in the body</span></div>
+        <div class="chartw" id="chartw"><canvas id="cvPK"></canvas>
+          <div class="chart-hud">
+            <span class="readout">t <b id="hT">0</b> h</span>
+            <span class="readout">C <b id="hC">0</b> mg/L</span>
+            <span class="readout" id="hS">Status <b>—</b></span>
+          </div>
+          <div class="tip" id="tip"></div>
+          <div class="ptool">
+            <button class="btn sm" id="play" aria-label="Play or pause"><i data-lucide="pause"></i></button>
+            <button class="btn sm" id="restart" aria-label="Restart"><i data-lucide="rotate-ccw"></i></button>
+            <button class="btn sm" id="spd">1×</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="pill"></i> Regimen</h3>
+        <div class="ctl" style="grid-template-columns:1fr"><label for="drug">Teaching drug</label>
+          <select id="drug">
+            <option value="T1">T1 · IV antibiotic-like, renally cleared</option>
+            <option value="T2">T2 · oral analgesic-like</option>
+            <option value="T3">T3 · long half-life, narrow window</option>
+            <option value="T4">T4 · two-compartment distribution</option>
+            <option value="custom">Custom parameters</option>
+          </select></div>
+        <div class="panel-title">Model</div>
+        <div class="seg full" id="model"><button data-v="1" class="on">One-compartment</button><button data-v="2">Two-compartment</button></div>
+        <div class="panel-title">Route</div>
+        <div class="seg full" id="route"><button data-v="bolus" class="on">IV bolus</button><button data-v="inf">IV infusion</button><button data-v="oral">Oral</button></div>
+        <div class="ctl" style="margin-top:6px"><label for="dose">Maintenance dose D</label><output></output><input type="range" id="dose" min="10" max="1000" step="10" value="200"></div>
+        <div class="ctl"><label for="tau">Dosing interval τ</label><output></output><input type="range" id="tau" min="1" max="48" step="0.5" value="6"></div>
+        <div class="ctl"><label for="ndose">Number of doses</label><output></output><input type="range" id="ndose" min="1" max="40" step="1" value="8"></div>
+        <div class="ctl" id="ctlTinf"><label for="tinf">Infusion duration</label><output></output><input type="range" id="tinf" min="0.25" max="24" step="0.25" value="1"></div>
+        <label class="toggle"><span>Loading dose</span><input type="checkbox" id="ldOn"></label>
+        <div class="ctl" id="ctlLd"><label for="ld">Loading dose (replaces dose 1)</label><output></output><input type="range" id="ld" min="10" max="2000" step="10" value="400"></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="flask-round"></i> Drug & patient</h3>
+        <div class="ctl"><label for="V">Volume of distribution V<sub>d</sub> (V<sub>1</sub>)</label><output></output><input type="range" id="V" min="5" max="500" step="1" value="35"></div>
+        <div class="ctl"><label for="CL">Clearance CL (normal)</label><output></output><input type="range" id="CL" min="0.5" max="30" step="0.1" value="5"></div>
+        <div class="ctl" id="ctlKa"><label for="ka">Absorption rate k<sub>a</sub></label><output></output><input type="range" id="ka" min="0.1" max="5" step="0.05" value="1.5"></div>
+        <div class="ctl" id="ctlF"><label for="F">Bioavailability F</label><output></output><input type="range" id="F" min="0.05" max="1" step="0.01" value="0.8"></div>
+        <div class="ctl" id="ctlV2"><label for="V2">Peripheral volume V<sub>2</sub></label><output></output><input type="range" id="V2" min="5" max="300" step="1" value="40"></div>
+        <div class="ctl" id="ctlQ"><label for="Q">Inter-compartmental clearance Q</label><output></output><input type="range" id="Q" min="0.5" max="40" step="0.5" value="12"></div>
+        <div class="ctl"><label for="fe">Fraction cleared by kidney f<sub>e</sub></label><output></output><input type="range" id="fe" min="0" max="1" step="0.05" value="0.9"></div>
+        <div class="panel-title">Organ function</div>
+        <div class="seg full" id="renalQuick"><button data-v="100" class="on">Normal</button><button data-v="60">Mild</button><button data-v="35">Moderate</button><button data-v="15">Severe</button></div>
+        <div class="ctl"><label for="renal">Renal function (% of normal)</label><output></output><input type="range" id="renal" min="5" max="100" step="1" value="100"></div>
+        <div class="ctl"><label for="hep">Hepatic function (% of normal)</label><output></output><input type="range" id="hep" min="5" max="100" step="1" value="100"></div>
+        <div class="panel-title">Therapeutic window</div>
+        <div class="ctl"><label for="mec">MEC (min. effective)</label><output></output><input type="range" id="mec" min="0.1" max="40" step="0.1" value="4"></div>
+        <div class="ctl"><label for="mtc">MTC (min. toxic)</label><output></output><input type="range" id="mtc" min="0.2" max="80" step="0.1" value="12"></div>
+        <div class="panel-title">Time axis</div>
+        <div class="seg full" id="tend"><button data-v="24">24 h</button><button data-v="48">48 h</button><button data-v="72" class="on">72 h</button><button data-v="120">5 d</button><button data-v="168">7 d</button></div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="gauge"></i> Live results</h3>
+        <div class="stats">
+          <div class="stat"><div class="k">k (elim.)</div><div class="v" id="sK">–<small>h⁻¹</small></div></div>
+          <div class="stat"><div class="k" id="sT12k">t½</div><div class="v" id="sT12">–<small>h</small></div></div>
+          <div class="stat"><div class="k">CL (actual)</div><div class="v" id="sCL">–<small>L/h</small></div></div>
+          <div class="stat"><div class="k">Accum. R</div><div class="v" id="sR">–</div></div>
+          <div class="stat"><div class="k">C<sub>ss,avg</sub></div><div class="v" id="sCavg">–<small>mg/L</small></div></div>
+          <div class="stat"><div class="k">C<sub>ss</sub> peak / trough</div><div class="v" id="sSS">–</div></div>
+          <div class="stat"><div class="k">AUC 0–t<sub>end</sub></div><div class="v" id="sAUC">–<small>mg·h/L</small></div></div>
+          <div class="stat"><div class="k">Time in window</div><div class="v" id="sTiw">–<small>%</small></div></div>
+        </div>
+        <p class="small muted" style="margin:10px 0 0" id="ssNote"></p>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ===================== PD LAB ===================== -->
+  <section class="lab" id="pdLab" hidden>
+    <div class="stage pd-stage" id="pdStage">
+      <canvas id="cvPD"></canvas>
+      <div class="hud"><span class="readout" id="pdHud1">C <b>–</b></span><span class="readout" id="pdHud2">E <b>–</b></span></div>
+      <div class="tip" id="pdTip"></div>
+    </div>
+    <aside>
+      <div class="panel">
+        <h3><i data-lucide="sliders-horizontal"></i> Dose–response</h3>
+        <div class="seg full" id="pdView"><button data-v="graded" class="on">Graded (E<sub>max</sub>)</button><button data-v="quantal">Quantal (TI)</button></div>
+        <div id="pdGraded">
+          <div class="panel-title">x-axis</div>
+          <div class="seg full" id="pdAxis"><button data-v="log" class="on">log [drug]</button><button data-v="lin">linear [drug]</button></div>
+          <div class="panel-title" style="color:#22d3ee">Agonist A (drag its dots)</div>
+          <div class="ctl"><label for="aEC">EC<sub>50</sub></label><output></output><input type="range" id="aEC" min="-2" max="2" step="0.01" value="0"></div>
+          <div class="ctl"><label for="aEm">E<sub>max</sub> (% of system max)</label><output></output><input type="range" id="aEm" min="5" max="100" step="1" value="100"></div>
+          <div class="ctl"><label for="aN">Hill coefficient n</label><output></output><input type="range" id="aN" min="0.3" max="4" step="0.05" value="1"></div>
+          <label class="toggle"><span style="color:#facc15;font-weight:600">Show agonist B</span><input type="checkbox" id="bOn" checked></label>
+          <div id="bCtl">
+            <div class="ctl"><label for="bEC">B: EC<sub>50</sub></label><output></output><input type="range" id="bEC" min="-2" max="2" step="0.01" value="0.5"></div>
+            <div class="ctl"><label for="bEm">B: E<sub>max</sub></label><output></output><input type="range" id="bEm" min="5" max="100" step="1" value="60"></div>
+            <div class="ctl"><label for="bN">B: Hill n</label><output></output><input type="range" id="bN" min="0.3" max="4" step="0.05" value="1"></div>
+          </div>
+          <div class="panel-title" style="color:#f472b6">Antagonist acting on A</div>
+          <div class="seg full" id="antType"><button data-v="none" class="on">None</button><button data-v="comp">Competitive</button><button data-v="non">Non-competitive</button></div>
+          <div class="ctl"><label for="antI">[I] / K<sub>i</sub></label><output></output><input type="range" id="antI" min="0" max="2" step="0.01" value="0.5"></div>
+        </div>
+        <div id="pdQuantal" hidden>
+          <div class="ctl"><label for="qED">ED<sub>50</sub> (therapeutic)</label><output></output><input type="range" id="qED" min="0" max="2" step="0.01" value="1"></div>
+          <div class="ctl"><label for="qTD">TD<sub>50</sub> (toxic)</label><output></output><input type="range" id="qTD" min="0.5" max="3.5" step="0.01" value="2.3"></div>
+          <div class="ctl"><label for="qN">Slope (Hill n) of both curves</label><output></output><input type="range" id="qN" min="0.5" max="6" step="0.1" value="2"></div>
+          <div class="ctl"><label for="qD">Test dose</label><output></output><input type="range" id="qD" min="-0.5" max="3.5" step="0.01" value="1.3"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3><i data-lucide="gauge"></i> Results</h3>
+        <div class="stats" id="pdStats"></div>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ===================== LEARNING TABS ===================== -->
+  <section class="tabs" data-tabs>
+    <div class="tablist">
+      <button><i data-lucide="book-open"></i> Theory</button>
+      <button><i data-lucide="calculator"></i> Worked examples</button>
+      <button><i data-lucide="flask-conical"></i> Experiments & challenges</button>
+      <button><i data-lucide="circle-help"></i> Quiz</button>
+      <button><i data-lucide="list"></i> Glossary</button>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>ADME: what the body does to a drug</h3>
+      <p><b>Pharmacokinetics</b> (PK) describes how drug concentration changes with time as the body <b>A</b>bsorbs, <b>D</b>istributes, <b>M</b>etabolises and <b>E</b>xcretes it. <b>Pharmacodynamics</b> (PD) describes what the drug does to the body at a given concentration. The left panel of the lab shows ADME as moving particles: an oral dose enters the gut, passes the liver (first-pass metabolism) and reaches the blood; drug then distributes into tissues and is cleared by the kidneys (to urine) and liver (metabolites).</p>
+      <h3>One-compartment model, IV bolus</h3>
+      <p>Treat the body as one well-mixed volume, the <b>apparent volume of distribution</b> $V_d$ (L). Elimination is first-order: the rate is proportional to the amount present. With clearance $CL$ (L/h, the volume of plasma completely cleared of drug per unit time):</p>
+      <div class="eq">$$k=\frac{CL}{V_d},\qquad C(t)=\frac{D}{V_d}\,e^{-kt},\qquad t_{1/2}=\frac{\ln 2}{k}\approx\frac{0.693}{k}$$</div>
+      <p>On a log scale the curve is a straight line of slope $-k$. Each half-life the concentration halves; after about 4–5 half-lives more than 94–97% of a single dose has gone. $V_d$ is "apparent": a drug that binds strongly to tissue can have a $V_d$ of hundreds of litres, far more than body water (about 42 L in a 70 kg adult).</p>
+      <h3>Area under the curve and bioavailability</h3>
+      <div class="eq">$$\text{AUC}_{0\to\infty}=\int_0^\infty C\,dt=\frac{F\cdot D}{CL}$$</div>
+      <p>AUC measures total exposure. Bioavailability $F$ is the fraction of a dose that reaches the systemic circulation unchanged, $F = \text{AUC}_\text{oral}/\text{AUC}_\text{IV}$ for equal doses. Incomplete absorption and <b>first-pass metabolism</b> in gut wall and liver both lower $F$.</p>
+      <h3>Oral dosing: first-order absorption (the Bateman function)</h3>
+      <div class="eq">$$C(t)=\frac{F\,D\,k_a}{V_d\,(k_a-k)}\left(e^{-kt}-e^{-k_a t}\right),\qquad t_{\text{max}}=\frac{\ln(k_a/k)}{k_a-k}$$</div>
+      <p>Faster absorption (larger $k_a$) gives an earlier, higher peak; AUC does not change because it depends only on $F$, $D$ and $CL$.</p>
+      <h3>IV infusion</h3>
+      <p>At a constant rate $R_0$ (mg/h) the concentration rises towards a plateau $C_{ss}=R_0/CL$ as $C(t)=\frac{R_0}{CL}(1-e^{-kt})$. It takes about 3.3 half-lives to reach 90% of the plateau, whatever the rate. The plateau level depends on clearance only; the time to get there depends on half-life only.</p>
+      <h3>Repeated dosing, accumulation and steady state</h3>
+      <p>When a dose $D$ is repeated every $\tau$ hours before the previous dose has been eliminated, drug accumulates until the amount eliminated per interval equals the amount given. For IV bolus doses (one-compartment):</p>
+      <div class="eq">$$R_\text{ac}=\frac{1}{1-e^{-k\tau}},\qquad C_{ss,\max}=\frac{D}{V_d}\cdot\frac{1}{1-e^{-k\tau}},\qquad C_{ss,\min}=C_{ss,\max}\,e^{-k\tau}$$</div>
+      <div class="eq">$$C_{ss,\text{avg}}=\frac{\text{AUC}_\tau}{\tau}=\frac{F\cdot D}{CL\cdot\tau}$$</div>
+      <p>$C_{ss,\text{avg}}$ depends on the dosing <i>rate</i> $D/\tau$, not on how it is split. Smaller, more frequent doses give the same average with less peak-to-trough swing. The peak-to-trough ratio is $e^{k\tau}$, so to stay inside a window with $\text{MTC}/\text{MEC}=r$ you need $\tau &lt; \ln r / k$.</p>
+      <h3>Loading dose and maintenance dose</h3>
+      <div class="eq">$$\text{LD}=\frac{C_\text{target}\cdot V_d}{F},\qquad \text{Maintenance dose rate}=\frac{C_\text{target}\cdot CL}{F}$$</div>
+      <p>A loading dose fills the volume of distribution at once, so a drug with a long half-life reaches its target immediately rather than after 4–5 half-lives. The loading dose depends on $V_d$; the maintenance dose depends on $CL$.</p>
+      <h3>Two-compartment model</h3>
+      <p>Many drugs first mix in a central compartment (blood and well-perfused organs, $V_1$) and then distribute more slowly into a peripheral compartment (muscle, fat, $V_2$) with inter-compartmental clearance $Q$. After an IV bolus the curve is bi-exponential:</p>
+      <div class="eq">$$C(t)=A\,e^{-\alpha t}+B\,e^{-\beta t},\qquad \alpha+\beta=k_{10}+k_{12}+k_{21},\quad \alpha\beta=k_{10}k_{21}$$</div>
+      <p>with $k_{10}=CL/V_1$, $k_{12}=Q/V_1$, $k_{21}=Q/V_2$. The steep early <b>α (distribution) phase</b> is followed by the slower <b>β (terminal elimination) phase</b>; the clinically relevant half-life is usually $t_{1/2,\beta}=\ln 2/\beta$.</p>
+      <h3>Organ impairment</h3>
+      <p>Total clearance is the sum of renal and non-renal clearance. In this lab $CL = CL_\text{normal}\,[f_e\cdot(\text{renal function}) + (1-f_e)\cdot(\text{hepatic function})]$, where $f_e$ is the fraction normally excreted unchanged in urine. When clearance falls, $k$ falls, $t_{1/2}$ lengthens, accumulation increases and $C_{ss,\text{avg}}$ rises in proportion. Typical responses are to lower the dose, lengthen the interval, or both, and to monitor levels. (Real dose adjustment uses measured renal function such as creatinine clearance or eGFR and drug-specific guidance.)</p>
+      <div class="callout"><i data-lucide="info"></i><div>The lab solves the linear compartment equations numerically (Runge–Kutta, step 0.01 h) and superposes single-dose responses to find the true steady state, so you can check every formula above against the curve.</div></div>
+      <h3>Pharmacodynamics: the E<sub>max</sub> model and the Hill equation</h3>
+      <div class="eq">$$E=\frac{E_{\max}\,C^{\,n}}{EC_{50}^{\,n}+C^{\,n}}$$</div>
+      <p>$EC_{50}$ is the concentration giving half the maximum effect: a measure of <b>potency</b> (lower $EC_{50}$ = more potent). $E_{\max}$ is <b>efficacy</b>, the largest effect the drug can produce. The Hill coefficient $n$ sets steepness. On a linear axis the curve is a rectangular hyperbola (for $n=1$); on a log axis it becomes the familiar sigmoid, linear between about 20% and 80% of $E_{\max}$.</p>
+      <ul>
+        <li><b>Full agonist:</b> $E_{\max}$ = system maximum. <b>Partial agonist:</b> lower $E_{\max}$ even at full receptor occupancy.</li>
+        <li><b>Competitive (surmountable) antagonist</b> shifts the curve to the right in parallel. The dose ratio is given by the Schild equation $DR = 1 + [I]/K_i$; $E_{\max}$ is unchanged because enough agonist outcompetes it.</li>
+        <li><b>Non-competitive (insurmountable) antagonist</b> lowers $E_{\max}$; in the simplest case $E_{\max}' = E_{\max}/(1+[I]/K_i)$ and $EC_{50}$ is unchanged.</li>
+      </ul>
+      <h3>Quantal dose–response and therapeutic index</h3>
+      <p>A quantal curve plots the percentage of a population showing an all-or-none response (therapeutic benefit, toxicity) against dose. The <b>therapeutic index</b> is $TI = TD_{50}/ED_{50}$ (or $LD_{50}/ED_{50}$ in animals). Because curves differ in slope, a stricter measure is the certain safety factor $TD_1/ED_{99}$. Drugs with a narrow TI (e.g. digoxin, lithium, aminoglycosides, warfarin) need careful dosing and often therapeutic drug monitoring.</p>
+    </div>
+
+    <div class="tabpanel prose">
+      <h3>1. Single IV bolus of teaching drug T1</h3>
+      <div class="worked">
+        <p>T1: $V_d = 35$ L, $CL = 5$ L/h, dose 200 mg IV.</p>
+        <ol>
+          <li>$k = CL/V_d = 5/35 = 0.1429\ \text{h}^{-1}$</li>
+          <li>$t_{1/2} = 0.693/0.1429 = 4.85$ h</li>
+          <li>$C_0 = D/V_d = 200/35 = 5.71$ mg/L</li>
+          <li>At 6 h: $C = 5.71\,e^{-0.1429\times 6} = 5.71\times 0.424 = 2.42$ mg/L (below the MEC of 4 mg/L)</li>
+          <li>$\text{AUC}_{0\to\infty} = D/CL = 200/5 = 40$ mg·h/L</li>
+        </ol>
+        <p class="muted small">Check: set the lab to T1, IV bolus, 1 dose and hover at t = 6 h.</p>
+      </div>
+      <h3>2. Repeated dosing to steady state</h3>
+      <div class="worked">
+        <p>Same drug, 200 mg every 6 h.</p>
+        <ol>
+          <li>$e^{-k\tau} = e^{-0.857} = 0.424$, so $R_\text{ac} = 1/(1-0.424) = 1.74$</li>
+          <li>$C_{ss,\max} = 5.71\times 1.74 = 9.93$ mg/L (below the MTC of 12)</li>
+          <li>$C_{ss,\min} = 9.93\times 0.424 = 4.21$ mg/L (above the MEC of 4)</li>
+          <li>$C_{ss,\text{avg}} = D/(CL\,\tau) = 200/(5\times 6) = 6.67$ mg/L</li>
+          <li>Time to ~90% of steady state $\approx 3.3\,t_{1/2} = 16$ h, i.e. roughly the third or fourth dose.</li>
+        </ol>
+        <p class="muted small">These are the default lab settings: read the steady-state lines and the stats panel.</p>
+      </div>
+      <h3>3. The same regimen in severe renal impairment</h3>
+      <div class="worked">
+        <p>T1 is 90% renally cleared ($f_e = 0.9$). Renal function falls to 20% of normal.</p>
+        <ol>
+          <li>$CL = 5\,[0.9\times 0.2 + 0.1\times 1] = 5\times 0.28 = 1.4$ L/h</li>
+          <li>$k = 1.4/35 = 0.040\ \text{h}^{-1}$, $t_{1/2} = 17.3$ h (3.6× longer)</li>
+          <li>Unchanged regimen: $C_{ss,\text{avg}} = 200/(1.4\times 6) = 23.8$ mg/L, far above the MTC. $R_\text{ac}$ rises from 1.74 to 4.69.</li>
+          <li>Keeping $D/\tau$ proportional to $CL$: e.g. 200 mg every 24 h gives $C_{ss,\text{avg}} = 200/(1.4\times 24) = 5.95$ mg/L, but the peak-to-trough ratio $e^{0.04\times 24} = 2.61$ still fits inside a 3-fold window. Try it.</li>
+        </ol>
+      </div>
+      <h3>4. Oral dosing of teaching drug T2</h3>
+      <div class="worked">
+        <p>T2: $V_d = 50$ L, $CL = 5$ L/h, $k_a = 1.5\ \text{h}^{-1}$, $F = 0.8$, single 400 mg dose.</p>
+        <ol>
+          <li>$k = 0.10\ \text{h}^{-1}$, $t_{1/2} = 6.93$ h</li>
+          <li>$t_{\text{max}} = \ln(1.5/0.1)/(1.5-0.1) = 2.708/1.4 = 1.93$ h</li>
+          <li>$C_{\max} = \frac{0.8\times 400\times 1.5}{50\times 1.4}\left(e^{-0.193}-e^{-2.90}\right) = 6.857\times(0.824-0.055) = 5.27$ mg/L</li>
+          <li>If repeated every 12 h: $C_{ss,\text{avg}} = 0.8\times 400/(5\times 12) = 5.33$ mg/L</li>
+        </ol>
+      </div>
+      <h3>5. Loading dose for a long half-life drug (T3)</h3>
+      <div class="worked">
+        <p>T3: $V_d = 300$ L, $CL = 6$ L/h, window 1–2 mg/L, target 1.5 mg/L, given IV every 24 h.</p>
+        <ol>
+          <li>$k = 0.02\ \text{h}^{-1}$, $t_{1/2} = 34.7$ h, so steady state takes about 5 days without a loading dose.</li>
+          <li>Maintenance: $D = C_\text{target}\,CL\,\tau = 1.5\times 6\times 24 = 216$ mg (use 220 mg)</li>
+          <li>Simple loading dose: $LD = C_\text{target}\,V_d = 1.5\times 300 = 450$ mg gives 1.5 mg/L at once, but by 24 h it has fallen to $1.5\,e^{-0.48} = 0.93$ mg/L, just below the MEC.</li>
+          <li>With intermittent boluses, load to the steady-state <i>peak</i> instead: $LD = D\,R_\text{ac} = \dfrac{220}{1-e^{-0.02\times 24}} = \dfrac{220}{0.381} \approx 580$ mg. Then $C_0 = 1.93$ mg/L and the first trough is $1.93\times 0.619 = 1.20$ mg/L: inside the window from the start.</li>
+        </ol>
+      </div>
+      <h3>6. Competitive antagonist (Schild)</h3>
+      <div class="worked">
+        <p>An agonist has $EC_{50} = 1$ µM. A competitive antagonist is present at $[I] = 4K_i$.</p>
+        <ol><li>Dose ratio $DR = 1 + 4 = 5$, so the apparent $EC_{50}$ is 5 µM.</li><li>$E_{\max}$ is unchanged. With a non-competitive antagonist at the same $[I]/K_i$, $E_{\max}$ would fall to $100/5 = 20\%$.</li></ol>
+      </div>
+    </div>
+
+    <div class="tabpanel prose">
+      <p>Each challenge checks the regimen that is currently loaded in the lab. Press <b>Set up</b> to load the drug, then change the regimen (dose, interval, route, loading dose) and press <b>Check</b>.</p>
+      <div id="chalList"></div>
+      <h3>Guided experiments</h3>
+      <ol class="steps">
+        <li><b>Half-life rule.</b> T1, 1 dose IV bolus. Hover the curve at 0, 4.85, 9.7 and 14.6 h. Each value should be half the one before.</li>
+        <li><b>Dose rate, not dose size.</b> Compare 200 mg every 6 h with 400 mg every 12 h and 100 mg every 3 h. $C_{ss,\text{avg}}$ stays 6.67 mg/L but the swing changes.</li>
+        <li><b>Route matters for the shape, not the AUC.</b> Switch T2 between IV bolus and oral with F = 1. The AUC is identical; the oral peak is lower and later.</li>
+        <li><b>Distribution phase.</b> Load T4 (two-compartment) and give one dose. Note the rapid early fall (α phase) and the slower terminal phase (β). Increase Q: distribution gets faster.</li>
+        <li><b>Renal impairment.</b> With T1 at the default regimen, step renal function from Normal to Severe. Watch the dashed "normal function" curve and the accumulation factor.</li>
+        <li><b>Potency vs efficacy.</b> In Dose–response mode, drag agonist B's dot left (more potent) and down (less efficacious).</li>
+      </ol>
+    </div>
+
+    <div class="tabpanel"><div id="quiz"></div></div>
+
+    <div class="tabpanel prose">
+      <table class="data">
+        <tr><th>Term</th><th>Meaning</th></tr>
+        <tr><td>V<sub>d</sub></td><td>Apparent volume of distribution: amount in body ÷ plasma concentration (L).</td></tr>
+        <tr><td>CL</td><td>Clearance: volume of plasma cleared of drug per unit time (L/h). Renal + hepatic + other.</td></tr>
+        <tr><td>k</td><td>Elimination rate constant = CL/V<sub>d</sub> (h⁻¹).</td></tr>
+        <tr><td>t½</td><td>Time for concentration to halve = 0.693/k.</td></tr>
+        <tr><td>F</td><td>Bioavailability: fraction of dose reaching systemic circulation.</td></tr>
+        <tr><td>k<sub>a</sub></td><td>First-order absorption rate constant (h⁻¹).</td></tr>
+        <tr><td>MEC / MTC</td><td>Minimum effective / minimum toxic concentration; between them lies the therapeutic window.</td></tr>
+        <tr><td>C<sub>ss</sub></td><td>Steady-state concentration (peak, trough or average) when intake equals elimination over each interval.</td></tr>
+        <tr><td>AUC</td><td>Area under the concentration–time curve: total exposure (mg·h/L).</td></tr>
+        <tr><td>EC<sub>50</sub></td><td>Concentration producing 50% of the drug's maximum effect (potency).</td></tr>
+        <tr><td>E<sub>max</sub></td><td>Maximum effect a drug can produce (efficacy).</td></tr>
+        <tr><td>TI</td><td>Therapeutic index = TD<sub>50</sub>/ED<sub>50</sub>.</td></tr>
+        <tr><td>f<sub>e</sub></td><td>Fraction of drug excreted unchanged in urine.</td></tr>
+      </table>
+    </div>
+  </section>
+</main>
+
+<div id="sl-footer"></div>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/simlab.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+  const LN2 = Math.LN2;
+  const ACC = '#f87171';
+
+  /* ---------------- Teaching drugs ---------------- */
+  const DRUGS = {
+    T1: { model: 1, route: 'bolus', dose: 200, tau: 6, ndose: 8, tinf: 1, V: 35, CL: 5, ka: 1.5, F: 1, V2: 40, Q: 12, fe: 0.9, mec: 4, mtc: 12, tend: 72, ld: 0 },
+    T2: { model: 1, route: 'oral', dose: 400, tau: 12, ndose: 5, tinf: 1, V: 50, CL: 5, ka: 1.5, F: 0.8, V2: 40, Q: 12, fe: 0.3, mec: 2, mtc: 8, tend: 72, ld: 0 },
+    T3: { model: 1, route: 'bolus', dose: 220, tau: 24, ndose: 7, tinf: 1, V: 300, CL: 6, ka: 1, F: 0.7, V2: 40, Q: 12, fe: 0.7, mec: 1, mtc: 2, tend: 168, ld: 0 },
+    T4: { model: 2, route: 'bolus', dose: 150, tau: 12, ndose: 1, tinf: 1, V: 15, CL: 4, ka: 1, F: 0.6, V2: 40, Q: 12, fe: 0.5, mec: 3, mtc: 10, tend: 48, ld: 0 },
+  };
+
+  /* ---------------- State ---------------- */
+  const P = Object.assign({ renal: 100, hep: 100, ldOn: false }, DRUGS.T1, { ld: 400 });
+  let SIM = null, BASE = null, SS = null;
+
+  function effCL(p) { return p.CL * (p.fe * p.renal / 100 + (1 - p.fe) * p.hep / 100); }
+
+  /* ---------------- PK engine ---------------- */
+  // Single-run simulator with dosing events. Returns sampled arrays.
+  function simulate(p, opts) {
+    opts = opts || {};
+    const CL = opts.CL != null ? opts.CL : effCL(p);
+    const tEnd = opts.tEnd || p.tend, dt = opts.dt || 0.01;
+    const twoC = p.model === 2, oral = p.route === 'oral', inf = p.route === 'inf';
+    const k10 = CL / p.V, k12 = twoC ? p.Q / p.V : 0, k21 = twoC ? p.Q / p.V2 : 0, ka = p.ka, F = oral ? p.F : 1;
+    const doses = [];
+    const n = opts.single ? 1 : p.ndose;
+    for (let i = 0; i < n; i++) { const t = i * p.tau; if (t > tEnd + 1e-9) break; let a = p.dose; if (i === 0 && p.ldOn && !inf && !opts.single) a = p.ld; doses.push({ t, a }); }
+    const tinf = Math.min(p.tinf, p.tau);
+    const rate = t => { if (!inf) return 0; let r = 0; for (const d of doses) if (t >= d.t - 1e-9 && t < d.t + tinf - 1e-9) r += d.a / tinf; return r; };
+    let G = 0, A1 = 0, A2 = 0, Er = 0, Eh = 0;
+    if (inf && p.ldOn && !opts.single) A1 += p.ld;
+    const fr = CL > 0 ? (p.CL * p.fe * p.renal / 100) / CL : 0;
+    const steps = Math.round(tEnd / dt), every = opts.every || 5;
+    const T = [], C = [], AG = [], A1s = [], A2s = [], ER = [], EH = [];
+    let di = 0;
+    const deriv = (g, a1, a2, r) => [-ka * g, ka * g + r - k10 * a1 - k12 * a1 + k21 * a2, k12 * a1 - k21 * a2, k10 * a1];
+    for (let i = 0; i <= steps; i++) {
+      const t = i * dt;
+      while (di < doses.length && doses[di].t <= t + dt / 2) { if (!inf) { if (oral) G += doses[di].a * F; else A1 += doses[di].a; } di++; }
+      if (i % every === 0) { T.push(t); C.push(A1 / p.V); AG.push(G); A1s.push(A1); A2s.push(A2); ER.push(Er); EH.push(Eh); }
+      if (i === steps) break;
+      const r = rate(t + dt / 2);
+      const k1 = deriv(G, A1, A2, r);
+      const k2 = deriv(G + k1[0] * dt / 2, A1 + k1[1] * dt / 2, A2 + k1[2] * dt / 2, r);
+      const k3 = deriv(G + k2[0] * dt / 2, A1 + k2[1] * dt / 2, A2 + k2[2] * dt / 2, r);
+      const k4 = deriv(G + k3[0] * dt, A1 + k3[1] * dt, A2 + k3[2] * dt, r);
+      G += dt / 6 * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]);
+      A1 += dt / 6 * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]);
+      A2 += dt / 6 * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2]);
+      const e = dt / 6 * (k1[3] + 2 * k2[3] + 2 * k3[3] + k4[3]);
+      Er += e * fr; Eh += e * (1 - fr);
+    }
+    return { T, C, AG, A1: A1s, A2: A2s, ER, EH, doses, dt: dt * every, CL, k10, k12, k21, F };
+  }
+
+  function rates(p, CL) {
+    const k10 = CL / p.V;
+    if (p.model !== 2) return { k: k10, lz: k10, alpha: null };
+    const k12 = p.Q / p.V, k21 = p.Q / p.V2, s = k10 + k12 + k21, pr = k10 * k21, disc = Math.sqrt(s * s - 4 * pr);
+    return { k: k10, alpha: (s + disc) / 2, lz: (s - disc) / 2 };
+  }
+
+  // True steady state by superposition of single-dose responses (linear system).
+  function steadyState(p) {
+    const CL = effCL(p), r = rates(p, CL);
+    let tl = Math.min(4000, 12 * LN2 / r.lz + p.tau + 2 / Math.max(p.ka, 0.05));
+    const dt = Math.max(0.01, tl / 40000);
+    const s = simulate(p, { single: true, tEnd: tl, dt, every: 1 });
+    const N = 240, prof = [];
+    const at = t => { const i = t / s.dt, i0 = Math.floor(i); if (i0 >= s.C.length - 1) return 0; const f = i - i0; return s.C[i0] * (1 - f) + s.C[i0 + 1] * f; };
+    for (let j = 0; j <= N; j++) { const u = j / N * p.tau; let c = 0; for (let m = 0; u + m * p.tau < tl; m++) c += at(u + m * p.tau); prof.push(c); }
+    let mx = -1, mn = 1e9, sum = 0; prof.forEach((c, j) => { mx = Math.max(mx, c); mn = Math.min(mn, c); if (j) sum += (c + prof[j - 1]) / 2 * (p.tau / N); });
+    return { max: mx, min: mn, avg: sum / p.tau, prof, lz: r.lz, alpha: r.alpha };
+  }
+
+  function recompute() {
+    SIM = simulate(P);
+    const impaired = P.renal < 100 || P.hep < 100;
+    BASE = impaired ? simulate(P, { CL: P.CL }) : null;
+    SS = steadyState(P);
+    updateStats();
+    resetParticles();
+  }
+
+  function cAt(t) { const s = SIM; const i = t / s.dt, i0 = Math.max(0, Math.min(s.C.length - 2, Math.floor(i))); const f = SL.clamp(i - i0, 0, 1); return { C: s.C[i0] * (1 - f) + s.C[i0 + 1] * f, i: i0 }; }
+
+  function updateStats() {
+    const CL = effCL(P), r = rates(P, CL), F = P.route === 'oral' ? P.F : 1;
+    const lz = r.lz, t12 = LN2 / lz;
+    $('#sK').innerHTML = SL.fmt(r.k, 4) + '<small>h⁻¹</small>';
+    $('#sT12k').innerHTML = P.model === 2 ? 't½ β (terminal)' : 't½';
+    $('#sT12').innerHTML = SL.fmt(t12, 2) + '<small>h</small>';
+    $('#sCL').innerHTML = SL.fmt(CL, 2) + '<small>L/h</small>';
+    $('#sR').textContent = SL.fmt(1 / (1 - Math.exp(-lz * P.tau)), 2);
+    $('#sCavg').innerHTML = SL.fmt(F * P.dose / (CL * P.tau), 2) + '<small>mg/L</small>';
+    $('#sSS').innerHTML = SL.fmt(SS.max, 2) + ' / ' + SL.fmt(SS.min, 2);
+    let auc = 0, inW = 0; const s = SIM;
+    for (let i = 1; i < s.C.length; i++) { auc += (s.C[i] + s.C[i - 1]) / 2 * s.dt; const c = (s.C[i] + s.C[i - 1]) / 2; if (c >= P.mec && c <= P.mtc) inW += s.dt; }
+    $('#sAUC').innerHTML = SL.fmt(auc, 1) + '<small>mg·h/L</small>';
+    $('#sTiw').innerHTML = SL.fmt(inW / P.tend * 100, 0) + '<small>%</small>';
+    const okSS = SS.max <= P.mtc && SS.min >= P.mec;
+    const tSS = 3.32 * t12;
+    $('#ssNote').innerHTML = `${P.model === 2 ? `Distribution t½α = ${SL.fmt(LN2 / r.alpha, 2)} h. ` : ''}90% of steady state after ≈ ${SL.fmt(tSS, 1)} h (3.3 t½). At steady state this regimen is <b style="color:${okSS ? 'var(--ok)' : 'var(--bad)'}">${okSS ? 'inside' : (SS.max > P.mtc && SS.min < P.mec ? 'too wide for' : SS.max > P.mtc ? 'above' : 'below')}</b> the window${P.ndose * P.tau < tSS ? ' (the regimen shown stops before steady state)' : ''}.`;
+  }
+
+  /* ---------------- Controls ---------------- */
+  const ids = ['dose', 'tau', 'ndose', 'tinf', 'ld', 'V', 'CL', 'ka', 'F', 'V2', 'Q', 'fe', 'renal', 'hep', 'mec', 'mtc'];
+  const fmts = { dose: v => v + ' mg', tau: v => v + ' h', ndose: v => v, tinf: v => v + ' h', ld: v => v + ' mg', V: v => v + ' L', CL: v => v + ' L/h', ka: v => v + ' h⁻¹', F: v => Math.round(v * 100) + '%', V2: v => v + ' L', Q: v => v + ' L/h', fe: v => Math.round(v * 100) + '%', renal: v => v + '%', hep: v => v + '%', mec: v => v + ' mg/L', mtc: v => v + ' mg/L' };
+  let suppress = true, rq = 0, CHREADY = false, pdUser = false;
+  const schedule = () => { if (suppress) return; cancelAnimationFrame(rq); rq = requestAnimationFrame(recompute); };
+  ids.forEach(id => SL.bind('#' + id, v => {
+    P[id] = v;
+    if (id === 'mec' && P.mtc <= v) { P.mtc = +(v + 0.1).toFixed(1); setRange('mtc', P.mtc); }
+    if (id === 'mtc' && P.mec >= v) { P.mec = +(v - 0.1).toFixed(1); setRange('mec', P.mec); }
+    if (id === 'renal') $$('#renalQuick button').forEach(b => b.classList.toggle('on', +b.dataset.v === v));
+    if (['V', 'CL', 'ka', 'F', 'V2', 'Q', 'fe'].includes(id) && !suppress) $('#drug').value = 'custom';
+    schedule();
+  }, fmts[id]));
+  suppress = false;
+  $('#ldOn').addEventListener('change', e => { P.ldOn = e.target.checked; vis(); schedule(); });
+  function seg(id, key, cb) {
+    $$(id + ' button').forEach(b => b.addEventListener('click', () => {
+      $$(id + ' button').forEach(x => x.classList.toggle('on', x === b));
+      const v = isNaN(+b.dataset.v) ? b.dataset.v : +b.dataset.v; if (key) P[key] = v; cb && cb(v); vis(); schedule();
+    }));
+  }
+  seg('#model', 'model'); seg('#route', 'route'); seg('#tend', 'tend', () => { t = Math.min(t, P.tend); });
+  seg('#renalQuick', null, v => setRange('renal', v));
+  function setSeg(id, v) { $$(id + ' button').forEach(x => x.classList.toggle('on', String(x.dataset.v) === String(v))); }
+  function setRange(id, v) { const el = $('#' + id); el.value = v; el.dispatchEvent(new Event('input')); }
+  function vis() {
+    $('#ctlTinf').classList.toggle('hide', P.route !== 'inf');
+    $('#ctlKa').classList.toggle('hide', P.route !== 'oral');
+    $('#ctlF').classList.toggle('hide', P.route !== 'oral');
+    $('#ctlV2').classList.toggle('hide', P.model !== 2);
+    $('#ctlQ').classList.toggle('hide', P.model !== 2);
+    $('#ctlLd').classList.toggle('hide', !P.ldOn);
+    $('#ctlLd label').textContent = P.route === 'inf' ? 'Loading IV bolus at t = 0' : 'Loading dose (replaces dose 1)';
+    $('#tinf').max = P.tau;
+  }
+  function loadDrug(key, extra) {
+    const d = Object.assign({}, DRUGS[key], extra || {});
+    suppress = true;
+    ['dose', 'tau', 'ndose', 'tinf', 'V', 'CL', 'ka', 'F', 'V2', 'Q', 'fe', 'mec', 'mtc'].forEach(k => { P[k] = d[k]; });
+    ['tau', 'dose', 'ndose', 'tinf', 'V', 'CL', 'ka', 'F', 'V2', 'Q', 'fe', 'mtc', 'mec'].forEach(k => setRange(k, d[k]));
+    P.model = d.model; P.route = d.route; P.tend = d.tend; setSeg('#model', d.model); setSeg('#route', d.route); setSeg('#tend', d.tend);
+    P.renal = d.renal || 100; P.hep = 100; setRange('renal', P.renal); setRange('hep', 100);
+    P.ldOn = !!d.ldOn; $('#ldOn').checked = P.ldOn; if (d.ld) { P.ld = d.ld; setRange('ld', d.ld); }
+    $('#drug').value = key;
+    suppress = false; vis(); t = 0; recompute();
+  }
+  $('#drug').addEventListener('change', e => { if (e.target.value !== 'custom') loadDrug(e.target.value); });
+
+  /* ---------------- Playback ---------------- */
+  let t = 0, playing = true, speed = 1;
+  const SPEEDS = [0.5, 1, 2, 4];
+  $('#play').onclick = () => { playing = !playing; if (playing && t >= P.tend) t = 0; $('#play').innerHTML = `<i data-lucide="${playing ? 'pause' : 'play'}"></i>`; SL.refreshIcons($('#play')); };
+  $('#restart').onclick = () => { t = 0; resetParticles(); if (!playing) $('#play').click(); };
+  $('#spd').onclick = () => { speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]; $('#spd').textContent = speed + '×'; };
+
+  /* ---------------- Chart ---------------- */
+  const cvPK = $('#cvPK'); const stPK = SL.canvas(cvPK);
+  let geo = null, hoverT = null;
+  function niceStep(r) { const e = Math.pow(10, Math.floor(Math.log10(r))); const f = r / e; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * e; }
+  function drawChart() {
+    const { ctx, w, h } = stPK; if (!SIM) return;
+    ctx.clearRect(0, 0, w, h);
+    const pl = 48, pr = 16, pt = w < 600 ? 104 : 64, pb = 40;
+    let ymax = Math.max(P.mtc * 1.25, ...SIM.C) * 1.08; if (BASE) ymax = Math.max(ymax, Math.min(Math.max(...BASE.C) * 1.05, ymax * 3));
+    const X = x => pl + x / P.tend * (w - pl - pr), Y = y => h - pb - y / ymax * (h - pt - pb);
+    geo = { X, Y, pl, pr, pt, pb, ymax };
+    // bands
+    const yMEC = Y(P.mec), yMTC = Y(Math.min(P.mtc, ymax));
+    ctx.fillStyle = 'rgba(96,165,250,.06)'; ctx.fillRect(pl, yMEC, w - pl - pr, h - pb - yMEC);
+    const gW = ctx.createLinearGradient(0, yMTC, 0, yMEC); gW.addColorStop(0, 'rgba(34,197,94,.16)'); gW.addColorStop(1, 'rgba(34,197,94,.07)');
+    ctx.fillStyle = gW; ctx.fillRect(pl, yMTC, w - pl - pr, yMEC - yMTC);
+    if (P.mtc < ymax) { ctx.fillStyle = 'rgba(239,68,68,.09)'; ctx.fillRect(pl, pt, w - pl - pr, yMTC - pt); }
+    // grid
+    ctx.font = '11px JetBrains Mono, monospace'; ctx.lineWidth = 1;
+    const ys = niceStep(ymax / 5);
+    for (let v = 0; v <= ymax + 1e-9; v += ys) { const y = Y(v); ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(w - pr, y); ctx.stroke(); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'right'; ctx.fillText(SL.fmt(v, 2), pl - 6, y + 4); }
+    const xs = P.tend <= 24 ? 4 : P.tend <= 72 ? 12 : 24;
+    for (let v = 0; v <= P.tend; v += xs) { const x = X(v); ctx.strokeStyle = 'rgba(255,255,255,.04)'; ctx.beginPath(); ctx.moveTo(x, pt); ctx.lineTo(x, h - pb); ctx.stroke(); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'center'; ctx.fillText(v, x, h - pb + 16); }
+    ctx.textAlign = 'right'; ctx.fillText('time (h)', w - pr, h - 6); ctx.textAlign = 'left'; ctx.fillText('plasma conc. (mg/L)', pl, pt - 10);
+    // band labels
+    ctx.font = '600 10px JetBrains Mono, monospace';
+    ctx.fillStyle = 'rgba(34,197,94,.9)'; ctx.textAlign = 'right';
+    ctx.fillText('MTC ' + P.mtc, w - pr - 4, yMTC - 4); ctx.fillStyle = 'rgba(96,165,250,.9)'; ctx.fillText('MEC ' + P.mec, w - pr - 4, yMEC + 12);
+    ctx.setLineDash([4, 4]); ctx.strokeStyle = 'rgba(34,197,94,.5)'; [yMEC, yMTC].forEach(y => { ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(w - pr, y); ctx.stroke(); }); ctx.setLineDash([]);
+    // steady-state lines (only if regimen gets near steady state)
+    const CL = effCL(P), r = rates(P, CL);
+    if (P.ndose > 2) {
+      const tss = P.tau * (P.ndose - 1);
+      [[SS.max, 'Css,max'], [SS.min, 'Css,min'], [SS.avg, 'Css,avg']].forEach(([v, l], i) => {
+        if (v > ymax) return; const y = Y(v); ctx.strokeStyle = i === 2 ? 'rgba(250,204,21,.55)' : 'rgba(255,255,255,.28)'; ctx.setLineDash(i === 2 ? [2, 4] : [7, 5]);
+        ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(X(Math.min(P.tend, tss + P.tau)), y); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = i === 2 ? '#facc15' : '#93a1bd'; ctx.textAlign = 'left'; ctx.font = '10px JetBrains Mono, monospace'; ctx.fillText(l + ' ' + SL.fmt(v, 2), pl + 6, y - 4);
+      });
+    }
+    // AUC shading up to cursor
+    const s = SIM, iCur = Math.min(s.C.length - 1, Math.round(t / s.dt));
+    const gA = ctx.createLinearGradient(0, pt, 0, h - pb); gA.addColorStop(0, 'rgba(248,113,113,.32)'); gA.addColorStop(1, 'rgba(248,113,113,.03)');
+    ctx.fillStyle = gA; ctx.beginPath(); ctx.moveTo(X(0), Y(0));
+    for (let i = 0; i <= iCur; i++) ctx.lineTo(X(s.T[i]), Y(Math.min(s.C[i], ymax)));
+    ctx.lineTo(X(s.T[iCur]), Y(0)); ctx.closePath(); ctx.fill();
+    // baseline compare
+    if (BASE) { ctx.strokeStyle = 'rgba(147,161,189,.7)'; ctx.setLineDash([5, 5]); ctx.lineWidth = 1.5; ctx.beginPath(); BASE.T.forEach((x, i) => { const y = Y(Math.min(BASE.C[i], ymax * 1.02)); i ? ctx.lineTo(X(x), y) : ctx.moveTo(X(x), y); }); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = '#93a1bd'; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'right'; ctx.fillText('- - normal organ function', w - pr - 4, pt - 10); }
+    // curve: future dim, past bright with glow
+    const path = (a, b) => { ctx.beginPath(); for (let i = a; i <= b; i++) { const y = Y(Math.min(s.C[i], ymax * 1.02)); i === a ? ctx.moveTo(X(s.T[i]), y) : ctx.lineTo(X(s.T[i]), y); } };
+    ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(248,113,113,.35)'; path(iCur, s.C.length - 1); ctx.stroke();
+    ctx.save(); ctx.shadowColor = ACC; ctx.shadowBlur = 12; ctx.lineWidth = 2.6; ctx.strokeStyle = '#fca5a5'; path(0, iCur); ctx.stroke(); ctx.restore();
+    // dose markers
+    s.doses.forEach((d, i) => { const x = X(d.t); const big = i === 0 && P.ldOn && P.route !== 'inf'; ctx.fillStyle = big ? '#facc15' : ACC; ctx.beginPath(); ctx.moveTo(x, h - pb - 1); ctx.lineTo(x - 5, h - pb - 10); ctx.lineTo(x + 5, h - pb - 10); ctx.closePath(); ctx.fill(); if (P.route === 'inf') { ctx.fillStyle = 'rgba(248,113,113,.35)'; ctx.fillRect(x, h - pb - 4, X(d.t + Math.min(P.tinf, P.tau)) - x, 3); } });
+    if (P.route === 'inf' && P.ldOn) { ctx.fillStyle = '#facc15'; ctx.beginPath(); const x = X(0); ctx.moveTo(x + 1, h - pb - 12); ctx.lineTo(x - 4, h - pb - 21); ctx.lineTo(x + 6, h - pb - 21); ctx.fill(); }
+    // half-life marker on washout (or first dose if no washout)
+    const lz = r.lz, t12 = LN2 / lz;
+    const lastT = s.doses[s.doses.length - 1].t;
+    let t1 = lastT + Math.max(P.route === 'inf' ? Math.min(P.tinf, P.tau) + 0.5 : 0, P.route === 'oral' ? Math.max(3, 4 / P.ka) : 0, P.model === 2 ? 5 / r.alpha : 0, 0.5);
+    if (s.doses.length > 1 && t1 + t12 > P.tend) { t1 = s.doses[0].t + (t1 - lastT); if (t1 + t12 > s.doses[1].t) t1 = null; }
+    if (t1 != null && t1 + t12 <= P.tend) {
+      const c1 = cAt(t1).C, c2 = cAt(t1 + t12).C, x1 = X(t1), x2 = X(t1 + t12), y1 = Y(Math.min(c1, ymax)), y2 = Y(c2);
+      ctx.strokeStyle = '#a78bfa'; ctx.fillStyle = '#a78bfa'; ctx.lineWidth = 1.3; ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1, y2 - 0); ctx.moveTo(x1, y2); ctx.lineTo(x2, y2); ctx.stroke(); ctx.setLineDash([]);
+      [[x1, y1], [x2, y2]].forEach(([x, y]) => { ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 7); ctx.fill(); });
+      ctx.font = '600 10.5px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(`t½ = ${SL.fmt(t12, 1)} h`, (x1 + x2) / 2, y2 + 14);
+      ctx.textAlign = 'left'; ctx.font = '10px JetBrains Mono, monospace'; ctx.fillText('C/2', x2 + 5, y2 - 3);
+    }
+    // cursor
+    const cx = X(t), cc = cAt(t).C;
+    ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.moveTo(cx, pt); ctx.lineTo(cx, h - pb); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.shadowColor = ACC; ctx.shadowBlur = 16; ctx.beginPath(); ctx.arc(cx, Y(Math.min(cc, ymax)), 5, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+    // hover crosshair
+    if (hoverT != null) { const hc = cAt(hoverT).C, hx = X(hoverT), hy = Y(Math.min(hc, ymax)); ctx.strokeStyle = 'rgba(167,139,250,.6)'; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(hx, pt); ctx.lineTo(hx, h - pb); ctx.moveTo(pl, hy); ctx.lineTo(w - pr, hy); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = '#a78bfa'; ctx.beginPath(); ctx.arc(hx, hy, 4, 0, 7); ctx.fill(); }
+    // HUD
+    $('#hT').textContent = SL.fmt(t, 1); $('#hC').textContent = SL.fmt(cc, 2);
+    const st = cc > P.mtc ? ['hi', 'Toxic'] : cc >= P.mec ? ['in', 'In window'] : ['lo', 'Sub-therapeutic'];
+    const hs = $('#hS'); hs.className = 'readout status-' + st[0]; hs.innerHTML = '<b>' + st[1] + '</b>';
+  }
+  // hover / scrub
+  const cw = $('#chartw'), tip = $('#tip');
+  let dragging = false;
+  const tFromX = e => { const p = SL.ptr(e, cw); return { p, tt: SL.clamp((p.x - geo.pl) / (stPK.w - geo.pl - geo.pr) * P.tend, 0, P.tend) }; };
+  cw.addEventListener('pointerdown', e => { if (!geo || e.target.closest('.btn')) return; dragging = true; cw.setPointerCapture(e.pointerId); const { tt } = tFromX(e); t = tt; resetParticles(); if (playing) $('#play').click(); });
+  cw.addEventListener('pointermove', e => {
+    if (!geo || e.target.closest('.btn')) return; const { p, tt } = tFromX(e);
+    if (dragging) { t = tt; resetParticles(); }
+    hoverT = tt; const c = cAt(tt).C;
+    tip.style.display = 'block'; tip.innerHTML = `t = ${SL.fmt(tt, 2)} h<br>C = ${SL.fmt(c, 3)} mg/L`;
+    const tx = Math.min(p.x + 14, stPK.w - 130); tip.style.left = tx + 'px'; tip.style.top = Math.max(50, p.y - 44) + 'px';
+  });
+  const endHover = () => { hoverT = null; tip.style.display = 'none'; };
+  cw.addEventListener('pointerup', () => { dragging = false; });
+  cw.addEventListener('pointerleave', () => { dragging = false; endHover(); });
+
+  /* ---------------- Body diagram with particles ---------------- */
+  const cvB = $('#cvBody'); const stB = SL.canvas(cvB);
+  const DW = 300, DH = 540;
+  const R = {
+    heart: [158, 150], mouth: [150, 66], iv: [52, 292], liver: [124, 205], stomach: [175, 212], gut: [150, 268],
+    kidL: [108, 246], kidR: [192, 246], bladder: [150, 330],
+  };
+  const tissues = [[66, 190, 13, 55], [234, 190, 13, 55], [122, 410, 20, 62], [178, 410, 20, 62]];
+  // blood loop (vessel circuit) in design coords
+  const LOOP = []; (function () { const cx = 150, cy = 215, rx = 30, ry = 92; for (let i = 0; i < 80; i++) { const a = i / 80 * Math.PI * 2; LOOP.push([cx + rx * Math.sin(a), cy - ry * Math.cos(a)]); } })();
+  let parts = [], bladderN = 0;
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  function regionPoint(comp, p) {
+    if (comp === 'G') { return Math.random() < 0.35 ? [R.stomach[0] + rnd(-16, 16), R.stomach[1] + rnd(-9, 9)] : [R.gut[0] + rnd(-26, 26), R.gut[1] + rnd(-16, 16)]; }
+    if (comp === 'P') { const ti = p && p.ti != null ? p.ti : (Math.random() * 4) | 0; if (p) p.ti = ti; const [x, y, rx, ry] = tissues[ti]; const a = Math.random() * 6.28, rr = Math.sqrt(Math.random()); return [x + Math.cos(a) * rx * rr * .85, y + Math.sin(a) * ry * rr * .85]; }
+    if (comp === 'U') return [R.bladder[0] + rnd(-11, 11), R.bladder[1] + rnd(-6, 7)];
+    return LOOP[(Math.random() * LOOP.length) | 0];
+  }
+  function mk(comp, from, via) {
+    const p = { comp, x: from[0], y: from[1], path: [], loopI: 0, a: 1, ti: null, tw: Math.random() * 6 };
+    p.path = (via || []).map(v => v.slice()); p.path.push(regionPoint(comp, p));
+    if (comp === 'C') p.loopI = (Math.random() * LOOP.length) | 0;
+    parts.push(p); return p;
+  }
+  function send(p, comp, via) { p.comp = comp; p.path = (via || []).map(v => v.slice()); if (comp === 'C' || comp === 'P' || comp === 'U' || comp === 'G') { const pt = regionPoint(comp, p); p.path.push(pt); if (comp === 'C') p.loopI = LOOP.indexOf(pt); } }
+  function resetParticles() { parts = []; bladderN = 0; lastSync = null; }
+  let lastSync = null;
+  function syncParticles() {
+    if (!SIM) return;
+    const s = SIM; const i = Math.min(s.C.length - 1, Math.round(t / s.dt));
+    let maxA = 0; for (let j = 0; j < s.C.length; j++) maxA = Math.max(maxA, s.AG[j] + s.A1[j] + s.A2[j]);
+    const scale = Math.max(maxA, 1e-6) / 90;
+    const tg = { G: Math.round(s.AG[i] / scale), C: Math.round(s.A1[i] / scale), P: Math.round(s.A2[i] / scale) };
+    const instant = lastSync == null; lastSync = i;
+    const cnt = c => parts.filter(p => p.comp === c).length;
+    const pick = c => parts.filter(p => p.comp === c);
+    if (instant) {
+      ['G', 'C', 'P'].forEach(c => { for (let k = 0; k < tg[c]; k++) { const p = mk(c, [0, 0]); const pt = regionPoint(c, p); p.x = pt[0]; p.y = pt[1]; p.path = []; if (c === 'C') p.loopI = LOOP.indexOf(pt); } });
+      const urine = Math.min(30, Math.round(s.ER[i] / scale)); for (let k = 0; k < urine; k++) { const p = mk('U', [0, 0]); const pt = regionPoint('U'); p.x = pt[0]; p.y = pt[1]; p.path = []; }
+      return;
+    }
+    // absorption G -> C (via liver = first pass route)
+    let dG = cnt('G') - tg.G;
+    if (dG > 0) pick('G').slice(0, dG).forEach(p => send(p, 'C', [R.liver, R.heart]));
+    // distribution
+    let dP = cnt('P') - tg.P;
+    if (dP > 0) pick('P').slice(0, dP).forEach(p => send(p, 'C', [R.heart]));
+    else if (dP < 0) pick('C').slice(0, -dP).forEach(p => { p.ti = null; send(p, 'P'); });
+    // elimination / new IV drug
+    let dC = cnt('C') - tg.C;
+    if (dC > 0) {
+      const fr = s.CL > 0 ? (P.CL * P.fe * P.renal / 100) / s.CL : 0;
+      pick('C').slice(0, dC).forEach(p => { if (Math.random() < fr) { const kid = Math.random() < .5 ? R.kidL : R.kidR; p.comp = 'U'; p.path = [kid.slice(), regionPoint('U')]; } else { p.comp = 'X'; p.path = [[R.liver[0] + rnd(-12, 12), R.liver[1] + rnd(-6, 6)]]; } });
+    } else if (dC < 0 && P.route !== 'oral') {
+      for (let k = 0; k < -dC; k++) { const p = mk('C', [R.iv[0] + rnd(-3, 3), R.iv[1] + rnd(-3, 3)], [[70, 240], [118, 140]]); }
+    }
+    // new oral dose
+    dG = cnt('G') - tg.G;
+    if (dG < 0) {
+      for (let k = 0; k < -dG; k++) mk('G', [R.mouth[0] + rnd(-3, 3), R.mouth[1]], [[150, 100], [168, 190]]);
+      const lost = Math.round(-dG * (1 - P.F) / Math.max(P.F, 0.05));
+      for (let k = 0; k < Math.min(lost, 60); k++) { const p = mk('G', [R.mouth[0] + rnd(-3, 3), R.mouth[1]], [[150, 100], [168, 190], [R.gut[0] + rnd(-20, 20), R.gut[1]]]); p.comp = 'FP'; p.path.push([R.liver[0] + rnd(-10, 10), R.liver[1] + rnd(-5, 5)]); }
+    }
+    // keep bladder count bounded
+    const us = pick('U'); if (us.length > 40) us.slice(0, us.length - 40).forEach(p => p.comp = 'XU');
+  }
+  function stepParticles(dt) {
+    const sp = 160 * dt;
+    for (const p of parts) {
+      if (p.path.length) {
+        const [tx, ty] = p.path[0]; const dx = tx - p.x, dy = ty - p.y, d = Math.hypot(dx, dy);
+        if (d < sp) { p.x = tx; p.y = ty; p.path.shift(); if (!p.path.length && p.comp === 'FP') p.comp = 'X'; }
+        else { p.x += dx / d * sp; p.y += dy / d * sp; }
+      } else if (p.comp === 'C') { p.loopI = (p.loopI + dt * 14) % LOOP.length; const i0 = Math.floor(p.loopI), i1 = (i0 + 1) % LOOP.length, f = p.loopI - i0; p.x = SL.lerp(LOOP[i0][0], LOOP[i1][0], f); p.y = SL.lerp(LOOP[i0][1], LOOP[i1][1], f); }
+      else if (p.comp === 'G' || p.comp === 'P') { p.tw += dt; if (Math.random() < dt * 0.6) p.path.push(regionPoint(p.comp, p)); }
+      else if (p.comp === 'X') { p.a -= dt * 1.2; }
+      else if (p.comp === 'XU') { p.a -= dt * 0.8; }
+    }
+    parts = parts.filter(p => p.a > 0);
+  }
+  function drawBody() {
+    const { ctx, w, h } = stB; ctx.clearRect(0, 0, w, h);
+    const sc = Math.min(w / DW, (h - 16) / DH), ox = (w - DW * sc) / 2, oy = (h - DH * sc) / 2 - 4;
+    ctx.save(); ctx.translate(ox, oy); ctx.scale(sc, sc);
+    // silhouette
+    ctx.fillStyle = 'rgba(147,161,189,.07)'; ctx.strokeStyle = 'rgba(147,161,189,.35)'; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.arc(150, 52, 30, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(136, 80); ctx.lineTo(136, 92); ctx.quadraticCurveTo(95, 96, 84, 112); ctx.lineTo(50, 300); ctx.quadraticCurveTo(46, 318, 58, 318); ctx.lineTo(84, 210);
+    ctx.lineTo(96, 170); ctx.lineTo(100, 300); ctx.lineTo(104, 510); ctx.quadraticCurveTo(120, 522, 138, 510); ctx.lineTo(146, 340); ctx.lineTo(154, 340); ctx.lineTo(162, 510); ctx.quadraticCurveTo(180, 522, 196, 510); ctx.lineTo(200, 300);
+    ctx.lineTo(204, 170); ctx.lineTo(216, 210); ctx.lineTo(242, 318); ctx.quadraticCurveTo(254, 318, 250, 300); ctx.lineTo(216, 112); ctx.quadraticCurveTo(205, 96, 164, 92); ctx.lineTo(164, 80);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // tissues
+    tissues.forEach(([x, y, rx, ry]) => { const g = ctx.createRadialGradient(x, y, 2, x, y, ry); g.addColorStop(0, 'rgba(244,114,182,.22)'); g.addColorStop(1, 'rgba(244,114,182,.04)'); ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, 7); ctx.fill(); });
+    // circulation loop
+    ctx.lineWidth = 7; const lg = ctx.createLinearGradient(120, 0, 180, 0); lg.addColorStop(0, 'rgba(96,165,250,.25)'); lg.addColorStop(1, 'rgba(239,68,68,.3)');
+    ctx.strokeStyle = lg; ctx.beginPath(); LOOP.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.stroke();
+    // organs
+    const organ = (x, y, rx, ry, col, rot) => { ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(x, y, rx, ry, rot || 0, 0, 7); ctx.fill(); };
+    organ(R.liver[0], R.liver[1], 30, 15, 'rgba(180,83,9,.55)', -0.2);
+    organ(R.stomach[0], R.stomach[1], 18, 11, 'rgba(251,191,36,.35)', 0.4);
+    ctx.strokeStyle = 'rgba(251,191,36,.45)'; ctx.lineWidth = 5; ctx.beginPath();
+    for (let i = 0; i <= 60; i++) { const a = i / 60 * Math.PI * 5; const x = R.gut[0] + Math.cos(a) * (24 - i * 0.12), y = R.gut[1] - 12 + i * 0.42 + Math.sin(a) * 4; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+    organ(R.kidL[0], R.kidL[1], 8, 14, 'rgba(190,24,93,.6)'); organ(R.kidR[0], R.kidR[1], 8, 14, 'rgba(190,24,93,.6)');
+    ctx.strokeStyle = 'rgba(250,204,21,.35)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(R.kidL[0], R.kidL[1] + 12); ctx.lineTo(R.bladder[0] - 8, R.bladder[1] - 6); ctx.moveTo(R.kidR[0], R.kidR[1] + 12); ctx.lineTo(R.bladder[0] + 8, R.bladder[1] - 6); ctx.stroke();
+    organ(R.bladder[0], R.bladder[1], 15, 10, 'rgba(250,204,21,.22)');
+    // heart
+    ctx.save(); const beat = 1 + 0.08 * Math.max(0, Math.sin(performance.now() / 1000 * 2 * Math.PI * 1.2)) ** 6; ctx.translate(R.heart[0], R.heart[1]); ctx.scale(beat, beat);
+    ctx.fillStyle = 'rgba(239,68,68,.75)'; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 14; ctx.beginPath(); ctx.moveTo(0, 10); ctx.bezierCurveTo(-18, -2, -10, -18, 0, -8); ctx.bezierCurveTo(10, -18, 18, -2, 0, 10); ctx.fill(); ctx.restore();
+    // IV line
+    if (P.route !== 'oral') { ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(R.iv[0], R.iv[1]); ctx.quadraticCurveTo(20, 300, 18, 240); ctx.stroke(); ctx.fillStyle = 'rgba(147,197,253,.35)'; ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.fillRect(8, 205, 20, 34); ctx.strokeRect(8, 205, 20, 34); }
+    // labels
+    ctx.font = '600 10px Inter, sans-serif'; ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'center';
+    const lab = (s, x, y, al) => { ctx.textAlign = al || 'center'; ctx.fillText(s, x, y); };
+    lab('Liver', R.liver[0] - 34, R.liver[1] + 3, 'right'); lab('Stomach', 226, 200, 'left'); lab('Gut', 186, 286, 'left'); lab('Kidneys', 76, 268, 'center'); lab('Bladder', 172, 350, 'left'); lab('Blood', 196, 150, 'left'); lab('Tissue', 122, 485);
+    if (P.route !== 'oral') lab('IV', 18, 198);
+    // particles
+    for (const p of parts) {
+      let col = '#fca5a5';
+      if (p.comp === 'G' || p.comp === 'FP') col = '#fbbf24'; else if (p.comp === 'P') col = '#f472b6'; else if (p.comp === 'U' || p.comp === 'XU') col = '#fde047'; else if (p.comp === 'X') col = '#a3a3a3';
+      ctx.globalAlpha = Math.max(0, Math.min(1, p.a)); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 6;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 2.6, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1; ctx.shadowBlur = 0; ctx.restore();
+    // legend
+    ctx.font = '10px JetBrains Mono, monospace'; const L = [['#fbbf24', 'gut'], ['#fca5a5', 'blood'], ['#f472b6', 'tissue'], ['#fde047', 'urine'], ['#a3a3a3', 'metabolised']];
+    let lx = 10, ly = 16; L.forEach(([c, l]) => { const wd = ctx.measureText(l).width + 18; if (lx + wd > w - 6) { lx = 10; ly += 14; } ctx.fillStyle = c; ctx.beginPath(); ctx.arc(lx + 4, ly - 3, 3.5, 0, 7); ctx.fill(); ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'left'; ctx.fillText(l, lx + 11, ly); lx += wd; });
+  }
+
+  const loop = SL.loop(dt => {
+    if (!SIM) return;
+    if (playing && document.visibilityState === 'visible') { t += dt * P.tend / 14 * speed; if (t >= P.tend) { t = P.tend; playing = false; $('#play').innerHTML = '<i data-lucide="play"></i>'; SL.refreshIcons($('#play')); } }
+    if (!$('#pkLab').hidden) { syncParticles(); stepParticles(dt); drawBody(); drawChart(); }
+    else drawPD();
+  });
+
+  /* ---------------- Pharmacodynamics ---------------- */
+  const cvPD = $('#cvPD'), stPD = SL.canvas(cvPD);
+  const PD = { view: 'graded', axis: 'log', aEC: 0, aEm: 100, aN: 1, bOn: true, bEC: 0.5, bEm: 60, bN: 1, ant: 'none', antI: 0.5, qED: 1, qTD: 2.3, qN: 2, qD: 1.3 };
+  const pdF = { aEC: v => SL.fmt(Math.pow(10, v), 3) + ' µM', bEC: v => SL.fmt(Math.pow(10, v), 3) + ' µM', aEm: v => v + '%', bEm: v => v + '%', aN: v => v, bN: v => v, antI: v => SL.fmt(Math.pow(10, v) - 1, 2) + '', qED: v => SL.fmt(Math.pow(10, v), 3) + ' mg', qTD: v => SL.fmt(Math.pow(10, v), 3) + ' mg', qN: v => v, qD: v => SL.fmt(Math.pow(10, v), 3) + ' mg' };
+  // antI slider maps x -> [I]/Ki = 10^x - 1 (0..99)
+  Object.keys(pdF).forEach(k => SL.bind('#' + k, v => { PD[k] = v; pdStats(); }, pdF[k]));
+  $('#bOn').addEventListener('change', e => { PD.bOn = e.target.checked; $('#bCtl').style.display = PD.bOn ? '' : 'none'; pdStats(); });
+  const pdSeg = (id, key, cb) => $$(id + ' button').forEach(b => b.addEventListener('click', () => { $$(id + ' button').forEach(x => x.classList.toggle('on', x === b)); PD[key] = b.dataset.v; cb && cb(); pdStats(); }));
+  pdSeg('#pdView', 'view', () => { $('#pdGraded').hidden = PD.view !== 'graded'; $('#pdQuantal').hidden = PD.view !== 'quantal'; });
+  pdSeg('#pdAxis', 'axis'); pdSeg('#antType', 'ant');
+  const hill = (c, ec, em, n) => c <= 0 ? 0 : em * Math.pow(c, n) / (Math.pow(ec, n) + Math.pow(c, n));
+  function curves() {
+    const iKi = Math.pow(10, PD.antI) - 1;
+    const aEC = Math.pow(10, PD.aEC), bEC = Math.pow(10, PD.bEC);
+    const out = [{ name: 'A', ec: aEC, em: PD.aEm, n: PD.aN, col: '#22d3ee' }];
+    if (PD.ant !== 'none') out.push({ name: 'A + antagonist', ec: PD.ant === 'comp' ? aEC * (1 + iKi) : aEC, em: PD.ant === 'non' ? PD.aEm / (1 + iKi) : PD.aEm, n: PD.aN, col: '#f472b6', dash: [6, 4] });
+    if (PD.bOn) out.push({ name: 'B', ec: bEC, em: PD.bEm, n: PD.bN, col: '#facc15' });
+    return { list: out, iKi };
+  }
+  function pdStats() {
+    const el = $('#pdStats'); const stat = (k, v) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+    if (PD.view === 'graded') {
+      const { list, iKi } = curves(); const A = list[0], X = list.find(c => c.name !== 'A' && c.name !== 'B'), B = list.find(c => c.name === 'B');
+      let h = stat('A: EC50', SL.fmt(A.ec, 3) + '<small>µM</small>') + stat('A: Emax', A.em + '<small>%</small>');
+      if (X) h += stat('Apparent EC50', SL.fmt(X.ec, 3) + '<small>µM</small>') + stat('Apparent Emax', SL.fmt(X.em, 1) + '<small>%</small>') + stat(PD.ant === 'comp' ? 'Dose ratio' : 'Emax fraction', PD.ant === 'comp' ? SL.fmt(1 + iKi, 2) : SL.fmt(1 / (1 + iKi), 3));
+      if (B) h += stat('B: EC50', SL.fmt(B.ec, 3) + '<small>µM</small>') + stat('Potency B vs A', SL.fmt(A.ec / B.ec, 2) + '<small>×</small>') + stat('Efficacy B / A', SL.fmt(B.em / A.em, 2));
+      el.innerHTML = h;
+    } else {
+      const ED = Math.pow(10, PD.qED), TD = Math.pow(10, PD.qTD), n = PD.qN, d = Math.pow(10, PD.qD);
+      const ED99 = ED * Math.pow(99, 1 / n), TD1 = TD * Math.pow(1 / 99, 1 / n);
+      el.innerHTML = stat('TI = TD50/ED50', SL.fmt(TD / ED, 2)) + stat('TD1 / ED99', SL.fmt(TD1 / ED99, 3)) + stat('% responding', SL.fmt(hill(d, ED, 100, n), 1) + '<small>%</small>') + stat('% toxic', SL.fmt(hill(d, TD, 100, n), 1) + '<small>%</small>') + stat('ED99', SL.fmt(ED99, 3) + '<small>mg</small>') + stat('TD1', SL.fmt(TD1, 3) + '<small>mg</small>');
+    }
+    chalAuto();
+  }
+  let pdGeo = null, pdHover = null, pdDrag = null;
+  function drawPD() {
+    const { ctx, w, h } = stPD; ctx.clearRect(0, 0, w, h);
+    const pl = 52, pr = 18, pt = PD.view === 'graded' ? 74 : 92, pb = 44;
+    $('#pdStage .hud').style.display = PD.view === 'graded' ? '' : 'none';
+    const lo = PD.view === 'graded' ? -3 : -1, hi = PD.view === 'graded' ? 3 : 4;
+    const lin = PD.view === 'graded' && PD.axis === 'lin', linMax = 10;
+    const X = lin ? (c => pl + c / linMax * (w - pl - pr)) : (lc => pl + (lc - lo) / (hi - lo) * (w - pl - pr));
+    const Y = e => h - pb - e / 100 * (h - pt - pb);
+    pdGeo = { X, Y, pl, pr, pt, pb, lo, hi, lin, linMax };
+    ctx.font = '11px JetBrains Mono, monospace'; ctx.lineWidth = 1;
+    for (let e = 0; e <= 100; e += 25) { const y = Y(e); ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(w - pr, y); ctx.stroke(); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'right'; ctx.fillText(e + '%', pl - 6, y + 4); }
+    if (lin) { for (let c = 0; c <= linMax; c += 2) { const x = X(c); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'center'; ctx.fillText(c, x, h - pb + 16); } }
+    else for (let l = lo; l <= hi; l++) { const x = X(l); ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.beginPath(); ctx.moveTo(x, pt); ctx.lineTo(x, h - pb); ctx.stroke(); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'center'; ctx.fillText(l >= 0 ? String(Math.pow(10, l)) : '1e' + l, x, h - pb + 16); }
+    ctx.textAlign = 'right'; ctx.fillText(PD.view === 'graded' ? (lin ? 'concentration (µM)' : 'concentration (µM, log scale)') : 'dose (mg, log scale)', w - pr, h - 8);
+    ctx.textAlign = 'left'; ctx.fillText(PD.view === 'graded' ? 'effect (% of system maximum)' : '% of population responding', pl, pt - 12);
+    const plot = (f, col, dash, glow) => {
+      ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 2.6; ctx.setLineDash(dash || []); if (glow) { ctx.shadowColor = col; ctx.shadowBlur = 10; }
+      ctx.beginPath(); for (let i = 0; i <= 300; i++) { const u = i / 300; const xv = lin ? u * linMax : lo + u * (hi - lo); const c = lin ? xv : Math.pow(10, xv); const y = Y(f(c)); i ? ctx.lineTo(X(xv), y) : ctx.moveTo(X(xv), y); } ctx.stroke(); ctx.restore();
+    };
+    if (PD.view === 'graded') {
+      const { list } = curves();
+      list.forEach(c => {
+        plot(x => hill(x, c.ec, c.em, c.n), c.col, c.dash, !c.dash);
+        const xe = lin ? X(Math.min(c.ec, linMax)) : X(Math.log10(c.ec)), ye = Y(c.em / 2);
+        ctx.strokeStyle = c.col; ctx.globalAlpha = .4; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(xe, ye); ctx.lineTo(xe, h - pb); ctx.moveTo(pl, Y(c.em)); ctx.lineTo(w - pr, Y(c.em)); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+        if (!c.dash) {
+          ctx.fillStyle = '#fff'; ctx.strokeStyle = c.col; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(xe, ye, 7, 0, 7); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = c.col; ctx.beginPath(); ctx.arc(lin ? X(linMax) - 12 : X(hi) - 12, Y(c.em), 6, 0, 7); ctx.fill();
+        } else { ctx.fillStyle = c.col; ctx.beginPath(); ctx.arc(xe, ye, 4, 0, 7); ctx.fill(); }
+        ctx.fillStyle = c.col; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'left';
+        ctx.fillText(`${c.name}  EC50 ${SL.fmt(c.ec, 3)}`, xe + 10, ye - 8);
+      });
+      ctx.font = '10px JetBrains Mono, monospace'; ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'right'; ctx.fillText(w < 640 ? 'drag ● = EC50 · end dot = Emax' : 'drag ● to change EC50 · drag the end dot to change Emax', w - pr, w < 640 ? pt - 30 : pt - 12);
+    } else {
+      const ED = Math.pow(10, PD.qED), TD = Math.pow(10, PD.qTD), n = PD.qN, d = Math.pow(10, PD.qD);
+      const ED99 = ED * Math.pow(99, 1 / n), TD1 = TD * Math.pow(1 / 99, 1 / n);
+      // margin shading between ED99 and TD1
+      if (TD1 > ED99) { ctx.fillStyle = 'rgba(34,197,94,.1)'; ctx.fillRect(X(Math.log10(ED99)), pt, X(Math.log10(TD1)) - X(Math.log10(ED99)), h - pt - pb); }
+      else { ctx.fillStyle = 'rgba(239,68,68,.08)'; ctx.fillRect(X(Math.log10(TD1)), pt, X(Math.log10(ED99)) - X(Math.log10(TD1)), h - pt - pb); }
+      plot(x => hill(x, ED, 100, n), '#22c55e', null, true); plot(x => hill(x, TD, 100, n), '#ef4444', null, true);
+      [[ED, '#22c55e', 'ED50'], [TD, '#ef4444', 'TD50']].forEach(([v, c, l]) => { const x = X(Math.log10(v)); ctx.strokeStyle = c; ctx.globalAlpha = .5; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x, Y(50)); ctx.lineTo(x, h - pb); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, Y(50), 5, 0, 7); ctx.fill(); ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(l, x, Y(50) - 10); });
+      const xd = X(PD.qD); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(xd, pt); ctx.lineTo(xd, h - pb); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = xd > w - 150 ? 'right' : 'left'; ctx.fillText('test dose', xd + (xd > w - 150 ? -6 : 6), pt + 12);
+      ctx.fillStyle = '#93a1bd'; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText(TD1 > ED99 ? 'shaded: ED99 → TD1 safety margin' : 'shaded: overlap (TD1 < ED99)', pl, pt - 54);
+      const lg = [['#22c55e', 'therapeutic effect'], ['#ef4444', 'toxic effect']]; let lx = w - pr; ctx.textAlign = 'right'; lg.reverse().forEach(([c, l]) => { ctx.fillStyle = '#93a1bd'; ctx.fillText(l, lx, pt - 32); lx -= ctx.measureText(l).width + 8; ctx.fillStyle = c; ctx.fillRect(lx - 10, pt - 36, 10, 3); lx -= 22; });
+    }
+    if (pdHover && PD.view === 'graded') { const { x } = pdHover; ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.beginPath(); ctx.moveTo(x, pt); ctx.lineTo(x, h - pb); ctx.stroke(); }
+  }
+  const pdStage = $('#pdStage'), pdTip = $('#pdTip');
+  ['pointerdown', 'input', 'click'].forEach(ev => $('#pdLab').addEventListener(ev, () => { pdUser = true; }, true));
+  const cFromX = x => { const g = pdGeo; const u = (x - g.pl) / (stPD.w - g.pl - g.pr); return g.lin ? Math.max(1e-6, u * g.linMax) : Math.pow(10, g.lo + u * (g.hi - g.lo)); };
+  pdStage.addEventListener('pointerdown', e => {
+    if (!pdGeo || PD.view !== 'graded') return; const p = SL.ptr(e, cvPD); const { list } = curves();
+    for (const c of list) { if (c.dash) continue; const key = c.name === 'A' ? 'a' : 'b'; const xe = pdGeo.lin ? pdGeo.X(Math.min(c.ec, pdGeo.linMax)) : pdGeo.X(Math.log10(c.ec)); if (Math.hypot(p.x - xe, p.y - pdGeo.Y(c.em / 2)) < 18) { pdDrag = { key, kind: 'ec' }; break; } const xr = pdGeo.lin ? pdGeo.X(pdGeo.linMax) - 12 : pdGeo.X(pdGeo.hi) - 12; if (Math.hypot(p.x - xr, p.y - pdGeo.Y(c.em)) < 18) { pdDrag = { key, kind: 'em' }; break; } }
+    if (pdDrag) { pdStage.setPointerCapture(e.pointerId); e.preventDefault(); }
+  });
+  pdStage.addEventListener('pointermove', e => {
+    if (!pdGeo) return; const p = SL.ptr(e, cvPD);
+    if (pdDrag) {
+      if (pdDrag.kind === 'ec') setRange(pdDrag.key + 'EC', SL.clamp(Math.log10(cFromX(p.x)), -2, 2).toFixed(2));
+      else setRange(pdDrag.key + 'Em', Math.round(SL.clamp((stPD.h - pdGeo.pb - p.y) / (stPD.h - pdGeo.pt - pdGeo.pb) * 100, 5, 100)));
+    }
+    if (PD.view !== 'graded') { pdTip.style.display = 'none'; return; }
+    const c = cFromX(p.x); pdHover = { x: p.x };
+    const { list } = curves(); $('#pdHud1').innerHTML = `C <b>${SL.fmt(c, 3)}</b> µM`;
+    $('#pdHud2').innerHTML = list.map(k => `<span style="color:${k.col}">${k.name === 'A + antagonist' ? 'A+I' : k.name} ${SL.fmt(hill(c, k.ec, k.em, k.n), 1)}%</span>`).join(' · ');
+  });
+  pdStage.addEventListener('pointerup', () => { pdDrag = null; });
+  pdStage.addEventListener('pointerleave', () => { pdDrag = null; pdHover = null; });
+
+  /* ---------------- Mode switch ---------------- */
+  $$('#mode button').forEach(b => b.addEventListener('click', () => {
+    $$('#mode button').forEach(x => x.classList.toggle('on', x === b));
+    $('#pkLab').hidden = b.dataset.m !== 'pk'; $('#pdLab').hidden = b.dataset.m !== 'pd';
+  }));
+
+  /* ---------------- Challenges ---------------- */
+  const CH = [
+    { id: 'c1', title: 'Keep T1 in the window at steady state', text: 'Teaching drug T1, normal kidneys, IV bolus. Find a dose and interval so that the steady-state peak stays ≤ 12 mg/L and the trough ≥ 4 mg/L.', setup: () => loadDrug('T1', { dose: 300, tau: 8 }),
+      check: () => { if ($('#drug').value !== 'T1' && !(P.V === 35 && P.CL === 5)) return [false, 'Load T1 first (press Set up).']; if (P.route !== 'bolus') return [false, 'Use the IV bolus route.']; if (P.renal < 100 || P.hep < 100) return [false, 'Organ function must be normal for this one.']; const ok = SS.max <= P.mtc + 1e-6 && SS.min >= P.mec - 1e-6; return [ok, ok ? `In window: steady state ${SL.fmt(SS.min, 2)}–${SL.fmt(SS.max, 2)} mg/L.` : `Steady state ${SL.fmt(SS.min, 2)}–${SL.fmt(SS.max, 2)} mg/L is outside 4–12 mg/L. Hint: the swing is e^(kτ); with k = 0.143 h⁻¹ you need τ < ln 3/k = 7.7 h.`]; } },
+    { id: 'c2', title: 'Adjust T1 for severe renal impairment', text: 'Renal function drops to 15% of normal. Keep the steady state inside 4–12 mg/L (still IV bolus). Lower the dose, lengthen the interval, or both.', setup: () => loadDrug('T1', { renal: 15 }),
+      check: () => { if (P.renal > 20) return [false, 'Set renal function to Severe (15%) first.']; if (P.V !== 35 || P.CL !== 5 || P.fe !== 0.9) return [false, 'Keep T1\'s parameters.']; if (P.route !== 'bolus') return [false, 'Use IV bolus.']; const ok = SS.max <= P.mtc && SS.min >= P.mec; return [ok, ok ? `Well adjusted: ${SL.fmt(SS.min, 2)}–${SL.fmt(SS.max, 2)} mg/L with t½ ${SL.fmt(LN2 / rates(P, effCL(P)).lz, 1)} h.` : `Steady state ${SL.fmt(SS.min, 2)}–${SL.fmt(SS.max, 2)} mg/L. Keep D/τ ≈ C_target × CL.`]; } },
+    { id: 'c3', title: 'Load T3 into the window within 2 hours', text: 'T3 has a 35 h half-life and a narrow 1–2 mg/L window. Make the concentration reach the window by 2 h and stay inside it for all 7 days (doses must continue to the end of the graph).', setup: () => loadDrug('T3'),
+      check: () => { if (P.V !== 300 || P.CL !== 6) return [false, 'Load T3 first.']; if (P.renal < 100) return [false, 'Use normal renal function.']; if ((P.ndose) * P.tau < P.tend) return [false, 'Keep dosing until the end of the graph (more doses).']; let ok = true, bad = ''; SIM.T.forEach((x, i) => { const c = SIM.C[i]; if (c > P.mtc + 1e-6) { ok = false; bad = 'exceeds the MTC at ' + SL.fmt(x, 1) + ' h'; } if (x >= 2 && c < P.mec - 1e-6 && !bad) { ok = false; bad = 'is below the MEC at ' + SL.fmt(x, 1) + ' h'; } }); return [ok, ok ? 'Loading dose plus maintenance: in the window from the start.' : 'The concentration ' + bad + '. Hint: with bolus dosing, load to the steady-state peak: LD = D / (1 − e^(−kτ)).']; } },
+    { id: 'c4', title: 'Oral T2 twice a day', text: 'T2 by mouth every 12 h (τ = 12). Keep the steady state within 2–8 mg/L.', setup: () => loadDrug('T2', { dose: 700 }),
+      check: () => { if (P.V !== 50 || P.CL !== 5) return [false, 'Load T2 first.']; if (P.route !== 'oral' || P.tau !== 12) return [false, 'Route must be oral with τ = 12 h.']; const ok = SS.max <= P.mtc && SS.min >= P.mec; return [ok, ok ? `Good: ${SL.fmt(SS.min, 2)}–${SL.fmt(SS.max, 2)} mg/L.` : `Steady state ${SL.fmt(SS.min, 2)}–${SL.fmt(SS.max, 2)} mg/L.`]; } },
+    { id: 'p1', title: 'Potency versus efficacy', text: 'In Dose–response mode, make agonist B more potent than A (lower EC50) but less efficacious (lower Emax), with A unchanged at EC50 1 µM and Emax 100%.', setup: () => { $('#mode button[data-m=pd]').click(); },
+      check: () => { const A = Math.pow(10, PD.aEC), B = Math.pow(10, PD.bEC); const ok = PD.bOn && B < A && PD.bEm < PD.aEm; return [ok, ok ? `B is ${SL.fmt(A / B, 1)}× more potent with ${PD.bEm}% efficacy.` : 'B needs a lower EC50 and a lower Emax than A.']; }, auto: true },
+    { id: 'p2', title: 'A dose ratio of 10', text: 'Select a competitive antagonist and set [I]/K<sub>i</sub> so the curve shifts exactly 10-fold right (dose ratio 10 ± 0.3).', setup: () => { $('#mode button[data-m=pd]').click(); $('#antType button[data-v=comp]').click(); },
+      check: () => { const dr = Math.pow(10, PD.antI); const ok = PD.ant === 'comp' && Math.abs(dr - 10) <= 0.3; return [ok, ok ? 'Schild: DR = 1 + [I]/Ki = 10, so [I] = 9 Ki.' : 'Use a competitive antagonist; DR = 1 + [I]/Ki.']; }, auto: true },
+    { id: 'p3', title: 'A safe drug', text: 'In Quantal view, design a drug with TI ≥ 10 and a certain safety factor TD1/ED99 ≥ 1.', setup: () => { $('#mode button[data-m=pd]').click(); $('#pdView button[data-v=quantal]').click(); },
+      check: () => { const ED = Math.pow(10, PD.qED), TD = Math.pow(10, PD.qTD), n = PD.qN; const r = TD * Math.pow(1 / 99, 1 / n) / (ED * Math.pow(99, 1 / n)); const ok = TD / ED >= 10 && r >= 1; return [ok, ok ? `TI ${SL.fmt(TD / ED, 1)}, TD1/ED99 ${SL.fmt(r, 2)}.` : `TI ${SL.fmt(TD / ED, 1)}, TD1/ED99 ${SL.fmt(r, 2)}. Steeper curves help.`]; }, auto: true },
+  ];
+  const done = {}; CHREADY = true;
+  $('#chalList').innerHTML = CH.map(c => `<div class="chal" id="ch-${c.id}"><h4><span class="led"></span>${c.title}</h4><p>${c.text}</p><div class="btn-row"><button class="btn sm" data-setup="${c.id}"><i data-lucide="settings-2"></i> Set up</button><button class="btn sm primary" data-check="${c.id}"><i data-lucide="check"></i> Check</button></div><p class="small" data-msg style="margin:8px 0 0"></p></div>`).join('');
+  function runCheck(c, silent) {
+    const [ok, msg] = c.check(); const box = $('#ch-' + c.id);
+    if (!silent || ok) box.querySelector('[data-msg]').innerHTML = msg;
+    if (ok) { box.querySelector('.led').className = 'led on'; if (!done[c.id]) { done[c.id] = 1; SL.toast(`<b>Challenge complete:</b> ${c.title}`, 'ok'); } }
+    else if (!silent) { box.querySelector('.led').className = 'led warn'; SL.toast(msg, 'warn'); }
+  }
+  $('#chalList').addEventListener('click', e => {
+    const s = e.target.closest('[data-setup]'), k = e.target.closest('[data-check]');
+    if (s) { CH.find(c => c.id === s.dataset.setup).setup(); window.scrollTo({ top: $('.modebar').getBoundingClientRect().top + scrollY - 80, behavior: 'smooth' }); }
+    if (k) runCheck(CH.find(c => c.id === k.dataset.check));
+  });
+  function chalAuto() { if (!CHREADY || !pdUser) return; CH.filter(c => c.auto).forEach(c => { if (!done[c.id]) runCheck(c, true); }); }
+
+  /* ---------------- Quiz ---------------- */
+  SL.quiz('#quiz', [
+    { q: 'A drug has V<sub>d</sub> = 40 L and CL = 4 L/h. What is its half-life?', options: ['0.1 h', '6.9 h', '10 h', '160 h'], answer: 1, why: 'k = CL/V<sub>d</sub> = 0.1 h⁻¹, so t½ = 0.693/0.1 = 6.93 h.' },
+    { q: 'You double the dose but keep the interval the same. What happens to C<sub>ss,avg</sub> and to the time to reach steady state?', options: ['Both double', 'C<sub>ss,avg</sub> doubles; time to steady state is unchanged', 'C<sub>ss,avg</sub> is unchanged; steady state is reached sooner', 'Both are unchanged'], answer: 1, why: 'C<sub>ss,avg</sub> = F·D/(CL·τ) is proportional to dose. Time to steady state depends only on half-life (≈ 4–5 t½).' },
+    { q: 'Which parameter mainly determines the size of a loading dose?', options: ['Clearance', 'Volume of distribution', 'Absorption rate constant', 'Dosing interval'], answer: 1, why: 'LD = C<sub>target</sub> × V<sub>d</sub> / F. Clearance determines the maintenance dose rate.' },
+    { q: 'For IV bolus dosing with k = 0.1 h⁻¹ and τ = 12 h, what is the accumulation factor?', options: ['1.43', '2.0', '3.3', '12'], answer: 0, why: 'R = 1/(1 − e^(−1.2)) = 1/(1 − 0.301) = 1.43.' },
+    { q: 'A renally cleared drug (f<sub>e</sub> = 1) is given to a patient whose renal function is 25% of normal, at the usual dose and interval. Approximately what happens to C<sub>ss,avg</sub>?', options: ['It falls to 25%', 'It is unchanged', 'It rises about 4-fold', 'It rises about 16-fold'], answer: 2, why: 'CL falls to 25%, and C<sub>ss,avg</sub> = F·D/(CL·τ) rises 4-fold. Half-life also rises 4-fold, so it takes longer to get there.' },
+    { q: 'Compared with IV, an oral dose with F = 1 and the same size gives…', options: ['a higher peak and higher AUC', 'a lower, later peak and the same AUC', 'a lower peak and lower AUC', 'the same curve'], answer: 1, why: 'Absorption spreads the input over time, lowering and delaying the peak. AUC = F·D/CL is unchanged when F = 1.' },
+    { q: 'A competitive antagonist at [I] = 3K<sub>i</sub> is added. The agonist curve…', options: ['shifts right 3-fold, same E<sub>max</sub>', 'shifts right 4-fold, same E<sub>max</sub>', 'keeps EC<sub>50</sub> but E<sub>max</sub> falls to 25%', 'shifts left'], answer: 1, why: 'Schild: dose ratio = 1 + [I]/K<sub>i</sub> = 4. Competitive antagonism is surmountable, so E<sub>max</sub> is unchanged.' },
+    { q: 'Drug X has EC<sub>50</sub> 1 nM and E<sub>max</sub> 50%; drug Y has EC<sub>50</sub> 100 nM and E<sub>max</sub> 100%. Which statement is correct?', options: ['X is more potent and more efficacious', 'X is more potent; Y is more efficacious', 'Y is more potent; X is more efficacious', 'They are equally effective'], answer: 1, why: 'Potency is about the concentration needed (lower EC<sub>50</sub> = more potent); efficacy is the maximum effect. X is a potent partial agonist.' },
+    { q: 'In a two-compartment model after an IV bolus, the steep early fall in plasma concentration is mainly due to…', options: ['renal excretion', 'distribution into peripheral tissues', 'absorption', 'first-pass metabolism'], answer: 1, why: 'The α phase is dominated by distribution from the central to the peripheral compartment; the β phase reflects elimination.' },
+    { q: 'A drug has TD<sub>50</sub> = 400 mg and ED<sub>50</sub> = 20 mg. Its therapeutic index is…', options: ['0.05', '20', '380', '8000'], answer: 1, why: 'TI = TD<sub>50</sub>/ED<sub>50</sub> = 400/20 = 20.' },
+  ]);
+
+  vis(); recompute(); pdStats(); loop.start();
+  window.__pk = { P, simulate, steadyState, effCL, rates, get SS() { return SS; }, get SIM() { return SIM; }, loadDrug, PD };
+})();
+</script>
+</body>
+</html>
