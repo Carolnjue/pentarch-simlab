@@ -150,7 +150,7 @@
       <div class="tag">${icon(m.icon)} ${d.name}</div>
       <h1>${m.title}</h1>
       <p class="lead">${m.desc}</p>
-      <div class="meta"><span class="chip">${icon('graduation-cap')} ${m.level}</span><span class="chip">${icon('mouse-pointer-click')} Interactive</span><span class="chip">${icon('book-open')} Theory, worked examples & quiz</span><button class="chip tour-btn" id="slTourBtn" hidden>${icon('compass')} Take the guided tour</button></div>
+      <div class="meta"><span class="chip">${icon('graduation-cap')} ${m.level}</span><span class="chip">${icon('mouse-pointer-click')} Interactive</span><span class="chip">${icon('book-open')} Theory, worked examples & quiz</span><button class="chip present-btn" id="slPresentBtn" hidden aria-label="Present the lab full screen">${icon('presentation')} Present</button><button class="chip tour-btn" id="slTourBtn" hidden>${icon('compass')} Take the guided tour</button></div>
     </div></section>`;
   }
 
@@ -336,6 +336,12 @@
     const mainEl = document.querySelector('main'); if (mainEl) { if (!mainEl.id) mainEl.id = 'main'; const sk = document.createElement('a'); sk.className = 'skip-link'; sk.href = '#' + mainEl.id; sk.textContent = 'Skip to content'; document.body.prepend(sk); }
     const hero = document.getElementById('sl-hero'); if (hero && m) hero.outerHTML = pageHero(m);
     wireTourBtn();
+    const pb = document.getElementById('slPresentBtn'), labEl = document.querySelector('main .lab') || (document.querySelector('main .stage') || {}).parentElement;
+    if (pb && labEl && document.fullscreenEnabled) {
+      pb.hidden = false;
+      pb.onclick = () => document.fullscreenElement ? document.exitFullscreen() : labEl.requestFullscreen().catch(() => {});
+      document.addEventListener('fullscreenchange', () => { const on = document.fullscreenElement === labEl; pb.setAttribute('aria-pressed', on); labEl.classList.toggle('presenting', on); if (on && !labEl.querySelector('.present-exit')) { const x = document.createElement('button'); x.className = 'btn sm present-exit'; x.innerHTML = icon('minimize-2') + ' Exit (Esc)'; x.onclick = () => document.exitFullscreen(); labEl.prepend(x); refreshIcons(); } if (!on) labEl.querySelectorAll('.present-exit').forEach(e => e.remove()); setTimeout(() => window.dispatchEvent(new Event('resize')), 120); });
+    }
     const heroEl = document.querySelector('.page-hero[data-fx]'); if (heroEl) setTimeout(() => heroFx(heroEl), 30);
     const f = document.getElementById('sl-footer');
     if (f && m) f.parentNode.insertBefore(moreLabs(m), f);
