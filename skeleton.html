@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=3">
+<link rel="stylesheet" href="assets/css/simlab.css?v=5">
 <style>
   /* ---- Anatomy atlas ---- */
   .atl-stage{position:relative;background:radial-gradient(120% 90% at 50% 40%,#0c1528 0%,#050913 70%);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow);height:620px;touch-action:manipulation}
@@ -26,6 +26,15 @@
   .atl-lbl circle{fill:#fff}
   .atl-lbl text{fill:#e6ecf7;font-family:var(--font);font-weight:600;paint-order:stroke;stroke:#050913;stroke-linejoin:round;letter-spacing:.01em}
   .atl-lbl.on path{stroke:var(--accent)} .atl-lbl.on text{fill:var(--accent)} .atl-lbl.on circle{fill:var(--accent)}
+  .atl-lbl.atl-num path{stroke:rgba(230,236,247,.7)}
+  .atl-lbl.atl-num .bd{fill:#e6ecf7;stroke:#050913}
+  .atl-lbl.atl-num text{fill:#06101f;stroke:none;font-family:var(--mono);font-weight:700;letter-spacing:0}
+  .atl-lbl.atl-num.on .bd{fill:var(--accent)} .atl-lbl.atl-num.on text{fill:#06101f}
+  .atl-key{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin:10px 2px 0;font-size:.82rem}
+  .atl-key[hidden]{display:none}
+  .atl-key button{all:unset;cursor:pointer;display:flex;align-items:center;gap:7px;color:var(--muted);padding:3px 0;line-height:1.25}
+  .atl-key button b{flex:none;display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#e6ecf7;color:#06101f;font:700 .7rem var(--mono)}
+  .atl-key button.on{color:var(--text)} .atl-key button.on b{background:var(--accent)}
   .atl-hot{transition:opacity .3s}
   .atl-hs{cursor:zoom-in;animation:atlIn .5s ease both}
   .atl-hs>circle{pointer-events:visibleStroke;fill:color-mix(in srgb,var(--accent) 5%,transparent);stroke:var(--accent);stroke-dasharray:6 5;vector-effect:non-scaling-stroke;animation:atlDash 6s linear infinite}
@@ -242,7 +251,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=3"></script>
+<script src="assets/js/simlab.js?v=5"></script>
 <script>
 /* ---- Anatomy Atlas engine: zoomable, labelled, quizzable SVG explorer ---- */
 function Atlas(cfg) {
@@ -314,22 +323,59 @@ function Atlas(cfg) {
     if (q) nextQ(true);
   }
 
+  // key of numbered labels shown under the figure on narrow screens
+  const key = document.createElement('div'); key.className = 'atl-key'; key.hidden = true; root.after(key);
+  let compact = false;
   function render() {
-    const v = V[cur], fs = fsNow();
+    const v = V[cur], fs0 = fsNow();
     labelsG.innerHTML = ''; hotG.innerHTML = '';
-    (v.labels || []).forEach(([id, ax, ay, tx, ty, txt]) => {
-      const left = tx < ax, g = document.createElementNS(NS, 'g');
-      g.setAttribute('class', 'atl-lbl'); g.dataset.l = id;
-      const ex = tx + (left ? fs * .6 : -fs * .6);
-      const name = txt || (S[id] && (S[id].short || S[id].name)) || id;
-      g.innerHTML = `<path d="M${ax} ${ay} L${ex} ${ty} L${tx} ${ty}" style="stroke-width:${fs / 14}"/><circle cx="${ax}" cy="${ay}" r="${fs * .2}"/>` +
-        `<text x="${tx + (left ? -fs * .3 : fs * .3)}" y="${ty - (name.split('\n').length - 1) * fs * .55}" text-anchor="${left ? 'end' : 'start'}" style="font-size:${fs}px;stroke-width:${fs * .28}px">${name.split('\n').map((t, i) => `<tspan x="${tx + (left ? -fs * .3 : fs * .3)}" dy="${i ? '1.1em' : '.34em'}">${t}</tspan>`).join('')}</text>`;
-      labelsG.appendChild(g);
-    });
+    // label size is set in screen pixels so it stays readable at every zoom level and screen width
+    const W = svg.clientWidth || 1000, H = svg.clientHeight || 640, sc = Math.min(W / vb[2], H / vb[3]) || 1;
+    const vw = W / sc, vh = H / sc, vx = vb[0] + vb[2] / 2 - vw / 2, vy = vb[1] + vb[3] / 2 - vh / 2;
+    compact = W < 560;
+    const fs = Math.min(15, Math.max(compact ? 11 : 11.5, fs0 * sc)) / sc;
+    const lab = v.labels || [], ids = [...new Set(lab.map(l => l[0]))];
+    if (compact) { // numbered badges + key below the figure
+      const r = 9 / sc, gap = 2 / sc;
+      const pts = lab.map(([id, ax, ay, tx, ty]) => ({ id, ax, ay, x: tx + (tx < ax ? -r : r), y: ty }));
+      const clampP = p => { p.x = Math.min(vx + vw - r - gap * 2, Math.max(vx + r + gap * 2, p.x)); p.y = Math.min(vy + vh - r - gap * 2, Math.max(vy + r + 34 / sc, p.y)); }; // keep clear of the breadcrumb/tool bar
+      pts.forEach(clampP);
+      for (let it = 0; it < 60; it++) { let moved = false;
+        for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+          const a = pts[i], b = pts[j]; let dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy); const need = 2 * r + gap;
+          if (d < need) { if (d < 1e-6) { dx = 0; dy = 1; d = 1; } const k = (need - d) / 2 / d; a.x -= dx * k; a.y -= dy * k; b.x += dx * k; b.y += dy * k; clampP(a); clampP(b); moved = true; } }
+        if (!moved) break; }
+      pts.forEach(p => {
+        const n = ids.indexOf(p.id) + 1, g = document.createElementNS(NS, 'g');
+        g.setAttribute('class', 'atl-lbl atl-num'); g.dataset.l = p.id;
+        g.innerHTML = `<path d="M${p.ax} ${p.ay} L${p.x} ${p.y}"/><circle cx="${p.ax}" cy="${p.ay}" r="${2.2 / sc}"/>` +
+          `<circle class="bd" cx="${p.x}" cy="${p.y}" r="${r}" style="stroke-width:${1.5 / sc}"/><text x="${p.x}" y="${p.y}" dy=".36em" text-anchor="middle" style="font-size:${10.5 / sc}px">${n}</text>`;
+        labelsG.appendChild(g);
+      });
+      key.innerHTML = ids.filter(id => S[id]).map(id => `<button data-pick="${id}"${id === selected ? ' class="on"' : ''}><b>${ids.indexOf(id) + 1}</b>${S[id].short || S[id].name}</button>`).join('');
+    } else {
+      lab.forEach(([id, ax, ay, tx0, ty0, txt]) => {
+        const left = tx0 < ax, g = document.createElementNS(NS, 'g');
+        g.setAttribute('class', 'atl-lbl'); g.dataset.l = id;
+        const name = txt || (S[id] && (S[id].short || S[id].name)) || id, lines = name.split('\n');
+        const build = (tx, ty) => { const ex = tx + (left ? fs * .6 : -fs * .6), x = tx + (left ? -fs * .3 : fs * .3);
+          g.innerHTML = `<path d="M${ax} ${ay} L${ex} ${ty} L${tx} ${ty}" style="stroke-width:${fs / 14}"/><circle cx="${ax}" cy="${ay}" r="${fs * .2}"/>` +
+            `<text x="${x}" y="${ty - (lines.length - 1) * fs * .55}" text-anchor="${left ? 'end' : 'start'}" style="font-size:${fs}px;stroke-width:${fs * .28}px">${lines.map((t, i) => `<tspan x="${x}" dy="${i ? '1.1em' : '.34em'}">${t}</tspan>`).join('')}</text>`; };
+        build(tx0, ty0); labelsG.appendChild(g);
+        // keep the label text inside the visible part of the figure
+        let bb = null; try { bb = g.querySelector('text').getBBox(); } catch (e) {}
+        if (bb && bb.width) { const m = fs * .35; let dx = 0, dy = 0;
+          if (bb.x < vx + m) dx = vx + m - bb.x; else if (bb.x + bb.width > vx + vw - m) dx = vx + vw - m - bb.x - bb.width;
+          if (bb.y < vy + m) dy = vy + m - bb.y; else if (bb.y + bb.height > vy + vh - m) dy = vy + vh - m - bb.y - bb.height;
+          if (dx || dy) build(tx0 + dx, ty0 + dy); }
+      });
+      key.innerHTML = '';
+    }
+    key.hidden = !compact || !showLabels || !!q || !ids.length;
     (v.hot || []).forEach(([to, x, y, r, txt]) => {
       const g = document.createElementNS(NS, 'g'); g.setAttribute('class', 'atl-hs'); g.dataset.go = to;
       g.innerHTML = `<circle cx="${x}" cy="${y}" r="${r}" style="stroke-width:${fs / 9}"/><g transform="translate(${x + r * .72} ${y - r * .72}) scale(${fs / 14})"><circle r="10"/><path d="M-4 0h8M0 -4v8"/></g>` +
-        `<text x="${x}" y="${y + r + fs * 1.1}" text-anchor="middle" style="font-size:${fs * .85}px;stroke-width:${fs * .25}px">${txt || 'Zoom: ' + V[to].title}</text>`;
+        `<text x="${x}" y="${y + r + fs * 1.1}" text-anchor="middle" style="font-size:${fs * (compact ? 1 : .85)}px;stroke-width:${fs * .25}px">${txt || 'Zoom: ' + V[to].title}</text>`;
       hotG.appendChild(g);
     });
     labelsG.style.opacity = showLabels && !q ? 1 : 0; hotG.style.opacity = q ? 0 : 1;
@@ -349,6 +395,7 @@ function Atlas(cfg) {
     selected = id; svg.classList.toggle('atl-focus', focus && !!id);
     if (id) els(id).forEach(e => e.classList.add('sel'));
     if (chipsEl) chipsEl.querySelectorAll('.atl-chip').forEach(c => c.classList.toggle('on', c.dataset.pick === id));
+    key.querySelectorAll('button').forEach(c => c.classList.toggle('on', c.dataset.pick === id));
     if (panel && id && S[id]) {
       const s = S[id];
       panel.innerHTML = `<div class="atl-info"><div class="atl-sys" style="--c:${s.col || 'var(--accent)'}">${s.sys || 'Structure'}</div><h4>${s.name}</h4>${s.alt ? `<div class="atl-alt">${s.alt}</div>` : ''}
@@ -392,7 +439,7 @@ function Atlas(cfg) {
     if (!q && id && S[id] && S[id].zoom && S[id].zoom !== cur) go(S[id].zoom);
   });
   root.addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b && !b.closest('svg')) go(b.dataset.go); });
-  [panel, chipsEl, viewsEl].forEach(el => el && el.addEventListener('click', e => {
+  [panel, chipsEl, viewsEl, key].forEach(el => el && el.addEventListener('click', e => {
     const p = e.target.closest('[data-pick]'); if (p) { if (q) answer(p.dataset.pick); else select(p.dataset.pick); }
     const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go);
   }));
@@ -431,7 +478,7 @@ function Atlas(cfg) {
   return {
     go, select, startQuiz, stopQuiz, render,
     get view() { return cur; }, get selected() { return selected; }, get quizzing() { return !!q; },
-    labels(on) { showLabels = on; labelsG.style.opacity = on && !q ? 1 : 0; labelsG.style.pointerEvents = on ? '' : 'none'; },
+    labels(on) { showLabels = on; labelsG.style.opacity = on && !q ? 1 : 0; labelsG.style.pointerEvents = on ? '' : 'none'; key.hidden = !compact || !on || !!q || !key.innerHTML; },
     focus(on) { focus = on; svg.classList.toggle('atl-focus', on && !!selected); },
     on(n, f) { (listeners[n] = listeners[n] || []).push(f); },
   };
@@ -681,8 +728,8 @@ function Atlas(cfg) {
     hand: { title: 'Hand', parent: 'whole', vb: [622, 820, 150, 200], fs: 4.4,
       labels: [['scaphoid', 706, 858, 730, 850, 'Scaphoid'], ['lunate', 689, 856, 730, 838, 'Lunate'], ['triquetrum', 676, 860, 650, 846, 'Triquetrum'], ['pisiform', 667, 866, 640, 862, 'Pisiform'], ['trapezium', 714, 876, 738, 872, 'Trapezium'],
         ['trapezoid', 699, 879, 738, 884, 'Trapezoid'], ['capitate', 686, 880, 650, 884, 'Capitate'], ['hamate', 672, 880, 640, 876, 'Hamate'], ['metacarpals', 694, 920, 640, 920, 'Metacarpals'], ['phal_h', 700, 985, 640, 985, 'Phalanges'], ['radius', 694, 826, 730, 822], ['ulna', 662, 834, 640, 830]] },
-    pelvis: { title: 'Pelvis & hip', parent: 'whole', vb: [370, 600, 300, 280], fs: 8.5,
-      labels: [['hip', 560, 660, 610, 620, 'Ilium (hip bone)'], ['sacrum', 450, 720, 390, 640], ['femur', 600, 820, 630, 860, 'Femur (head & neck)'], ['coccyx', 450, 812, 390, 840], ['lumbar', 450, 650, 390, 610, 'Lumbar vertebrae']] },
+    pelvis: { title: 'Pelvis & hip', parent: 'whole', vb: [300, 596, 320, 290], fs: 8.5,
+      labels: [['hip', 560, 660, 610, 620, 'Ilium (hip bone)'], ['sacrum', 450, 720, 390, 660], ['femur', 600, 820, 630, 860, 'Femur (head & neck)'], ['coccyx', 450, 812, 390, 840], ['lumbar', 450, 650, 390, 626, 'Lumbar vertebrae']] },
     knee: { title: 'Knee', parent: 'whole', vb: [470, 1040, 160, 160], fs: 5,
       labels: [['femur', 560, 1070, 600, 1060], ['patella', 556, 1098, 610, 1096], ['tibia', 548, 1160, 600, 1180], ['fibula', 596, 1160, 612, 1150]] },
     foot: { title: 'Foot', parent: 'whole', vb: [490, 1400, 150, 125], fs: 4.2,
