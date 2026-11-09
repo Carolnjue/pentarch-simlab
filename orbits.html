@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=3">
+<link rel="stylesheet" href="assets/css/simlab.css?v=5">
 <style>
   .stage.orb{height:620px;touch-action:none}
   @media (max-width:640px){.stage.orb{height:470px;min-height:0}.stage .readout{font-size:.68rem;padding:4px 7px}}
@@ -261,8 +261,31 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=3"></script>
+<script src="assets/js/simlab.js?v=5"></script>
 <script>
+  /* Round-number axis ticks for SL.chart on this page: the y range is widened to tidy values and
+     the x-axis title is moved below the tick labels so they never collide. */
+  (() => {
+    const base = SL.chart; if (!base || base.__nice) return;
+    const nice = (a, b, n) => {
+      if (!isFinite(a) || !isFinite(b) || b <= a) return [a, b];
+      const raw = (b - a) / n, p = Math.pow(10, Math.floor(Math.log10(raw)));
+      for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 15, 20]) { const s = m * p, lo = Math.floor(a / s + 1e-9) * s; if (lo + n * s >= b - 1e-9 * s) return [lo + 0, lo + n * s]; }
+      return [a, b];
+    };
+    const ext = (series, k) => { let lo = Infinity, hi = -Infinity; series.forEach(s => s.data.forEach(p => { const v = p[k]; if (isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } })); return [lo, hi]; };
+    SL.chart = function (st, series, o) {
+      o = Object.assign({}, o || {});
+      const [ylo, yhi] = ext(series, 1);
+      let y0 = o.ymin ?? ylo, y1 = o.ymax ?? yhi; if (y0 === y1) { y0 -= 1; y1 += 1; }
+      [o.ymin, o.ymax] = nice(y0, y1, 4);
+      if (o.niceX && o.xmin != null && o.xmin === -o.xmax && o.xmax > 0) { const a = nice(0, o.xmax, 2.5); o.xmin = -a[1]; o.xmax = a[1]; }
+      else if (o.niceX || o.xmin == null || o.xmax == null) { const [xlo, xhi] = ext(series, 0); [o.xmin, o.xmax] = nice(o.xmin ?? xlo, o.xmax ?? xhi, 5); }
+      if (o.xlabel) { const pad = (o.pad || [28, 14, 30, 46]).slice(); pad[2] = Math.max(pad[2], 40); o.pad = pad; }
+      return base.call(this, st, series, o);
+    };
+    SL.chart.__nice = true;
+  })();
 (() => {
   const $ = s => document.querySelector(s);
   const MU = 3.986004418e14, RE = 6.371e6, G0 = 9.80665, OMEGA = 7.2921159e-5;
@@ -465,14 +488,23 @@
       else { const f = SL.clamp((h - 30e3) / 40e3, 0, 1), ps = pitchOf(vrel), pi = pitchOf(R.v); R.pitch = (1 - f) * ps + f * pi; }
       R.pitch = SL.clamp(R.pitch, 0, SL.rad(95));
       R.thr = 1;
-      if ((el.ra - RE >= RK.talt && h > 40e3) || R.stage === 1 || h > 90e3) { R.phase = 'insert'; note(R.stage === 1 ? 'Stage 2 closed-loop guidance: steering towards the target altitude while building horizontal speed.' : 'Apoapsis at target: pitching over to build orbital speed while holding altitude.'); }
+      if ((el.ra - RE >= RK.talt && h > 40e3) || R.stage === 1 || h > 90e3) { R.phase = 'insert'; note('Gravity turn complete: thrusting prograde to raise the apoapsis to the target altitude.'); }
     } else if (R.phase === 'insert') {
-      // closed-loop insertion: command a vertical speed that steers towards the target altitude, put the rest of the thrust horizontal
+      // raise the apoapsis to the target with prograde thrust, then coast up to it
+      R.pitch = SL.clamp(pitchOf(R.v), 0, SL.rad(100)); R.thr = 1;
+      if (el.ra - RE >= RK.talt) { R.thr = 0; R.phase = 'coast'; note(`Apoapsis at ${SL.fmt(RK.talt / 1000, 0)} km: engine off, coasting up to apoapsis.`); }
+    } else if (R.phase === 'coast') {
+      R.thr = 0; R.pitch = SL.clamp(pitchOf(R.v), 0, SL.rad(100));
+      const aT = STAGES[R.stage].F / mass(), vApo = Math.abs(el.h) / el.ra, dv = Math.sqrt(MU / el.ra) - vApo;
+      const tApo = vr / Math.max(1e-3, g - vh * vh / el.r);
+      if (vr <= 0 || tApo <= 0.5 * dv / aT) { R.phase = 'circ'; note('Circularisation burn at apoapsis.'); }
+    } else if (R.phase === 'circ') {
+      // closed-loop circularisation: hold altitude while building horizontal speed
       const aT = STAGES[R.stage].F / mass();
-      const dh = RK.talt - h, tgo = Math.max(0, Math.sqrt(MU / el.r) - vh) / aT, vrDes = SL.clamp(dh / 60, -250, 250) * SL.clamp(tgo / 60, 0, 1), avCmd = 0.3 * (vrDes - vr);
+      const dh = RK.talt + RE - el.r, gE = Math.max(0.3, g - vh * vh / el.r), vrDes = Math.sign(dh) * Math.sqrt(2 * gE * Math.abs(dh)), avCmd = 0.5 * (vrDes - vr);
       const c = SL.clamp((avCmd + g - vh * vh / el.r) / aT, -0.25, 1);
       R.pitch = Math.acos(c); R.thr = 1;
-      if ((el.rp - RE > 150e3 && el.rp - RE >= Math.min(RK.talt, h) - 25e3) || el.e < 0.002) { R.thr = 0; R.phase = 'done'; note('Engine shutdown: orbit insertion complete.'); }
+      if (el.e < 0.0015 || el.a - RE >= RK.talt - 1e3) { R.thr = 0; R.phase = 'done'; note('Engine shutdown: orbit insertion complete.'); }
     } else if (R.phase === 'done') { R.thr = 0; R.pitch = pitchOf(R.v); }
   }
   function note(s) { $('#rStatus').textContent = s; R.events.push([R.t, s]); }
@@ -506,7 +538,7 @@
       R.q = f0.q; R.acc = f0.F / f0.m / G0; if (R.q > R.maxQ) R.maxQ = R.q;
       // staging
       if (R.stage === 0 && R.prop[0] <= 0 && R.sepT === null) { R.sepT = R.t; R.debris.push({ r: R.r.slice(), v: R.v.slice(), dead: false, t: 0 }); R.stage = 1; note('Stage 1 burnout and separation. Stage 2 ignition.'); }
-      if (R.stage === 1 && R.prop[1] <= 0 && !R.outNoted) { R.outNoted = true; note('Stage 2 propellant exhausted.'); }
+      if (R.stage === 1 && R.prop[1] <= 0 && !R.outNoted) { R.outNoted = true; if (RK.auto) R.phase = 'done'; note('Stage 2 propellant exhausted.'); }
       if (R.q > 75e3 && !R.ended) { R.ended = true; R.fail = true; const up = (R.r[0] * R.v[0] + R.r[1] * R.v[1]) > 0; note(up ? 'Vehicle broke up: dynamic pressure exceeded 75 kPa. Use a gentler pitch-over.' : 'The vehicle fell back into the atmosphere and broke up: not enough speed for orbit.'); SL.toast(up ? 'Structural failure at ' + SL.fmt(R.q / 1000, 0) + ' kPa. Try a smaller pitch-over angle.' : 'Suborbital: the rocket fell back and broke up on re-entry. Try a smaller payload or a different pitch-over.', 'bad', 5000); }
       if (alt(R.r) < 0 && R.t > 2) { R.ended = true; R.fail = true; note('Impact. The rocket did not reach orbit.'); SL.toast('The rocket came down. Try a smaller payload or a different pitch-over angle.', 'bad', 5000); }
       R.debris.forEach(d => stepDebris(dt, d));
@@ -515,7 +547,7 @@
     if (!R.lastLog || R.t - R.lastLog > 2) { R.lastLog = R.t; R.log.push([R.t, alt(R.r) / 1000, Math.hypot(R.v[0], R.v[1]) / 1000]); }
     // success
     const el = elements(R.r, R.v, MU);
-    if (!R.ended && R.thr === 0 && el.rp - RE > 140e3 && el.e < 1) {
+    if (!R.ended && R.thr === 0 && (!RK.auto || R.phase === 'done') && el.rp - RE > 140e3 && el.e < 1) {
       R.ended = true; R.success = true;
       note(`Orbit achieved: ${SL.fmt((el.rp - RE) / 1000, 0)} × ${SL.fmt((el.ra - RE) / 1000, 0)} km with ${RK.payload} kg payload.`);
       SL.toast(`<b>Orbit!</b> ${SL.fmt((el.rp - RE) / 1000, 0)} × ${SL.fmt((el.ra - RE) / 1000, 0)} km, ${SL.fmt(R.prop[1], 0)} kg propellant left, max-Q ${SL.fmt(R.maxQ / 1000, 1)} kPa.`, 'ok', 6000);

@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=3">
+<link rel="stylesheet" href="assets/css/simlab.css?v=5">
 <style>
   .stage.osc{height:440px;touch-action:none}
   @media (max-width:640px){.stage.osc{height:380px;min-height:0}.stage .readout{font-size:.7rem;padding:4px 7px}}
@@ -258,8 +258,31 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=3"></script>
+<script src="assets/js/simlab.js?v=5"></script>
 <script>
+  /* Round-number axis ticks for SL.chart on this page: the y range is widened to tidy values and
+     the x-axis title is moved below the tick labels so they never collide. */
+  (() => {
+    const base = SL.chart; if (!base || base.__nice) return;
+    const nice = (a, b, n) => {
+      if (!isFinite(a) || !isFinite(b) || b <= a) return [a, b];
+      const raw = (b - a) / n, p = Math.pow(10, Math.floor(Math.log10(raw)));
+      for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 15, 20]) { const s = m * p, lo = Math.floor(a / s + 1e-9) * s; if (lo + n * s >= b - 1e-9 * s) return [lo + 0, lo + n * s]; }
+      return [a, b];
+    };
+    const ext = (series, k) => { let lo = Infinity, hi = -Infinity; series.forEach(s => s.data.forEach(p => { const v = p[k]; if (isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } })); return [lo, hi]; };
+    SL.chart = function (st, series, o) {
+      o = Object.assign({}, o || {});
+      const [ylo, yhi] = ext(series, 1);
+      let y0 = o.ymin ?? ylo, y1 = o.ymax ?? yhi; if (y0 === y1) { y0 -= 1; y1 += 1; }
+      [o.ymin, o.ymax] = nice(y0, y1, 4);
+      if (o.niceX && o.xmin != null && o.xmin === -o.xmax && o.xmax > 0) { const a = nice(0, o.xmax, 2.5); o.xmin = -a[1]; o.xmax = a[1]; }
+      else if (o.niceX || o.xmin == null || o.xmax == null) { const [xlo, xhi] = ext(series, 0); [o.xmin, o.xmax] = nice(o.xmin ?? xlo, o.xmax ?? xhi, 5); }
+      if (o.xlabel) { const pad = (o.pad || [28, 14, 30, 46]).slice(); pad[2] = Math.max(pad[2], 40); o.pad = pad; }
+      return base.call(this, st, series, o);
+    };
+    SL.chart.__nice = true;
+  })();
 (() => {
   const $ = s => document.querySelector(s);
   const C = { a: '#22d3ee', b: '#f472b6', c: '#facc15', d: '#a78bfa', ke: '#22d3ee', pe: '#a78bfa', E: '#e6ecf7', ok: '#22c55e' };
@@ -571,7 +594,7 @@
       const d = hh.map(q => [q.px, q.py]);
       const mx = mode === 'double' ? 180 : sym(d.map(p => p[0])), my = sym(d.map(p => p[1]));
       const segs = [[]]; d.forEach((p, i) => { if (i && mode === 'double' && Math.abs(p[0] - d[i - 1][0]) > 180) segs.push([]); segs[segs.length - 1].push(p); });
-      const r = SL.chart(p3, segs.filter(q => q.length > 1).map(q => ({ data: q, color: mode === 'coupled' ? C.c : C.a, width: 1.6 })), { xmin: -mx, xmax: mx, ymin: -my, ymax: my, pad: [14, 10, 24, 54], xlabel: mode === 'coupled' ? 'x₁ →' : mode === 'double' ? 'θ₂ (°) →' : mode === 'pendulum' ? 'θ (°) →' : 'x (m) →' });
+      const r = SL.chart(p3, segs.filter(q => q.length > 1).map(q => ({ data: q, color: mode === 'coupled' ? C.c : C.a, width: 1.6 })), { xmin: -mx, xmax: mx, ymin: -my, ymax: my, pad: [14, 10, 24, 54], xlabel: mode === 'coupled' ? 'x₁ →' : mode === 'double' ? 'θ₂ (°) →' : mode === 'pendulum' ? 'θ (°) →' : 'x (m) →' , niceX: true });
       const l = d[d.length - 1]; p3.ctx.fillStyle = '#fff'; p3.ctx.beginPath(); p3.ctx.arc(r.X(l[0]), r.Y(l[1]), 3.5, 0, 7); p3.ctx.fill();
       if (mode === 'coupled') { p3.ctx.setLineDash([3, 4]); p3.ctx.strokeStyle = 'rgba(255,255,255,.25)'; p3.ctx.beginPath(); p3.ctx.moveTo(r.X(-mx), r.Y(-mx)); p3.ctx.lineTo(r.X(mx), r.Y(mx)); p3.ctx.moveTo(r.X(-mx), r.Y(mx)); p3.ctx.lineTo(r.X(mx), r.Y(-mx)); p3.ctx.stroke(); p3.ctx.setLineDash([]); }
     }
@@ -589,7 +612,7 @@
       const W = w0(), F0 = mode === 'driven' ? P.F0 : 1, wmax = Math.max(W * 2.2, mode === 'driven' ? P.wd * 1.1 : 0);
       const d = []; for (let i = 0; i <= 300; i++) { const w = wmax * i / 300; d.push([w, respAmp(w, F0)]); }
       let ym = 0; d.forEach(p => ym = Math.max(ym, p[1])); sweepPts.forEach(p => ym = Math.max(ym, p[1])); ym = Math.min(ym * 1.15, F0 / P.k * 60) || 1;
-      const r = SL.chart(p5, [{ data: d, color: C.a, label: 'theory A(ω)' }], { xmin: 0, xmax: wmax, ymin: 0, ymax: ym, pad: [26, 12, 26, 52], xlabel: 'ω_d (rad/s)' });
+      const r = SL.chart(p5, [{ data: d, color: C.a, label: mode === 'driven' ? 'theory A(ω)' : 'theory A(ω), F₀ = 1 N' }], { xmin: 0, xmax: wmax, ymin: 0, ymax: ym, pad: [26, 12, 26, 52], xlabel: 'ω_d (rad/s)', niceX: true });
       ctx.setLineDash([3, 4]); ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.beginPath(); ctx.moveTo(r.X(W), r.Y(0)); ctx.lineTo(r.X(W), r.Y(ym)); ctx.stroke(); ctx.setLineDash([]);
       txt(ctx, 'ω₀', r.X(W) + 4, r.Y(ym) + 12, 'rgba(230,236,247,.6)');
       sweepPts.forEach(p => { ctx.fillStyle = C.c; ctx.beginPath(); ctx.arc(r.X(p[0]), r.Y(Math.min(p[1], ym)), 3.5, 0, 7); ctx.fill(); });
@@ -597,8 +620,8 @@
         const x = r.X(P.wd); ctx.strokeStyle = 'rgba(244,114,182,.7)'; ctx.beginPath(); ctx.moveTo(x, r.Y(0)); ctx.lineTo(x, r.Y(ym)); ctx.stroke();
         ctx.fillStyle = C.b; ctx.beginPath(); ctx.arc(x, r.Y(Math.min(respAmp(P.wd, F0), ym)), 5, 0, 7); ctx.fill();
         if (amp.n > 0) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, r.Y(Math.min(amp.val, ym)), 6, 0, 7); ctx.stroke(); }
-        if (p5.w > 520) txt(ctx, '● theory  ○ measured  ● sweep', p5.w - 14, 14, 'rgba(230,236,247,.55)', 'right');
-      } else if (p5.w > 420) txt(ctx, 'if driven with F₀ = 1 N', p5.w - 14, 14, 'rgba(230,236,247,.55)', 'right');
+        if (p5.w > 520) txt(ctx, '● theory  ○ measured  ● sweep', p5.w - 14, 44, 'rgba(230,236,247,.55)', 'right');
+      }
     } else if (mode === 'pendulum') {
       const d = [], d2 = [], d3 = []; for (let a = 0; a <= 170; a += 1) { const r = SL.rad(a); d.push([a, 1 / agm(1, Math.cos(r / 2))]); d2.push([a, 1]); d3.push([a, 1 + r * r / 16 + 11 * r ** 4 / 3072]); }
       const r = SL.chart(p5, [{ data: d, color: C.a, label: 'exact T/T₀' }, { data: d3, color: C.d, label: 'series (2 terms)', dash: [5, 4] }, { data: d2, color: C.c, label: 'small-angle', dash: [3, 4] }], { xmin: 0, xmax: 170, ymin: 0.9, ymax: 2.6, pad: [26, 12, 26, 52], xlabel: 'amplitude θ₀ (°)' });
@@ -612,7 +635,7 @@
       const d = []; for (let i = 1; i <= 400; i++) { const w = wmax * i / 400; const Dr = k + kc - m * w * w, Di = b * w; // X1 = D/(D^2 - kc^2)
         const nr = Dr * Dr - Di * Di - kc * kc, ni = 2 * Dr * Di; const mag = Math.hypot(Dr, Di) / Math.hypot(nr, ni); d.push([w, mag]); }
       let ym = 0; d.forEach(p => ym = Math.max(ym, p[1]));
-      const r = SL.chart(p5, [{ data: d, color: C.a, label: '|x₁| per newton on mass 1' }], { xmin: 0, xmax: wmax, ymin: 0, ymax: ym * 1.1, pad: [26, 12, 26, 52], xlabel: 'ω (rad/s)' });
+      const r = SL.chart(p5, [{ data: d, color: C.a, label: '|x₁| per newton on mass 1' }], { xmin: 0, xmax: wmax, ymin: 0, ymax: ym * 1.1, pad: [26, 12, 26, 52], xlabel: 'ω (rad/s)', niceX: true });
       [[w1, 'ω₁'], [w2, 'ω₂']].forEach(([w, l]) => { ctx.setLineDash([3, 4]); ctx.strokeStyle = 'rgba(250,204,21,.6)'; ctx.beginPath(); ctx.moveTo(r.X(w), r.Y(0)); ctx.lineTo(r.X(w), r.Y(ym * 1.1)); ctx.stroke(); ctx.setLineDash([]); txt(ctx, l, r.X(w) + 3, r.Y(ym * 1.1) + 12, C.c); });
       if (P.cb < 0.15 && p5.w > 520) txt(ctx, 'drawn with b = 0.15 so the peaks are finite', p5.w - 14, p5.h - 34, 'rgba(230,236,247,.45)', 'right');
     }
