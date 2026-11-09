@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   .stage.desk{height:700px;display:flex;flex-direction:column;background:linear-gradient(180deg,#081022,#050913)}
   .topbar{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--line);background:rgba(15,23,41,.85);flex-wrap:wrap}
@@ -69,6 +69,9 @@
   .ticker .lbl{position:absolute;left:0;top:0;bottom:0;z-index:1;background:var(--accent);color:#06101f;font-weight:700;padding:7px 10px;letter-spacing:.1em}
   .ticker .run{display:inline-block;padding-left:100%;animation:tick 60s linear infinite}
   @keyframes tick{to{transform:translateX(-100%)}}
+  .ovl.peek{display:none}
+  .peek-back{display:none;position:absolute;left:50%;bottom:44px;transform:translateX(-50%);z-index:6;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,.6)}
+  .stage.peeking .peek-back{display:inline-flex}
   .ovl{position:absolute;inset:0;z-index:5;background:rgba(5,9,19,.95);overflow:auto;padding:26px;backdrop-filter:blur(4px)}
   .ovl.hide{display:none}
   .ovl .role{max-width:720px;margin:0 auto}
@@ -140,6 +143,7 @@
       <div class="ticker"><span class="lbl">WIRE</span><span class="run" id="ticker">Awaiting first wires of the shift…</span></div>
 
       <div class="ovl" id="ovl"></div>
+      <button class="btn primary peek-back" id="peekBack"><i data-lucide="arrow-left"></i> Back to the briefing</button>
     </div>
 
     <aside>
@@ -347,7 +351,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
   const $ = s => document.querySelector(s);
@@ -1072,7 +1076,7 @@
         <li><b>Build</b> the running order on the right: strongest story first, total 5:00 ±20 s.</li>
       </ul>
       <p class="small muted">Pressure: <b>${DIFF[diff].n}</b> (${DIFF[diff].spm} real seconds per newsroom minute, about ${Math.round(DIFF[diff].spm * 30 / 60)} minutes in total). Go to air early with the flag button if you are ready.</p>
-      <button class="btn primary" id="ovlGo"><i data-lucide="play"></i> Start the shift</button></div>`;
+      <div class="btn-row"><button class="btn primary" id="ovlGo"><i data-lucide="play"></i> Start the shift</button><button class="btn" id="ovlPeek"><i data-lucide="eye"></i> Look at the desk first</button><button class="btn ghost" id="ovlSwitch"><i data-lucide="shuffle"></i> Switch to Track B: crisis comms</button></div></div>`;
     else ovl.innerHTML = `<div class="role"><span class="badge"><i data-lucide="siren"></i> Role briefing · Track B</span>
       <h2 style="margin-top:12px">You are Head of Communications, Maziwa Bora Dairies</h2>
       <p class="muted">A mother in Nakuru has just posted a video claiming there is plastic in your UHT milk and that her son is ill. It is spreading fast. Nobody yet knows what happened. Over the next six hours of story time, facts will emerge, journalists will call, retailers and the regulator will act, with or without you.</p>
@@ -1083,9 +1087,11 @@
         <li>Watch the <b>sentiment meter</b>, your <b>credibility</b> and the <b>stakeholder map</b>. Your choices change what happens next.</li>
       </ul>
       <p class="small muted">Pressure: <b>${DIFF[diff].n}</b>. One story hour lasts about ${Math.round(60 / DB[diff].spm)} real seconds.</p>
-      <button class="btn primary" id="ovlGo"><i data-lucide="play"></i> Start the scenario</button></div>`;
+      <div class="btn-row"><button class="btn primary" id="ovlGo"><i data-lucide="play"></i> Start the scenario</button><button class="btn" id="ovlPeek"><i data-lucide="eye"></i> Look at the desk first</button><button class="btn ghost" id="ovlSwitch"><i data-lucide="shuffle"></i> Switch to Track A: news editor</button></div></div>`;
     SL.refreshIcons(ovl);
     $('#ovlGo').onclick = start;
+    $('#ovlSwitch').onclick = () => setTrack(track === 'A' ? 'B' : 'A');
+    $('#ovlPeek').onclick = () => { peekDesk(true); $('#stage').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
   }
   function debrief(r, kind) {
     ovl.classList.remove('hide');
@@ -1174,6 +1180,25 @@
   setTrack('A');
   loop.start();
   window.__nr = { get A() { return A; }, get B() { return B; }, scoreA, scoreB, checkCopy, ITEMS, endA, endB, stepB, setTrack, start };
+  // look at the desk before starting (also used by the guided tour): the briefing slides away, a button brings it back
+  function peekDesk(on) { if (running || ended) on = false; ovl.classList.toggle('peek', on); $('#stage').classList.toggle('peeking', on); }
+  $('#peekBack').onclick = () => peekDesk(false);
+  const startTour = () => {
+    SL.tour([
+      { el: '#trackSeg', title: 'Choose your role', text: 'Track A puts you in the news editor’s chair for a live bulletin. Track B makes you head of communications in a food-safety crisis.', before: () => peekDesk(false) },
+      { el: '#ovl', title: 'Read the briefing', text: 'Each track opens with a role briefing: what you are responsible for and how you are scored. Start when ready, or look at the desk first.', before: () => peekDesk(false) },
+      { el: '#diffSeg', title: 'Set the pressure', text: 'Trainee gives more real time per newsroom minute; Breaking is fast and unforgiving.', before: () => peekDesk(false) },
+      { el: '#colL', title: 'The inbox', text: 'Wires, tips, press releases and viral posts arrive here. Tap one to open it on the copy desk. Some are false, and one could get the station sued.', before: () => peekDesk(true) },
+      { el: '#colR', title: 'The copy desk', text: 'Verify the item (each check costs time), tag its news values, decide to run, hold or spike, then edit the headline and lede while the copy checker flags problems.', before: () => peekDesk(true) },
+      { el: '#sideA:not([hidden]), #sideB:not([hidden])', title: 'Running order or stakeholder map', text: 'Track A: build the bulletin here, strongest story first, total 5:00 ±20 s. Track B: the stakeholder map shows how each group feels about your handling.', before: () => peekDesk(true) },
+      { el: '#stats', title: 'Live results', text: 'Time to air, items verified, stories in the bulletin and its length update as you work.', before: () => peekDesk(true) },
+      { el: '.tabs .tablist button:nth-child(7)', title: 'Challenges', text: 'Open Challenges for graded goals in both tracks. The debrief at the end grades every decision you made.', before: () => peekDesk(false) },
+    ]);
+    new MutationObserver(() => { if (!document.querySelector('.sl-tour') && ovl.classList.contains('peek') && !userPeek) peekDesk(false); }).observe(document.body, { childList: true });
+  };
+  let userPeek = false;
+  document.addEventListener('click', e => { if (e.target.closest('#ovlPeek')) userPeek = true; if (e.target.closest('#peekBack')) userPeek = false; });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
 })();
 </script>
 </body>

@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   :root{--gl:#1a2232;--g2:#0b0f18;--live:#ff2a2a}
   .studio{background:linear-gradient(180deg,#0a0d15,#06080c);border:1px solid var(--gl);border-radius:16px;padding:12px;margin:20px 0 10px;box-shadow:0 24px 60px -30px #000;position:relative}
@@ -158,6 +158,10 @@
   /* setup overlay */
   .setup{position:absolute;inset:0;z-index:20;background:radial-gradient(900px 500px at 50% 0,rgba(244,114,182,.12),transparent 70%),rgba(4,6,10,.9);backdrop-filter:blur(3px);overflow:auto;padding:22px;border-radius:16px}
   .setup h2{font-size:1.4rem;margin:0 0 4px}
+  .setup.peek{display:none}
+  .peek-back{display:none;position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:60;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,.6)}
+  .studio.peeking .peek-back{display:inline-flex}
+  @media (pointer:coarse){#monMute,#pauseBtn,#endBtn{min-height:38px;min-width:40px;justify-content:center}.sbtn{padding-top:7px!important;padding-bottom:7px!important}#libSel{padding-top:8px;padding-bottom:8px}}
   .setup .sub{color:#93a1bd;font-size:.88rem;margin:0 0 12px}
   .opts{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
   .opts.five{grid-template-columns:repeat(5,1fr)}
@@ -259,6 +263,7 @@
       </div>
     </div>
 
+    <button class="btn primary peek-back" id="peekBack"><i data-lucide="arrow-left"></i> Back to scenario &amp; role</button>
     <div class="setup" id="setup">
       <h2>Pentarch FM breakfast studio</h2>
       <p class="sub">Choose a scenario and your role. The rest of the team is played by the station crew; you are scored on your own job. All audio is synthesised in your browser and starts only when you press Go live.</p>
@@ -279,6 +284,7 @@
       <div class="go">
         <label class="toggle" style="padding:0;gap:8px"><span>Producer hints</span><input type="checkbox" id="hints" checked></label>
         <button class="btn primary" id="startBtn"><i data-lucide="radio"></i> Go live</button>
+        <button class="btn" id="peekBtn" title="Hide this panel and explore the studio before you go live"><i data-lucide="eye"></i> Look around the studio</button>
         <span class="small" style="color:#93a1bd">Space = talk (presenter), N = play next (fades out a song still playing), D = dump, M = mute monitor.</span>
       </div>
     </div>
@@ -442,7 +448,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
 'use strict';
@@ -1410,6 +1416,10 @@ function resetToIdle() { S.phase = 'idle'; resetAll(); PO.log = []; renderLog();
 
 /* inputs */
 $('#scenOpts').addEventListener('click', e => { const b = e.target.closest('.opt'); if (!b) return; $$('#scenOpts .opt').forEach(x => x.classList.toggle('on', x === b)); S.scen = b.dataset.v; S.clock = SCEN[S.scen].start; });
+// explore the studio before going live (also used by the guided tour)
+function peek(on) { if (on && S.phase !== 'idle') return; $('#setup').classList.toggle('peek', on); $('#studio').classList.toggle('peeking', on); }
+$('#peekBtn').addEventListener('click', () => { peek(true); $('#studio').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+$('#peekBack').addEventListener('click', () => { peek(false); $('#studio').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
 $('#roleOpts').addEventListener('click', e => { const b = e.target.closest('.opt'); if (!b) return; $$('#roleOpts .opt').forEach(x => x.classList.toggle('on', x === b)); S.role = b.dataset.v; });
 $('#hints').addEventListener('change', e => S.hints = e.target.checked);
 $('#startBtn').addEventListener('click', () => { const ok = audioInit(); if (!ok) SL.toast('Web Audio is not available: the studio will run silently, and levels will not be scored.', 'warn'); startShow(); $('#studio').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
@@ -1521,6 +1531,26 @@ window.__radio = { S, PO, AU, SC, DA, DLY, PH, EV, score, get sim() { return sim
 /* boot */
 buildStrips(); buildProdCues(); renderCart(); renderLines(); fillLib(); renderLog(); applyRoleUI();
 main.start();
+
+/* ---------- guided tour ---------- */
+const startTour = () => {
+  SL.tour([
+    { el: '#scenOpts', title: 'Pick a scenario', text: 'Each scenario is a real on-air situation: hitting the news junction, a breaking story, dead air, a profane caller or licence compliance.', before: () => peek(false) },
+    { el: '#roleOpts', title: 'Pick your role', text: 'Present and self-operate, produce the show, or drive the faders as technical operator. The crew plays every other job.', before: () => peek(false) },
+    { el: '#startBtn', title: 'Go live', text: 'Audio starts only when you press Go live. “Look around the studio” lets you explore the desk first.', before: () => peek(false) },
+    { el: '#clockCv', title: 'The studio clock', text: 'The format wheel shows the planned hour; the backtiming stats tell you whether the log ends before the news junction or overruns it.', before: () => peek(true) },
+    { el: '#nextBtn', title: 'Playout', text: 'Two players alternate. PLAY NEXT (N) starts the next log item and fades out the one playing. Watch the intro countdown: talk over the intro, stop before the vocal.', before: () => peek(true) },
+    { el: '#strips', title: 'The mixing desk', text: 'Mics, players, phones and the cart each have a fader with ON, PFL and COUGH. Keep peaks out of the red and never leave the silence detector waiting.', before: () => peek(true) },
+    { el: '#talkBtn', title: 'Talk and fire jingles', text: 'Hold to talk (or hold Space) to open your mic. The cart above fires station IDs, beds and the emergency fill instantly.', before: () => peek(true) },
+    { el: '.tabs .tablist button:nth-child(6)', title: 'Challenges', text: 'Open Challenges for graded tasks in every scenario and role.', before: () => peek(false) },
+  ]);
+  // if the tour is closed while peeking, bring the set-up panel back
+  new MutationObserver(() => { if (!document.querySelector('.sl-tour') && S.phase === 'idle' && $('#setup').classList.contains('peek') && !peekByUser) peek(false); }).observe(document.body, { childList: true });
+};
+let peekByUser = false;
+$('#peekBtn').addEventListener('click', () => { peekByUser = true; });
+$('#peekBack').addEventListener('click', () => { peekByUser = false; });
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
 
 })();
 </script>

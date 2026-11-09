@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   #mapStage{height:640px}
   #mapStage canvas{cursor:crosshair}
@@ -20,6 +20,10 @@
   .ovl{position:absolute;inset:0;z-index:5;background:rgba(5,9,19,.95);overflow:auto;padding:26px;backdrop-filter:blur(4px)}
   .ovl.hide{display:none}
   .ovl .role{max-width:760px;margin:0 auto}
+  .ovl.peek{display:none}
+  .peek-back{display:none;position:absolute;right:12px;top:52px;z-index:6;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,.6)}
+  #mapStage.peeking .peek-back{display:inline-flex}
+  @media (pointer:coarse){#diffSeg button{padding:9px 11px}}
   .role .badge{display:inline-flex;gap:7px;align-items:center;font:600 .7rem var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);padding:5px 10px;border-radius:99px}
   .role .badge svg{width:14px;height:14px}
   .role ul{padding-left:1.2em;font-size:.92rem;color:#cdd6e8}
@@ -65,8 +69,8 @@
   .fb .led{margin-top:6px;flex:none}
   .tblwrap{overflow-x:auto}
   .below{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:18px;margin-bottom:10px}
-  @media (max-width:980px){.below{grid-template-columns:1fr}#mapStage{height:520px}.ovl{padding:18px 16px}#mapStage:has(> .ovl:not(.hide)){height:760px}}
-  @media (max-width:520px){#mapStage{height:420px;min-height:0}#mapStage:has(> .ovl:not(.hide)){height:760px}.qgrid{grid-template-columns:1fr}}
+  @media (max-width:980px){.below{grid-template-columns:1fr}#mapStage{height:520px}.ovl{padding:18px 16px}#mapStage:has(> .ovl:not(.hide)){height:760px}#mapStage:has(> .ovl.peek){height:520px}}
+  @media (max-width:520px){#mapStage{height:420px;min-height:0}#mapStage:has(> .ovl:not(.hide)){height:760px}#mapStage:has(> .ovl.peek){height:420px}.qgrid{grid-template-columns:1fr}}
 </style>
 </head>
 <body data-page="dispatch">
@@ -86,6 +90,7 @@
       <div class="legend" id="legend"></div>
       <div class="tip" id="tip"></div>
       <div class="ovl" id="ovl"></div>
+      <button class="btn primary sm peek-back" id="peekBack"><i data-lucide="arrow-left"></i> Back to the briefing</button>
     </div>
 
     <aside>
@@ -255,7 +260,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
   const $ = s => document.querySelector(s);
@@ -823,8 +828,9 @@
         <li>End the call to take the next one. Units drive the roads in real time, treat on scene, transport to hospital and return.</li>
       </ul>
       <p class="small muted">Map time runs ×${tc} (change it in the Shift panel). Answer and dispatch times are measured in real seconds; response times in map minutes.</p>
-      <button class="btn primary" id="ovlGo"><i data-lucide="play"></i> Start the shift</button></div>`;
+      <div class="btn-row"><button class="btn primary" id="ovlGo"><i data-lucide="play"></i> Start the shift</button><button class="btn" id="ovlPeek"><i data-lucide="map"></i> Look at the map first</button></div></div>`;
     SL.refreshIcons(ovl); $('#ovlGo').onclick = start;
+    $('#ovlPeek').onclick = () => { userPeek = true; peekMap(true); };
   }
   function endShift() {
     if (ended) return; ended = true; running = false;
@@ -888,6 +894,24 @@
   newShift(); renderQueue(); renderCall(); renderUnits(); stats(); briefing();
   loop.start();
   window.__dp = { get S() { return S; }, answer, ask, setPrio, dispatch, sayPai, tap, endCall, reassure, newCall, endShift, scoreShift, step, tickTimers, route, start, get tc() { return tc; } };
+  /* look at the map before starting (also used by the guided tour) */
+  let userPeek = false;
+  function peekMap(on) { if (running || ended) on = false; if (ovl.classList.contains('peek') === on) return; ovl.classList.toggle('peek', on); $('#mapStage').classList.toggle('peeking', on); }
+  $('#peekBack').onclick = () => { userPeek = false; peekMap(false); };
+  const startTour = () => {
+    SL.tour([
+      { el: '#diffSeg', title: 'Choose your shift', text: 'Quiet night, weekday or a major event: busier shifts bring more calls, harder callers and fewer free units. Then press Start.', before: () => peekMap(false) },
+      { el: '#ovl', title: 'Your role', text: 'You are the duty dispatcher. The briefing sums up the job: answer, ask, triage, dispatch and coach. Start the shift from here, or look at the map first.', before: () => peekMap(false) },
+      { el: '#mapStage', title: 'The city map', text: 'Every unit moves along the roads in real time. Incidents appear as triangles; tap a unit to send it to the open call.', before: () => peekMap(true) },
+      { el: '#queue', title: 'Call queue', text: 'Ringing calls wait here. Answer fast: callers who wait become more distressed and give up after 75 s.', before: () => peekMap(true) },
+      { el: '#console', title: 'Active call', text: 'Ask the protocol questions (address first), calm a panicking caller, set the priority P1–P4 and give pre-arrival instructions such as CPR.', before: () => peekMap(true) },
+      { el: '#units', title: 'Units board', text: 'Every unit with its status and ETA. Send the right type: ALS for life-threatening medical calls, fire engines for fires.', before: () => peekMap(true) },
+      { el: '#stats', title: 'Live metrics', text: 'Answer times, response times by priority and calls lost. These feed your shift grade.', before: () => peekMap(true) },
+      { el: '.tabs .tablist button:nth-child(7)', title: 'Challenges', text: 'Open Challenges for graded goals, and read Triage priorities before a major-event shift.', before: () => peekMap(false) },
+    ]);
+    new MutationObserver(() => { if (!document.querySelector('.sl-tour') && ovl.classList.contains('peek') && !userPeek) peekMap(false); }).observe(document.body, { childList: true });
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
 })();
 </script>
 </body>

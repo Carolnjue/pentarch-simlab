@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   .stage.box{height:580px}
   @media (max-width:980px){.stage.box{height:520px}}
@@ -38,6 +38,13 @@
   .speedtbl td.num{font-family:var(--mono)}
   .stage-toolbar .tx{display:inline}
   @media (max-width:520px){.stage-toolbar .tx{display:none}}
+  .vecleg{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:3px;font:500 .7rem var(--mono);color:#e6ecf7;background:rgba(5,9,19,.78);border:1px solid var(--line2);border-radius:8px;padding:6px 9px;pointer-events:none}
+  .vecleg[hidden]{display:none}
+  .vecleg i{display:inline-block;vertical-align:middle;margin-right:5px}
+  .vecleg i.ar{width:14px;height:2px;background:#a5f3fc;position:relative}.vecleg i.ar::after{content:"";position:absolute;right:-2px;top:-3px;border:4px solid transparent;border-left-color:#a5f3fc;border-right:0}
+  .vecleg i.ring{width:12px;height:6px;border:2px solid #fff;border-radius:50%}
+  @media (max-width:520px){.vecleg{top:auto;bottom:62px;left:50px;right:auto;font-size:.66rem}}
+  @media (pointer:coarse){.stage-toolbar .btn.sm{min-width:40px;min-height:38px;justify-content:center}#modeSeg button{padding:10px 8px}}
   .stat .k{text-transform:none;letter-spacing:.03em}
 </style>
 </head>
@@ -54,7 +61,9 @@
         <span class="readout">V <b id="hV">—</b> L</span>
         <span class="readout">T <b id="hT">—</b> K</span>
       </div>
+      <div class="vecleg" id="vecLeg" hidden><span><i class="ar"></i> velocity (every 3rd particle)</span><span><i class="ring"></i> wall impact: momentum 2mv</span></div>
       <div class="stage-toolbar">
+        <button class="btn sm" id="vecBtn" aria-pressed="false" title="Show velocity arrows and wall impacts"><i data-lucide="move-up-right"></i><span class="tx"> Vectors</span></button>
         <button class="btn sm" id="pauseBtn"><i data-lucide="pause"></i><span class="tx"> Pause</span></button>
         <button class="btn sm" id="resetBtn"><i data-lucide="rotate-ccw"></i><span class="tx"> Reset</span></button>
       </div>
@@ -81,7 +90,7 @@
         <label class="toggle"><span>Compare with real CO₂ (van der Waals)</span><input type="checkbox" id="vdw"></label>
         <p class="small muted" style="margin:6px 0 0">Each particle represents 5.0 mmol of gas, so 200 particles ≙ 1.00 mol.</p>
       </div>
-      <div class="panel">
+      <div class="panel" id="measPanel">
         <h3><i data-lucide="gauge"></i> Measured vs ideal</h3>
         <div class="stats">
           <div class="stat"><div class="k">P measured</div><div class="v" id="sPm">—<small>kPa</small></div></div>
@@ -212,7 +221,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
   'use strict';
@@ -313,20 +322,23 @@
       }
     }
   }
+  // overlay: velocity arrows and wall-impact flashes (each flash = one momentum transfer 2mv that makes up the pressure)
+  let showVec = false; const hits = [];
+  function hitMark(p, axis, J) { if (hits.length < 160) hits.push({ x: p.x, y: p.y, z: p.z, axis, a: 1, big: J ? Math.min(2.2, 0.6 + J / (p.m * 30)) : 1 }); }
   function walls(dt, vPiston) {
     if (!isEff()) S.H += vPiston * dt;
     const W = boxW(), H = boxH(), D = boxD(); let imp = 0;
     const eff = isEff(), xm = W / 2, hy0 = H / 2 - S.eff.hole / 2, hy1 = H / 2 + S.eff.hole / 2;
     for (const p of S.parts) {
       p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
-      if (p.x < RAD) { p.x = 2 * RAD - p.x; p.vx = -p.vx; imp += 2 * p.m * Math.abs(p.vx); }
-      if (p.x > W - RAD) { p.x = 2 * (W - RAD) - p.x; p.vx = -p.vx; imp += 2 * p.m * Math.abs(p.vx); }
+      if (p.x < RAD) { p.x = 2 * RAD - p.x; p.vx = -p.vx; imp += 2 * p.m * Math.abs(p.vx); if (showVec) hitMark(p, 0); }
+      if (p.x > W - RAD) { p.x = 2 * (W - RAD) - p.x; p.vx = -p.vx; imp += 2 * p.m * Math.abs(p.vx); if (showVec) hitMark(p, 0); }
       if (p.z < RAD) { p.z = 2 * RAD - p.z; p.vz = -p.vz; imp += 2 * p.m * Math.abs(p.vz); }
       if (p.z > D - RAD) { p.z = 2 * (D - RAD) - p.z; p.vz = -p.vz; imp += 2 * p.m * Math.abs(p.vz); }
-      if (p.y < RAD) { p.y = 2 * RAD - p.y; p.vy = -p.vy; imp += 2 * p.m * Math.abs(p.vy); }
+      if (p.y < RAD) { p.y = 2 * RAD - p.y; p.vy = -p.vy; imp += 2 * p.m * Math.abs(p.vy); if (showVec) hitMark(p, 1); }
       if (p.y > H - RAD) { // piston (may be moving): elastic reflection in the piston frame, v' = 2 v_p - v
         const rel = p.vy - vPiston;
-        if (rel > 0) { imp += 2 * p.m * rel; p.vy = 2 * vPiston - p.vy; }
+        if (rel > 0) { imp += 2 * p.m * rel; p.vy = 2 * vPiston - p.vy; if (showVec) hitMark(p, 1, 2 * p.m * rel); }
         p.y = Math.min(2 * (H - RAD) - p.y, H - RAD - .01); if (p.y < RAD) p.y = RAD + .01;
       }
       if (eff) { // divider with a slit; the evacuated side is pumped, so flow is one-way
@@ -444,6 +456,23 @@
       const dz = p.z / D, sx = X0 + p.x * G + (1 - dz) * 0 + dz * off, sy = Yf - p.y * G - dz * off;
       const r = 4.2 * G * (1.25 - .45 * dz) * (p.sp ? 1.15 : 1) * (1 + Math.log10(p.m) * .12) * 1.6;
       ctx.globalAlpha = 1 - .5 * dz; ctx.drawImage(sprites[p.sp], sx - r, sy - r, 2 * r, 2 * r);
+    }
+    if (showVec) {
+      let v2 = 0; for (const p of S.parts) v2 += p.vx * p.vx + p.vy * p.vy; const vref = Math.sqrt(v2 / Math.max(1, S.parts.length)) || 1;
+      ctx.lineWidth = 1.4; ctx.lineCap = 'round';
+      S.parts.forEach((p, i) => {
+        if (i % 3) return;
+        const dz = p.z / D, sx = X0 + p.x * G + dz * off, sy = Yf - p.y * G - dz * off, k = 16 * G / vref;
+        const ex = sx + p.vx * k, ey = sy - p.vy * k, col = p.sp ? 'rgba(253,186,116,.95)' : 'rgba(165,243,252,.95)';
+        ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+        const a = Math.atan2(ey - sy, ex - sx), hl = 4; ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex - hl * Math.cos(a - .5), ey - hl * Math.sin(a - .5)); ctx.lineTo(ex - hl * Math.cos(a + .5), ey - hl * Math.sin(a + .5)); ctx.fill();
+      });
+      for (let i = hits.length - 1; i >= 0; i--) {
+        const h = hits[i], dz = h.z / D, sx = X0 + h.x * G + dz * off, sy = Yf - h.y * G - dz * off;
+        ctx.strokeStyle = `rgba(255,255,255,${h.a * .8})`; ctx.lineWidth = 2; ctx.beginPath();
+        if (h.axis) { ctx.ellipse(sx, sy, 9 * h.big * (1.4 - h.a), 3, 0, 0, 7); } else { ctx.ellipse(sx, sy, 3, 9 * (1.4 - h.a), 0, 0, 7); }
+        ctx.stroke(); h.a -= 0.06; if (h.a <= 0) hits.splice(i, 1);
+      }
     }
     for (const p of S.ghosts) {
       const dz = p.z / D, sx = X0 + p.x * G + dz * off, sy = Yf - p.y * G - dz * off, r = 4.2 * G * (1.25 - .45 * dz) * 1.6 * (1 + Math.log10(p.m) * .12);
@@ -704,6 +733,7 @@
   $('#coll').addEventListener('change', e => S.coll = e.target.checked);
   $('#adia').addEventListener('change', e => S.adia = e.target.checked);
   $('#vdw').addEventListener('change', e => { S.vdw = e.target.checked; $('#stVdw').style.display = $('#stZ').style.display = S.vdw ? '' : 'none'; if (S.vdw) SL.toast('Van der Waals CO₂ values now shown alongside the ideal gas. Compress to small volume and low T to see bigger deviations; see the Real gases tab.'); });
+  $('#vecBtn').onclick = () => { showVec = !showVec; hits.length = 0; $('#vecBtn').setAttribute('aria-pressed', showVec); $('#vecBtn').classList.toggle('on', showVec); $('#vecLeg').hidden = !showVec; };
   $('#pauseBtn').onclick = () => { S.paused = !S.paused; $('#pauseBtn').innerHTML = S.paused ? '<i data-lucide="play"></i><span class="tx"> Play</span>' : '<i data-lucide="pause"></i><span class="tx"> Pause</span>'; SL.refreshIcons($('#pauseBtn')); };
   $('#resetBtn').onclick = () => { resetSim(); SL.toast(isEff() ? 'Effusion restarted.' : 'Gas reset: every molecule starts with the same speed. Watch the histogram relax to the Maxwell–Boltzmann shape.'); };
   $('#recBtn').onclick = () => { const p = { V: Vreal() * 1000, P: Pmeas() / 1000, T: S.TkinS || S.Tb }; S.recs.push(p); lawDirty = true; checkLaws(); SL.toast(`Recorded V = ${p.V.toFixed(1)} L, P = ${p.P.toFixed(1)} kPa, T = ${p.T.toFixed(0)} K`); };
@@ -776,6 +806,17 @@
   }).start();
   document.addEventListener('visibilitychange', () => document.hidden ? L.stop() : L.start());
   window.SimGas = { S, Pmeas, Pideal, Pvdw, Tkin, nTot, Vreal, physics, setMode };
+  const startTour = () => SL.tour([
+    { el: '#cv', title: 'The gas cylinder', text: 'Hundreds of particles bounce around a cylinder. Drag the piston handle up or down to change the volume and watch the pressure gauge respond.' },
+    { el: '#modeSeg', title: 'Choose an experiment', text: 'Free lets you change anything. Boyle, Charles and Gay-Lussac each hold one variable fixed so you can test one law; Effusion lets gas escape through a pinhole.' },
+    { el: '#cT', title: 'Heat or cool the gas', text: 'Raise the temperature and the particles speed up: they hit the walls harder and more often, so pressure rises at fixed volume.' },
+    { el: '#vecBtn', title: 'Show what makes pressure', text: 'Turn on velocity arrows and wall-impact flashes. Pressure is simply the total momentum delivered by these impacts per second per unit area.' },
+    { el: '#measPanel', title: 'Measured vs ideal', text: 'The pressure measured from wall impacts is compared live with P = nRT/V. Switch on van der Waals to see where a real gas deviates.' },
+    { el: '#hc', title: 'Speed distribution', text: 'The histogram of particle speeds follows the Maxwell–Boltzmann curve. Light molecules such as helium are much faster than heavy ones at the same temperature.' },
+    { el: '#recBtn', title: 'Plot a law', text: 'Record points as you change one variable, and the law plot builds a straight line (or curve) you can analyse.' },
+    { el: '.tabs .tablist button:nth-child(3)', title: 'Challenges', text: 'Open Experiments & challenges for guided tasks that check your results automatically.' },
+  ]);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
 })();
 </script>
 </body>

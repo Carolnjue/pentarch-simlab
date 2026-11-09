@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   .lstage{min-height:0;display:grid;grid-template-columns:1fr 1fr;height:auto}
   .lstage .pane{position:relative;min-height:440px}
@@ -24,6 +24,9 @@
   .lights button i.dot{display:block;width:10px;height:10px;border-radius:50%;margin:0 auto 3px;box-shadow:0 0 8px currentColor}
   .lights button.on{border-color:var(--accent);color:var(--text);background:color-mix(in srgb,var(--accent) 16%,var(--bg2))}
   .lights button.off{opacity:.45}
+  .lcap{margin-top:10px;font-size:.86rem;line-height:1.55;color:var(--muted);background:var(--bg2);border:1px solid var(--line2);border-left:3px solid var(--accent);border-radius:10px;padding:9px 12px}
+  .lcap b{color:var(--text)}
+  @media (pointer:coarse){.presets .btn{padding:9px 11px}.lights button{padding:9px 2px}}
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0}
   .row2 label{font-size:.78rem;color:var(--muted);display:block;margin-bottom:3px}
   .presets{display:flex;flex-wrap:wrap;gap:5px}
@@ -52,7 +55,8 @@
           <div class="hud"><span class="readout">Pattern <b id="hPat">–</b></span><span class="readout">Key:fill <b id="hRatio">–</b></span></div>
           <span class="tag">Camera view</span></div>
       </div>
-      <div class="panel" style="margin-top:14px">
+      <div class="lcap" id="lcap" aria-live="off"></div>
+      <div class="panel" style="margin-top:14px" id="meterPanel">
         <h3><i data-lucide="gauge"></i> Light meter at the subject</h3><p class="small muted" style="margin:-6px 0 8px">Incident readings at the face, dome towards the camera; “Needs” is the aperture for ISO <span id="mISO">100</span> at 1/50 s.</p>
         <div style="overflow-x:auto"><table class="data meter" id="meter"></table></div>
         <div class="stats" style="margin-top:10px">
@@ -169,7 +173,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
   'use strict';
@@ -471,7 +475,23 @@
     $('#sExp').innerHTML = (K + F > 0 ? (dEv > 0 ? '+' : '') + dEv.toFixed(1) : '–') + '<small>stops vs f/' + set + '</small>';
     $('#mISO').textContent = ISOS[S.isoi];
     $('#hPat').textContent = pattern();
+    updCap(K, F, dEv);
     return { K, F, by };
+  }
+  // live caption: what the pattern, ratio and exposure mean for the picture
+  const PAT_MEAN = { 'Butterfly': 'key high and in front: a small shadow under the nose, the classic beauty/glamour look', 'Flat / frontal': 'key near the camera axis: few shadows, flat and even, like an on-camera flash', 'Loop': 'key 15–40° to the side: the nose shadow loops down towards the cheek, the flattering everyday portrait', 'Rembrandt': 'key about 45° to the side and high: a small triangle of light on the shadow cheek, classic and dramatic', 'Loop / Rembrandt': 'key around 45°: between a loop and a Rembrandt triangle', 'Split': 'key at 90°: half the face in shadow, strong and moody', 'Rim': 'key behind the subject: only the edge of the face is lit' };
+  let capLast = '';
+  function updCap(K, F, dEv) {
+    const k = S.L.key; let html;
+    if (!k || !k.on) html = '<b>No key light.</b> Switch the key on: it sets the shape of the face and every other light is balanced against it.';
+    else {
+      const base = pattern().split(' (')[0], pat = base.split(' · ')[0], side = base.includes('broad') ? ' Broad lighting (the lit side faces the camera) widens the face.' : base.includes('short') ? ' Short lighting (the far side is lit) slims the face.' : '';
+      const R = F > 0.5 ? (K + F) / F : Infinity;
+      const mood = !isFinite(R) ? 'No fill: the shadow side falls to black, very low-key.' : R <= 2.2 ? `Ratio ${R.toFixed(1)}:1 is low contrast: soft, open shadows, the high-key look of news and corporate interviews.` : R <= 4.5 ? `Ratio ${R.toFixed(1)}:1 is moderate contrast: shadows ${Math.log2(R).toFixed(1)} stops down, a classic portrait.` : `Ratio ${R.toFixed(1)}:1 is high contrast: deep shadows, low-key and dramatic.`;
+      const ex = !(K + F > 0) ? '' : Math.abs(dEv) <= 0.5 ? ' The face is correctly exposed.' : dEv > 0 ? ` The face is ${dEv.toFixed(1)} stops over-exposed: close the aperture or lower the output.` : ` The face is ${(-dEv).toFixed(1)} stops under-exposed: open up or raise the output.`;
+      html = `<b>${pat}:</b> ${PAT_MEAN[pat] || ''}.${side} ${mood}${ex}`;
+    }
+    if (html !== capLast) { $('#lcap').innerHTML = html; capLast = html; }
   }
   function bgLux(L) { const p = [L.pos[0] * 0.5, 1.2, BDZ]; const dx = L.pos[0] - p[0], dy = L.pos[1] - p[1], dz = L.pos[2] - p[2]; const d2 = dx * dx + dy * dy + dz * dz; return L.I / d2 * dz / Math.sqrt(d2); }
   function pattern() {
@@ -579,6 +599,17 @@
     { q: 'Short lighting means…', options: ['Lighting the side of the face turned towards the camera', 'Lighting the side of the face turned away from the camera', 'A very short exposure', 'Light from below'], answer: 1, why: 'Short lighting lights the far side of the face (turned away), slimming it; broad lighting lights the near side.' },
     { q: 'CRI and TLCI describe…', options: ['Light output in lumens', 'Beam angle', 'How faithfully a source renders colours', 'Colour temperature'], answer: 2, why: 'They score colour fidelity, especially skin tones; ≥ 90 is the usual broadcast standard.' },
   ]);
+  const startTour = () => SL.tour([
+    { el: '#plan', title: 'The floor plan', text: 'A top view of the studio. Drag any light to move it; it always aims at the subject. Watch the camera view update as you go.' },
+    { el: '#view', title: 'Camera view', text: 'The lit portrait as the camera sees it. The readouts name the lighting pattern and the key-to-fill ratio.' },
+    { el: '#lcap', title: 'What the light is doing', text: 'This caption explains the current pattern, how contrasty the ratio is and whether the face is correctly exposed.' },
+    { el: '#lights', title: 'Pick a light', text: 'Select the key, fill, back, background or kicker light, then switch it on or off and set its output, height, colour, modifier and gel.' },
+    { el: '#lPow', title: 'Output in stops', text: 'Each +1 stop doubles the light. Lower the fill by a stop and the lighting ratio jumps from 2:1 to 3:1.' },
+    { el: '#meterPanel', title: 'Light meter', text: 'Incident readings at the face. Illuminance falls with the inverse square of distance: move a light twice as far and it gives a quarter of the light.' },
+    { el: '#presets', title: 'Classic set-ups', text: 'Load Rembrandt, butterfly, split, high-key or interview lighting to see how the pros place each light.' },
+    { el: '.tabs .tablist button:nth-child(3)', title: 'Challenges', text: 'Open Experiments & challenges and match target portraits by placing and balancing your lights.' },
+  ]);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
 })();
 </script>
 </body>

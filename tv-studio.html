@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   :root{--tally:#ff2a2a;--pvw:#1fe073;--gal:#06080d;--gal2:#0b0f18;--gline:#1a2232;--gtext:#c9d2e3}
   .gallery{background:linear-gradient(180deg,#090c14,#05070b);border:1px solid var(--gline);border-radius:16px;padding:12px;margin:20px 0 10px;box-shadow:0 24px 60px -30px #000,inset 0 1px 0 rgba(255,255,255,.04)}
@@ -174,6 +174,9 @@
   .rolesel .sub{color:#93a1bd;font-size:.88rem;margin:0 0 14px}
   .roles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
   @media (max-width:900px){.roles{grid-template-columns:repeat(2,1fr)}}
+  .seat-note{margin:10px 0 0;font-size:.82rem;color:#c3cbe0}.seat-note b{color:#fff}
+  .desk-nav button .who.you{color:#06101f;background:var(--accent)}
+  @media (pointer:coarse){#monMute,#pauseBtn,#endBtn{min-height:38px;min-width:40px;justify-content:center}.desk-nav button .who{font-size:.64rem}}
   .role{all:unset;box-sizing:border-box;cursor:pointer;border:1px solid #273148;border-radius:12px;padding:12px;background:linear-gradient(#121a29,#0c111b);display:flex;flex-direction:column;gap:4px;transition:.15s}
   .role:hover{border-color:var(--accent);transform:translateY(-2px)}
   .role.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset,0 10px 30px -12px color-mix(in srgb,var(--accent) 60%,transparent)}
@@ -246,6 +249,7 @@
             <label>Seed <input type="number" id="seed" value="12" min="1" max="9999" style="width:78px;padding:5px 8px"></label>
             <button class="btn primary" id="startBtn"><i data-lucide="radio-tower"></i> Go live</button>
           </div>
+          <p class="sub seat-note" id="seatNote"></p>
           <p class="sub" style="margin:10px 0 0;font-size:.76rem">Audio is synthesised in your browser and starts only when you press Go live. The monitor volume starts low; programme loudness is metered separately from what you hear.</p>
         </div>
       </div>
@@ -601,7 +605,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
 'use strict';
@@ -2687,6 +2691,7 @@ function applyRoleUI() {
   const live = S.phase === 'live';
   $$('.desk').forEach(d => d.classList.toggle('auto', live && !S.H[d.dataset.role]));
   $$('#deskNav .who').forEach(w => { const you = live && S.H[w.dataset.who]; w.textContent = live ? (you ? 'YOU' : 'CREW') : 'REHEARSE'; w.classList.toggle('you', you); });
+  if (!live) markSeat();
   $('#gbRole').textContent = live ? roleName(S.role) : 'none';
   const first = ['dir', 'snd', 'gfx', 'prod'].find(r => S.H[r]);
   if (live && first) showDesk({ dir: 'vm', snd: 'snd', gfx: 'gfx', prod: 'prod' }[first]);
@@ -2696,7 +2701,16 @@ function renderScoreBox() {
   const roles = ['dir', 'snd', 'gfx', 'prod'].filter(r => S.H[r]);
   $('#roleScore').innerHTML = roles.length ? roles.map(r => `<div class="stat"><div class="k">${ROLES[r]}</div><div class="v" data-r="${r}">–</div></div>`).join('') : `<div class="stat" style="grid-column:1/-1"><div class="k">Observer</div><div class="v" style="font-size:.85rem">Crew at work, no scoring</div></div>`;
 }
-$('#roles').addEventListener('click', e => { const b = e.target.closest('.role'); if (!b) return; $$('#roles .role').forEach(x => x.classList.toggle('on', x === b)); S.role = b.dataset.role; });
+$('#roles').addEventListener('click', e => { const b = e.target.closest('.role'); if (!b) return; $$('#roles .role').forEach(x => x.classList.toggle('on', x === b)); S.role = b.dataset.role; markSeat(true); });
+// before going live: show which desk(s) the chosen seat will operate, and open the first one so it can be rehearsed
+const SEAT_DESKS = { dir: ['dir'], snd: ['snd'], gfx: ['gfx'], prod: ['prod'], all: ['dir', 'snd', 'gfx'], watch: [] };
+function markSeat(open) {
+  if (S.phase === 'live') return;
+  const mine = SEAT_DESKS[S.role] || [];
+  $$('#deskNav .who').forEach(w => { const m = mine.includes(w.dataset.who); w.textContent = m ? 'YOUR DESK' : 'CREW'; w.classList.toggle('you', m); });
+  const note = $('#seatNote'); if (note) note.innerHTML = mine.length ? `Your seat works the <b>${mine.map(r => ({ dir: 'vision mixer', snd: 'sound desk', gfx: 'graphics', prod: 'producer' })[r]).join(', ')}</b> below. Every desk works in rehearsal now, so try it before you go live.` : 'Observer seat: the crew works every desk. Open any desk below to watch them once you go live.';
+  if (open && mine.length) showDesk({ dir: 'vm', snd: 'snd', gfx: 'gfx', prod: 'prod' }[mine[0]]);
+}
 segBind('#lenSeg', v => S.len = v);
 $('#hints').addEventListener('change', e => S.hints = e.target.checked);
 $('#startBtn').addEventListener('click', () => {
@@ -2874,6 +2888,20 @@ mvCv.addEventListener('pointerdown', e => {
     lastTap = { t: now, s }; vmPreview(s);
   }
 });
+
+/* ---------- guided tour ---------- */
+const deskBtn = d => () => { const b = document.querySelector(`#deskNav [data-desk="${d}"]`); if (b && !b.classList.contains('on')) b.click(); };
+const startTour = () => SL.tour([
+  { el: '#roles', title: 'Choose your seat', text: 'Pick one job in the gallery. The crew runs every other desk and you are scored only on yours. Observe the crew if you want to watch first.' },
+  { el: '#startBtn', title: 'Set up and go live', text: 'Choose the match length and whether the producer gives hints, then press Go live. Audio starts only then, with the monitor volume low.' },
+  { el: '#deskNav', title: 'The four desks', text: 'Switch between the vision mixer, sound desk, graphics and producer desks. Your own desks are marked; the others show the crew at work.', before: deskBtn('vm') },
+  { el: '#busPvw', title: 'Preview and programme', text: 'Pick the next camera on the green preview (PVW) bus; the red programme (PGM) bus is what viewers see. On the multiviewer, tap a source to preview it and double-tap to cut to it.', before: deskBtn('vm') },
+  { el: '#cutBtn', title: 'Cut, mix and replay', text: 'CUT (Space) swaps preview and programme instantly; AUTO or the T-bar mixes, wipes or stings. ROLL plays the selected EVS replay clip.', before: deskBtn('vm') },
+  { el: '#loudCv', title: 'Sound desk', text: 'Balance commentary, crowd and effects on the faders. The loudness meter shows momentary, short-term and integrated LUFS: aim for −23 LUFS without peaks hitting 0 dBFS.', before: deskBtn('snd') },
+  { el: '#tpls', title: 'Graphics', text: 'Arm a template (scorebug, caption, goal, booking), check it in the preview, then TAKE it to air and CLEAR it when done.', before: deskBtn('gfx') },
+  { el: '.tabs .tablist button:nth-child(6)', title: 'Challenges', text: 'Open Challenges for graded tasks for each seat, then read Shot grammar before your first live match.', before: deskBtn('vm') },
+]);
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
 
 })();
 </script>

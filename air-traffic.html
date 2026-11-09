@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   #scope{height:720px;background:#020805}
   #scope canvas{cursor:pointer;touch-action:none}
@@ -17,6 +17,10 @@
   .stage .hud .readout{border-color:#14532d;background:rgba(2,8,5,.8)}
   .stca{position:absolute;left:50%;top:14px;transform:translateX(-50%);font:700 .8rem var(--mono);letter-spacing:.12em;color:#fff;background:#b91c1c;border:1px solid #ef4444;padding:5px 12px;border-radius:7px;display:none;animation:blink 1s infinite;z-index:3}
   .zoom{position:absolute;right:12px;bottom:12px;display:flex;gap:6px;z-index:3}
+  .ovl.peek{display:none}
+  .peek-back{display:none;position:absolute;right:12px;top:52px;z-index:6;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,.6)}
+  #scope.peeking .peek-back{display:inline-flex}
+  @media (pointer:coarse){.zoom .btn.sm{min-width:42px;min-height:40px;justify-content:center}#diffSeg button,#accSeg button{padding:9px 11px}}
   .ovl{position:absolute;inset:0;z-index:5;background:rgba(2,8,5,.95);overflow:auto;padding:26px;backdrop-filter:blur(4px)}
   .ovl.hide{display:none}
   .ovl .role{max-width:760px;margin:0 auto}
@@ -57,8 +61,8 @@
   .phon{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;font-size:.84rem}
   .phon div{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 9px}
   .phon b{font-family:var(--mono);color:var(--accent);margin-right:6px}
-  @media (max-width:980px){#scope{height:560px}.below{grid-template-columns:1fr}.ovl{padding:18px 16px}#scope:has(> .ovl:not(.hide)){height:760px}}
-  @media (max-width:520px){#scope{height:440px;min-height:0}#scope:has(> .ovl:not(.hide)){height:780px}}
+  @media (max-width:980px){#scope{height:560px}.below{grid-template-columns:1fr}.ovl{padding:18px 16px}#scope:has(> .ovl:not(.hide)){height:760px}#scope:has(> .ovl.peek){height:560px}}
+  @media (max-width:520px){#scope{height:440px;min-height:0}#scope:has(> .ovl:not(.hide)){height:780px}#scope:has(> .ovl.peek){height:440px}}
 </style>
 </head>
 <body data-page="air-traffic">
@@ -79,6 +83,7 @@
       <div class="stca" id="stca">STCA</div>
       <div class="zoom"><button class="btn sm" id="zOut" aria-label="Zoom out"><i data-lucide="zoom-out"></i></button><button class="btn sm" id="zIn" aria-label="Zoom in"><i data-lucide="zoom-in"></i></button></div>
       <div class="ovl" id="ovl"></div>
+      <button class="btn primary sm peek-back" id="peekBack"><i data-lucide="arrow-left"></i> Back to the briefing</button>
     </div>
 
     <aside>
@@ -268,7 +273,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
   const $ = s => document.querySelector(s);
@@ -859,8 +864,9 @@
         <li>Terrain: stay at or above 7,000 ft, and 9,000 ft over the Ngong Hills, unless established on the ILS.</li>
       </ul>
       <p class="small muted">Click an aircraft to select it, then use the buttons or type commands (e.g. <code>L240 D80 S180</code>). The radio transcript shows each instruction in ICAO phraseology with the pilot's readback. Use 2× or 4× time when it is quiet.</p>
-      <button class="btn primary" id="ovlGo"><i data-lucide="play"></i> Open the position</button></div>`;
+      <div class="btn-row"><button class="btn primary" id="ovlGo"><i data-lucide="play"></i> Open the position</button><button class="btn" id="ovlPeek"><i data-lucide="radar"></i> Look at the radar first</button></div></div>`;
     SL.refreshIcons(ovl); $('#ovlGo').onclick = start;
+    $('#ovlPeek').onclick = () => { userPeek = true; peekScope(true); };
   }
   function endSession() {
     if (ended) return; ended = true; running = false; sel = null; renderSel();
@@ -926,6 +932,24 @@
   newGame(); renderSel(); renderStrips(); stats(); briefing();
   loop.start();
   window.__atc = { get G() { return G; }, get sel() { return sel; }, set sel(a) { sel = a; }, cmd, parseCLI, physics, spawn, endSession, report, start, setAcc, locGeom, RW, gsAlt, ifName, fixXY };
+  /* look at the radar before opening the position (also used by the guided tour) */
+  let userPeek = false;
+  function peekScope(on) { if (running || ended) on = false; if (ovl.classList.contains('peek') === on) return; ovl.classList.toggle('peek', on); $('#scope').classList.toggle('peeking', on); }
+  $('#peekBack').onclick = () => { userPeek = false; peekScope(false); };
+  const startTour = () => {
+    SL.tour([
+      { el: '#diffSeg', title: 'Choose your session', text: 'Trainee, standard or rush hour: more traffic means less time between decisions. Then open the position with Start.', before: () => peekScope(false) },
+      { el: '#ovl', title: 'Your role', text: 'You are the approach radar controller. The briefing explains arrivals, departures, separation and terrain. Open the position from here, or look at the radar first.', before: () => peekScope(false) },
+      { el: '#scope', title: 'The radar scope', text: 'Aircraft labels show callsign, level and speed. Tap one to select it. Dashed amber lines warn of a conflict within 90 s; red means separation is lost.', before: () => peekScope(true) },
+      { el: '.zoom', title: 'Zoom the scope', text: 'Zoom in for the final approach, out to see arrivals entering the sector.', before: () => peekScope(true) },
+      { el: '#selPanel', title: 'Give instructions', text: 'With an aircraft selected, use the buttons or type shorthand such as L240 D80 S180 (turn left 240, descend 8,000 ft, speed 180 kt).', before: () => peekScope(true) },
+      { el: '#rt', title: 'Radio transcript', text: 'Every instruction is spoken in ICAO phraseology with the pilot’s readback. Check that each readback matches what you said.', before: () => peekScope(true) },
+      { el: '#strips', title: 'Flight progress strips', text: 'One strip per flight: amber for arrivals, blue for departures. They show the flight’s clearance and what it is waiting for.', before: () => peekScope(true) },
+      { el: '.tabs .tablist button:nth-child(6)', title: 'Challenges', text: 'Open Challenges for graded sessions, and read Separation and ILS before rush hour.', before: () => peekScope(false) },
+    ]);
+    new MutationObserver(() => { if (!document.querySelector('.sl-tour') && ovl.classList.contains('peek') && !userPeek) peekScope(false); }).observe(document.body, { childList: true });
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
 })();
 </script>
 </body>

@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   .ops{padding:20px 0 10px}
   /* Alarm banner (annunciator) */
@@ -38,6 +38,19 @@
   .hmi-tip b{color:#fff}
   .swipe{display:none;font:500 .72rem var(--mono);color:#8b949e;padding:6px 10px}
   @media (max-width:760px){.swipe{display:block}}
+  /* phone panning cues: edge fades, a nudging "swipe" pill and an overview strip */
+  .stage.hmi.can-r::after,.stage.hmi.can-l::before{content:"";position:absolute;top:0;bottom:0;width:46px;pointer-events:none;z-index:3}
+  .stage.hmi.can-r::after{right:0;background:linear-gradient(90deg,rgba(42,46,53,0),rgba(20,23,28,.92));border-radius:0 12px 12px 0}
+  .stage.hmi.can-l::before{left:0;background:linear-gradient(270deg,rgba(42,46,53,0),rgba(20,23,28,.92));border-radius:12px 0 0 12px}
+  .pan-cue{display:none;position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:4;pointer-events:none;align-items:center;gap:6px;font:600 .8rem var(--font);color:#fff;background:rgba(15,18,24,.88);border:1px solid #4b5563;border-radius:999px;padding:8px 14px;box-shadow:0 6px 18px rgba(0,0,0,.5);animation:nudge 1.6s ease-in-out infinite}
+  .pan-cue svg{width:16px;height:16px}
+  @keyframes nudge{0%,100%{transform:translateX(-50%)}50%{transform:translateX(calc(-50% + 10px))}}
+  .stage.hmi.panned .pan-cue{display:none!important}
+  .hmi-map{display:none;position:relative;height:30px;margin-top:8px;border-radius:8px;background:#1d2127;border:1px solid #3a414b;touch-action:none;cursor:pointer;overflow:hidden}
+  .hmi-map i{position:absolute;top:2px;bottom:2px;border-radius:6px;background:rgba(255,255,255,.14);border:1px solid #9aa4b2;pointer-events:none}
+  .hmi-map span{position:absolute;top:50%;transform:translate(-50%,-50%);font:600 .66rem var(--mono);color:#9aa4b2;white-space:nowrap;pointer-events:none}
+  @media (max-width:760px){.pan-cue{display:inline-flex}.hmi-map.on{display:block}}
+  @media (pointer:coarse){.hmipanel .eqlist button{padding:10px 10px}.hmipanel .eqlist{gap:6px}#afilt button{padding:10px 11px}#ackAll,#silence,#horn,#diagBtn,#noteBtn{min-height:38px}}
   /* Console */
   .console{display:grid;grid-template-columns:380px minmax(0,1fr);gap:14px;margin-top:14px}
   .console2{display:grid;grid-template-columns:1.25fr 1fr .85fr;gap:14px;margin-top:14px}
@@ -135,8 +148,10 @@
   <div class="stage hmi" id="hmiStage">
     <div class="hmi-scroll" id="hmiScroll"><canvas id="cv" aria-label="SCADA overview graphic of the borehole, treatment works, reservoir, booster station and power supply"></canvas></div>
     <div class="hmi-tip" id="tip"></div>
+    <div class="pan-cue" id="panCue" aria-hidden="true"><i data-lucide="hand"></i> Swipe to pan <i data-lucide="arrow-right"></i></div>
   </div>
-  <div class="swipe">Swipe the graphic sideways to pan. Tap equipment to open its faceplate.</div>
+  <div class="hmi-map" id="hmiMap" title="Overview: drag or tap to pan the graphic"><i id="hmiThumb"></i><span style="left:13%">Borehole</span><span style="left:50%">Treatment</span><span style="left:85%">Reservoir · town</span></div>
+  <div class="swipe">Swipe the graphic sideways (or drag the strip above) to pan. Tap equipment to open its faceplate.</div>
 
   <div class="console">
     <aside>
@@ -394,7 +409,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
 'use strict';
@@ -1556,6 +1571,37 @@ S = fresh(); resetAlarms(); S.t = 3 * 3600; warmup(3 * 3600);
 ev('sys', 'SCADA online. Plant in free operation. Choose an exercise and start the shift.');
 refreshFP(); loop.start();
 window.__plant = { run(sec) { let t = 0; while (t < sec) { step(2); evalAlarms(2); scoreTick(2); hist(); t += 2; } }, get S() { return S; }, get F() { return F; }, AL: () => AL, FAULTS, ACT, bAct, dpAct, step, startShift, scores, setSpeed, finish, injectFault, evalAlarms, scoreTick, hist };
+/* ---------- phone panning: edge fades, swipe cue and overview strip ---------- */
+(() => {
+  const sc = $('#hmiScroll'), stg = $('#hmiStage'), map = $('#hmiMap'), th = $('#hmiThumb');
+  const upd = () => {
+    const max = sc.scrollWidth - sc.clientWidth;
+    stg.classList.toggle('can-l', sc.scrollLeft > 4); stg.classList.toggle('can-r', sc.scrollLeft < max - 4);
+    map.classList.toggle('on', max > 4);
+    th.style.width = (sc.clientWidth / sc.scrollWidth * 100) + '%'; th.style.left = (sc.scrollLeft / sc.scrollWidth * 100) + '%';
+  };
+  sc.addEventListener('scroll', () => { upd(); if (sc.scrollLeft > 12) stg.classList.add('panned'); }, { passive: true });
+  let drag = false;
+  const go = e => { const r = map.getBoundingClientRect(); sc.scrollLeft = (e.clientX - r.left) / r.width * sc.scrollWidth - sc.clientWidth / 2; };
+  map.addEventListener('pointerdown', e => { drag = true; map.setPointerCapture(e.pointerId); go(e); });
+  map.addEventListener('pointermove', e => { if (drag) go(e); });
+  map.addEventListener('pointerup', () => drag = false); map.addEventListener('pointercancel', () => drag = false);
+  addEventListener('resize', upd); setTimeout(upd, 300); upd();
+})();
+
+/* ---------- guided tour ---------- */
+const startTour = () => SL.tour([
+  { el: '#scen', title: 'Choose an exercise', text: 'Pick a training emergency (dry-running pump, burst main, chlorinator failure, power cut…) or free operation, then press Start shift. You are the operator on duty.' },
+  { el: '#hmiStage', title: 'The SCADA overview', text: 'Live P&ID of the whole system, from borehole to town. Tap any pump, valve or tank to open its faceplate. On a phone, swipe sideways or drag the overview strip to pan.' },
+  { el: '#annun', title: 'Alarm annunciator', text: 'Counts of active alarms by priority (1 is most urgent) and the latest alarm. Acknowledge to show you have seen it; silence stops the horn but does not fix anything.' },
+  { el: '#speed', title: 'Plant time', text: 'Run the plant faster to see slow processes such as the reservoir filling, or pause to think. Alarms still need you at any speed.' },
+  { el: '#fpPanel', title: 'Faceplates', text: 'Select equipment to see its live values and operate it: start and stop pumps, switch auto/manual, set valve positions and setpoints.' },
+  { el: '#alist', title: 'Alarm summary', text: 'Every alarm with time, tag and priority. Shelve nuisance alarms with care and use History to reconstruct what happened first.' },
+  { el: '#trend', title: 'Trends', text: 'The historian plots levels, flows, quality and power over 1 to 12 hours. Trends often show the root cause before the alarm does.' },
+  { el: '.tabs .tablist button:nth-child(7)', title: 'Challenges', text: 'Open Experiments & challenges, then record your diagnosis during each exercise: it is graded in the debrief.' },
+]);
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
+
 })();
 </script>
 </body>

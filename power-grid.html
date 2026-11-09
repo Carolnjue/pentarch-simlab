@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=7">
+<link rel="stylesheet" href="assets/css/simlab.css?v=8">
 <style>
   .gc{padding:20px 0 10px}
   .gbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
@@ -26,7 +26,8 @@
   .gtop{display:grid;grid-template-columns:340px minmax(0,1fr);gap:14px}
   .gmid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px;margin-top:14px}
   .gbot{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}
-  @media (max-width:1100px){.gtop{grid-template-columns:300px minmax(0,1fr)}.gmid{grid-template-columns:1fr}}
+  @media (max-width:1100px){.gtop{grid-template-columns:300px minmax(0,1fr)}.gmid{grid-template-columns:1fr}.gmid>aside{order:-1}}
+  @media (max-width:600px){.units{max-height:560px;overflow-y:auto;overscroll-behavior:contain;padding-right:2px;-webkit-mask:linear-gradient(#000 92%,transparent);mask:linear-gradient(#000 92%,transparent)}}
   @media (max-width:860px){.gtop,.gbot{grid-template-columns:1fr}}
   .gtop>*,.gmid>*,.gbot>*{min-width:0}
   .fpanel{display:flex;flex-direction:column}
@@ -39,7 +40,22 @@
   .stage.grid{min-height:0;height:100%;display:flex;flex-direction:column}
   .netbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:10px 12px 0}
   .netbar .seg{margin-left:auto}
+  .net-wrap{position:relative;flex:1;display:flex;flex-direction:column;min-height:0}
   .net-scroll{position:relative;flex:1;min-height:420px;overflow-x:auto;overflow-y:hidden}
+  .net-wrap.can-r::after,.net-wrap.can-l::before{content:"";position:absolute;top:0;bottom:0;width:44px;pointer-events:none;z-index:3}
+  .net-wrap.can-r::after{right:0;background:linear-gradient(90deg,rgba(5,9,19,0),rgba(5,9,19,.95))}
+  .net-wrap.can-l::before{left:0;background:linear-gradient(270deg,rgba(5,9,19,0),rgba(5,9,19,.95))}
+  .pan-cue{display:none;position:absolute;left:50%;bottom:30px;transform:translateX(-50%);z-index:4;pointer-events:none;align-items:center;gap:6px;font:600 .8rem var(--font);color:#fff;background:rgba(10,15,29,.9);border:1px solid var(--line2);border-radius:999px;padding:8px 14px;box-shadow:0 6px 18px rgba(0,0,0,.5);animation:nudge 1.6s ease-in-out infinite}
+  .pan-cue svg{width:16px;height:16px}
+  @keyframes nudge{0%,100%{transform:translateX(-50%)}50%{transform:translateX(calc(-50% + 10px))}}
+  .net-wrap.panned .pan-cue{display:none!important}
+  .net-map{display:none;position:relative;height:28px;margin:0 12px 10px;border-radius:8px;background:var(--bg2);border:1px solid var(--line2);touch-action:none;cursor:pointer;overflow:hidden}
+  .net-map i{position:absolute;top:2px;bottom:2px;border-radius:6px;background:rgba(255,255,255,.12);border:1px solid #93a1bd;pointer-events:none}
+  .net-map span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:600 .66rem var(--mono);color:var(--dim);pointer-events:none}
+  @media (max-width:860px){.pan-cue{display:inline-flex}.net-map.on{display:block}}
+  .fcap{margin-top:10px;font-size:.8rem;line-height:1.5;color:var(--muted);border-left:3px solid var(--accent);background:var(--bg2);border-radius:8px;padding:8px 10px}
+  .fcap b{color:var(--text)}
+  @media (pointer:coarse){.urow .utg button{padding:9px 10px;font-size:.7rem}.utg{gap:6px}.urow .btn.sm{min-height:38px}}
   #net{position:absolute;inset:0;width:100%;height:100%}
   @media (max-width:860px){.net-scroll{min-height:0;flex:none}#net{position:static;width:880px;max-width:none;height:auto;aspect-ratio:1000/600}}
   .gbot>.panel{margin-top:0}
@@ -125,13 +141,18 @@
         <div class="stat"><div class="k">Last nadir</div><div class="v" id="sNadir">–<small>Hz</small></div></div>
         <div class="stat"><div class="k">Imbalance</div><div class="v" id="sImb">0<small>MW</small></div></div>
       </div>
+      <div class="fcap" id="fcap" aria-live="off"></div>
       <div class="panel-title">Under-frequency load shedding</div>
       <div class="ufls" id="ufls"></div>
       <div class="btn-row"><button class="btn sm" id="restoreStage"><i data-lucide="undo-2"></i> Restore one stage</button><label class="toggle" style="padding:0;gap:6px"><input type="checkbox" id="agc" checked> AGC</label></div>
     </div>
     <div class="stage grid">
       <div class="netbar"><span class="readout">Demand <b id="hDem">0</b> MW</span><span class="readout">Generation <b id="hGen">0</b> MW</span><span class="readout">Reserve <b id="hRes">0</b> MW</span><div class="seg" id="view"><button class="on" data-v="sld">Single-line</button><button data-v="map">Map</button></div></div>
-      <div class="net-scroll"><canvas id="net" aria-label="Transmission network diagram with line loadings"></canvas></div>
+      <div class="net-wrap" id="netWrap">
+        <div class="net-scroll" id="netScroll"><canvas id="net" aria-label="Transmission network diagram with line loadings"></canvas></div>
+        <div class="pan-cue" aria-hidden="true"><i data-lucide="hand"></i> Swipe to pan <i data-lucide="arrow-right"></i></div>
+      </div>
+      <div class="net-map" id="netMap" title="Drag or tap to pan the diagram"><i id="netThumb"></i><span>drag to pan the network</span></div>
       <div class="legend2" id="netLegend"></div>
     </div>
   </div>
@@ -376,7 +397,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=7"></script>
+<script src="assets/js/simlab.js?v=8"></script>
 <script>
 (() => {
 'use strict';
@@ -1105,6 +1126,18 @@ function simAdvance(sec) {
     checkCh(hh);
   }
 }
+// live "what's happening" caption under the frequency gauge
+let fcapLast = '';
+function fcap(dead) {
+  const imb = S.gen - S.load, df = S.df, r = S.rocofF; let h;
+  if (dead) h = '<b>Blackout.</b> No generation online, so there is no frequency. Restart black-start units (hydro, diesel) first, then energise lines and pick up load in small blocks.';
+  else if (imb < -5) h = `<b>Generation is ${f0(-imb)} MW short of demand.</b> The shortfall is drawn from the kinetic energy of spinning machines, so frequency is ${r < -0.002 ? 'falling at ' + f2(-r) + ' Hz/s' : 'sagging'}. Governors and batteries respond first; AGC then restores 50 Hz.`;
+  else if (imb > 5) h = `<b>Generation exceeds demand by ${f0(imb)} MW.</b> The surplus speeds up the machines, so frequency ${r > 0.002 ? 'rises at ' + f2(r) + ' Hz/s' : 'creeps up'}. Governors and AGC will cut output.`;
+  else if (df < -0.05) h = `<b>Balanced, but ${f2(-df)} Hz low.</b> Droop (primary) control has stopped the fall but cannot remove the error. AGC (secondary control) slowly raises output to bring frequency back to 50 Hz.`;
+  else if (df > 0.05) h = `<b>Balanced, but ${f2(df)} Hz high.</b> AGC is trimming output to bring frequency back to 50 Hz.`;
+  else h = `<b>Balanced.</b> Generation matches demand and frequency is steady near 50 Hz. Keep enough spinning reserve (${f0(S.reserve)} MW now) to cover the loss of your largest unit.`;
+  if (h !== fcapLast) { $('#fcap').innerHTML = h; fcapLast = h; }
+}
 function tick(dt) {
   if (speed > 0) simAdvance(Math.min(dt * speed, 20));
   anim += dt;
@@ -1119,6 +1152,7 @@ function tick(dt) {
     $('#sInertia').innerHTML = f2(S.E / 1000) + '<small>GW·s</small>';
     $('#sNadir').innerHTML = (S.nadir ? f2(S.nadir) : '–') + '<small>Hz</small>';
     $('#sImb').innerHTML = f0(S.gen - S.load) + '<small>MW</small>';
+    fcap(dead);
     $('#hDem').textContent = f0(S.demand); $('#hGen').textContent = f0(S.gen); $('#hRes').textContent = f0(S.reserve);
     $('#gclock').textContent = clock(S.t);
     const gs = $('#gstate'); gs.textContent = S.state.toUpperCase(); gs.className = 'gstate ' + S.state;
@@ -1148,6 +1182,37 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) loop.
 S = fresh(5); startScen('free');
 loop.start();
 window.__grid = { get LOG() { return LOG; }, get S() { return S; }, EV, startScen, simAdvance, setSpeed, U, finishScen, blackout, islands };
+/* ---------- phone panning: edge fades, swipe cue and overview strip ---------- */
+(() => {
+  const sc = $('#netScroll'), wrap = $('#netWrap'), map = $('#netMap'), th = $('#netThumb');
+  const upd = () => {
+    const max = sc.scrollWidth - sc.clientWidth;
+    wrap.classList.toggle('can-l', sc.scrollLeft > 4); wrap.classList.toggle('can-r', sc.scrollLeft < max - 4);
+    map.classList.toggle('on', max > 4);
+    th.style.width = (sc.clientWidth / sc.scrollWidth * 100) + '%'; th.style.left = (sc.scrollLeft / sc.scrollWidth * 100) + '%';
+  };
+  sc.addEventListener('scroll', () => { upd(); if (sc.scrollLeft > 12) wrap.classList.add('panned'); }, { passive: true });
+  let drag = false;
+  const go = e => { const r = map.getBoundingClientRect(); sc.scrollLeft = (e.clientX - r.left) / r.width * sc.scrollWidth - sc.clientWidth / 2; };
+  map.addEventListener('pointerdown', e => { drag = true; map.setPointerCapture(e.pointerId); go(e); });
+  map.addEventListener('pointermove', e => { if (drag) go(e); });
+  map.addEventListener('pointerup', () => drag = false); map.addEventListener('pointercancel', () => drag = false);
+  addEventListener('resize', upd); setTimeout(upd, 300); upd();
+})();
+
+/* ---------- guided tour ---------- */
+const startTour = () => SL.tour([
+  { el: '#scen', title: 'Choose a scenario', text: 'You are the national grid control engineer. Pick free operation, a day of random events, the evening peak, a low-inertia midday or a black start, then press Start.' },
+  { el: '#fbig', title: 'System frequency', text: 'Frequency is the heartbeat of the grid: 50 Hz when generation equals demand. The caption below explains what is happening right now.' },
+  { el: '#netWrap', title: 'The transmission network', text: 'Lines are coloured by loading; tap a line or substation for details. Switch to the map view with the toggle. On a phone, swipe sideways or drag the strip below to pan.' },
+  { el: '#units', title: 'Dispatch the fleet', text: 'Start and stop units and drag their setpoints. GOV gives a unit droop frequency response; AGC lets it follow the automatic secondary control.' },
+  { el: '.evbtns', title: 'Inject an event', text: 'Trip the largest unit or the interconnector, cut the wind or solar, or add a demand surge, then watch the frequency nadir and the under-frequency load-shedding stages.' },
+  { el: '#speed', title: 'Grid time', text: 'Run the day faster to see demand change. With “Real-time on events” on, the clock slows to real time whenever something trips.' },
+  { el: '#ftrend', title: 'Frequency trend', text: 'The last 60 s of frequency. A trip shows the classic dip: fall (inertia), nadir (primary response), recovery (AGC).' },
+  { el: '.tabs .tablist button:nth-child(8)', title: 'Challenges', text: 'Open Experiments & challenges for graded tasks such as riding through a unit trip without shedding load.' },
+]);
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
+
 })();
 </script>
 </body>
