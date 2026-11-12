@@ -218,7 +218,7 @@
       <button><i data-lucide="columns-2"></i> Mitosis vs meiosis</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
       <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments & challenges</button>
-      <button id="tabClin"><i data-lucide="stethoscope"></i> Clinical &amp; exam</button>
+      <button id="tabClin"><i data-lucide="stethoscope"></i> Clinical cases &amp; OSCE</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
     </div>
     <div class="tabpanel prose">
@@ -373,6 +373,71 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=15"></script>
 <script>
+/* SLPerf: frame budget for phones (student audit finding 10).
+   - Drawing is capped at 30 fps on touch / low-core devices and drops to ~12 fps while the scene is idle
+     (no running animation and no recent input); 4 fps with prefers-reduced-motion.
+   - Visibility comes from an IntersectionObserver, so the loop never forces a layout read per frame.
+   - put() writes text/HTML only when it changed, so idle readouts cause no repaint. */
+window.SLPerf = (() => {
+  const low = matchMedia('(pointer: coarse)').matches || (navigator.hardwareConcurrency || 8) <= 4;
+  const rm = matchMedia('(prefers-reduced-motion: reduce)');
+  let lastInput = -1e9;
+  const poke = () => { lastInput = performance.now(); };
+  ['pointerdown', 'pointermove', 'keydown', 'input', 'wheel', 'click'].forEach(t => addEventListener(t, poke, { passive: true, capture: true }));
+  const seen = new WeakMap();
+  const io = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => seen.set(e.target, e.isIntersecting)), { rootMargin: '40px 0px' }) : null;
+  const measure = el => { const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom > 0 && r.top < innerHeight; };
+  return {
+    low,
+    poke,
+    /** multiply canvas shadowBlur by this: glow halos are expensive to raster on phones */
+    glow: low ? 0 : 1,
+    /** is el (nearly) on screen? */
+    on(el) {
+      if (!el) return false;
+      if (!io) return measure(el);
+      if (!seen.has(el)) { seen.set(el, measure(el)); io.observe(el); }
+      return seen.get(el);
+    },
+    /** gate(dt, busy): the time to advance and draw now, or 0 to skip this frame */
+    gate(idleFps) {
+      let acc = 0;
+      return (dt, busy) => {
+        acc += dt;
+        const active = busy || performance.now() - lastInput < 1200;
+        const fps = rm.matches ? (active ? 30 : 4) : active ? (low ? 30 : 60) : (idleFps || 12);
+        if (acc < 1 / fps - 0.004) return 0;
+        const d = Math.min(0.1, acc); acc = 0; return d;
+      };
+    },
+    /** SL.canvas with a lighter backing store on phones (1.5× instead of 2×: about 45% fewer pixels to raster) */
+    canvas(cv, onResize) {
+      const ctx = cv.getContext('2d'), state = { ctx, w: 0, h: 0, dpr: 1 };
+      let first = true;
+      const fit = () => {
+        const r = cv.getBoundingClientRect();
+        const dpr = Math.min(window.devicePixelRatio || 1, low ? 1.5 : 2);
+        const w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+        if (w === state.w && h === state.h && dpr === state.dpr) return;
+        cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); ctx.setTransform(cv.width / w, 0, 0, cv.height / h, 0, 0);
+        Object.assign(state, { w, h, dpr });
+        if (!onResize) return;
+        if (first) { first = false; Promise.resolve().then(() => onResize(state.w, state.h)); } else onResize(w, h);
+      };
+      if ('ResizeObserver' in window) new ResizeObserver(fit).observe(cv); else addEventListener('resize', fit);
+      fit();
+      return state;
+    },
+    /** set innerHTML (or textContent when text is true) only if the value changed */
+    put(el, v, text) {
+      if (!el) return; v = String(v);
+      if (el.__slp === v && el.firstChild === el.__slpF) return;
+      el.__slp = v; if (text) el.textContent = v; else el.innerHTML = v; el.__slpF = el.firstChild;
+    },
+  };
+})();
+</script>
+<script>
 /* Watch-demo runner and goal-based scenarios (page-local kit) */
 (function () {
   if (window.DemoKit) return;
@@ -430,11 +495,11 @@
   const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
   const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
 
-  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  /* bar above the lab: Watch demo + Cases & OSCE link + goal banner */
   function bar(before) {
     let b = document.querySelector('.dk-bar'); if (b) return b;
     b = document.createElement('div'); b.className = 'dk-bar';
-    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Open the Clinical cases &amp; OSCE tab (C)"><i data-lucide="stethoscope"></i> Cases &amp; OSCE</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>C</kbd> cases &amp; OSCE · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
     const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
   }
 
@@ -449,6 +514,17 @@
     cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
     (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // phones: the caption is pinned to the bottom of the screen for the whole demo, and each highlighted control
+    // is scrolled into the band between the header and the caption (student audit finding 24)
+    const narrow = () => innerWidth <= 600;
+    async function keepInView(sel, A) {
+      const el = $(sel); if (!el) return; const r = el.getBoundingClientRect(); if (!r.height) return;
+      const pinned = cap.classList.contains('fixed') || cap.classList.contains('over');
+      const top = 76, bot = innerHeight - (pinned ? cap.offsetHeight + 20 : 0);
+      if (r.top >= top && r.bottom <= bot) return;
+      const y = r.height > bot - top ? scrollY + r.top - top - 6 : scrollY + r.top - top - ((bot - top) - r.height) / 2;
+      scrollTo({ top: Math.max(0, y), behavior: reduce ? 'auto' : 'smooth' }); await A.sleep(reduce ? 60 : 520);
+    }
     let run = null; // {abort, stepMode, nextRes}
     const D = { running: () => !!run };
     function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
@@ -480,8 +556,9 @@
         for (let i = 0; i < steps.length; i++) {
           const st = steps[i]; if (r.abort) throw ABORT;
           cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
-          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); cap.classList.toggle('over', !!st.capFixed || narrow()); pg.style.width = (i / steps.length * 100) + '%';
           if (st.run) await st.run(A);
+          if (st.hl) await keepInView(st.hl, A);
           if (r.abort) throw ABORT;
           pg.style.width = ((i + 1) / steps.length * 100) + '%';
           const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
@@ -493,7 +570,7 @@
     }
     function end(restore, msg) {
       const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
-      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      cap.classList.remove('show', 'over'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
       if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
       if (o.onStop) try { o.onStop(); } catch (e) {}
       SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
@@ -520,21 +597,21 @@
     let done = {}; try { done = JSON.parse(localStorage.getItem(o.key) || '{}') || {}; } catch (e) { done = {}; }
     const save = () => { try { localStorage.setItem(o.key, JSON.stringify(done)); } catch (e) {} };
     const ct = () => `${o.list.filter(s => done[s.id]).length}/${o.list.length} achieved`;
-    sec.innerHTML = `<h3><i data-lucide="stethoscope"></i> Scenarios: clinical cases <span class="ct"></span></h3><p class="small muted" style="margin:0">Each scenario sets up the lab, states the goal and checks it live. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
-    const m = $(o.mount); if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
+    sec.innerHTML = `<h3><i data-lucide="stethoscope"></i> Clinical cases <span class="ct"></span></h3><p class="small muted" style="margin:0">Each case sets up the lab, states the goal and checks it live; the timed OSCE station is further down this tab. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
+    const m = $(o.mount); if (o.mountIn) { const edu = m.querySelector(':scope > .mk-edu'); m.insertBefore(sec, edu ? edu.nextSibling : m.firstChild); } else if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
     let act = null, timer = 0;
     function paint() { sec.querySelector('.ct').textContent = ct(); sec.querySelectorAll('.dk-card').forEach(c => { c.classList.toggle('done', !!done[c.dataset.id]); c.classList.toggle('on', !!act && act.s.id === c.dataset.id); const bt = c.querySelector('[data-go]'); bt.innerHTML = act && act.s.id === c.dataset.id ? '<i data-lucide="rotate-ccw"></i> Restart' : done[c.dataset.id] ? '<i data-lucide="repeat"></i> Play again' : '<i data-lucide="play"></i> Start'; }); icons(sec); }
     function banner() {
       if (!act) { goal.classList.remove('show', 'won'); goal.innerHTML = ''; return; }
       const s = act.s; goal.classList.add('show'); goal.classList.toggle('won', act.won);
-      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the scenario up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
+      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the case up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
       icons(goal); tick();
     }
     function tick() {
       if (!act) return; const s = act.s; let st = '';
       try { st = s.status ? s.status() : ''; } catch (e) {}
-      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
-      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
+      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Case solved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another case.') : st;
     }
     function startS(id) {
       const s = o.list.find(x => x.id === id); if (!s) return;
@@ -547,12 +624,36 @@
     function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
     sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
     goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
-    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
-    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
+    b.querySelector('#dkScenBtn').onclick = () => DemoKit.goCases();
+    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 'c' || e.key === 'C') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); DemoKit.goCases(); } });
     paint();
     const API = { active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
     DemoKit._scen = API; return API;
   };
+  /* Clinical cases & OSCE tab (consistency standard): the bar button and the C key always open the tab and
+     scroll to it, with a toast that offers the way back; #cases and #osce deep-link to each part. */
+  const clinTab = () => document.getElementById('tabClin');
+  DemoKit.clinPanel = () => { const t = clinTab(); if (!t) return null; const tabs = t.closest('.tabs'); const i = [...t.parentNode.children].indexOf(t); return tabs.querySelectorAll(':scope > .tabpanel')[i] || null; };
+  const hdrH = () => (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hdr')) || 64) + 10;
+  function reveal(el, smooth) {
+    if (!el) return; const t = clinTab(); if (t && !t.classList.contains('on')) t.click();
+    const rm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const go = sm => scrollTo({ top: el.getBoundingClientRect().top + scrollY - hdrH(), behavior: sm && !rm ? 'smooth' : 'auto' });
+    requestAnimationFrame(() => { go(smooth); setTimeout(() => { if (Math.abs(el.getBoundingClientRect().top - hdrH()) > 30) go(false); }, smooth ? 900 : 250); });
+  }
+  DemoKit.goCases = () => {
+    const t = clinTab(); if (!t) return; const from = scrollY;
+    reveal(t.closest('.tabs') || t, true);
+    setTimeout(() => { try { t.focus({ preventScroll: true }); } catch (e) {} }, 900);
+    const nc = document.querySelectorAll('#dkScen .dk-card').length;
+    SL.toast(`<b>Clinical cases &amp; OSCE</b> is open: ${nc} clinical cases, then the timed OSCE station (pass mark 70 %). <button class="btn sm dk-back" style="margin-left:6px">Back to the lab</button>`, 'ok', 6000);
+    const box = document.querySelectorAll('.toasts .toast'), bk = box.length && box[box.length - 1].querySelector('.dk-back');
+    if (bk) bk.onclick = () => { bk.closest('.toast').remove(); scrollTo({ top: from, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); };
+  };
+  const HASH = { cases: '#dkScen', osce: '#mkOsce' };
+  function onHash() { const h = decodeURIComponent(location.hash.slice(1)).toLowerCase(); if (HASH[h]) reveal(document.querySelector(HASH[h]), false); }
+  addEventListener('hashchange', onHash);
+  addEventListener('load', () => setTimeout(onHash, 60));
   window.DemoKit = DemoKit;
 })();
 </script>
@@ -721,7 +822,7 @@
       el.querySelector('.mk-items').classList.add('marked');
       const used = Math.round((Date.now() - r.t0) / 1000), n = r.items.length, pass = score >= Math.ceil(n * 0.7);
       st.runs++; st.best = Math.max(st.best == null ? 0 : st.best, score); save(o.key, st);
-      const head = el.querySelector('.mk-osce-head'); head.innerHTML = `<span class="mk-timer">${score}/${n}</span><span class="small muted">Time used ${Math.floor(used / 60)}:${String(used % 60).padStart(2, '0')} · ${pass ? '<b style="color:var(--ok)">Pass</b>' : '<b style="color:var(--bad)">Below the pass mark</b>'} (pass mark ${Math.ceil(n * 0.7)}/${n})</span>`;
+      const head = el.querySelector('.mk-osce-head'); head.innerHTML = `<span class="mk-timer">${score}/${n}</span><span class="small muted">Time used ${Math.floor(used / 60)}:${String(used % 60).padStart(2, '0')} · ${pass ? '<b style="color:var(--ok)">Pass</b>' : '<b style="color:var(--bad)">Below the pass mark</b>'} (pass mark 70 %: ${Math.ceil(n * 0.7)}/${n})</span>`;
       const row = el.querySelector('.btn-row'); row.innerHTML = '<button class="btn primary" data-a="start"><i data-lucide="rotate-ccw"></i> Try again (new numbers)</button>'; icons(row);
       try { SL.renderMath(el); } catch (e) {}
       SL.toast(`Station marked: <b>${score}/${n}</b>`, pass ? 'ok' : 'warn', 3500);
@@ -783,7 +884,7 @@
   };
   const SHORT = { mitosis: ['Inter', 'Pro', 'Prometa', 'Meta', 'Ana', 'Telo', 'Cyto'], meiosis: ['Inter', 'Pro I a', 'Pro I b', 'Meta I', 'Ana I', 'Telo I', 'Pro II', 'Meta II', 'Ana II', 'Telo II'] };
   let cur = null, from = null, to = null, tw = 1;
-  const DV = SL.canvas($('#cvDiv'), () => { if (cur) retarget(true); });
+  const DV = SLPerf.canvas($('#cvDiv'), () => { if (cur) retarget(true); });
 
   function segsOf(c) {
     if (ST.mode !== 'meiosis' || ST.step < 2) return [[0, 1, c.o]];
@@ -1175,7 +1276,7 @@
   /* =====================================================================
      2. INDEPENDENT ASSORTMENT
      ===================================================================== */
-  const AS = SL.canvas($('#cvAs'));
+  const AS = SLPerf.canvas($('#cvAs'));
   const asS = { n: 3, orient: [], seen: new Set(), shuf: 0, hist: [], last: null, anim: 1 };
   function asReset() { asS.orient = Array(asS.n).fill(0); asS.seen = new Set(); asS.shuf = 0; asS.hist = Array(asS.n + 1).fill(0); asS.last = null; asStats(); }
   SL.bind('#nPairs', v => { asS.n = v; asReset(); }, v => v);
@@ -1289,7 +1390,7 @@
     Y: [['SRY', 2.8, 'Yp11.2', 'testis-determining factor'], ['AZF', 20.0, 'Yq11', 'azoospermia factor regions needed for sperm production']],
   };
   let kar = null, kSel = null, kHover = null, kVar = 'XY';
-  const KK = SL.canvas($('#cvK'), () => { if (kar) layoutK(); });
+  const KK = SLPerf.canvas($('#cvK'), () => { if (kar) layoutK(); });
   const KV = {
     XY: ['46,XY', {}, 'Normal male: 22 pairs of autosomes plus X and Y.'], XX: ['46,XX', {}, 'Normal female: 22 pairs of autosomes plus two X chromosomes.'],
     T21: ['47,XY,+21', { 21: 3 }, 'Three copies of chromosome 21, usually from maternal meiosis I nondisjunction. Click the extra copy.'],
@@ -1374,7 +1475,7 @@
       <div class="kv"><span>Size</span><span>${d[0]} Mb (${(d[0] / 3100 * 100).toFixed(1)} % of the genome)</span><span>Genes</span><span>≈ ${d[2].toLocaleString('en')} protein-coding</span><span>Centromere</span><span>${type} (p arm ≈ ${Math.round(d[1] * 100)} %)</span><span>Group</span><span>${d[3]}</span></div>
       <canvas id="ideo"></canvas>
       <ul class="genes">${GENES[id].map(g => `<li><b>${g[0]}</b> · ${g[2]}<br>${g[3]}</li>`).join('')}</ul>`;
-    ideoS.st = SL.canvas($('#ideo'), () => drawIdeo(id)); drawIdeo(id);
+    ideoS.st = SLPerf.canvas($('#ideo'), () => drawIdeo(id)); drawIdeo(id);
   }
   function drawIdeo(id) {
     const st = ideoS.st; if (!st) return; const { ctx, w, h } = st; ctx.clearRect(0, 0, w, h);
@@ -1390,7 +1491,7 @@
   /* =====================================================================
      4. STRUCTURE ZOOM
      ===================================================================== */
-  const ZS = SL.canvas($('#cvZ'));
+  const ZS = SLPerf.canvas($('#cvZ'));
   const ZL = [
     ['DNA double helix', '2 nm', 'Two antiparallel sugar–phosphate backbones with paired bases inside: A with T (2 hydrogen bonds), G with C (3). One turn is 3.4 nm and ≈10.5 bp; the offset backbones create a major and a minor groove where proteins read the sequence. Naked DNA: 0.34 nm per base pair.'],
     ['Nucleosomes: beads on a string', '11 nm', '147 bp of DNA wraps 1.65 turns around a histone octamer (two each of H2A, H2B, H3 and H4). Nucleosomes repeat every ≈200 bp, separated by linker DNA. Histone tails are acetylated or methylated to regulate gene activity. Packing ≈6–7×.'],
@@ -1417,7 +1518,7 @@
     const { ctx, w, h } = ZS; ctx.clearRect(0, 0, w, h);
     if (zS.play) { zS.z = Math.min(5, zS.z + dt * .32); if (zS.z >= 5) zS.play = false; }
     if (zS.target !== null && zS.target !== undefined) { const d = zS.target - zS.z; zS.z += Math.sign(d) * Math.min(Math.abs(d), dt * 1.6); if (Math.abs(d) < .001) zS.target = null; }
-    $('#zoom').value = zS.z; $('#zoom').style.setProperty('--p', zS.z / 5 * 100 + '%'); $('#zoom').closest('.ctl').querySelector('output').textContent = ZL[Math.round(zS.z)][1];
+    if (zS.z !== zS.shown) { zS.shown = zS.z; $('#zoom').value = zS.z; $('#zoom').style.setProperty('--p', zS.z / 5 * 100 + '%'); SLPerf.put($('#zoom').closest('.ctl').querySelector('output'), ZL[Math.round(zS.z)][1], 1); }
     zUI();
     const L = Math.floor(Math.min(zS.z, 4.999)), f = zS.z - L, t = performance.now() / 1000;
     const draw = (lvl, sc, al) => { if (al < .01) return; ctx.save(); ctx.globalAlpha = al; ctx.translate(w / 2, h / 2); ctx.scale(sc, sc); ctx.translate(-w / 2, -h / 2); LV[lvl](ctx, w, h, t); ctx.restore(); };
@@ -1553,23 +1654,23 @@
   SL.quiz('#quiz', [
     { q: 'A human cell in G2 has how many chromosomes and chromatids?', options: ['46 chromosomes, 46 chromatids', '46 chromosomes, 92 chromatids', '92 chromosomes, 92 chromatids', '23 chromosomes, 46 chromatids'], answer: 1, why: 'Replication doubles the chromatids, not the chromosome count: each of the 46 chromosomes has two sister chromatids joined at the centromere.' },
     { q: 'In which phase do homologous chromosomes separate?', options: ['Anaphase of mitosis', 'Anaphase I', 'Anaphase II', 'Prophase I'], answer: 1, why: 'Anaphase I is the reductional division: homologues go to opposite poles while sisters stay together.' },
-    { q: 'Crossing over occurs between:', options: ['Sister chromatids of one chromosome', 'Non-sister chromatids of homologous chromosomes', 'Non-homologous chromosomes', 'Chromosomes of two different cells'], answer: 1, why: 'Exchange between non-sister chromatids of a bivalent creates recombinant chromatids; sister exchange would change nothing genetically.' },
-    { q: 'How many chromosome combinations can independent assortment alone give in a human gamete?', options: ['46', '2 × 23 = 46', '2²³ ≈ 8.4 million', '23²'], answer: 2, why: 'Each of 23 bivalents orients independently in 2 ways: 2²³ = 8 388 608.' },
-    { q: 'Nondisjunction in meiosis II produces:', options: ['Four aneuploid gametes', 'Two n + 1 and two n − 1 gametes', 'One n + 1, one n − 1 and two normal gametes', 'Four normal gametes'], answer: 2, why: 'Only one of the two meiosis II divisions fails, so the other gives two normal gametes.' },
+    { q: 'Crossing over occurs between:', options: ['Sister chromatids of the same chromosome', 'Non-sister chromatids of homologous chromosomes', 'Non-homologous chromosomes that happen to lie side by side', 'Chromosomes of two different cells'], answer: 1, why: 'Exchange between non-sister chromatids of a bivalent creates recombinant chromatids; sister exchange would change nothing genetically.' },
+    { q: 'How many chromosome combinations can independent assortment alone give in a human gamete?', options: ['46 combinations', '2 × 23 = 46', '2²³ ≈ 8.4 million', '23² = 529 combinations'], answer: 2, why: 'Each of 23 bivalents orients independently in 2 ways: 2²³ = 8 388 608.' },
+    { q: 'Nondisjunction in meiosis II produces:', options: ['Four aneuploid gametes, two with an extra copy', 'Two n + 1 and two n − 1 gametes', 'One n + 1, one n − 1 and two normal gametes', 'Four normal gametes'], answer: 2, why: 'Only one of the two meiosis II divisions fails, so the other gives two normal gametes.' },
     { q: 'Which karyotype is Klinefelter syndrome?', options: ['45,X', '47,XXY', '47,XYY', '47,+21'], answer: 1, why: '47,XXY: a male with an extra X. 45,X is Turner syndrome; 47,XYY is Jacobs syndrome.' },
-    { q: 'Chromosome 21 is described as acrocentric. This means:', options: ['Its centromere is in the middle', 'Its centromere is very near one end, giving a tiny p arm', 'It has two centromeres', 'It has no centromere'], answer: 1, why: 'Acrocentric chromosomes (13, 14, 15, 21, 22) have tiny p arms carrying ribosomal RNA genes and satellites.' },
-    { q: 'What is the role of cohesin in mitosis?', options: ['Condenses chromosomes', 'Holds sister chromatids together until anaphase', 'Forms the nuclear envelope', 'Duplicates centrosomes'], answer: 1, why: 'Cohesin rings hold sisters together from S phase; separase cleaves them at anaphase. Condensin drives condensation.' },
+    { q: 'Chromosome 21 is described as acrocentric. This means:', options: ['Its centromere is in the middle, giving equal arms', 'Its centromere is near one end, giving a tiny p arm', 'It has two centromeres, one on each arm', 'It has no centromere and is lost at division'], answer: 1, why: 'Acrocentric chromosomes (13, 14, 15, 21, 22) have tiny p arms carrying ribosomal RNA genes and satellites.' },
+    { q: 'What is the role of cohesin in mitosis?', options: ['Condenses the chromosomes during prophase', 'Holds sister chromatids together until anaphase', 'Forms the nuclear envelope after telophase', 'Duplicates the centrosomes during S phase'], answer: 1, why: 'Cohesin rings hold sisters together from S phase; separase cleaves them at anaphase. Condensin drives condensation.' },
     { q: 'About how many base pairs are wrapped around one histone octamer in a nucleosome core?', options: ['10.5', '50', '147', '1000'], answer: 2, why: '147 bp wrap 1.65 turns around the octamer; about 50 bp of linker DNA joins neighbouring nucleosomes.' },
-    { q: 'Why is the risk of trisomy 21 higher in children of older mothers?', options: ['Older mothers have more mitoses in their eggs', 'Oocytes are arrested in prophase I for decades and cohesion deteriorates', 'Fathers contribute an extra chromosome', 'Chromosome 21 grows larger with age'], answer: 1, why: 'Human oocytes start meiosis I before birth and complete it only at ovulation; loss of cohesin over decades makes meiosis I errors more likely.' },
+    { q: 'Why is the risk of trisomy 21 higher in children of older mothers?', options: ['Eggs of older mothers have gone through more mitoses, so errors build up', 'Oocytes are arrested in prophase I for decades and cohesion deteriorates', 'The father, often older too, contributes the extra chromosome 21', 'Chromosome 21 lengthens with age and pairs less well in meiosis'], answer: 1, why: 'Human oocytes start meiosis I before birth and complete it only at ovulation; loss of cohesin over decades makes meiosis I errors more likely.' },
     { q: 'Which is the correct karyotype for a girl with Down syndrome caused by free trisomy?', options: ['46,XX,+21', '47,XX,+21', '47,XY,+21', '45,XX,−21'], answer: 1, why: 'Write the total count (47), the sex chromosomes (XX for a girl), then the change (+21).' },
     { q: 'The risk of a Down syndrome pregnancy at a maternal age of 40 is about…', options: ['1 in 1500', '1 in 800', '1 in 100', '1 in 10'], answer: 2, why: 'About 1 in 1500 at 20, 1 in 800 at 30, 1 in 270 at 35 and 1 in 100 at 40. The rise reflects cohesin decay in oocytes held in prophase I for decades.' },
-    { q: 'About 95 % of cases of Down syndrome are caused by…', options: ['a Robertsonian translocation', 'free trisomy 21 from nondisjunction', 'mosaicism', 'a new point mutation'], answer: 1, why: 'Free trisomy from nondisjunction, mostly in maternal meiosis I, accounts for about 95 %; translocations about 3 % and mosaicism about 2 %.' },
+    { q: 'About 95 % of cases of Down syndrome are caused by…', options: ['a Robertsonian translocation involving chromosome 21', 'free trisomy 21 from nondisjunction', 'mosaicism', 'a new point mutation'], answer: 1, why: 'Free trisomy from nondisjunction, mostly in maternal meiosis I, accounts for about 95 %; translocations about 3 % and mosaicism about 2 %.' },
     { q: 'A baby’s Down syndrome is due to a Robertsonian translocation. What should the family be offered?', options: ['Nothing more', 'Karyotyping of both parents', 'A repeat karyotype of the baby in one year', 'Antibiotic prophylaxis'], answer: 1, why: 'A parent may carry a balanced translocation, which carries a much higher recurrence risk than free trisomy. Parental karyotypes guide genetic counselling.' },
     { q: 'Which heart defect is classically associated with Down syndrome?', options: ['Atrioventricular septal defect', 'Coarctation of the aorta', 'Transposition of the great arteries', 'Mitral stenosis'], answer: 0, why: 'About half of babies with Down syndrome have congenital heart disease, classically AVSD, so all should have an echocardiogram. Coarctation is the classic lesion of Turner syndrome.' },
     { q: 'A 16-year-old girl has short stature, a webbed neck and has never menstruated. The most likely karyotype is…', options: ['47,XXY', '45,X', '47,XXX', '46,XX,+21'], answer: 1, why: 'Turner syndrome (45,X): ovarian insufficiency causes primary amenorrhoea. Look for coarctation of the aorta and renal anomalies.' },
-    { q: 'Vincristine kills dividing cancer cells by…', options: ['inhibiting DNA gyrase', 'blocking microtubule (spindle) assembly, arresting cells in metaphase', 'cross-linking DNA strands', 'blocking folate metabolism'], answer: 1, why: 'Vinca alkaloids bind tubulin. Without a spindle the spindle assembly checkpoint holds cells in metaphase until they die. Neuropathy is the main toxicity, and intrathecal vincristine is fatal.' },
-    { q: 'In the cytogenetics laboratory, colcemid is added to cultured lymphocytes in order to…', options: ['stain the chromosome bands', 'stop cells in metaphase, when chromosomes are most condensed', 'fix the cells to the slide', 'make the cells divide'], answer: 1, why: 'Colcemid blocks spindle formation, collecting cells in metaphase. Phytohaemagglutinin stimulates division; trypsin and Giemsa produce G-bands.' },
-    { q: 'Chronic myeloid leukaemia is characterised by…', options: ['trisomy 21', 'the Philadelphia chromosome, t(9;22), which makes BCR-ABL', 'monosomy X', 'a deletion on chromosome 5p'], answer: 1, why: 'The reciprocal translocation fuses BCR (chromosome 22) with ABL (chromosome 9), producing a constantly active tyrosine kinase. Imatinib inhibits it.' },
+    { q: 'Vincristine kills dividing cancer cells by…', options: ['inhibiting DNA gyrase, so the DNA cannot unwind', 'blocking microtubule (spindle) assembly, arresting cells in metaphase', 'cross-linking the two DNA strands so they cannot separate', 'blocking folate metabolism, so DNA synthesis stops'], answer: 1, why: 'Vinca alkaloids bind tubulin. Without a spindle the spindle assembly checkpoint holds cells in metaphase until they die. Neuropathy is the main toxicity, and intrathecal vincristine is fatal.' },
+    { q: 'In the cytogenetics laboratory, colcemid is added to cultured lymphocytes in order to…', options: ['stain the chromosome bands so the pairs can be counted and matched', 'stop cells in metaphase, when chromosomes are most condensed', 'fix the cells firmly to the glass slide', 'stimulate the lymphocytes to start dividing'], answer: 1, why: 'Colcemid blocks spindle formation, collecting cells in metaphase. Phytohaemagglutinin stimulates division; trypsin and Giemsa produce G-bands.' },
+    { q: 'Chronic myeloid leukaemia is characterised by…', options: ['trisomy 21 in the white blood cells', 'the Philadelphia chromosome, t(9;22), which makes BCR-ABL', 'monosomy X in the bone-marrow cells', 'a deletion on the short arm of chromosome 5 (cri du chat)'], answer: 1, why: 'The reciprocal translocation fuses BCR (chromosome 22) with ABL (chromosome 9), producing a constantly active tyrosine kinase. Imatinib inhibits it.' },
     { q: 'Chromosome 21 fails to separate in maternal meiosis I. If one of her eggs is fertilised by a normal sperm, the conception can be…', options: ['only 46', '47,+21 or 45,−21', 'only 47,+21', '69 (triploid)'], answer: 1, why: 'Meiosis I nondisjunction makes eggs with two copies of 21 or none. Fertilised: trisomy 21 or monosomy 21 (not viable).' },
     { q: 'In 20 000 births to 35-year-old mothers (risk about 1 in 270), how many babies with Down syndrome would you expect?', options: ['About 7', 'About 74', 'About 270', 'About 740'], answer: 1, why: '20 000 ÷ 270 ≈ 74. Converting “1 in N” to an expected count is a common counselling calculation.' },
     { q: 'Klinefelter syndrome (47,XXY) typically presents with…', options: ['short stature and a webbed neck', 'tall stature, small firm testes and infertility', 'severe intellectual disability and AVSD', 'polydactyly and cleft lip'], answer: 1, why: 'Extra X chromosomes in a male cause testicular failure (low testosterone, infertility) and often tall stature and gynaecomastia. Many are diagnosed at a fertility clinic.' },
@@ -1577,13 +1678,18 @@
 
   /* ---------------- loop ---------------- */
   const divEl = $('#divStage'), asEl = $('#asStage'), kEl = $('#kStage'), zEl = $('#zStage');
-  SL.loop(dt => {
+  // Frame budget (finding 10): each stage draws at up to 30 fps on phones while it is animating and at
+  // 6–12 fps when idle; off-screen stages are skipped (IntersectionObserver, no per-frame layout read).
+  const gDiv = SLPerf.gate(10), gAs = SLPerf.gate(6), gK = SLPerf.gate(6), gZ = SLPerf.gate(12);
+  const mainLoop = SL.loop(dt0 => {
     if (document.hidden) return;
-    if (visible(divEl)) drawDiv(dt);
-    if (visible(asEl)) drawAs(dt);
-    if (visible(kEl)) drawK();
-    if (visible(zEl)) drawZ(dt);
-  }).start();
+    let d;
+    if (SLPerf.on(divEl) && (d = gDiv(dt0, tw < 1 || ST.playing))) drawDiv(d);
+    if (SLPerf.on(asEl) && (d = gAs(dt0, asS.anim < 1))) drawAs(d);
+    if (SLPerf.on(kEl) && gK(dt0, false)) drawK();
+    if (SLPerf.on(zEl) && (d = gZ(dt0, zS.play || (zS.target !== null && zS.target !== undefined)))) drawZ(d);
+  });
+  (window.requestIdleCallback || (f => setTimeout(f, 60)))(() => mainLoop.start(), { timeout: 400 });
 /* ==MEDDEMO== */
   /* ===================== WATCH DEMO, CLINICAL CASES, DRILLS, OSCE ===================== */
   {
@@ -1609,24 +1715,24 @@
             run: async A => { go(2); await A.sleep(900); go(3); }, ms: 4600 },
           { cap: '<b>Anaphase to cytokinesis.</b> Sister chromatids separate, so each daughter cell gets an identical diploid set (2n).',
             run: async A => { go(4); await A.sleep(1300); go(5); await A.sleep(1300); go(6); }, ms: 3000 },
-          { cap: '<b>Meiosis I.</b> Now homologous pairs line up together and cross over; at anaphase I the homologues, not the sisters, separate.', hl: '#chips',
+          { cap: '<b>Meiosis I.</b> Now homologous pairs line up together and cross over; at anaphase I the homologues, not the sisters, separate.', hl: '#divStage',
             run: async A => { setMode('meiosis'); setNd('none'); stopPlay(); go(3); await A.sleep(1600); go(4); }, ms: 3800 },
           { cap: 'After meiosis II there are <b>four haploid gametes</b>, each a different mix of maternal and paternal chromosomes.',
             run: async A => { go(5); await A.sleep(900); go(7); await A.sleep(900); go(9); }, ms: 3600 },
-          { cap: '<b>Nondisjunction in meiosis I:</b> pair A fails to separate, so every gamete is wrong: two have an extra chromosome (n + 1), two lack one (n − 1).', hl: '#ndSel',
+          { cap: '<b>Nondisjunction in meiosis I:</b> pair A fails to separate, so every gamete is wrong: two have an extra chromosome (n + 1), two lack one (n − 1).', hl: '#divStage',
             run: async A => { setNd('MI-0'); await A.until(() => ST.step === STEPS.meiosis.length - 1, 9000); }, ms: 3400 },
           { cap: 'In humans this is how most <b>Down syndrome</b> arises: chromosome 21 fails to separate in the mother’s meiosis I, and an egg with two copies is fertilised.', hl: '#ndOut',
             run: async A => { view('#ndGam'); ndSet('mother', '21', 'MI'); }, ms: 4400 },
           { cap: 'The karyogram of the baby: <b>47,XY,+21</b>, three copies of chromosome 21. The risk rises with maternal age, from about 1 in 1500 at 20 to 1 in 100 at 40.', hl: '#kStage',
             run: async A => { showKar('T21', 21, false); view('#kStage'); }, ms: 5000 },
-          { cap: 'Now try a <b>clinical case</b> below, or the timed karyotype station in the <b>Clinical &amp; exam</b> tab.',
-            run: async A => { const sc = $('#dkScen'); if (sc) sc.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' }); }, ms: 3000 },
+          { cap: 'Your turn: the <b>Clinical cases &amp; OSCE</b> tab is open. Try a clinical case, then the timed karyotype OSCE station.',
+            run: async A => { DemoKit.goCases(); }, capFixed: true, ms: 3000 },
         ]
       });
 
       const hold = { t: 0 }; const held = (ok, ms) => { if (!ok) { hold.t = 0; return false; } if (!hold.t) hold.t = performance.now(); return performance.now() - hold.t >= (ms || 1000); };
       DK.scenarios({
-        before: '#divLab', mount: '.tabs', key: 'sl-chromosomes-cases',
+        before: '#divLab', mount: DemoKit.clinPanel(), mountIn: true, key: 'sl-chromosomes-cases',
         intro: 'These clinical cases are teaching examples, not counselling or treatment advice: follow current MoH/KNH protocols and your supervisors.',
         list: [
           { id: 'age40', near: '#kStage', where: 'Antenatal clinic · Thika', title: 'Maternal age and trisomy 21', goal: 'A 41-year-old in her fourth pregnancy asks why the midwife mentioned her age. Load the karyotype her baby is most at risk of and click the extra chromosome.', success: 'the Down syndrome karyogram is loaded and chromosome 21 is selected.', hint: 'Choose Down syndrome in the Karyotype list, then click one of the three chromosome 21s (or pick 21 under Inspect a chromosome).',
@@ -1680,7 +1786,7 @@
       });
       MK.osce('#mkOsce', {
         key: 'sl-chromosomes-osce', title: 'OSCE station: cytogenetics and karyotypes', minutes: 6,
-        intro: 'A timed laboratory station. Do the live tasks in the labs above (they tick themselves), answer the rest, then submit. Pass mark 5 of 7.',
+        intro: 'A timed laboratory station. Do the live tasks in the labs above (they tick themselves), answer the rest, then submit. Pass mark 70 % (5 of 7).',
         items: () => {
           const R = MK.R, s = R.pick(STAGES.slice(1, 5)), k = R.pick(KT.slice(2, 7)), [a, n] = R.pick(AGE.slice(1));
           return [
@@ -1703,7 +1809,7 @@
     const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
     const startTour = () => SL.tour(jump([
       { el: '#divStage', title: 'Watch a cell divide', text: 'Maternal chromosomes are red, paternal blue. The letters mark gene loci so you can follow alleles into the daughter cells.' },
-      { el: '#dkPlay', title: 'Watch a demo', text: 'Short on time? Press <b>Watch demo</b> (or the D key) for a captioned run-through of the key ideas. Stop it at any time; your settings come back afterwards. <b>Scenarios</b> (S) opens the clinical cases.' },
+      { el: '#dkPlay', title: 'Watch a demo', text: 'Short on time? Press <b>Watch demo</b> (or the D key) for a captioned run-through of the key ideas. Stop it at any time; your settings come back afterwards. <b>Cases &amp; OSCE</b> (C) opens the clinical cases and the OSCE station.' },
       { el: '#divSeg', title: 'Mitosis or meiosis', text: 'Mitosis makes two identical diploid cells; meiosis makes four genetically different haploid gametes.' },
       { el: '#bPlay', title: 'Play or step through', text: 'Press <b>Play</b> for the whole division, or use <b>Step</b> and the phase buttons to stop at each stage.' },
       { el: '#narr', title: 'Read what is happening', text: 'The card explains each phase as you reach it, including the checkpoints and what goes wrong in nondisjunction.' },

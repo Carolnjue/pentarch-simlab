@@ -231,7 +231,7 @@
       <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
       <button><i data-lucide="table"></i> Genetic code</button>
       <button><i data-lucide="globe-2"></i> Real-world</button>
-      <button id="tabClin"><i data-lucide="stethoscope"></i> Clinical &amp; exam</button>
+      <button id="tabClin"><i data-lucide="stethoscope"></i> Clinical cases &amp; OSCE</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
     </div>
 
@@ -422,6 +422,71 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=15"></script>
 <script>
+/* SLPerf: frame budget for phones (student audit finding 10).
+   - Drawing is capped at 30 fps on touch / low-core devices and drops to ~12 fps while the scene is idle
+     (no running animation and no recent input); 4 fps with prefers-reduced-motion.
+   - Visibility comes from an IntersectionObserver, so the loop never forces a layout read per frame.
+   - put() writes text/HTML only when it changed, so idle readouts cause no repaint. */
+window.SLPerf = (() => {
+  const low = matchMedia('(pointer: coarse)').matches || (navigator.hardwareConcurrency || 8) <= 4;
+  const rm = matchMedia('(prefers-reduced-motion: reduce)');
+  let lastInput = -1e9;
+  const poke = () => { lastInput = performance.now(); };
+  ['pointerdown', 'pointermove', 'keydown', 'input', 'wheel', 'click'].forEach(t => addEventListener(t, poke, { passive: true, capture: true }));
+  const seen = new WeakMap();
+  const io = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => seen.set(e.target, e.isIntersecting)), { rootMargin: '40px 0px' }) : null;
+  const measure = el => { const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom > 0 && r.top < innerHeight; };
+  return {
+    low,
+    poke,
+    /** multiply canvas shadowBlur by this: glow halos are expensive to raster on phones */
+    glow: low ? 0 : 1,
+    /** is el (nearly) on screen? */
+    on(el) {
+      if (!el) return false;
+      if (!io) return measure(el);
+      if (!seen.has(el)) { seen.set(el, measure(el)); io.observe(el); }
+      return seen.get(el);
+    },
+    /** gate(dt, busy): the time to advance and draw now, or 0 to skip this frame */
+    gate(idleFps) {
+      let acc = 0;
+      return (dt, busy) => {
+        acc += dt;
+        const active = busy || performance.now() - lastInput < 1200;
+        const fps = rm.matches ? (active ? 30 : 4) : active ? (low ? 30 : 60) : (idleFps || 12);
+        if (acc < 1 / fps - 0.004) return 0;
+        const d = Math.min(0.1, acc); acc = 0; return d;
+      };
+    },
+    /** SL.canvas with a lighter backing store on phones (1.5× instead of 2×: about 45% fewer pixels to raster) */
+    canvas(cv, onResize) {
+      const ctx = cv.getContext('2d'), state = { ctx, w: 0, h: 0, dpr: 1 };
+      let first = true;
+      const fit = () => {
+        const r = cv.getBoundingClientRect();
+        const dpr = Math.min(window.devicePixelRatio || 1, low ? 1.5 : 2);
+        const w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+        if (w === state.w && h === state.h && dpr === state.dpr) return;
+        cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); ctx.setTransform(cv.width / w, 0, 0, cv.height / h, 0, 0);
+        Object.assign(state, { w, h, dpr });
+        if (!onResize) return;
+        if (first) { first = false; Promise.resolve().then(() => onResize(state.w, state.h)); } else onResize(w, h);
+      };
+      if ('ResizeObserver' in window) new ResizeObserver(fit).observe(cv); else addEventListener('resize', fit);
+      fit();
+      return state;
+    },
+    /** set innerHTML (or textContent when text is true) only if the value changed */
+    put(el, v, text) {
+      if (!el) return; v = String(v);
+      if (el.__slp === v && el.firstChild === el.__slpF) return;
+      el.__slp = v; if (text) el.textContent = v; else el.innerHTML = v; el.__slpF = el.firstChild;
+    },
+  };
+})();
+</script>
+<script>
 /* Watch-demo runner and goal-based scenarios (page-local kit) */
 (function () {
   if (window.DemoKit) return;
@@ -479,11 +544,11 @@
   const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
   const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
 
-  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  /* bar above the lab: Watch demo + Cases & OSCE link + goal banner */
   function bar(before) {
     let b = document.querySelector('.dk-bar'); if (b) return b;
     b = document.createElement('div'); b.className = 'dk-bar';
-    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Open the Clinical cases &amp; OSCE tab (C)"><i data-lucide="stethoscope"></i> Cases &amp; OSCE</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>C</kbd> cases &amp; OSCE · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
     const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
   }
 
@@ -498,6 +563,17 @@
     cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
     (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // phones: the caption is pinned to the bottom of the screen for the whole demo, and each highlighted control
+    // is scrolled into the band between the header and the caption (student audit finding 24)
+    const narrow = () => innerWidth <= 600;
+    async function keepInView(sel, A) {
+      const el = $(sel); if (!el) return; const r = el.getBoundingClientRect(); if (!r.height) return;
+      const pinned = cap.classList.contains('fixed') || cap.classList.contains('over');
+      const top = 76, bot = innerHeight - (pinned ? cap.offsetHeight + 20 : 0);
+      if (r.top >= top && r.bottom <= bot) return;
+      const y = r.height > bot - top ? scrollY + r.top - top - 6 : scrollY + r.top - top - ((bot - top) - r.height) / 2;
+      scrollTo({ top: Math.max(0, y), behavior: reduce ? 'auto' : 'smooth' }); await A.sleep(reduce ? 60 : 520);
+    }
     let run = null; // {abort, stepMode, nextRes}
     const D = { running: () => !!run };
     function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
@@ -529,8 +605,9 @@
         for (let i = 0; i < steps.length; i++) {
           const st = steps[i]; if (r.abort) throw ABORT;
           cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
-          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); cap.classList.toggle('over', !!st.capFixed || narrow()); pg.style.width = (i / steps.length * 100) + '%';
           if (st.run) await st.run(A);
+          if (st.hl) await keepInView(st.hl, A);
           if (r.abort) throw ABORT;
           pg.style.width = ((i + 1) / steps.length * 100) + '%';
           const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
@@ -542,7 +619,7 @@
     }
     function end(restore, msg) {
       const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
-      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      cap.classList.remove('show', 'over'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
       if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
       if (o.onStop) try { o.onStop(); } catch (e) {}
       SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
@@ -569,21 +646,21 @@
     let done = {}; try { done = JSON.parse(localStorage.getItem(o.key) || '{}') || {}; } catch (e) { done = {}; }
     const save = () => { try { localStorage.setItem(o.key, JSON.stringify(done)); } catch (e) {} };
     const ct = () => `${o.list.filter(s => done[s.id]).length}/${o.list.length} achieved`;
-    sec.innerHTML = `<h3><i data-lucide="stethoscope"></i> Scenarios: clinical cases <span class="ct"></span></h3><p class="small muted" style="margin:0">Each scenario sets up the lab, states the goal and checks it live. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
-    const m = $(o.mount); if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
+    sec.innerHTML = `<h3><i data-lucide="stethoscope"></i> Clinical cases <span class="ct"></span></h3><p class="small muted" style="margin:0">Each case sets up the lab, states the goal and checks it live; the timed OSCE station is further down this tab. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
+    const m = $(o.mount); if (o.mountIn) { const edu = m.querySelector(':scope > .mk-edu'); m.insertBefore(sec, edu ? edu.nextSibling : m.firstChild); } else if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
     let act = null, timer = 0;
     function paint() { sec.querySelector('.ct').textContent = ct(); sec.querySelectorAll('.dk-card').forEach(c => { c.classList.toggle('done', !!done[c.dataset.id]); c.classList.toggle('on', !!act && act.s.id === c.dataset.id); const bt = c.querySelector('[data-go]'); bt.innerHTML = act && act.s.id === c.dataset.id ? '<i data-lucide="rotate-ccw"></i> Restart' : done[c.dataset.id] ? '<i data-lucide="repeat"></i> Play again' : '<i data-lucide="play"></i> Start'; }); icons(sec); }
     function banner() {
       if (!act) { goal.classList.remove('show', 'won'); goal.innerHTML = ''; return; }
       const s = act.s; goal.classList.add('show'); goal.classList.toggle('won', act.won);
-      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the scenario up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
+      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the case up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
       icons(goal); tick();
     }
     function tick() {
       if (!act) return; const s = act.s; let st = '';
       try { st = s.status ? s.status() : ''; } catch (e) {}
-      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
-      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
+      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Case solved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another case.') : st;
     }
     function startS(id) {
       const s = o.list.find(x => x.id === id); if (!s) return;
@@ -596,12 +673,36 @@
     function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
     sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
     goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
-    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
-    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
+    b.querySelector('#dkScenBtn').onclick = () => DemoKit.goCases();
+    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 'c' || e.key === 'C') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); DemoKit.goCases(); } });
     paint();
     const API = { active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
     DemoKit._scen = API; return API;
   };
+  /* Clinical cases & OSCE tab (consistency standard): the bar button and the C key always open the tab and
+     scroll to it, with a toast that offers the way back; #cases and #osce deep-link to each part. */
+  const clinTab = () => document.getElementById('tabClin');
+  DemoKit.clinPanel = () => { const t = clinTab(); if (!t) return null; const tabs = t.closest('.tabs'); const i = [...t.parentNode.children].indexOf(t); return tabs.querySelectorAll(':scope > .tabpanel')[i] || null; };
+  const hdrH = () => (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hdr')) || 64) + 10;
+  function reveal(el, smooth) {
+    if (!el) return; const t = clinTab(); if (t && !t.classList.contains('on')) t.click();
+    const rm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const go = sm => scrollTo({ top: el.getBoundingClientRect().top + scrollY - hdrH(), behavior: sm && !rm ? 'smooth' : 'auto' });
+    requestAnimationFrame(() => { go(smooth); setTimeout(() => { if (Math.abs(el.getBoundingClientRect().top - hdrH()) > 30) go(false); }, smooth ? 900 : 250); });
+  }
+  DemoKit.goCases = () => {
+    const t = clinTab(); if (!t) return; const from = scrollY;
+    reveal(t.closest('.tabs') || t, true);
+    setTimeout(() => { try { t.focus({ preventScroll: true }); } catch (e) {} }, 900);
+    const nc = document.querySelectorAll('#dkScen .dk-card').length;
+    SL.toast(`<b>Clinical cases &amp; OSCE</b> is open: ${nc} clinical cases, then the timed OSCE station (pass mark 70 %). <button class="btn sm dk-back" style="margin-left:6px">Back to the lab</button>`, 'ok', 6000);
+    const box = document.querySelectorAll('.toasts .toast'), bk = box.length && box[box.length - 1].querySelector('.dk-back');
+    if (bk) bk.onclick = () => { bk.closest('.toast').remove(); scrollTo({ top: from, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); };
+  };
+  const HASH = { cases: '#dkScen', osce: '#mkOsce' };
+  function onHash() { const h = decodeURIComponent(location.hash.slice(1)).toLowerCase(); if (HASH[h]) reveal(document.querySelector(HASH[h]), false); }
+  addEventListener('hashchange', onHash);
+  addEventListener('load', () => setTimeout(onHash, 60));
   window.DemoKit = DemoKit;
 })();
 </script>
@@ -770,7 +871,7 @@
       el.querySelector('.mk-items').classList.add('marked');
       const used = Math.round((Date.now() - r.t0) / 1000), n = r.items.length, pass = score >= Math.ceil(n * 0.7);
       st.runs++; st.best = Math.max(st.best == null ? 0 : st.best, score); save(o.key, st);
-      const head = el.querySelector('.mk-osce-head'); head.innerHTML = `<span class="mk-timer">${score}/${n}</span><span class="small muted">Time used ${Math.floor(used / 60)}:${String(used % 60).padStart(2, '0')} · ${pass ? '<b style="color:var(--ok)">Pass</b>' : '<b style="color:var(--bad)">Below the pass mark</b>'} (pass mark ${Math.ceil(n * 0.7)}/${n})</span>`;
+      const head = el.querySelector('.mk-osce-head'); head.innerHTML = `<span class="mk-timer">${score}/${n}</span><span class="small muted">Time used ${Math.floor(used / 60)}:${String(used % 60).padStart(2, '0')} · ${pass ? '<b style="color:var(--ok)">Pass</b>' : '<b style="color:var(--bad)">Below the pass mark</b>'} (pass mark 70 %: ${Math.ceil(n * 0.7)}/${n})</span>`;
       const row = el.querySelector('.btn-row'); row.innerHTML = '<button class="btn primary" data-a="start"><i data-lucide="rotate-ccw"></i> Try again (new numbers)</button>'; icons(row);
       try { SL.renderMath(el); } catch (e) {}
       SL.toast(`Station marked: <b>${score}/${n}</b>`, pass ? 'ok' : 'warn', 3500);
@@ -893,13 +994,13 @@ const VARIANTS = {
 
 /* ================= State ================= */
 const S = { gene: null, station: 'dna', done: {} };
-const cv = $('#cv'), st = SL.canvas(cv), tip = $('#tip'), hud = $('#hud');
+const cv = $('#cv'), st = SLPerf.canvas(cv), tip = $('#tip'), hud = $('#hud');
 let mouse = null;
 
 function showTip(html, x, y) { tip.innerHTML = html; tip.style.display = 'block'; const r = cv.getBoundingClientRect(); const tw = tip.offsetWidth, th = tip.offsetHeight; let tx = x + 14, ty = y + 14; if (tx + tw > r.width - 6) tx = x - tw - 12; if (ty + th > r.height - 6) ty = y - th - 12; tip.style.left = Math.max(4, tx) + 'px'; tip.style.top = Math.max(4, ty) + 'px'; }
 function hideTip() { tip.style.display = 'none'; }
-function setHud(arr) { hud.innerHTML = arr.map(([k, v]) => `<span class="readout">${k} <b>${v}</b></span>`).join(''); }
-function stats(el, arr) { $(el).innerHTML = arr.map(([k, v, u]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u ? `<small>${u}</small>` : ''}</div></div>`).join(''); }
+function setHud(arr) { SLPerf.put(hud, arr.map(([k, v]) => `<span class="readout">${k} <b>${v}</b></span>`).join('')); }
+function stats(el, arr) { SLPerf.put($(el), arr.map(([k, v, u]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u ? `<small>${u}</small>` : ''}</div></div>`).join('')); }
 function markDone(id) { if (!S.done[id]) { S.done[id] = 1; const d = $(`[data-done="${id}"]`); d && d.classList.add('ok'); } }
 function fontM(px, wt) { return `${wt || 600} ${px}px "JetBrains Mono", ui-monospace, monospace`; }
 function fontS(px, wt) { return `${wt || 500} ${px}px Inter, system-ui, sans-serif`; }
@@ -1054,7 +1155,7 @@ function drawHelix(ctx, w, h, dt) {
   for (let i = 0; i < n; i++) {
     const a = P(i, 0), b = P(i, OFF), z = (a.z + b.z) / 2, B1 = seq[i], B2 = COMP[B1];
     dna.rungs.push({ i, x: a.x, y0: Math.min(a.y, b.y), y1: Math.max(a.y, b.y), z });
-    if (i === pk) items.push({ z: 5, f: () => { ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.shadowColor = '#fff'; ctx.shadowBlur = 12; ctx.beginPath(); ctx.roundRect(a.x - tw / 2 + 1, Math.min(a.y, b.y) - 9, tw - 2, Math.abs(a.y - b.y) + 18, 7); ctx.stroke(); ctx.restore(); } });
+    if (i === pk) items.push({ z: 5, f: () => { ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.shadowColor = '#fff'; ctx.shadowBlur = 12 * SLPerf.glow; ctx.beginPath(); ctx.roundRect(a.x - tw / 2 + 1, Math.min(a.y, b.y) - 9, tw - 2, Math.abs(a.y - b.y) + 18, 7); ctx.stroke(); ctx.restore(); } });
     items.push({ z: z - .001, f: () => {
       const al = .35 + .65 * (z + 1) / 2; const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
       ctx.globalAlpha = al; ctx.lineCap = 'round'; ctx.lineWidth = 5;
@@ -1066,7 +1167,7 @@ function drawHelix(ctx, w, h, dt) {
     items.push({ z: a.z + .01, f: () => { const al = .3 + .7 * (a.z + 1) / 2; ctx.globalAlpha = al; ctx.beginPath(); ctx.arc(a.x, a.y, 4.2 + 1.5 * a.z, 0, PI2); ctx.fillStyle = '#7dd3fc'; ctx.fill(); if (a.z > .25 && tw > 16) { ctx.font = fontM(10, 700); ctx.fillStyle = BCOL[B1]; ctx.textAlign = 'center'; ctx.fillText(B1, a.x, a.y + (a.y < cy ? -11 : 13)); } ctx.globalAlpha = 1; } });
     items.push({ z: b.z + .01, f: () => { const al = .3 + .7 * (b.z + 1) / 2; ctx.globalAlpha = al; ctx.beginPath(); ctx.arc(b.x, b.y, 4.2 + 1.5 * b.z, 0, PI2); ctx.fillStyle = '#c4b5fd'; ctx.fill(); if (b.z > .25 && tw > 16) { ctx.font = fontM(10, 700); ctx.fillStyle = BCOL[B2]; ctx.textAlign = 'center'; ctx.fillText(B2, b.x, b.y + (b.y < cy ? -11 : 13)); } ctx.globalAlpha = 1; } });
   }
-  items.sort((p, q) => p.z - q.z); ctx.save(); ctx.shadowColor = 'rgba(34,211,238,.25)'; ctx.shadowBlur = 8; items.forEach(it => it.f()); ctx.restore();
+  items.sort((p, q) => p.z - q.z); ctx.save(); ctx.shadowColor = 'rgba(34,211,238,.25)'; ctx.shadowBlur = 8 * SLPerf.glow; items.forEach(it => it.f()); ctx.restore();
   // strand end labels
   const s1a = P(0, 0), s1b = P(n - 1, 0);
   label(ctx, '5′', x0 - 16, s1a.y, '#22d3ee', 12, 'center', 700); label(ctx, '3′', x0 + n * tw + 12, s1b.y, '#22d3ee', 12, 'center', 700);
@@ -1089,7 +1190,7 @@ function drawHelix(ctx, w, h, dt) {
   if (nar) label(ctx, 'top: coding strand · bottom: template strand', w / 2, y2 + tw + 58, '#93a1bd', 10.5, 'center');
   for (let i = 0; i < n; i++) {
     const x = x0 + i * tw, b1 = seq[i], b2 = COMP[b1]; const hv = dna.hover && dna.hover.i === i;
-    if (i === pk) { ctx.save(); ctx.fillStyle = 'rgba(255,255,255,.1)'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.shadowColor = '#fff'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.roundRect(x - 2, y1 - 4, tw + 4, y2 - y1 + tw + 8, 7); ctx.fill(); ctx.stroke(); ctx.restore(); }
+    if (i === pk) { ctx.save(); ctx.fillStyle = 'rgba(255,255,255,.1)'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.shadowColor = '#fff'; ctx.shadowBlur = 10 * SLPerf.glow; ctx.beginPath(); ctx.roundRect(x - 2, y1 - 4, tw + 4, y2 - y1 + tw + 8, 7); ctx.fill(); ctx.stroke(); ctx.restore(); }
     tile(ctx, x, y1, tw, b1, { lw: hv && dna.hover.s === 0 ? 2.5 : 1, stroke: hv && dna.hover.s === 0 ? '#fff' : null });
     tile(ctx, x, y2, tw, b2, { lw: hv && dna.hover.s === 1 ? 2.5 : 1, stroke: hv && dna.hover.s === 1 ? '#fff' : null });
     const nh = (b1 === 'G' || b1 === 'C') ? 3 : 2; ctx.strokeStyle = 'rgba(230,236,247,.5)'; ctx.lineWidth = 1;
@@ -1187,7 +1288,7 @@ function drawFork(ctx, w, h, dt, t) {
   label(ctx, 'Parental DNA', w - 16, cy - 34, '#93a1bd', 11, 'right');
   // enzymes
   const enz = (key, draw, lx, ly, txt) => {
-    const on = hl === key; ctx.save(); if (on) { ctx.shadowColor = '#fff'; ctx.shadowBlur = 14 + 10 * pulse; } draw(on); ctx.restore();
+    const on = hl === key; ctx.save(); if (on) { ctx.shadowColor = '#fff'; ctx.shadowBlur = (14 + 10 * pulse) * SLPerf.glow; } draw(on); ctx.restore();
     if (on || w > 700) { label(ctx, txt, lx, ly, on ? '#fff' : '#93a1bd', on ? 12 : 10.5, 'center', on ? 700 : 600); }
   };
   const blob = (x, y, rx, ry, c, on) => { ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, PI2); ctx.fillStyle = c + (on ? 'dd' : '99'); ctx.fill(); ctx.strokeStyle = on ? '#fff' : c; ctx.lineWidth = on ? 2 : 1.2; ctx.stroke(); };
@@ -1312,7 +1413,7 @@ ST.tx = {
       const a = tx.phase === 'init' ? ease((tx.it - .8) / 1.2) : 1;
       const px = X(polG - 2) + tw / 2, py = (yC + yT + tw) / 2; ctx.save(); ctx.globalAlpha = a;
       const gr = ctx.createRadialGradient(px, py - 10, 10, px, py, 9 * tw); gr.addColorStop(0, 'rgba(124,92,255,.42)'); gr.addColorStop(1, 'rgba(124,92,255,.08)');
-      ctx.beginPath(); ctx.ellipse(px, py, 8.5 * tw, 2.6 * tw + 14, 0, 0, PI2); ctx.fillStyle = gr; ctx.fill(); ctx.strokeStyle = '#a78bfa'; ctx.lineWidth = 2; ctx.shadowColor = '#7c5cff'; ctx.shadowBlur = 18; ctx.stroke(); ctx.restore();
+      ctx.beginPath(); ctx.ellipse(px, py, 8.5 * tw, 2.6 * tw + 14, 0, 0, PI2); ctx.fillStyle = gr; ctx.fill(); ctx.strokeStyle = '#a78bfa'; ctx.lineWidth = 2; ctx.shadowColor = '#7c5cff'; ctx.shadowBlur = 18 * SLPerf.glow; ctx.stroke(); ctx.restore();
       label(ctx, 'RNA polymerase II', px + 2 * tw, py - 2.6 * tw - 26, '#c4b5fd', 12, 'center', 700);
       if (tx.phase === 'elong') { SL.arrow(ctx, px + 6 * tw, py - 2.6 * tw - 26, px + 8.5 * tw, py - 2.6 * tw - 26, '#c4b5fd', 2, 7); }
     }
@@ -1529,7 +1630,7 @@ function drawSpAnim(ctx, w, h, dt) {
     else { const tt = (s2 - sb) / (1 - sb); const cx2 = SL.lerp(bpPt.x, p3.x, tt), cy2 = SL.lerp(bpPt.y, p3.y, tt) - Math.sin(Math.PI * tt) * 18 * loopUp; const dx = bpPt.x + 22 * tt + 18 * Math.sin(tt * 3), dy = bpPt.y + 46 * tt; x = SL.lerp(cx2, dx, step2); y = SL.lerp(cy2, dy, step2) + ry * step2; }
     pts.push([x, y]);
   }
-  ctx.save(); ctx.globalAlpha = 1 - release; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#a78bfa'; ctx.shadowColor = '#7c5cff'; ctx.shadowBlur = 10;
+  ctx.save(); ctx.globalAlpha = 1 - release; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#a78bfa'; ctx.shadowColor = '#7c5cff'; ctx.shadowBlur = 10 * SLPerf.glow;
   ctx.beginPath(); pts.forEach(([x, y], k) => k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); ctx.restore();
   if (lariat > .6) label(ctx, 'lariat (2′–5′ bond)', lc.x, lc.y - LR - 14 + ry, '#c4b5fd', 11, 'center', 700);
   ctx.save(); ctx.globalAlpha = 1 - release;
@@ -2017,7 +2118,7 @@ ST.cr = {
         // Cas9 body
         const cx = (a + X(sel.pamJ + 3)) / 2, cy2 = (yT + yB + ts) / 2; const rw = Math.min((X(sel.pamJ + 3) - a) / 2 + 26 + ts, w / 2 - 6); ctx.save(); ctx.globalAlpha = bindA * .9;
         const gr = ctx.createRadialGradient(cx, cy2, 10, cx, cy2, rw); gr.addColorStop(0, 'rgba(56,189,248,.35)'); gr.addColorStop(1, 'rgba(56,189,248,.08)');
-        ctx.beginPath(); ctx.ellipse(cx + (1 - bindA) * 120, cy2, rw, ts * 3.2 + 10, 0, 0, PI2); ctx.fillStyle = gr; ctx.fill(); ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2; ctx.shadowColor = '#38bdf8'; ctx.shadowBlur = 16; ctx.stroke(); ctx.restore();
+        ctx.beginPath(); ctx.ellipse(cx + (1 - bindA) * 120, cy2, rw, ts * 3.2 + 10, 0, 0, PI2); ctx.fillStyle = gr; ctx.fill(); ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2; ctx.shadowColor = '#38bdf8'; ctx.shadowBlur = 16 * SLPerf.glow; ctx.stroke(); ctx.restore();
         label(ctx, 'Cas9', cx + (1 - bindA) * 120, cy2 + ts * 3.2 + 22, '#7dd3fc', 12, 'center', 800);
         // gRNA paired with target strand (opposite of protospacer)
         if (unwind > 2) {
@@ -2062,9 +2163,23 @@ ST.cr = {
 /* ================= Main loop & pointer ================= */
 const inView = el => { const r = el.getBoundingClientRect(); return r.bottom > -100 && r.top < innerHeight + 100 && r.width > 0; };
 let bgCache = null;
-const loop = SL.loop((dt, t) => {
+// Frame budget (finding 10): 30 fps on phones while a station is animating, ~12 fps for the idle helix spin
+// and static stations; nothing is drawn while the stage is off-screen (IntersectionObserver, no layout read).
+const gate = SLPerf.gate(12);
+const stationBusy = () => {
+  switch (S.station) {
+    case 'dna': return dna.mode === 'fork' ? dna.fplay : !!dna.drag;
+    case 'tx': return tx.play || tx.ntp > 0;
+    case 'sp': return !!sp.anim || (sp.cap && sp.capA < 1) || (sp.tail && sp.tailA < 1);
+    case 'tl': return tl.play;
+    case 'cr': return cr.phase !== 'pick' && cr.phase !== 'done';
+    default: return false;
+  }
+};
+const loop = SL.loop((dt0, t) => {
   // idle when the tab is hidden or the stage is scrolled out of view
-  if (document.hidden || !inView(cv)) return;
+  if (document.hidden || !SLPerf.on(cv)) return;
+  const dt = gate(dt0, stationBusy()); if (!dt) return;
   const { ctx, w, h } = st; ctx.clearRect(0, 0, w, h);
   if (!bgCache || bgCache.w !== w || bgCache.h !== h || bgCache.ctx !== ctx) { const g = ctx.createRadialGradient(w * .5, h * .4, 10, w * .5, h * .4, Math.max(w, h) * .8); g.addColorStop(0, '#0b1426'); g.addColorStop(1, '#050913'); bgCache = { w, h, ctx, g }; }
   ctx.fillStyle = bgCache.g; ctx.fillRect(0, 0, w, h);
@@ -2108,24 +2223,24 @@ function chal(id) { if (chDone[id]) return; chDone[id] = 1; const el = $('#ch-' 
 SL.quiz('#quiz', [
   { q: 'A template strand reads 3′-TAC GGT-5′. What is the mRNA?', options: ['5′-AUG CCA-3′', '5′-UAC GGU-3′', '3′-AUG CCA-5′', '5′-ATG CCA-3′'], answer: 0, why: 'Pair each template base (T→A, A→U, C→G, G→C) and write it antiparallel: 5′-AUG CCA-3′, the same as the coding strand with U for T.' },
   { q: 'Which pair of dinucleotides marks almost all intron boundaries in pre-mRNA?', options: ['AG at the 5′ end, GU at the 3′ end', 'GU at the 5′ end, AG at the 3′ end', 'AUG … UAA', 'AAUAAA … CA'], answer: 1, why: 'The GU–AG rule: introns start with GU (5′ splice site) and end with AG (3′ splice site).' },
-  { q: 'In the first step of splicing, which group attacks the 5′ splice site?', options: ['The 3′-OH of the upstream exon', 'The 2′-OH of the branch-point adenosine', 'A water molecule', 'The 5′ cap'], answer: 1, why: 'The branch-point A’s 2′-OH attacks the 5′ splice site, forming the lariat with a 2′–5′ bond. The exon 3′-OH acts in step 2.' },
+  { q: 'In the first step of splicing, which group attacks the 5′ splice site?', options: ['The 3′-OH of the upstream exon', 'The 2′-OH of the branch-point adenosine', 'A water molecule activated by the spliceosome', 'The 5′ cap'], answer: 1, why: 'The branch-point A’s 2′-OH attacks the 5′ splice site, forming the lariat with a 2′–5′ bond. The exon 3′-OH acts in step 2.' },
   { q: 'Skipping an exon of 52 nt will most likely…', options: ['remove 17 amino acids and keep the frame', 'shift the reading frame downstream', 'have no effect on the protein', 'only change the 5′ UTR'], answer: 1, why: '52 = 3×17 + 1, not a multiple of 3, so every downstream codon is read in a new frame (unless the exon is entirely non-coding).' },
   { q: 'Which site on the ribosome does a new aminoacyl-tRNA enter?', options: ['E site', 'P site', 'A site', 'Exit tunnel'], answer: 2, why: 'Aminoacyl-tRNAs enter the A site; the peptidyl-tRNA sits in the P site; deacylated tRNAs leave from the E site.' },
-  { q: 'The sickle-cell mutation changes GAG to GTG. This is a…', options: ['silent mutation', 'nonsense mutation', 'missense mutation (Glu → Val)', 'frameshift'], answer: 2, why: 'GAG codes for glutamate and GTG for valine: one amino acid replaced, a non-conservative missense change.' },
-  { q: 'Why is the lagging strand made in Okazaki fragments?', options: ['Helicase only works intermittently', 'DNA polymerase can only add nucleotides to a 3′ end, and this strand must grow away from the fork', 'Ligase can only join short pieces', 'The lagging template is RNA'], answer: 1, why: 'Synthesis is strictly 5′→3′. On the lagging template that direction points away from the fork, so synthesis restarts repeatedly from new primers.' },
-  { q: 'For SpCas9, where is the cut relative to the PAM (5′-NGG-3′)?', options: ['Inside the PAM', '3 bp upstream (5′) of the PAM on both strands', '20 bp downstream of the PAM', 'Anywhere along the guide'], answer: 1, why: 'Cas9’s HNH and RuvC domains cut both strands 3 bp 5′ of the PAM, giving a blunt double-strand break.' },
+  { q: 'The sickle-cell mutation changes GAG to GTG. This is a…', options: ['silent mutation (same amino acid)', 'nonsense mutation (premature stop)', 'missense mutation (Glu → Val)', 'frameshift'], answer: 2, why: 'GAG codes for glutamate and GTG for valine: one amino acid replaced, a non-conservative missense change.' },
+  { q: 'Why is the lagging strand made in Okazaki fragments?', options: ['Helicase only works intermittently, opening short stretches of the template at a time', 'DNA polymerase only extends a 3′ end, and this strand grows away from the fork', 'DNA ligase can only join short pieces of DNA together', 'The lagging-strand template is RNA, which is copied in pieces'], answer: 1, why: 'Synthesis is strictly 5′→3′. On the lagging template that direction points away from the fork, so synthesis restarts repeatedly from new primers.' },
+  { q: 'For SpCas9, where is the cut relative to the PAM (5′-NGG-3′)?', options: ['Inside the PAM, between the two G bases', '3 bp upstream (5′) of the PAM, on both strands', '20 bp downstream (3′) of the PAM, past the guide', 'Anywhere along the 20-nucleotide guide sequence'], answer: 1, why: 'Cas9’s HNH and RuvC domains cut both strands 3 bp 5′ of the PAM, giving a blunt double-strand break.' },
   { q: 'A deletion of 3 nt inside a coding exon usually causes…', options: ['a frameshift', 'loss of one amino acid (in-frame)', 'a premature stop in every case', 'no change'], answer: 1, why: 'Removing one whole codon keeps the frame; the protein lacks one residue (or two are merged into a different one if the deletion spans a codon boundary).' },
   { q: 'Which repair pathway is used to write a precise change from a donor template?', options: ['Non-homologous end joining', 'Homology-directed repair', 'Mismatch repair', 'Base excision repair'], answer: 1, why: 'HDR copies sequence from a homologous template, so a supplied donor with the desired change can be written in. NHEJ joins ends without a template and often leaves indels.' },
   { q: 'Which laboratory test distinguishes sickle-cell trait (AS) from sickle cell disease (SS)?', options: ['Sodium metabisulphite sickling test', 'Solubility test', 'Haemoglobin electrophoresis or HPLC', 'Full blood count alone'], answer: 2, why: 'Sickling and solubility tests only show that HbS is present, so AS and SS are both positive. Electrophoresis or HPLC shows whether HbA is also present (AS) or absent (SS).' },
   { q: 'On alkaline (pH ≈ 8.6) haemoglobin electrophoresis, which haemoglobin moves farthest towards the anode?', options: ['HbA', 'HbS', 'HbC', 'HbA2'], answer: 0, why: 'From the origin towards the anode the order is A2/C, then S, then F, then A. HbS lacks one negative glutamate per β chain, and HbC carries a positive lysine instead, so they move less far.' },
   { q: 'Electrophoresis shows bands at the S and C positions and no HbA. The diagnosis is…', options: ['sickle-cell trait', 'HbSC disease', 'normal adult haemoglobin', 'HbC trait'], answer: 1, why: 'One βS and one βC allele and no normal β gene: HbSC disease, a sickling disorder that is usually milder than SS.' },
-  { q: 'PCR-RFLP can detect the HbS allele because the mutation…', options: ['creates a new EcoRI site', 'destroys a DdeI/MstII restriction site at codon 6', 'deletes the whole gene', 'introduces a stop codon'], answer: 1, why: 'Normal CCTGAGG contains the DdeI (CTNAG) and MstII (CCTNAGG) sites; sickle CCTGTGG does not. The βA amplicon is cut, the βS amplicon stays whole, and AS shows both patterns.' },
-  { q: 'Tenofovir and lamivudine stop HIV replication because they…', options: ['inhibit integrase', 'are nucleotide/nucleoside analogues without a 3′-OH, so reverse transcriptase cannot extend the DNA chain', 'block viral entry', 'inhibit the viral protease'], answer: 1, why: 'Polymerases add each nucleotide to a free 3′-OH. Once an analogue without one is built in, the growing DNA copy is terminated.' },
+  { q: 'PCR-RFLP can detect the HbS allele because the mutation…', options: ['creates a new EcoRI site in exon 1', 'destroys a DdeI/MstII restriction site at codon 6', 'deletes the whole β-globin gene', 'introduces a premature stop codon at codon 6'], answer: 1, why: 'Normal CCTGAGG contains the DdeI (CTNAG) and MstII (CCTNAGG) sites; sickle CCTGTGG does not. The βA amplicon is cut, the βS amplicon stays whole, and AS shows both patterns.' },
+  { q: 'Tenofovir and lamivudine stop HIV replication because they…', options: ['inhibit integrase, so viral DNA cannot enter the host genome', 'are nucleotide/nucleoside analogues without a 3′-OH, so the DNA chain stops', 'block viral entry by binding the CCR5 co-receptor', 'inhibit the viral protease that cuts the Gag–Pol polyprotein'], answer: 1, why: 'Polymerases add each nucleotide to a free 3′-OH. Once an analogue without one is built in, the growing DNA copy is terminated.' },
   { q: 'Dolutegravir, in Kenya’s preferred first-line regimen (TDF + 3TC + DTG), inhibits…', options: ['reverse transcriptase', 'integrase', 'protease', 'the CCR5 co-receptor'], answer: 1, why: 'Integrase inserts the viral DNA copy into the host genome. Blocking it prevents a lasting provirus from forming in newly infected cells.' },
-  { q: 'Under Kenya’s 2022 ART guidelines, a viral load of ≥ 1000 copies/mL after at least 3 months of ART indicates…', options: ['an undetectable viral load', 'viral suppression', 'suspected treatment failure: address adherence and repeat the viral load', 'cure'], answer: 2, why: 'Below 50 copies/mL is LDL and below 200 is suppressed. At ≥ 1000 the patient gets enhanced adherence support and a repeat test after 3 months before failure is confirmed.' },
-  { q: 'GeneXpert MTB/RIF detects rifampicin resistance by…', options: ['growing the bacteria with rifampicin', 'real-time PCR with molecular beacons covering the 81-bp core region of rpoB', 'Ziehl–Neelsen microscopy', 'measuring drug levels in urine'], answer: 1, why: 'A mutation in the core region stops a beacon binding, so its colour does not appear. Over 95 % of rifampicin-resistance mutations lie in this region, and results come in under 2 hours.' },
+  { q: 'Under Kenya’s 2022 ART guidelines, a viral load of ≥ 1000 copies/mL after at least 3 months of ART indicates…', options: ['an undetectable viral load: clinic visits can be reduced', 'viral suppression: continue the same regimen unchanged', 'suspected treatment failure: address adherence and repeat the viral load', 'confirmed drug resistance: switch the regimen the same day'], answer: 2, why: 'Below 50 copies/mL is LDL and below 200 is suppressed. At ≥ 1000 the patient gets enhanced adherence support and a repeat test after 3 months before failure is confirmed.' },
+  { q: 'GeneXpert MTB/RIF detects rifampicin resistance by…', options: ['growing the bacteria in culture with rifampicin added', 'real-time PCR with probes covering the 81-bp core region of rpoB', 'Ziehl–Neelsen microscopy of a sputum smear', 'measuring rifampicin levels in the patient’s urine'], answer: 1, why: 'A mutation in the core region stops a beacon binding, so its colour does not appear. Over 95 % of rifampicin-resistance mutations lie in this region, and results come in under 2 hours.' },
   { q: 'Rifampicin kills Mycobacterium tuberculosis by inhibiting…', options: ['DNA gyrase', 'DNA-dependent RNA polymerase', 'the 30S ribosomal subunit', 'mycolic acid synthesis'], answer: 1, why: 'Rifampicin binds the β subunit of bacterial RNA polymerase (encoded by rpoB) and blocks transcription. Isoniazid is the drug that blocks mycolic acid synthesis.' },
-  { q: 'Hydroxyurea benefits people with sickle cell disease mainly by…', options: ['correcting the HBB mutation', 'raising fetal haemoglobin (HbF), which does not join HbS polymers', 'killing malaria parasites', 'increasing iron absorption'], answer: 1, why: 'Red cells with more HbF sickle less, so painful crises, acute chest syndrome and transfusion needs fall. It is cheap, oral and given with blood-count monitoring.' },
+  { q: 'Hydroxyurea benefits people with sickle cell disease mainly by…', options: ['correcting the HBB mutation in the bone-marrow stem cells', 'raising fetal haemoglobin (HbF), which does not join HbS polymers', 'killing malaria parasites inside sickled red cells', 'increasing iron absorption from the gut so the anaemia is corrected'], answer: 1, why: 'Red cells with more HbF sickle less, so painful crises, acute chest syndrome and transfusion needs fall. It is cheap, oral and given with blood-count monitoring.' },
   { q: 'In a cohort of children on the Kenyan coast, sickle-cell trait protected against severe falciparum malaria by about…', options: ['10 %', '50 %', '90 %', '100 %'], answer: 2, why: 'Williams et al. (2005) found about 50 % protection against mild clinical malaria, 75 % against admission and about 90 % against severe malaria, which explains why HbS is common where malaria was common.' },
   { q: 'A patient’s viral load falls from 100 000 to 100 copies/mL. This is a fall of…', options: ['2 log₁₀', '3 log₁₀', '1000 log₁₀', '5 log₁₀'], answer: 1, why: 'log₁₀(100 000 / 100) = log₁₀(1000) = 3. Each log is a tenfold drop.' },
 ]);
@@ -2133,7 +2248,7 @@ SL.quiz('#quiz', [
 /* ================= Init ================= */
 setGene(buildGene(GENE_DEFS[0]));
 setStation('dna');
-loop.start();
+(window.requestIdleCallback || (f => setTimeout(f, 60)))(() => loop.start(), { timeout: 400 });
 window.DNALAB = { GENE_DEFS, buildGene, translate, CODE, classify, S, sp, tl, mu, cr, setStation, setGene, spGo, autoCuts, guideFor, crEffect, crRepairOutcome };
 /* ==MEDDEMO== */
   /* ===================== WATCH DEMO, CLINICAL CASES, GEL READING, DRILLS, OSCE ===================== */
@@ -2201,13 +2316,13 @@ window.DNALAB = { GENE_DEFS, buildGene, translate, CODE, classify, S, sp, tl, mu
             run: async A => { $('#tlSkip').click(); setStation('mu'); await A.sleep(300); const b = $('#muPresets button'); if (b) b.click(); }, ms: 5400 },
           { cap: '<b>CRISPR-Cas9 with a donor template</b> (HDR) can rewrite that base back to A. Licensed therapy instead switches fetal haemoglobin back on; hydroxyurea does that with a cheap pill.', hl: '#crGo',
             run: async A => { setStation('cr'); setAllele('hbs'); setRepair('hdr'); $('#crDonor').value = 'fix'; cr.donor = 'fix'; guideNear(); await A.sleep(700); $('#crGo').click(); await A.until(() => cr.phase === 'done', 9000); }, ms: 3400 },
-          { cap: 'Now open a <b>clinical case</b> below, or read gels and viral loads in the <b>Clinical &amp; exam</b> tab.',
-            run: async A => { const sc = $('#dkScen'); if (sc) sc.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' }); }, ms: 3000 },
+          { cap: 'Your turn: the <b>Clinical cases &amp; OSCE</b> tab is open. Try a clinical case, read gels and viral loads, then the timed OSCE station.',
+            run: async A => { DemoKit.goCases(); }, capFixed: true, ms: 3000 },
         ]
       });
 
       DK.scenarios({
-        before: '.lab', mount: '.tabs', key: 'sl-dna-lab-cases',
+        before: '.lab', mount: DemoKit.clinPanel(), mountIn: true, key: 'sl-dna-lab-cases',
         intro: 'These clinical cases are teaching examples, not treatment advice: follow current MoH/KNH protocols and your supervisors.',
         list: [
           { id: 'sickle', where: 'Paediatric clinic · Busia', title: 'Sickle-cell detective', goal: 'A 9-month-old has painful swollen hands and feet (dactylitis) and pallor; both parents carry sickle-cell trait. Recreate the mutation the laboratory will find by clicking the base yourself in the Mutation lab.', success: 'HBB with only c.20A>T (GAG → GTG).', hint: 'Coding position 20 is the middle base of codon 7 (GAG). Choose Substitute and base T, then click that A.',
@@ -2264,7 +2379,7 @@ window.DNALAB = { GENE_DEFS, buildGene, translate, CODE, classify, S, sp, tl, mu
       });
       MK.osce('#mkOsce', {
         key: 'sl-dna-lab-osce', title: 'OSCE station: laboratory diagnosis of sickle cell', minutes: 6,
-        intro: 'A timed MLS-style station. Read the gels, do the live task in the Mutation lab (it ticks itself), then submit. Pass mark 5 of 7.',
+        intro: 'A timed MLS-style station. Read the gels, do the live task in the Mutation lab (it ticks itself), then submit. Pass mark 70 % (5 of 7).',
         items: () => {
           const R = MK.R, gk = R.pick(['AS', 'SS', 'SC', 'FS']), rk = R.pick(['AA', 'AS', 'SS']), vi = R.int(0, 3), vv = vi === 3 ? R.pick([1500, 24000]) : R.int(VLC[vi][1], VLC[vi][2]);
           const gopts = R.shuffle(['AA', 'AS', 'SS', 'SC', 'FS', 'FAS']).filter(x => x !== gk).slice(0, 3).concat([gk]); const gsh = R.shuffle(gopts);
@@ -2289,7 +2404,7 @@ window.DNALAB = { GENE_DEFS, buildGene, translate, CODE, classify, S, sp, tl, mu
     const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
     const startTour = () => SL.tour(jump([
       { el: '#stations', title: 'Six stations, one gene', text: 'Follow one gene from DNA to protein: replication, transcription, splicing, translation, mutations and CRISPR editing. A tick appears as you finish each station.' },
-      { el: '#dkPlay', title: 'Watch a demo', text: 'Short on time? Press <b>Watch demo</b> (or the D key) for a captioned run-through of the key ideas. Stop it at any time; your settings come back afterwards. <b>Scenarios</b> (S) opens the clinical cases.' },
+      { el: '#dkPlay', title: 'Watch a demo', text: 'Short on time? Press <b>Watch demo</b> (or the D key) for a captioned run-through of the key ideas. Stop it at any time; your settings come back afterwards. <b>Cases &amp; OSCE</b> (C) opens the clinical cases and the OSCE station.' },
       { el: '#stage', title: 'The double helix', text: 'Drag sideways to slide along the gene. The ladder below spells both strands; tap any base to mutate it and its partner changes too. Once you reach the coding sequence, an amber row shows each codon and its amino acid.', before: () => { const b = document.querySelector('#stations [data-st="dna"]'); if (b && !b.classList.contains('on')) b.click(); } },
       { el: '#geneSel', title: 'Pick a gene', text: 'Use the teaching gene, or real ones such as β-globin, whose sickle-cell mutation you can recreate in the mutation lab.' },
       { el: '.ctl:has(#dnaOff)', title: 'Move along the gene', text: 'Slide the window from the promoter, through exons and introns, to the terminator. Find the ATG where the protein starts.' },

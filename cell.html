@@ -67,7 +67,7 @@
     .cell-key button{all:unset;cursor:pointer;display:flex;gap:7px;align-items:center;font:600 .76rem Inter,sans-serif;color:var(--muted);padding:6px 7px;border-radius:8px;border:1px solid var(--line2);min-height:30px}
     .cell-key button:hover,.cell-key button:focus-visible{color:var(--text);border-color:var(--accent)}
     .cell-key b{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#06101f;font:700 .72rem JetBrains Mono,monospace;flex:none} }
-  @media (max-width:520px){ #cellStage{min-height:360px} #trStage{height:640px} #trStage .hud{display:none} #osStage{height:440px} #secStage{height:430px} #bStage{height:600px} }
+  @media (max-width:520px){ #cellStage{min-height:360px} #trStage{height:640px} #trStage .hud{display:none} #osStage{height:440px} #secStage{height:430px} #bStage{height:min(600px,68vh)} }
   /* keyboard focus always visible */
   main :is(button,a,[tabindex],summary,select,input):focus-visible{outline:2px solid var(--accent)!important;outline-offset:2px}
   .kadd{display:flex;gap:6px;margin-top:12px;align-items:center}.kadd select{flex:1;min-width:0}
@@ -208,7 +208,7 @@
       <button><i data-lucide="table"></i> Organelle table</button>
       <button><i data-lucide="calculator"></i> Worked examples</button>
       <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments & challenges</button>
-      <button id="tabClin"><i data-lucide="stethoscope"></i> Clinical &amp; exam</button>
+      <button id="tabClin"><i data-lucide="stethoscope"></i> Clinical cases &amp; OSCE</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
     </div>
     <div class="tabpanel prose">
@@ -337,6 +337,71 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=15"></script>
 <script>
+/* SLPerf: frame budget for phones (student audit finding 10).
+   - Drawing is capped at 30 fps on touch / low-core devices and drops to ~12 fps while the scene is idle
+     (no running animation and no recent input); 4 fps with prefers-reduced-motion.
+   - Visibility comes from an IntersectionObserver, so the loop never forces a layout read per frame.
+   - put() writes text/HTML only when it changed, so idle readouts cause no repaint. */
+window.SLPerf = (() => {
+  const low = matchMedia('(pointer: coarse)').matches || (navigator.hardwareConcurrency || 8) <= 4;
+  const rm = matchMedia('(prefers-reduced-motion: reduce)');
+  let lastInput = -1e9;
+  const poke = () => { lastInput = performance.now(); };
+  ['pointerdown', 'pointermove', 'keydown', 'input', 'wheel', 'click'].forEach(t => addEventListener(t, poke, { passive: true, capture: true }));
+  const seen = new WeakMap();
+  const io = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => seen.set(e.target, e.isIntersecting)), { rootMargin: '40px 0px' }) : null;
+  const measure = el => { const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom > 0 && r.top < innerHeight; };
+  return {
+    low,
+    poke,
+    /** multiply canvas shadowBlur by this: glow halos are expensive to raster on phones */
+    glow: low ? 0 : 1,
+    /** is el (nearly) on screen? */
+    on(el) {
+      if (!el) return false;
+      if (!io) return measure(el);
+      if (!seen.has(el)) { seen.set(el, measure(el)); io.observe(el); }
+      return seen.get(el);
+    },
+    /** gate(dt, busy): the time to advance and draw now, or 0 to skip this frame */
+    gate(idleFps) {
+      let acc = 0;
+      return (dt, busy) => {
+        acc += dt;
+        const active = busy || performance.now() - lastInput < 1200;
+        const fps = rm.matches ? (active ? 30 : 4) : active ? (low ? 30 : 60) : (idleFps || 12);
+        if (acc < 1 / fps - 0.004) return 0;
+        const d = Math.min(0.1, acc); acc = 0; return d;
+      };
+    },
+    /** SL.canvas with a lighter backing store on phones (1.5× instead of 2×: about 45% fewer pixels to raster) */
+    canvas(cv, onResize) {
+      const ctx = cv.getContext('2d'), state = { ctx, w: 0, h: 0, dpr: 1 };
+      let first = true;
+      const fit = () => {
+        const r = cv.getBoundingClientRect();
+        const dpr = Math.min(window.devicePixelRatio || 1, low ? 1.5 : 2);
+        const w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+        if (w === state.w && h === state.h && dpr === state.dpr) return;
+        cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); ctx.setTransform(cv.width / w, 0, 0, cv.height / h, 0, 0);
+        Object.assign(state, { w, h, dpr });
+        if (!onResize) return;
+        if (first) { first = false; Promise.resolve().then(() => onResize(state.w, state.h)); } else onResize(w, h);
+      };
+      if ('ResizeObserver' in window) new ResizeObserver(fit).observe(cv); else addEventListener('resize', fit);
+      fit();
+      return state;
+    },
+    /** set innerHTML (or textContent when text is true) only if the value changed */
+    put(el, v, text) {
+      if (!el) return; v = String(v);
+      if (el.__slp === v && el.firstChild === el.__slpF) return;
+      el.__slp = v; if (text) el.textContent = v; else el.innerHTML = v; el.__slpF = el.firstChild;
+    },
+  };
+})();
+</script>
+<script>
 /* Watch-demo runner and goal-based scenarios (page-local kit) */
 (function () {
   if (window.DemoKit) return;
@@ -394,11 +459,11 @@
   const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
   const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
 
-  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  /* bar above the lab: Watch demo + Cases & OSCE link + goal banner */
   function bar(before) {
     let b = document.querySelector('.dk-bar'); if (b) return b;
     b = document.createElement('div'); b.className = 'dk-bar';
-    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Open the Clinical cases &amp; OSCE tab (C)"><i data-lucide="stethoscope"></i> Cases &amp; OSCE</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>C</kbd> cases &amp; OSCE · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
     const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
   }
 
@@ -413,6 +478,17 @@
     cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
     (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // phones: the caption is pinned to the bottom of the screen for the whole demo, and each highlighted control
+    // is scrolled into the band between the header and the caption (student audit finding 24)
+    const narrow = () => innerWidth <= 600;
+    async function keepInView(sel, A) {
+      const el = $(sel); if (!el) return; const r = el.getBoundingClientRect(); if (!r.height) return;
+      const pinned = cap.classList.contains('fixed') || cap.classList.contains('over');
+      const top = 76, bot = innerHeight - (pinned ? cap.offsetHeight + 20 : 0);
+      if (r.top >= top && r.bottom <= bot) return;
+      const y = r.height > bot - top ? scrollY + r.top - top - 6 : scrollY + r.top - top - ((bot - top) - r.height) / 2;
+      scrollTo({ top: Math.max(0, y), behavior: reduce ? 'auto' : 'smooth' }); await A.sleep(reduce ? 60 : 520);
+    }
     let run = null; // {abort, stepMode, nextRes}
     const D = { running: () => !!run };
     function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
@@ -444,8 +520,9 @@
         for (let i = 0; i < steps.length; i++) {
           const st = steps[i]; if (r.abort) throw ABORT;
           cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
-          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); cap.classList.toggle('over', !!st.capFixed || narrow()); pg.style.width = (i / steps.length * 100) + '%';
           if (st.run) await st.run(A);
+          if (st.hl) await keepInView(st.hl, A);
           if (r.abort) throw ABORT;
           pg.style.width = ((i + 1) / steps.length * 100) + '%';
           const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
@@ -457,7 +534,7 @@
     }
     function end(restore, msg) {
       const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
-      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      cap.classList.remove('show', 'over'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
       if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
       if (o.onStop) try { o.onStop(); } catch (e) {}
       SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
@@ -484,21 +561,21 @@
     let done = {}; try { done = JSON.parse(localStorage.getItem(o.key) || '{}') || {}; } catch (e) { done = {}; }
     const save = () => { try { localStorage.setItem(o.key, JSON.stringify(done)); } catch (e) {} };
     const ct = () => `${o.list.filter(s => done[s.id]).length}/${o.list.length} achieved`;
-    sec.innerHTML = `<h3><i data-lucide="stethoscope"></i> Scenarios: clinical cases <span class="ct"></span></h3><p class="small muted" style="margin:0">Each scenario sets up the lab, states the goal and checks it live. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
-    const m = $(o.mount); if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
+    sec.innerHTML = `<h3><i data-lucide="stethoscope"></i> Clinical cases <span class="ct"></span></h3><p class="small muted" style="margin:0">Each case sets up the lab, states the goal and checks it live; the timed OSCE station is further down this tab. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
+    const m = $(o.mount); if (o.mountIn) { const edu = m.querySelector(':scope > .mk-edu'); m.insertBefore(sec, edu ? edu.nextSibling : m.firstChild); } else if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
     let act = null, timer = 0;
     function paint() { sec.querySelector('.ct').textContent = ct(); sec.querySelectorAll('.dk-card').forEach(c => { c.classList.toggle('done', !!done[c.dataset.id]); c.classList.toggle('on', !!act && act.s.id === c.dataset.id); const bt = c.querySelector('[data-go]'); bt.innerHTML = act && act.s.id === c.dataset.id ? '<i data-lucide="rotate-ccw"></i> Restart' : done[c.dataset.id] ? '<i data-lucide="repeat"></i> Play again' : '<i data-lucide="play"></i> Start'; }); icons(sec); }
     function banner() {
       if (!act) { goal.classList.remove('show', 'won'); goal.innerHTML = ''; return; }
       const s = act.s; goal.classList.add('show'); goal.classList.toggle('won', act.won);
-      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the scenario up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
+      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the case up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
       icons(goal); tick();
     }
     function tick() {
       if (!act) return; const s = act.s; let st = '';
       try { st = s.status ? s.status() : ''; } catch (e) {}
-      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
-      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
+      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Case solved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another case.') : st;
     }
     function startS(id) {
       const s = o.list.find(x => x.id === id); if (!s) return;
@@ -511,12 +588,36 @@
     function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
     sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
     goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
-    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
-    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
+    b.querySelector('#dkScenBtn').onclick = () => DemoKit.goCases();
+    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 'c' || e.key === 'C') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); DemoKit.goCases(); } });
     paint();
     const API = { active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
     DemoKit._scen = API; return API;
   };
+  /* Clinical cases & OSCE tab (consistency standard): the bar button and the C key always open the tab and
+     scroll to it, with a toast that offers the way back; #cases and #osce deep-link to each part. */
+  const clinTab = () => document.getElementById('tabClin');
+  DemoKit.clinPanel = () => { const t = clinTab(); if (!t) return null; const tabs = t.closest('.tabs'); const i = [...t.parentNode.children].indexOf(t); return tabs.querySelectorAll(':scope > .tabpanel')[i] || null; };
+  const hdrH = () => (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hdr')) || 64) + 10;
+  function reveal(el, smooth) {
+    if (!el) return; const t = clinTab(); if (t && !t.classList.contains('on')) t.click();
+    const rm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const go = sm => scrollTo({ top: el.getBoundingClientRect().top + scrollY - hdrH(), behavior: sm && !rm ? 'smooth' : 'auto' });
+    requestAnimationFrame(() => { go(smooth); setTimeout(() => { if (Math.abs(el.getBoundingClientRect().top - hdrH()) > 30) go(false); }, smooth ? 900 : 250); });
+  }
+  DemoKit.goCases = () => {
+    const t = clinTab(); if (!t) return; const from = scrollY;
+    reveal(t.closest('.tabs') || t, true);
+    setTimeout(() => { try { t.focus({ preventScroll: true }); } catch (e) {} }, 900);
+    const nc = document.querySelectorAll('#dkScen .dk-card').length;
+    SL.toast(`<b>Clinical cases &amp; OSCE</b> is open: ${nc} clinical cases, then the timed OSCE station (pass mark 70 %). <button class="btn sm dk-back" style="margin-left:6px">Back to the lab</button>`, 'ok', 6000);
+    const box = document.querySelectorAll('.toasts .toast'), bk = box.length && box[box.length - 1].querySelector('.dk-back');
+    if (bk) bk.onclick = () => { bk.closest('.toast').remove(); scrollTo({ top: from, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); };
+  };
+  const HASH = { cases: '#dkScen', osce: '#mkOsce' };
+  function onHash() { const h = decodeURIComponent(location.hash.slice(1)).toLowerCase(); if (HASH[h]) reveal(document.querySelector(HASH[h]), false); }
+  addEventListener('hashchange', onHash);
+  addEventListener('load', () => setTimeout(onHash, 60));
   window.DemoKit = DemoKit;
 })();
 </script>
@@ -685,7 +786,7 @@
       el.querySelector('.mk-items').classList.add('marked');
       const used = Math.round((Date.now() - r.t0) / 1000), n = r.items.length, pass = score >= Math.ceil(n * 0.7);
       st.runs++; st.best = Math.max(st.best == null ? 0 : st.best, score); save(o.key, st);
-      const head = el.querySelector('.mk-osce-head'); head.innerHTML = `<span class="mk-timer">${score}/${n}</span><span class="small muted">Time used ${Math.floor(used / 60)}:${String(used % 60).padStart(2, '0')} · ${pass ? '<b style="color:var(--ok)">Pass</b>' : '<b style="color:var(--bad)">Below the pass mark</b>'} (pass mark ${Math.ceil(n * 0.7)}/${n})</span>`;
+      const head = el.querySelector('.mk-osce-head'); head.innerHTML = `<span class="mk-timer">${score}/${n}</span><span class="small muted">Time used ${Math.floor(used / 60)}:${String(used % 60).padStart(2, '0')} · ${pass ? '<b style="color:var(--ok)">Pass</b>' : '<b style="color:var(--bad)">Below the pass mark</b>'} (pass mark 70 %: ${Math.ceil(n * 0.7)}/${n})</span>`;
       const row = el.querySelector('.btn-row'); row.innerHTML = '<button class="btn primary" data-a="start"><i data-lucide="rotate-ccw"></i> Try again (new numbers)</button>'; icons(row);
       try { SL.renderMath(el); } catch (e) {}
       SL.toast(`Station marked: <b>${score}/${n}</b>`, pass ? 'ok' : 'warn', 3500);
@@ -1096,7 +1197,7 @@
   buildCell(); infoDefault();
   function cellFrame(dt) {
     if (vbTo) { vbT = Math.min(1, vbT + dt / .9); const e = ease(vbT); VB = vbFrom.map((v, i) => SL.lerp(v, vbTo[i], e)); svg.setAttribute('viewBox', VB.map(v => v.toFixed(2)).join(' ')); if (vbT >= 1) vbTo = null; }
-    $('#lblLayer') && ($('#lblLayer').style.opacity = zoomedK ? 0 : 1);
+    const ll = $('#lblLayer'), op = zoomedK ? '0' : '1'; if (ll && ll.style.opacity !== op) ll.style.opacity = op;
     animStep(dt);
   }
 
@@ -1104,7 +1205,7 @@
      2. MEMBRANE TRANSPORT
      ===================================================================== */
   const tr = { mode: 'simple', parts: null, carriers: [], pumps: [], channels: [], t: 0, paused: false, cnt: { glucIn: 0, cycles: 0, atp: 0, naOut: 0, kIn: 0 }, hist: [], atp: 60 };
-  const TR = SL.canvas($('#cvTr'), () => { if (tr.parts) trReset(); });
+  const TR = SLPerf.canvas($('#cvTr'), () => { if (tr.parts) trReset(); });
   const TYPES = { O2: { r: 3.4, col: '#f87171', lab: 'O₂' }, CO2: { r: 3.6, col: '#cbd5e1', lab: 'CO₂' }, Glu: { r: 5, col: '#facc15', lab: 'glucose' }, G6P: { r: 5, col: '#fb923c', lab: 'glucose-6-P' }, Na: { r: 3.4, col: '#fbbf24', lab: 'Na⁺' }, K: { r: 3.6, col: '#a78bfa', lab: 'K⁺' } };
   const geomT = () => { const { w, h } = TR; const wide = w >= 700, sw = wide ? Math.round(w * .66) : w, sh = wide ? h : h - 170; const mc = sh * .5, half = 30; return { w: sw, h: sh, W: w, H: h, wide, mc, m0: mc - half, m1: mc + half }; };
   const TRSER = { simple: [['O₂ outside', '#f87171', 'O2o'], ['O₂ inside', '#fca5a5', 'O2i', 1]], facil: [['Glucose outside', '#facc15', 'Gluo'], ['Glucose inside', '#fde68a', 'GluIn', 1]], active: [['Na⁺ outside', '#fbbf24', 'Nao'], ['Na⁺ inside', '#fbbf24', 'Nai', 1], ['K⁺ outside', '#a78bfa', 'Ko'], ['K⁺ inside', '#a78bfa', 'Ki', 1]] };
@@ -1142,7 +1243,7 @@
       const n = tr.carriers.length; note = n ? `Each GLUT carrier alternates between outward- and inward-facing shapes, carrying glucose either way, so net flow is down the gradient. ${$('#hexo').checked ? 'Hexokinase converts incoming glucose to glucose-6-phosphate (orange), which cannot leave, keeping the gradient steep.' : 'Without hexokinase, glucose inside is carried back out and the gradient runs down.'} With few carriers the rate saturates (J<sub>max</sub> ∝ ${n} carriers).` : 'No carriers: glucose cannot cross at all, even with a steep gradient.'; }
     if (tr.mode === 'active') { html = st('Na⁺ out / in', `${c.Nao || 0}/${c.Nai || 0}`) + st('K⁺ out / in', `${c.Ko || 0}/${c.Ki || 0}`) + st('Pump cycles', tr.cnt.cycles) + st('ATP used', tr.cnt.atp) + st('ATP left', Math.floor(tr.atp)) + st('Net charge out', `+${tr.cnt.cycles}`);
       note = `Each cycle: 3 Na⁺ out, 2 K⁺ in, 1 ATP → ADP + Pi. Gradients build up against diffusion.${$('#ouab').checked ? ' <b>Ouabain</b> locks the pump in its outward-facing E2 state.' : ''}${!$('#atpOn').checked && tr.atp <= 0 ? ' <b>Out of ATP:</b> the pump stalls.' : ''}`; }
-    $('#trStats').innerHTML = html; $('#trNote').innerHTML = note;
+    SLPerf.put($('#trStats'), html); SLPerf.put($('#trNote'), note);
   }
   function trStep(dt) {
     if (tr.paused || !tr.parts) return; const G = geomT(); tr.t += dt;
@@ -1273,7 +1374,7 @@
       const crossing = p.y > G.m0 - 4 && p.y < G.m1 + 4; ctx.globalAlpha = crossing || p.bound ? 1 : .8;
       if (p.type === 'Glu' || p.type === 'G6P') { ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = k / 6 * 6.283; ctx.lineTo(p.x + Math.cos(a) * T.r, p.y + Math.sin(a) * T.r); } ctx.closePath(); ctx.fill(); }
       else if (p.type === 'O2' || p.type === 'CO2') { ctx.beginPath(); ctx.arc(p.x - 2, p.y, T.r * .75, 0, 7); ctx.arc(p.x + 2, p.y, T.r * .75, 0, 7); ctx.fill(); if (p.type === 'CO2') { ctx.fillStyle = '#334155'; ctx.beginPath(); ctx.arc(p.x, p.y, 1.6, 0, 7); ctx.fill(); } }
-      else { if (p.bound) { ctx.shadowColor = T.col; ctx.shadowBlur = 8; } ctx.beginPath(); ctx.arc(p.x, p.y, T.r, 0, 7); ctx.fill(); ctx.shadowBlur = 0; }
+      else { if (p.bound) { ctx.shadowColor = T.col; ctx.shadowBlur = 8 * SLPerf.glow; } ctx.beginPath(); ctx.arc(p.x, p.y, T.r, 0, 7); ctx.fill(); ctx.shadowBlur = 0; }
       ctx.globalAlpha = 1;
     });
     // legend
@@ -1304,7 +1405,7 @@
   /* =====================================================================
      3. OSMOSIS
      ===================================================================== */
-  const OS = SL.canvas($('#cvOs'));
+  const OS = SLPerf.canvas($('#cvOs'));
   const os = { mode: 'rbc', C: 300, V: 1, lysed: 0, water: [] };
   SL.bind('#osC', v => { os.C = v; }, v => v + ' mOsm/L');
   document.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { $('#osC').value = b.dataset.c; $('#osC').dispatchEvent(new Event('input')); });
@@ -1339,8 +1440,8 @@
       html = st('Ψ outside', Psi_out.toFixed(2), 'MPa') + st('Ψs cell', psiS.toFixed(2), 'MPa') + st('Ψp (turgor)', psiP.toFixed(2), 'MPa') + st('Protoplast', Math.round(os.V * 100), '% vol');
       $('#osNote').innerHTML = `Cell sap 400 mOsm/L. At equilibrium Ψ<sub>cell</sub> = Ψs + Ψp = Ψ<sub>outside</sub>. Below 400 mOsm/L the wall supplies turgor pressure; above it the protoplast shrinks (Ψp = 0).`;
     }
-    $('#osStats').innerHTML = html;
-    const [txt] = osState(); $('#osHud').textContent = txt;
+    SLPerf.put($('#osStats'), html);
+    const [txt] = osState(); SLPerf.put($('#osHud'), txt, 1);
   }
   function drawOs(dt) {
     const { ctx, w, h } = OS; ctx.clearRect(0, 0, w, h);
@@ -1394,7 +1495,7 @@
       let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl; if (nz < 0) { nx = -nx; ny = -ny; nz = -nz; }
       quads.push({ p: [p1, p2, p3, p4], z: (p1[2] + p3[2]) / 2, l: Math.max(0, -.45 * nx - .55 * ny + .7 * nz) }); }
     quads.sort((a, b) => a.z - b.z);
-    ctx.save(); ctx.shadowColor = 'rgba(239,68,68,.35)'; ctx.shadowBlur = 24;
+    ctx.save(); ctx.shadowColor = 'rgba(239,68,68,.35)'; ctx.shadowBlur = 24 * SLPerf.glow;
     ctx.fillStyle = '#7f1d1d'; ctx.beginPath(); ctx.ellipse(cx, cy, Rd * k * 1.02, Rd * k * (ct + .05 + s * .3), 0, 0, 7); ctx.fill(); ctx.restore();
     quads.forEach(q => { const L = .25 + .75 * q.l, sp = Math.pow(q.l, 18) * .5; ctx.fillStyle = `rgb(${Math.min(255, 70 + 185 * L + 255 * sp) | 0},${Math.min(255, 18 + 40 * L + 220 * sp) | 0},${Math.min(255, 22 + 40 * L + 220 * sp) | 0})`;
       ctx.beginPath(); q.p.forEach((v, i) => { const X = cx + v[0] * k, Y = cy + v[1] * k; i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); }); ctx.closePath(); ctx.fill(); ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = .6; ctx.stroke(); });
@@ -1434,7 +1535,7 @@
   /* =====================================================================
      4. SECRETORY PATHWAY
      ===================================================================== */
-  const SC = SL.canvas($('#cvSec'));
+  const SC = SLPerf.canvas($('#cvSec'));
   const SEC = { prot: 'ins', step: 0, t: 0, playing: false, prog: 1 };
   const SECSTEPS = [
     ['Transcription and export', 'The gene is transcribed in the nucleus; the mRNA is capped, spliced and polyadenylated, then exported through a nuclear pore into the cytosol.'],
@@ -1522,7 +1623,7 @@
       if (released) { ctx.strokeStyle = '#fb923c'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(L.mem - 10, cy, 14, Math.PI * .35, Math.PI * 1.65); ctx.stroke(); }
       const inVes = !released && (s === 3 || s >= 5);
       if (inVes) { ctx.strokeStyle = s === 3 ? '#a3e635' : SEC.prot === 'lys' ? '#f9a8d4' : '#fb923c'; ctx.lineWidth = 3; ctx.fillStyle = 'rgba(12,30,48,.8)'; const vr = SEC.prot === 'ins' && s >= 5 ? 16 : 12; ctx.beginPath(); ctx.arc(cx, cy, vr, 0, 7); ctx.fill(); ctx.stroke(); if (s === 3) { for (let k = 0; k < 8; k++) { const a = k / 8 * 6.283; ctx.fillStyle = '#a3e635'; ctx.beginPath(); ctx.arc(cx + Math.cos(a) * 14, cy + Math.sin(a) * 14, 1.8, 0, 7); ctx.fill(); } } }
-      ctx.fillStyle = P.col; ctx.shadowColor = P.col; ctx.shadowBlur = 10;
+      ctx.fillStyle = P.col; ctx.shadowColor = P.col; ctx.shadowBlur = 10 * SLPerf.glow;
       if (released) {} else if (SEC.prot === 'ins' && s >= 5) { for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.arc(cx + Math.cos(k) * 6, cy + Math.sin(k * 1.7) * 6, 3, 0, 7); ctx.fill(); } }
       else { ctx.beginPath(); ctx.arc(cx - 3, cy, 4.5, 0, 7); ctx.arc(cx + 4, cy + 2, 4, 0, 7); ctx.fill(); }
       ctx.shadowBlur = 0;
@@ -1548,7 +1649,7 @@
   $('#job').innerHTML = Object.entries(JOBS).map(([k, j]) => `<option value="${k}">${j.name}</option>`).join('');
   const bld = { job: 'acinar', items: [], drag: null, tray: [] };
   let BL = null;
-  const BB = SL.canvas($('#cvB'), () => { if (BL) bLayout(); });
+  const BB = SLPerf.canvas($('#cvB'), () => { if (BL) bLayout(); });
   $('#job').onchange = e => { bld.job = e.target.value; bld.items = []; $('#bInv').textContent = 'The cell is empty.'; bLayout(); $('#jobDesc').textContent = JOBS[bld.job].desc; $('#bReport').innerHTML = 'Add organelles, then check.'; };
   $('#jobDesc').textContent = JOBS.acinar.desc;
   $('#bClear').onclick = () => { bld.items = []; $('#bReport').innerHTML = 'Add organelles, then check.'; bInv(); };
@@ -1564,13 +1665,24 @@
   bLayout();
   const inCell = (x, y) => { const c = BL.cell; if (JOBS[bld.job].plant) return Math.abs(x - c.cx) < c.rx - 6 && Math.abs(y - c.cy) < c.ry - 6; return ((x - c.cx) / c.rx) ** 2 + ((y - c.cy) / c.ry) ** 2 < .92; };
   const cvB = $('#cvB');
-  cvB.addEventListener('pointerdown', e => {
-    const p = SL.ptr(e, cvB);
+  // Touch (finding 13): the canvas allows vertical page scrolling (touch-action: pan-y). A touch that starts
+  // on an organelle or a tray item picks it up and blocks scrolling for that touch only; a touch anywhere
+  // else scrolls the page as usual.
+  const bHit = p => {
     const it = [...bld.items].reverse().find(i => Math.hypot(i.x - p.x, i.y - p.y) < (i.k === 'nucleus' || i.k === 'vacuole' ? 34 : 18));
-    if (it) { bld.drag = { item: it, dx: it.x - p.x, dy: it.y - p.y }; }
-    else { const t = BL.tray.find(t => Math.abs(t.x - p.x) < t.w / 2 && Math.abs(t.y - p.y) < t.h / 2); if (t) { const item = { k: t.k, x: p.x, y: p.y, rot: Math.random() * 3, isNew: true }; bld.items.push(item); bld.drag = { item, dx: 0, dy: 0 }; } }
-    if (bld.drag) { cvB.setPointerCapture(e.pointerId); e.preventDefault(); }
+    if (it) return { it };
+    const t = BL.tray.find(t => Math.abs(t.x - p.x) < t.w / 2 && Math.abs(t.y - p.y) < t.h / 2);
+    return t ? { t } : null;
+  };
+  cvB.addEventListener('pointerdown', e => {
+    const p = SL.ptr(e, cvB), hit = bHit(p);
+    if (!hit) return;
+    if (hit.it) { bld.drag = { item: hit.it, dx: hit.it.x - p.x, dy: hit.it.y - p.y }; }
+    else { const item = { k: hit.t.k, x: p.x, y: p.y, rot: Math.random() * 3, isNew: true }; bld.items.push(item); bld.drag = { item, dx: 0, dy: 0 }; }
+    try { cvB.setPointerCapture(e.pointerId); } catch (err) {} e.preventDefault();
   });
+  cvB.addEventListener('touchstart', e => { const r = cvB.getBoundingClientRect(), t0 = e.touches[0]; if (t0 && bHit({ x: t0.clientX - r.left, y: t0.clientY - r.top })) e.preventDefault(); }, { passive: false });
+  cvB.addEventListener('touchmove', e => { if (bld.drag) e.preventDefault(); }, { passive: false });
   cvB.addEventListener('pointermove', e => { const p = SL.ptr(e, cvB); if (bld.drag) { bld.drag.item.x = p.x + bld.drag.dx; bld.drag.item.y = p.y + bld.drag.dy; } else { const t = BL.tray.find(t => Math.abs(t.x - p.x) < t.w / 2 && Math.abs(t.y - p.y) < t.h / 2); const it = bld.items.find(i => Math.hypot(i.x - p.x, i.y - p.y) < 18); cvB.style.cursor = t || it ? 'grab' : 'default'; } });
   const endDrag = () => { if (!bld.drag) return; const it = bld.drag.item; if (!inCell(it.x, it.y)) bld.items = bld.items.filter(i => i !== it); it.isNew = false; bld.drag = null; bInv(); };
   // keyboard / tap alternative to dragging
@@ -1584,7 +1696,7 @@
     bld.items.push({ k, x, y, rot: Math.random() * 3, isNew: false }); bInv(); };
   $('#bRem').onclick = () => { const k = $('#bAddSel').value, i = bld.items.map(i => i.k).lastIndexOf(k); if (i >= 0) bld.items.splice(i, 1); bInv(); };
   cvB.addEventListener('pointerup', endDrag); cvB.addEventListener('pointercancel', endDrag);
-  cvB.style.touchAction = 'none';
+  cvB.style.touchAction = 'pan-y';
   function drawIcon(ctx, k, x, y, s, rot) {
     ctx.save(); ctx.translate(x, y); ctx.rotate(rot || 0); ctx.scale(s, s);
     const C = BT[k][1];
@@ -1638,37 +1750,43 @@
     { q: 'Which molecule crosses a pure phospholipid bilayer most easily?', options: ['Glucose', 'Na⁺', 'O₂', 'ATP'], answer: 2, why: 'Small, non-polar molecules such as O₂ and CO₂ dissolve in the hydrophobic core. Ions and large polar molecules need proteins.' },
     { q: 'For each ATP hydrolysed, the Na⁺/K⁺-ATPase moves:', options: ['2 Na⁺ out and 3 K⁺ in', '3 Na⁺ out and 2 K⁺ in', '3 Na⁺ in and 2 K⁺ out', '1 Na⁺ out and 1 K⁺ in'], answer: 1, why: '3 Na⁺ out and 2 K⁺ in, a net transfer of one positive charge out per cycle (electrogenic).' },
     { q: 'Why does facilitated diffusion through carriers show a maximum rate?', options: ['The membrane runs out of lipid', 'All carriers become occupied (saturation)', 'ATP runs out', 'The concentration gradient reverses'], answer: 1, why: 'Carriers have a finite number of binding sites and a finite turnover rate, giving Michaelis–Menten saturation.' },
-    { q: 'A red blood cell is placed in 0.3 % NaCl (≈ 100 mOsm/L). What happens?', options: ['It crenates', 'Nothing', 'It swells and lyses', 'It plasmolyses'], answer: 2, why: 'The solution is strongly hypotonic; water enters and the cell swells beyond its lysis limit (≈ 150 mOsm/L).' },
-    { q: 'Why does a plant cell not burst in pure water?', options: ['Its vacuole pumps water out', 'The cell wall resists expansion, building turgor pressure', 'Its membrane is impermeable to water', 'Chloroplasts absorb the water'], answer: 1, why: 'Turgor pressure (Ψp) rises until Ψs + Ψp equals the water potential outside, so net entry stops.' },
+    { q: 'A red blood cell is placed in 0.3 % NaCl (≈ 100 mOsm/L). What happens?', options: ['It crenates as water leaves', 'Nothing, because NaCl crosses the membrane', 'It swells and lyses as water enters', 'It plasmolyses, pulling away from its wall'], answer: 2, why: 'The solution is strongly hypotonic; water enters and the cell swells beyond its lysis limit (≈ 150 mOsm/L).' },
+    { q: 'Why does a plant cell not burst in pure water?', options: ['Its central vacuole pumps the extra water back out', 'The cell wall resists expansion, building turgor pressure', 'Its plasma membrane is impermeable to water', 'Its chloroplasts absorb the extra water for photosynthesis'], answer: 1, why: 'Turgor pressure (Ψp) rises until Ψs + Ψp equals the water potential outside, so net entry stops.' },
     { q: 'Which pair of organelles both have a double membrane and their own DNA?', options: ['Nucleus and Golgi', 'Mitochondria and chloroplasts', 'Lysosomes and peroxisomes', 'Rough and smooth ER'], answer: 1, why: 'Mitochondria and chloroplasts descend from endosymbiotic bacteria: double membranes, circular DNA and 70S ribosomes.' },
     { q: 'A lysosomal enzyme lacking its mannose-6-phosphate tag will most likely be:', options: ['Delivered normally to lysosomes', 'Secreted from the cell', 'Kept in the nucleus', 'Degraded by peroxisomes'], answer: 1, why: 'Without M6P it is not captured by M6P receptors in the trans-Golgi network and follows the default secretory route (I-cell disease).' },
     { q: 'Which structure is found in animal cells but not in most flowering-plant cells?', options: ['Golgi apparatus', 'Mitochondria', 'Centrioles', 'Peroxisomes'], answer: 2, why: 'Higher plants organise their spindle without centrioles.' },
     { q: 'The solute potential of a 0.3 mol/L solution at 25 °C (Ψs = −CRT) is about:', options: ['−0.07 MPa', '−0.74 MPa', '−7.4 MPa', '+0.74 MPa'], answer: 1, why: 'Ψs = −(300 mol/m³)(8.314 J mol⁻¹ K⁻¹)(298 K) ≈ −7.4 × 10⁵ Pa = −0.74 MPa.' },
     { q: 'A patient has Na⁺ 140 mmol/L, glucose 10 mmol/L and urea 5 mmol/L. What is the calculated plasma osmolality?', options: ['155 mOsm/kg', '285 mOsm/kg', '295 mOsm/kg', '310 mOsm/kg'], answer: 2, why: 'Calculated osmolality ≈ 2[Na⁺] + glucose + urea = 280 + 10 + 5 = 295 mOsm/kg, at the top of the normal range (275–295). Sodium is doubled because each Na⁺ is accompanied by an anion.' },
     { q: 'Which IV fluid behaves as a hypotonic fluid once it is in the body?', options: ['0.9 % sodium chloride', 'Ringer’s lactate', '5 % dextrose', '3 % sodium chloride'], answer: 2, why: '5 % dextrose is roughly iso-osmotic in the bag, but cells take up and metabolise the glucose, leaving free water that moves into cells. It is not a resuscitation fluid.' },
-    { q: 'Why must sterile water for injection never be run as an IV infusion?', options: ['It is hypertonic, so red cells crenate', 'It is hypotonic, so red cells swell and haemolyse', 'It has no glucose', 'It raises serum potassium'], answer: 1, why: 'Water at 0 mOsm/L is strongly hypotonic: water enters red cells, which swell past their critical volume and burst, releasing haemoglobin (haemoglobinuria, acute kidney injury). Sterile water is only for reconstituting or diluting drugs.' },
-    { q: 'A 2-year-old with diarrhoea has severe dehydration (WHO/IMCI Plan C) and IV access. Which fluid is the usual first choice?', options: ['5 % dextrose', 'Ringer’s lactate (or 0.9 % saline if unavailable)', '0.18 % saline in 4 % dextrose', 'Sterile water'], answer: 1, why: 'Plan C uses an isotonic crystalloid, Ringer’s lactate, or normal saline if it is not available, given rapidly per the protocol. Hypotonic or glucose-only fluids risk hyponatraemia and do not stay in the circulation. (Children with severe acute malnutrition follow a different protocol.)' },
-    { q: 'Low-osmolarity ORS contains glucose mainly because…', options: ['glucose supplies calories during illness', 'Na⁺–glucose co-transport (SGLT1) pulls Na⁺, and with it water, into gut cells', 'glucose kills intestinal bacteria', 'glucose makes ORS hypertonic'], answer: 1, why: 'SGLT1 on enterocytes carries 2 Na⁺ with each glucose. This secondary active transport keeps working in secretory diarrhoeas such as cholera, so water follows the absorbed solutes. The Na⁺ gradient it uses is made by the basolateral Na⁺/K⁺-ATPase.' },
-    { q: 'Why does hypokalaemia increase the risk of digoxin toxicity?', options: ['K⁺ and digoxin compete for the Na⁺/K⁺-ATPase, so with less K⁺ more digoxin binds', 'Digoxin is excreted with K⁺', 'Low K⁺ increases digoxin absorption from the gut', 'K⁺ converts digoxin to an active form'], answer: 0, why: 'Digoxin and K⁺ bind the same pump. With low K⁺ (diarrhoea, vomiting, diuretics) digoxin inhibits more pumps: nausea, visual disturbance and dangerous arrhythmias. Check K⁺ in patients on digoxin.' },
+    { q: 'Why must sterile water for injection never be run as an IV infusion?', options: ['It is hypertonic, so red cells shrink and crenate', 'It is hypotonic, so red cells swell and haemolyse', 'It contains no glucose, so the brain is starved of fuel', 'It raises serum potassium to dangerous levels'], answer: 1, why: 'Water at 0 mOsm/L is strongly hypotonic: water enters red cells, which swell past their critical volume and burst, releasing haemoglobin (haemoglobinuria, acute kidney injury). Sterile water is only for reconstituting or diluting drugs.' },
+    { q: 'A 2-year-old with diarrhoea has severe dehydration (WHO/IMCI Plan C) and IV access. Which fluid is the usual first choice?', options: ['5 % dextrose, to treat low blood sugar at the same time', 'Ringer’s lactate (or 0.9 % saline if unavailable)', '0.18 % saline in 4 % dextrose, as maintenance fluid', 'Sterile water, to replace the free water lost'], answer: 1, why: 'Plan C uses an isotonic crystalloid, Ringer’s lactate, or normal saline if it is not available, given rapidly per the protocol. Hypotonic or glucose-only fluids risk hyponatraemia and do not stay in the circulation. (Children with severe acute malnutrition follow a different protocol.)' },
+    { q: 'Low-osmolarity ORS contains glucose mainly because…', options: ['glucose supplies the calories a sick child needs', 'Na⁺–glucose co-transport (SGLT1) pulls Na⁺, and water, into gut cells', 'glucose kills the bacteria that cause the diarrhoea', 'glucose makes ORS hypertonic, so water is drawn back into the gut lumen'], answer: 1, why: 'SGLT1 on enterocytes carries 2 Na⁺ with each glucose. This secondary active transport keeps working in secretory diarrhoeas such as cholera, so water follows the absorbed solutes. The Na⁺ gradient it uses is made by the basolateral Na⁺/K⁺-ATPase.' },
+    { q: 'Why does hypokalaemia increase the risk of digoxin toxicity?', options: ['K⁺ and digoxin compete for the Na⁺/K⁺-ATPase, so more digoxin binds', 'Digoxin is excreted with K⁺, so low K⁺ slows its excretion', 'Low K⁺ increases the absorption of digoxin from the gut', 'K⁺ converts digoxin to its active form in the liver'], answer: 0, why: 'Digoxin and K⁺ bind the same pump. With low K⁺ (diarrhoea, vomiting, diuretics) digoxin inhibits more pumps: nausea, visual disturbance and dangerous arrhythmias. Check K⁺ in patients on digoxin.' },
     { q: 'The normal adult serum potassium is about…', options: ['1.0–2.0 mmol/L', '3.5–5.0 mmol/L', '135–145 mmol/L', '8–10 mmol/L'], answer: 1, why: 'Serum K⁺ is normally 3.5–5.0 mmol/L (135–145 is sodium). About 98 % of body potassium is inside cells, held there by the Na⁺/K⁺-ATPase, which is why small shifts change the serum level a lot.' },
-    { q: 'An elderly man with chronic hypernatraemia is given large volumes of hypotonic fluid quickly. The main danger is…', options: ['red cell crenation', 'water entering adapted brain cells, causing cerebral oedema', 'hyperkalaemia', 'immediate kidney failure'], answer: 1, why: 'In chronic hypernatraemia brain cells gain solutes to hold their volume. A fast fall in plasma tonicity drives water into them: cerebral oedema and seizures. Correction must be gradual, as the protocol specifies.' },
+    { q: 'An elderly man with chronic hypernatraemia is given large volumes of hypotonic fluid quickly. The main danger is…', options: ['red cell crenation as water leaves the cells', 'water entering adapted brain cells, causing cerebral oedema', 'hyperkalaemia from potassium released by the cells', 'immediate kidney failure from the fluid load'], answer: 1, why: 'In chronic hypernatraemia brain cells gain solutes to hold their volume. A fast fall in plasma tonicity drives water into them: cerebral oedema and seizures. Correction must be gradual, as the protocol specifies.' },
     { q: 'Gentamicin kills bacteria by binding the…', options: ['30S ribosomal subunit', 'peptidoglycan cell wall', 'DNA gyrase', 'cell membrane cholesterol'], answer: 0, why: 'Aminoglycosides bind the bacterial 30S subunit and cause misreading of mRNA. Human cytosolic ribosomes are 80S, but mitochondrial ribosomes resemble bacterial ones, which contributes to aminoglycoside ototoxicity.' },
-    { q: 'Penicillins are selectively toxic to bacteria because…', options: ['human cells have no peptidoglycan cell wall', 'human ribosomes are 70S', 'human cells have no mitochondria', 'penicillin cannot enter human blood'], answer: 0, why: 'β-lactams block the transpeptidases (penicillin-binding proteins) that cross-link peptidoglycan. Animal cells have no cell wall, so the target does not exist in the patient.' },
-    { q: 'In a child with severe pneumonia, supplemental oxygen raises O₂ uptake mainly by…', options: ['increasing the alveolar-to-capillary O₂ gradient', 'thinning the alveolar membrane', 'raising the haemoglobin concentration', 'slowing the breathing rate'], answer: 0, why: 'By Fick’s law, diffusion rate ∝ area × concentration gradient ÷ thickness. Pneumonia reduces area and thickens the barrier; oxygen therapy restores uptake by steepening the gradient.' },
+    { q: 'Penicillins are selectively toxic to bacteria because…', options: ['human cells have no peptidoglycan cell wall', 'human ribosomes are 70S, so penicillin cannot bind them', 'human cells have no mitochondria', 'penicillin cannot enter human blood'], answer: 0, why: 'β-lactams block the transpeptidases (penicillin-binding proteins) that cross-link peptidoglycan. Animal cells have no cell wall, so the target does not exist in the patient.' },
+    { q: 'In a child with severe pneumonia, supplemental oxygen raises O₂ uptake mainly by…', options: ['increasing the alveolar-to-capillary O₂ gradient', 'thinning the alveolar membrane so O₂ crosses faster', 'raising the haemoglobin concentration', 'slowing the breathing rate'], answer: 0, why: 'By Fick’s law, diffusion rate ∝ area × concentration gradient ÷ thickness. Pneumonia reduces area and thickens the barrier; oxygen therapy restores uptake by steepening the gradient.' },
     { q: 'A 500 mL bag of 0.9 % sodium chloride contains how much NaCl?', options: ['0.9 g', '4.5 g', '9 g', '45 g'], answer: 1, why: '0.9 % w/v means 0.9 g per 100 mL = 9 g/L. Half a litre therefore holds 4.5 g, about 77 mmol each of Na⁺ and Cl⁻.' },
   ]);
 
   /* ---------------- loop ---------------- */
   setTrMode('simple');
   const els = { cell: $('#cellStage'), tr: $('#trStage'), os: $('#osStage'), sec: $('#secStage'), b: $('#bStage') };
-  SL.loop(dt => {
+  // Frame budget (finding 10): each stage has its own gate. A stage draws at up to 30 fps on phones while
+  // something is changing and at 8–20 fps when it is idle; off-screen stages are skipped (IntersectionObserver).
+  const gCell = SLPerf.gate(12), gTr = SLPerf.gate(20), gOs = SLPerf.gate(10), gSec = SLPerf.gate(10), gB = SLPerf.gate(6);
+  const mainLoop = SL.loop(dt0 => {
     if (document.hidden) return;
-    if (visible(els.cell)) cellFrame(dt);
-    if (visible(els.tr)) { trStep(dt); drawTr(); }
-    osStep(dt); if (visible(els.os)) drawOs(dt);
-    if (visible(els.sec)) drawSec(dt);
-    if (visible(els.b)) drawB();
-  }).start();
+    let d;
+    if (SLPerf.on(els.cell) && (d = gCell(dt0, !!vbTo))) cellFrame(d);
+    if (SLPerf.on(els.tr) && (d = gTr(dt0, !tr.paused && tr.t < 25))) { for (let k = d; k > 1e-6; k -= 0.05) trStep(Math.min(k, 0.05)); drawTr(); }
+    osStep(dt0);
+    if (SLPerf.on(els.os) && (d = gOs(dt0, Math.abs(os.dV) > 0.003 || (os.lysed && os.lysed < 3)))) drawOs(d);
+    if (SLPerf.on(els.sec) && (d = gSec(dt0, SEC.playing || SEC.prog < 1))) drawSec(d);
+    if (SLPerf.on(els.b) && gB(dt0, !!bld.drag)) drawB();
+  });
+  (window.requestIdleCallback || (f => setTimeout(f, 60)))(() => mainLoop.start(), { timeout: 400 });
 /* ==MEDDEMO== */
   /* ===================== WATCH DEMO, CLINICAL CASES, DRILLS, OSCE ===================== */
   {
@@ -1710,8 +1828,8 @@
             run: async A => { freshCell(); setVal('#osC', 300); await A.sleep(400); await A.slide('#osC', 620, 2200); }, ms: 3600 },
           { cap: 'Insulin is made on the rough ER, finished in the Golgi and released by <b>exocytosis</b>: the β-cell pathway that fails in diabetes.', hl: '#secStage',
             run: async A => { view('#secStage'); const b = $('#secSeg button[data-m="ins"]'); if (b) b.click(); secGo(0); SEC.playing = true; secPlayBtn(); }, ms: 6200 },
-          { cap: 'Now try a <b>clinical case</b> below, or the timed OSCE station in the <b>Clinical &amp; exam</b> tab.',
-            run: async A => { SEC.playing = false; secPlayBtn(); const sc = $('#dkScen'); if (sc) sc.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' }); }, ms: 3200 },
+          { cap: 'Your turn: the <b>Clinical cases &amp; OSCE</b> tab is open. Try a clinical case, then the timed OSCE station.',
+            run: async A => { SEC.playing = false; secPlayBtn(); DemoKit.goCases(); }, capFixed: true, ms: 3200 },
         ]
       });
 
@@ -1719,7 +1837,7 @@
       const hold = { t: 0 }; const held = (ok, ms) => { if (!ok) { hold.t = 0; return false; } if (!hold.t) hold.t = performance.now(); return performance.now() - hold.t >= (ms || 2000); };
       const pump = { phase: 0, t: 0 };
       DK.scenarios({
-        before: '#cellLab', mount: '.tabs', key: 'sl-cell-cases',
+        before: '#cellLab', mount: DemoKit.clinPanel(), mountIn: true, key: 'sl-cell-cases',
         intro: 'These clinical cases are teaching examples, not treatment advice: follow current MoH/KNH protocols and your supervisors.',
         list: [
           { id: 'water', near: '#osStage', where: 'Ward round · county hospital', title: 'Why never sterile water IV?', goal: 'A student nurse asks why sterile water for injection is never run as an infusion. Show what happens to red cells when the fluid around them becomes strongly hypotonic.', success: 'a red cell haemolyses in the osmosis lab.', hint: 'Choose Red blood cell and drag Solute concentration outside below 150 mOsm/L, or press Pure water.',
@@ -1776,7 +1894,7 @@
       });
       MK.osce('#mkOsce', {
         key: 'sl-cell-osce', title: 'OSCE station: IV fluids and the red cell', minutes: 6,
-        intro: 'A timed practical station. Do the live tasks in the osmosis lab (they tick themselves), answer the rest, then submit. Pass mark 5 of 7.',
+        intro: 'A timed practical station. Do the live tasks in the osmosis lab (they tick themselves), answer the rest, then submit. Pass mark 70 % (5 of 7).',
         items: () => {
           const R = MK.R, p = R.pick([0.45, 0.9, 3]), na = R.int(125, 155), g = R.int(4, 12), u = R.int(3, 12);
           const goOs = () => { osMode('rbc'); view('#osStage'); };
@@ -1800,7 +1918,7 @@
     const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
     const startTour = () => SL.tour(jump([
       { el: '#cellStage', title: 'Explore the cell', text: 'Tap any organelle to zoom in on it; tap again or press <b>Whole cell</b> to zoom out. Vesicles and the cytoskeleton move as they do in a living cell.' },
-      { el: '#dkPlay', title: 'Watch a demo', text: 'Short on time? Press <b>Watch demo</b> (or the D key) for a captioned run-through of the key ideas. Stop it at any time; your settings come back afterwards. <b>Scenarios</b> (S) opens the clinical cases.' },
+      { el: '#dkPlay', title: 'Watch a demo', text: 'Short on time? Press <b>Watch demo</b> (or the D key) for a captioned run-through of the key ideas. Stop it at any time; your settings come back afterwards. <b>Cases &amp; OSCE</b> (C) opens the clinical cases and the OSCE station.' },
       { el: '#cellSeg', title: 'Animal or plant', text: 'Switch to a plant cell to add the cell wall, chloroplasts and a large central vacuole, and lose the centrioles and lysosomes.' },
       { el: '#orgChips', title: 'Jump to a structure', text: 'Every structure is one tap away. The bar below tracks how many you have explored.' },
       { el: '#orgInfo', title: 'Read the organelle card', text: 'Structure, function, an everyday analogy and the diseases that follow when it fails.' },

@@ -55,11 +55,17 @@
   .diag svg{width:100%;height:auto;display:block}
   .tally{margin-top:14px;display:grid;gap:8px;font-size:.8rem;color:var(--muted);padding:12px 16px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r)}
   .tally .tr{display:grid;grid-template-columns:260px 1fr;white-space:nowrap;align-items:center;gap:10px}
-  .tally b{font-family:var(--mono);color:var(--text)} .tally em{font-style:normal;color:var(--dim);font-family:var(--mono);font-size:.72rem}
+  .tally b{font-family:var(--mono);color:var(--text);overflow-wrap:anywhere} .tally em{font-style:normal;color:var(--dim);font-family:var(--mono);font-size:.72rem;white-space:nowrap}
   .tally .tb{display:flex;height:12px;border-radius:7px;overflow:hidden;background:var(--line2);gap:2px}
   .tally .tb i{display:block;min-width:2px;transition:flex .5s ease}
   .tally .tk{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.74rem} .tally .tk i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
-  @media (max-width:560px){ .tally .tr{grid-template-columns:1fr;gap:4px;white-space:normal} .al{height:36px;min-width:46px} }
+  /* 6+ phenotype classes: label above the bar, compact ratios, and a key that carries the counts */
+  .tally.many .tr{grid-template-columns:1fr;gap:4px;white-space:normal}
+  .tally.many .tk{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:4px 18px}
+  .tally.many .tk span{display:flex;align-items:baseline;gap:0;min-width:0}
+  .tally.many .tk .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tally.many .tk em{margin-left:8px;flex:none}
+  @media (max-width:560px){ .tally .tr{grid-template-columns:1fr;gap:4px;white-space:normal} .tally.many .tk{grid-template-columns:1fr} .al{height:36px;min-width:46px} }
   /* keyboard focus always visible */
   main :is(button,a,[tabindex],summary,select,input):focus-visible{outline:2px solid var(--accent)!important;outline-offset:2px}
 </style>
@@ -148,7 +154,7 @@
       <button><i data-lucide="calculator"></i> Worked examples</button>
       <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments &amp; challenges</button>
       <button><i data-lucide="list"></i> Ratio cheat sheet</button>
-      <button id="tabClin"><i data-lucide="stethoscope"></i> Clinical &amp; exam</button>
+      <button id="tabClin"><i data-lucide="stethoscope"></i> Clinical cases &amp; OSCE</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
     </div>
 
@@ -327,6 +333,71 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=15"></script>
 <script>
+/* SLPerf: frame budget for phones (student audit finding 10).
+   - Drawing is capped at 30 fps on touch / low-core devices and drops to ~12 fps while the scene is idle
+     (no running animation and no recent input); 4 fps with prefers-reduced-motion.
+   - Visibility comes from an IntersectionObserver, so the loop never forces a layout read per frame.
+   - put() writes text/HTML only when it changed, so idle readouts cause no repaint. */
+window.SLPerf = (() => {
+  const low = matchMedia('(pointer: coarse)').matches || (navigator.hardwareConcurrency || 8) <= 4;
+  const rm = matchMedia('(prefers-reduced-motion: reduce)');
+  let lastInput = -1e9;
+  const poke = () => { lastInput = performance.now(); };
+  ['pointerdown', 'pointermove', 'keydown', 'input', 'wheel', 'click'].forEach(t => addEventListener(t, poke, { passive: true, capture: true }));
+  const seen = new WeakMap();
+  const io = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => seen.set(e.target, e.isIntersecting)), { rootMargin: '40px 0px' }) : null;
+  const measure = el => { const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom > 0 && r.top < innerHeight; };
+  return {
+    low,
+    poke,
+    /** multiply canvas shadowBlur by this: glow halos are expensive to raster on phones */
+    glow: low ? 0 : 1,
+    /** is el (nearly) on screen? */
+    on(el) {
+      if (!el) return false;
+      if (!io) return measure(el);
+      if (!seen.has(el)) { seen.set(el, measure(el)); io.observe(el); }
+      return seen.get(el);
+    },
+    /** gate(dt, busy): the time to advance and draw now, or 0 to skip this frame */
+    gate(idleFps) {
+      let acc = 0;
+      return (dt, busy) => {
+        acc += dt;
+        const active = busy || performance.now() - lastInput < 1200;
+        const fps = rm.matches ? (active ? 30 : 4) : active ? (low ? 30 : 60) : (idleFps || 12);
+        if (acc < 1 / fps - 0.004) return 0;
+        const d = Math.min(0.1, acc); acc = 0; return d;
+      };
+    },
+    /** SL.canvas with a lighter backing store on phones (1.5× instead of 2×: about 45% fewer pixels to raster) */
+    canvas(cv, onResize) {
+      const ctx = cv.getContext('2d'), state = { ctx, w: 0, h: 0, dpr: 1 };
+      let first = true;
+      const fit = () => {
+        const r = cv.getBoundingClientRect();
+        const dpr = Math.min(window.devicePixelRatio || 1, low ? 1.5 : 2);
+        const w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+        if (w === state.w && h === state.h && dpr === state.dpr) return;
+        cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); ctx.setTransform(cv.width / w, 0, 0, cv.height / h, 0, 0);
+        Object.assign(state, { w, h, dpr });
+        if (!onResize) return;
+        if (first) { first = false; Promise.resolve().then(() => onResize(state.w, state.h)); } else onResize(w, h);
+      };
+      if ('ResizeObserver' in window) new ResizeObserver(fit).observe(cv); else addEventListener('resize', fit);
+      fit();
+      return state;
+    },
+    /** set innerHTML (or textContent when text is true) only if the value changed */
+    put(el, v, text) {
+      if (!el) return; v = String(v);
+      if (el.__slp === v && el.firstChild === el.__slpF) return;
+      el.__slp = v; if (text) el.textContent = v; else el.innerHTML = v; el.__slpF = el.firstChild;
+    },
+  };
+})();
+</script>
+<script>
 /* Watch-demo runner and goal-based scenarios (page-local kit) */
 (function () {
   if (window.DemoKit) return;
@@ -384,11 +455,11 @@
   const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
   const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
 
-  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  /* bar above the lab: Watch demo + Cases & OSCE link + goal banner */
   function bar(before) {
     let b = document.querySelector('.dk-bar'); if (b) return b;
     b = document.createElement('div'); b.className = 'dk-bar';
-    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Open the Clinical cases &amp; OSCE tab (C)"><i data-lucide="stethoscope"></i> Cases &amp; OSCE</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>C</kbd> cases &amp; OSCE · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
     const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
   }
 
@@ -403,6 +474,17 @@
     cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
     (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // phones: the caption is pinned to the bottom of the screen for the whole demo, and each highlighted control
+    // is scrolled into the band between the header and the caption (student audit finding 24)
+    const narrow = () => innerWidth <= 600;
+    async function keepInView(sel, A) {
+      const el = $(sel); if (!el) return; const r = el.getBoundingClientRect(); if (!r.height) return;
+      const pinned = cap.classList.contains('fixed') || cap.classList.contains('over');
+      const top = 76, bot = innerHeight - (pinned ? cap.offsetHeight + 20 : 0);
+      if (r.top >= top && r.bottom <= bot) return;
+      const y = r.height > bot - top ? scrollY + r.top - top - 6 : scrollY + r.top - top - ((bot - top) - r.height) / 2;
+      scrollTo({ top: Math.max(0, y), behavior: reduce ? 'auto' : 'smooth' }); await A.sleep(reduce ? 60 : 520);
+    }
     let run = null; // {abort, stepMode, nextRes}
     const D = { running: () => !!run };
     function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
@@ -434,8 +516,9 @@
         for (let i = 0; i < steps.length; i++) {
           const st = steps[i]; if (r.abort) throw ABORT;
           cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
-          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); cap.classList.toggle('over', !!st.capFixed || narrow()); pg.style.width = (i / steps.length * 100) + '%';
           if (st.run) await st.run(A);
+          if (st.hl) await keepInView(st.hl, A);
           if (r.abort) throw ABORT;
           pg.style.width = ((i + 1) / steps.length * 100) + '%';
           const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
@@ -447,7 +530,7 @@
     }
     function end(restore, msg) {
       const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
-      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      cap.classList.remove('show', 'over'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
       if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
       if (o.onStop) try { o.onStop(); } catch (e) {}
       SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
@@ -474,21 +557,21 @@
     let done = {}; try { done = JSON.parse(localStorage.getItem(o.key) || '{}') || {}; } catch (e) { done = {}; }
     const save = () => { try { localStorage.setItem(o.key, JSON.stringify(done)); } catch (e) {} };
     const ct = () => `${o.list.filter(s => done[s.id]).length}/${o.list.length} achieved`;
-    sec.innerHTML = `<h3><i data-lucide="stethoscope"></i> Scenarios: clinical cases <span class="ct"></span></h3><p class="small muted" style="margin:0">Each scenario sets up the lab, states the goal and checks it live. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
-    const m = $(o.mount); if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
+    sec.innerHTML = `<h3><i data-lucide="stethoscope"></i> Clinical cases <span class="ct"></span></h3><p class="small muted" style="margin:0">Each case sets up the lab, states the goal and checks it live; the timed OSCE station is further down this tab. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
+    const m = $(o.mount); if (o.mountIn) { const edu = m.querySelector(':scope > .mk-edu'); m.insertBefore(sec, edu ? edu.nextSibling : m.firstChild); } else if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
     let act = null, timer = 0;
     function paint() { sec.querySelector('.ct').textContent = ct(); sec.querySelectorAll('.dk-card').forEach(c => { c.classList.toggle('done', !!done[c.dataset.id]); c.classList.toggle('on', !!act && act.s.id === c.dataset.id); const bt = c.querySelector('[data-go]'); bt.innerHTML = act && act.s.id === c.dataset.id ? '<i data-lucide="rotate-ccw"></i> Restart' : done[c.dataset.id] ? '<i data-lucide="repeat"></i> Play again' : '<i data-lucide="play"></i> Start'; }); icons(sec); }
     function banner() {
       if (!act) { goal.classList.remove('show', 'won'); goal.innerHTML = ''; return; }
       const s = act.s; goal.classList.add('show'); goal.classList.toggle('won', act.won);
-      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the scenario up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
+      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the case up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
       icons(goal); tick();
     }
     function tick() {
       if (!act) return; const s = act.s; let st = '';
       try { st = s.status ? s.status() : ''; } catch (e) {}
-      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
-      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
+      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Case solved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another case.') : st;
     }
     function startS(id) {
       const s = o.list.find(x => x.id === id); if (!s) return;
@@ -501,12 +584,36 @@
     function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
     sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
     goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
-    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
-    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
+    b.querySelector('#dkScenBtn').onclick = () => DemoKit.goCases();
+    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 'c' || e.key === 'C') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); DemoKit.goCases(); } });
     paint();
     const API = { active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
     DemoKit._scen = API; return API;
   };
+  /* Clinical cases & OSCE tab (consistency standard): the bar button and the C key always open the tab and
+     scroll to it, with a toast that offers the way back; #cases and #osce deep-link to each part. */
+  const clinTab = () => document.getElementById('tabClin');
+  DemoKit.clinPanel = () => { const t = clinTab(); if (!t) return null; const tabs = t.closest('.tabs'); const i = [...t.parentNode.children].indexOf(t); return tabs.querySelectorAll(':scope > .tabpanel')[i] || null; };
+  const hdrH = () => (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hdr')) || 64) + 10;
+  function reveal(el, smooth) {
+    if (!el) return; const t = clinTab(); if (t && !t.classList.contains('on')) t.click();
+    const rm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const go = sm => scrollTo({ top: el.getBoundingClientRect().top + scrollY - hdrH(), behavior: sm && !rm ? 'smooth' : 'auto' });
+    requestAnimationFrame(() => { go(smooth); setTimeout(() => { if (Math.abs(el.getBoundingClientRect().top - hdrH()) > 30) go(false); }, smooth ? 900 : 250); });
+  }
+  DemoKit.goCases = () => {
+    const t = clinTab(); if (!t) return; const from = scrollY;
+    reveal(t.closest('.tabs') || t, true);
+    setTimeout(() => { try { t.focus({ preventScroll: true }); } catch (e) {} }, 900);
+    const nc = document.querySelectorAll('#dkScen .dk-card').length;
+    SL.toast(`<b>Clinical cases &amp; OSCE</b> is open: ${nc} clinical cases, then the timed OSCE station (pass mark 70 %). <button class="btn sm dk-back" style="margin-left:6px">Back to the lab</button>`, 'ok', 6000);
+    const box = document.querySelectorAll('.toasts .toast'), bk = box.length && box[box.length - 1].querySelector('.dk-back');
+    if (bk) bk.onclick = () => { bk.closest('.toast').remove(); scrollTo({ top: from, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); };
+  };
+  const HASH = { cases: '#dkScen', osce: '#mkOsce' };
+  function onHash() { const h = decodeURIComponent(location.hash.slice(1)).toLowerCase(); if (HASH[h]) reveal(document.querySelector(HASH[h]), false); }
+  addEventListener('hashchange', onHash);
+  addEventListener('load', () => setTimeout(onHash, 60));
   window.DemoKit = DemoKit;
 })();
 </script>
@@ -675,7 +782,7 @@
       el.querySelector('.mk-items').classList.add('marked');
       const used = Math.round((Date.now() - r.t0) / 1000), n = r.items.length, pass = score >= Math.ceil(n * 0.7);
       st.runs++; st.best = Math.max(st.best == null ? 0 : st.best, score); save(o.key, st);
-      const head = el.querySelector('.mk-osce-head'); head.innerHTML = `<span class="mk-timer">${score}/${n}</span><span class="small muted">Time used ${Math.floor(used / 60)}:${String(used % 60).padStart(2, '0')} · ${pass ? '<b style="color:var(--ok)">Pass</b>' : '<b style="color:var(--bad)">Below the pass mark</b>'} (pass mark ${Math.ceil(n * 0.7)}/${n})</span>`;
+      const head = el.querySelector('.mk-osce-head'); head.innerHTML = `<span class="mk-timer">${score}/${n}</span><span class="small muted">Time used ${Math.floor(used / 60)}:${String(used % 60).padStart(2, '0')} · ${pass ? '<b style="color:var(--ok)">Pass</b>' : '<b style="color:var(--bad)">Below the pass mark</b>'} (pass mark 70 %: ${Math.ceil(n * 0.7)}/${n})</span>`;
       const row = el.querySelector('.btn-row'); row.innerHTML = '<button class="btn primary" data-a="start"><i data-lucide="rotate-ccw"></i> Try again (new numbers)</button>'; icons(row);
       try { SL.renderMath(el); } catch (e) {}
       SL.toast(`Station marked: <b>${score}/${n}</b>`, pass ? 'ok' : 'warn', 3500);
@@ -759,7 +866,7 @@ const isLethal = (org, gt) => org.genes.some(G => G.type === 'lethal' && gt[G.id
 
 /* ================= State ================= */
 const S = { org: ORGS.pea, track: ['R'], rf: 17, n: 64, view: 'cross', p1: null, p2: null, batch: [], sel: [], fam: null, dist: null, anim: null, nextId: 1, gen: 0, shade: null };
-const cv = $('#cv'), st = SL.canvas(cv), tip = $('#tip'), hud = $('#hud');
+const cv = $('#cv'), st = SLPerf.canvas(cv), tip = $('#tip'), hud = $('#hud');
 function showTip(html, x, y) { tip.innerHTML = html; tip.style.display = 'block'; const r = cv.getBoundingClientRect(); const tw = tip.offsetWidth, th = tip.offsetHeight; let tx = x + 14, ty = y + 14; if (tx + tw > r.width - 6) tx = x - tw - 12; if (ty + th > r.height - 6) ty = y - th - 12; tip.style.left = Math.max(4, tx) + 'px'; tip.style.top = Math.max(4, ty) + 'px'; }
 function hideTip() { tip.style.display = 'none'; }
 function setHud(arr) { const h = arr.map(([k, v]) => `<span class="readout">${k} <b>${v}</b></span>`).join(''); if (hud._h !== h) { hud.innerHTML = h; hud._h = h; } }
@@ -1046,7 +1153,7 @@ $('#testerBtn').onclick = () => {
 };
 
 /* ================= Ratio table + chart ================= */
-const rcv = $('#ratioCv'), rst = SL.canvas(rcv, () => drawRatio());
+const rcv = $('#ratioCv'), rst = SLPerf.canvas(rcv, () => drawRatio());
 function ratioUI() {
   const D = S.dist, T = chiTest(); const N = S.batch.length;
   const gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
@@ -1058,9 +1165,12 @@ function ratioUI() {
   // expected vs observed as two proportion bars under the stage
   const bar = ws => `<div class="tb">${D.classes.map((c, k) => ws[k] > 0 ? `<i style="flex:${ws[k]};background:${c.col}" title="${c.key}"></i>` : '').join('')}</div>`;
   const exp = D.classes.map(c => c.p), obs = N && T ? T.rows.map(r => r.O) : null;
-  $('#tally').innerHTML = `<div class="tr"><span>Expected${ok ? ' <b>' + ratio.map(Math.round).join(' : ') + '</b>' : ''}</span>${bar(exp)}</div>` +
-    `<div class="tr"><span>Observed${obs ? ' <b>' + obs.join(' : ') + '</b> <em>n = ' + N + '</em>' : ' <em>mix to breed a batch</em>'}</span>${obs ? bar(obs) : '<div class="tb empty"></div>'}</div>` +
-    `<div class="tk">${D.classes.map(c => `<span><i style="background:${c.col}"></i>${c.key}</span>`).join('')}</div>`;
+  // with many classes (e.g. a trihybrid's 8) the ratios get compact separators and the counts move into the key
+  const many = D.classes.length >= 6, sep = many ? ':' : ' : ';
+  $('#tally').classList.toggle('many', many);
+  $('#tally').innerHTML = `<div class="tr"><span>Expected${ok ? ' <b>' + ratio.map(Math.round).join(sep) + '</b>' : ''}</span>${bar(exp)}</div>` +
+    `<div class="tr"><span>Observed${obs ? ' <b>' + obs.join(sep) + '</b> <em>n = ' + N + '</em>' : ' <em>mix to breed a batch</em>'}</span>${obs ? bar(obs) : '<div class="tb empty"></div>'}</div>` +
+    `<div class="tk">${D.classes.map((c, k) => `<span title="${c.key}"><i style="background:${c.col}"></i>${many ? `<span class="nm">${c.key}</span>${obs ? `<em>${obs[k]} obs · ${SL.fmt(c.p * N, 1)} exp</em>` : `<em>${SL.fmt(c.p * 100, 1)} %</em>`}` : c.key}</span>`).join('')}</div>`;
   drawRatio();
 }
 function drawRatio() {
@@ -1138,9 +1248,30 @@ function drawTallyBars(ctx, w, h, oy) {
   label(ctx, `${genName(S.batch[0].gen)} offspring: ${N}${S.dead ? ` (+${S.dead} lethal)` : ''}`, 16, oy + 4, '#e6ecf7', 11.5, 'left', 700);
   label(ctx, 'Show individuals ▸', w - 16, oy + 4, '#34d399', 11, 'right', 700); hitList.push({ x: w - 150, y: oy - 10, w: 144, h: 28, toggleInd: true });
   const top = oy + 24, rowH = Math.min(46, (h - top - 92) / Math.max(1, cls.length)), bx = 16, bw = w - 32, mx = Math.max(...counts, ...cls.map(c => c.p * N), 1);
-  cls.forEach((c, k) => { const y = top + k * rowH; label(ctx, c.key, bx, y + 8, '#c7d2e5', 10.5, 'left', 600); label(ctx, `${counts[k]} obs · ${SL.fmt(c.p * N, 1)} exp`, bx + bw, y + 8, '#93a1bd', 10, 'right', 600, 'mono');
-    const yy = y + 16, bh = Math.max(8, rowH - 26); ctx.fillStyle = '#1e2a44'; rrect(ctx, bx, yy, bw, bh, 5); ctx.fill(); ctx.fillStyle = c.col; rrect(ctx, bx, yy, Math.max(4, bw * counts[k] / mx), bh, 5); ctx.fill();
-    const ex = bx + bw * c.p * N / mx; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([3, 2]); ctx.beginPath(); ctx.moveTo(ex, yy - 3); ctx.lineTo(ex, yy + bh + 3); ctx.stroke(); ctx.setLineDash([]); });
+  // 6+ classes: a thinner bar under each label and a clear gap before the next row, so rows do not run together
+  const many = cls.length >= 6;
+  if (many) label(ctx, 'observed · expected', bx + bw, oy + 22, '#7d8aa6', 9.5, 'right', 600, 'mono');
+  // 12+ classes (e.g. sex-linked trihybrids): one line per class, name | bar | counts
+  if (rowH < 30) {
+    const lw = Math.min(bw * .5, 190), cw = 58, bx2 = bx + lw + 6, bw2 = Math.max(30, bw - lw - 6 - cw), bh = SL.clamp(rowH * .42, 4, 9);
+    // if any name is too long, shorten all of them the same way ("Red eyes, Grey body, Long wings ♀" → "Red, Grey, Long ♀")
+    ctx.font = '600 9.5px Inter, system-ui, sans-serif';
+    const short = cls.some(c => ctx.measureText(c.key).width > lw);
+    const names = cls.map(c => { if (!short) return c.key; const sx = (c.key.match(/\s([♀♂])$/) || [])[1]; return c.key.replace(/\s[♀♂]$/, '').split(', ').map(s => s.split(' ')[0]).join(', ') + (sx ? ' ' + sx : ''); });
+    cls.forEach((c, k) => { const y = top + 12 + k * rowH + rowH / 2;
+      ctx.font = '600 9.5px Inter, system-ui, sans-serif'; let nm = names[k];
+      if (ctx.measureText(nm).width > lw) { while (nm.length > 4 && ctx.measureText(nm + '…').width > lw) nm = nm.slice(0, -1); nm += '…'; }
+      label(ctx, nm, bx, y, '#c7d2e5', 9.5, 'left', 600);
+      label(ctx, `${counts[k]} · ${SL.fmt(c.p * N, 1)}`, bx + bw, y, '#93a1bd', 9.5, 'right', 600, 'mono');
+      ctx.fillStyle = '#1e2a44'; rrect(ctx, bx2, y - bh / 2, bw2, bh, bh / 2); ctx.fill(); ctx.fillStyle = c.col; rrect(ctx, bx2, y - bh / 2, Math.max(3, bw2 * counts[k] / mx), bh, bh / 2); ctx.fill();
+      const ex = bx2 + bw2 * c.p * N / mx; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.setLineDash([2, 2]); ctx.beginPath(); ctx.moveTo(ex, y - bh / 2); ctx.lineTo(ex, y + bh / 2); ctx.stroke(); ctx.setLineDash([]); });
+  } else
+  cls.forEach((c, k) => { const y = top + k * rowH + (many ? 12 : 0);
+    const bh = many ? SL.clamp(rowH * .24, 5, 9) : Math.max(8, rowH - 26), yy = many ? y + 9 : y + 16, ov = many ? 0 : 3;
+    label(ctx, c.key, bx, y + (many ? 1 : 8), '#c7d2e5', many ? 10 : 10.5, 'left', 600);
+    label(ctx, many ? `${counts[k]} · ${SL.fmt(c.p * N, 1)}` : `${counts[k]} obs · ${SL.fmt(c.p * N, 1)} exp`, bx + bw, y + (many ? 1 : 8), '#93a1bd', 10, 'right', 600, 'mono');
+    ctx.fillStyle = '#1e2a44'; rrect(ctx, bx, yy, bw, bh, bh / 2); ctx.fill(); ctx.fillStyle = c.col; rrect(ctx, bx, yy, Math.max(4, bw * counts[k] / mx), bh, bh / 2); ctx.fill();
+    const ex = bx + bw * c.p * N / mx; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([3, 2]); ctx.beginPath(); ctx.moveTo(ex, yy - ov); ctx.lineTo(ex, yy + bh + ov); ctx.stroke(); ctx.setLineDash([]); });
   const cy = top + cls.length * rowH + 12; ctx.fillStyle = 'rgba(5,9,19,.6)'; ctx.strokeStyle = '#2a3a5c'; ctx.lineWidth = 1; rrect(ctx, 12, cy, w - 24, 62, 9); ctx.fill(); ctx.stroke();
   if (T && T.df >= 1) { const ok = T.p > .05; label(ctx, `χ² = ${SL.fmt(T.x2, 2)} · df = ${T.df} · p = ${fmtP(T.p)}`, 24, cy + 18, '#e6ecf7', 12, 'left', 700, 'mono'); label(ctx, ok ? 'p > 0.05: fits the expected ratio' : 'p ≤ 0.05: significant deviation', 24, cy + 38, ok ? '#34d399' : '#f87171', 11, 'left', 700); label(ctx, 'dashed line = expected count', 24, cy + 54, '#7d8aa6', 9.5, 'left', 500); }
   else label(ctx, 'Only one phenotype class: no chi-square test needed.', 24, cy + 30, '#93a1bd', 11, 'left', 600);
@@ -1268,7 +1399,7 @@ function popUI() {
   const fin = POP.lines.map(l => l[l.length - 1]); const fixed = fin.filter(p => p >= 1).length, lost = fin.filter(p => p <= 0).length;
   stats('#popStats', [['Mean final p', POP.lines.length ? SL.fmt(fin.reduce((a, b) => a + b, 0) / fin.length, 3) : '—'], ['A fixed / lost', POP.lines.length ? fixed + ' / ' + lost : '—'], ['Drift var/gen', SL.fmt(PV.popP0 * (1 - PV.popP0) / (2 * PV.popN), 4)], ['Equilibrium q̂', het ? SL.fmt(s / (s + t), 3) : '—']]);
 }
-function stats(el, arr) { $(el).innerHTML = arr.map(([k, v, u]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u ? `<small>${u}</small>` : ''}</div></div>`).join(''); }
+function stats(el, arr) { SLPerf.put($(el), arr.map(([k, v, u]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}${u ? `<small>${u}</small>` : ''}</div></div>`).join('')); }
 function binom(n, p) { if (p <= 0) return 0; if (p >= 1) return n; if (n > 400) { const m = n * p, sd = Math.sqrt(n * p * (1 - p)); let u = 0, v = 0; while (!u) u = Math.random(); v = Math.random(); const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(PI2 * v); return SL.clamp(Math.round(m + sd * z), 0, n); } let k = 0; for (let i = 0; i < n; i++) if (Math.random() < p) k++; return k; }
 function selStep(p) { const q = 1 - p; const wb = p * p * PV.wAA + 2 * p * q * PV.wAa + q * q * PV.waa; return wb > 0 ? (p * p * PV.wAA + p * q * PV.wAa) / wb : p; }
 function popRun() {
@@ -1308,9 +1439,13 @@ function drawPop(ctx, w, h, dt) {
 /* ---------- main loop ---------- */
 const inView = el => { const r = el.getBoundingClientRect(); return r.bottom > -100 && r.top < innerHeight + 100 && r.width > 0; };
 let bgCache = null;
-const loop = SL.loop((dt) => {
+// Frame budget (finding 10): 30 fps on phones while a cross or a population run is animating, ~10 fps
+// otherwise (the views are mostly static); nothing is drawn while the stage is off-screen.
+const gate = SLPerf.gate(10);
+const loop = SL.loop((dt0) => {
   // idle when the tab is hidden or the stage is scrolled out of view
-  if (document.hidden || !inView(cv)) return;
+  if (document.hidden || !SLPerf.on(cv)) return;
+  const dt = gate(dt0, !!S.anim || (S.view === 'pop' && POP.anim < PV.popG)); if (!dt) return;
   const { ctx, w, h } = st; ctx.clearRect(0, 0, w, h);
   if (!bgCache || bgCache.w !== w || bgCache.h !== h || bgCache.ctx !== ctx) { const g = ctx.createRadialGradient(w * .5, h * .35, 10, w * .5, h * .35, Math.max(w, h) * .8); g.addColorStop(0, '#0b1426'); g.addColorStop(1, '#050913'); bgCache = { w, h, ctx, g }; }
   ctx.fillStyle = bgCache.g; ctx.fillRect(0, 0, w, h);
@@ -1319,7 +1454,7 @@ const loop = SL.loop((dt) => {
   try {
     if (S.view === 'cross') drawCross(ctx, w, h, dt); else if (S.view === 'punnett') drawPunnett(ctx, w, h); else if (S.view === 'pedigree') drawPedigree(ctx, w, h); else drawPop(ctx, w, h, dt);
   } catch (e) { console.error(e); loop.stop(); }
-  if (S.view === 'cross' && S.batch.length) { const T = chiTest(); setHud([]); } else setHud([]);
+  setHud([]);
 });
 function hitAt(p) { for (let i = hitList.length - 1; i >= 0; i--) { const h = hitList[i]; if (p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h) return h; } return null; }
 cv.addEventListener('pointermove', e => {
@@ -1371,31 +1506,32 @@ function checkChallenges() {
 SL.quiz('#quiz', [
   { q: 'Two pea plants heterozygous for seed shape (Rr × Rr) are crossed. What fraction of the round offspring are heterozygous?', options: ['1/4', '1/2', '2/3', '3/4'], answer: 2, why: 'Offspring are 1 RR : 2 Rr : 1 rr. Among the 3 round (RR or Rr), 2 are Rr: 2/3.' },
   { q: 'How many different gametes can an AaBbCc individual make (genes unlinked)?', options: ['3', '6', '8', '27'], answer: 2, why: '2 choices per gene: 2³ = 8 gamete types, which is why the trihybrid Punnett square is 8 × 8.' },
-  { q: 'A red snapdragon (CᴿCᴿ) is crossed with a white one (CᵂCᵂ). The F1 are all pink. This shows…', options: ['codominance', 'incomplete dominance', 'epistasis', 'sex linkage'], answer: 1, why: 'The heterozygote has an intermediate phenotype: incomplete dominance. The F2 will be 1 red : 2 pink : 1 white.' },
+  { q: 'A red snapdragon (CᴿCᴿ) is crossed with a white one (CᵂCᵂ). The F1 are all pink. This shows…', options: ['codominance', 'incomplete dominance', 'epistasis between two genes', 'sex linkage'], answer: 1, why: 'The heterozygote has an intermediate phenotype: incomplete dominance. The F2 will be 1 red : 2 pink : 1 white.' },
   { q: 'Parents with blood groups A and B have a group O child. What are the parents’ genotypes?', options: ['IᴬIᴬ × IᴮIᴮ', 'Iᴬi × Iᴮi', 'IᴬIᴮ × ii', 'Impossible'], answer: 1, why: 'An O child is ii, so each parent must carry i: Iᴬi × Iᴮi, which can give A, B, AB and O.' },
   { q: 'A woman who carries red–green colour blindness has children with a man with normal vision. What is the chance that a son is colour-blind?', options: ['0', '1/4', '1/2', '1'], answer: 2, why: 'Sons get their X from their mother. She passes Xᵇ half the time, so 1/2 of sons are colour-blind (1/4 of all children).' },
   { q: 'BbEe × BbEe Labradors give 9 black : 3 chocolate : 4 yellow. Which gene is epistatic?', options: ['B over E', 'E over B (ee masks B)', 'Neither: it is codominance', 'Both are X-linked'], answer: 1, why: 'Homozygous ee blocks pigment in the coat whatever the B alleles, so E/e is epistatic to B/b (recessive epistasis).' },
   { q: 'In a test cross of AB/ab × ab/ab, 840 parental and 160 recombinant offspring appear. The map distance is about…', options: ['8 cM', '16 cM', '32 cM', '84 cM'], answer: 1, why: 'RF = 160/1000 = 16%, about 16 centimorgans.' },
   { q: 'Two curly-tailed Glimmerpuffs (Kk) produce curly and straight offspring in a 2:1 ratio. Why not 3:1?', options: ['K is incompletely dominant', 'KK embryos die', 'The genes are linked', 'Sampling error'], answer: 1, why: 'KK is lethal, so the expected 1 KK : 2 Kk : 1 kk becomes 2 curly (Kk) : 1 straight (kk) among survivors.' },
   { q: 'In a population in Hardy–Weinberg equilibrium, 9% of people are aa. What fraction are carriers (Aa)?', options: ['9%', '21%', '42%', '49%'], answer: 2, why: 'q² = 0.09 so q = 0.3 and p = 0.7. Carriers: 2pq = 2 × 0.7 × 0.3 = 0.42.' },
-  { q: 'Why does the sickle-cell allele stay common in regions with malaria?', options: ['It is dominant', 'Heterozygotes survive malaria better than either homozygote', 'Genetic drift in large populations', 'New mutations every generation'], answer: 1, why: 'Heterozygote advantage (balancing selection) keeps both alleles at an equilibrium q̂ = s/(s + t).' },
+  { q: 'Why does the sickle-cell allele stay common in regions with malaria?', options: ['The HbS allele is dominant, so it spreads quickly through families', 'Heterozygotes survive malaria better than either homozygote', 'Genetic drift keeps it common in large populations', 'New HbS mutations arise in every generation'], answer: 1, why: 'Heterozygote advantage (balancing selection) keeps both alleles at an equilibrium q̂ = s/(s + t).' },
   { q: 'Both parents have sickle-cell trait (AS). What is the chance that their next baby has sickle cell disease?', options: ['0', '1 in 4', '1 in 2', '3 in 4'], answer: 1, why: 'AS × AS gives ¼ AA, ½ AS and ¼ SS. The chance is the same in every pregnancy, whatever happened before.' },
   { q: 'Two AS parents have an unaffected child. What is the probability that this child is a carrier (AS)?', options: ['1/4', '1/2', '2/3', '3/4'], answer: 2, why: 'Among unaffected children (AA, AS, AS), two of the three equally likely outcomes are AS: 2/3. A classic counselling question.' },
   { q: 'A mother with sickle-cell trait (AS) and a father with sickle cell disease (SS) ask about their children. The chance of SS in each pregnancy is…', options: ['1/4', '1/2', '3/4', '1'], answer: 1, why: 'The father always passes S; the mother passes S half the time. So ½ SS and ½ AS.' },
   { q: 'A woman is a carrier of G6PD deficiency; her partner has normal G6PD. What is the chance that a son is G6PD deficient?', options: ['0', '1/4', '1/2', '1'], answer: 2, why: 'Sons get their only X from their mother, who passes the deficient X half the time. Daughters get the father’s normal X, so they are never more than carriers here.' },
-  { q: 'A G6PD-deficient father and a mother with normal G6PD have children. Which is true?', options: ['All sons are deficient', 'All daughters are carriers and no son is affected', 'Half of daughters are deficient', 'All children are normal'], answer: 1, why: 'He passes his X to every daughter and his Y to every son: no male-to-male transmission of X-linked traits.' },
-  { q: 'Before a 14-day course of primaquine for Plasmodium vivax malaria, WHO recommends…', options: ['no test is needed', 'testing for G6PD deficiency', 'a sickling test', 'blood grouping'], answer: 1, why: 'Daily primaquine can cause severe haemolysis in G6PD deficiency. By contrast, the single low dose (0.25 mg/kg) used to block P. falciparum transmission can be given without a G6PD test.' },
+  { q: 'A G6PD-deficient father and a mother with normal G6PD have children. Which is true?', options: ['All sons are deficient, because they inherit their father’s X', 'All daughters are carriers and no son is affected', 'Half of the daughters are deficient', 'All the children have normal G6PD genes'], answer: 1, why: 'He passes his X to every daughter and his Y to every son: no male-to-male transmission of X-linked traits.' },
+  { q: 'Before a 14-day course of primaquine for Plasmodium vivax malaria, WHO recommends…', options: ['no test, because haemolysis is rare', 'testing for G6PD deficiency', 'a sickling test for HbS', 'blood grouping and cross-match'], answer: 1, why: 'Daily primaquine can cause severe haemolysis in G6PD deficiency. By contrast, the single low dose (0.25 mg/kg) used to block P. falciparum transmission can be given without a G6PD test.' },
   { q: 'In an emergency, before the patient’s group is known, which red cells can be given?', options: ['AB Rh-positive', 'O Rh-negative', 'A Rh-negative', 'B Rh-positive'], answer: 1, why: 'O red cells carry neither A nor B antigen, and Rh-negative cells avoid sensitising an Rh-negative patient. Group-specific blood replaces it as soon as possible.' },
-  { q: 'A patient is group A Rh-positive. Which red cell units are ABO and RhD compatible?', options: ['A or O, Rh-positive or Rh-negative', 'A only, Rh-positive only', 'A, B, AB or O', 'AB only'], answer: 0, why: 'A patients make anti-B, so B and AB cells are excluded. An Rh-positive recipient can receive Rh-positive or Rh-negative cells.' },
-  { q: 'An Rh-negative woman delivers an Rh-positive baby. Anti-D immunoglobulin should be given…', options: ['only in the next pregnancy', 'as soon as possible after delivery, ideally within 72 hours', 'only if the baby is jaundiced', 'never after delivery'], answer: 1, why: 'Anti-D clears fetal Rh-positive cells before the mother’s immune system responds. It is also given routinely in pregnancy (around 28 weeks) and after sensitising events such as miscarriage or bleeding.' },
-  { q: 'Why is the first Rh-positive baby of an unsensitised Rh-negative mother usually unaffected?', options: ['Rh antigens appear only after birth', 'Sensitisation mostly occurs at delivery, and her first antibodies (IgM) do not cross the placenta', 'The father’s antibodies protect the baby', 'The first baby is always Rh-negative'], answer: 1, why: 'Fetal cells enter her circulation mainly at delivery. In a later pregnancy, IgG anti-D crosses the placenta and destroys fetal red cells.' },
+  { q: 'A patient is group A Rh-positive. Which red cell units are ABO and RhD compatible?', options: ['A or O, Rh-positive or Rh-negative', 'A only, and Rh-positive units only', 'A, B, AB or O, as long as Rh-positive', 'AB only, of either RhD type'], answer: 0, why: 'A patients make anti-B, so B and AB cells are excluded. An Rh-positive recipient can receive Rh-positive or Rh-negative cells.' },
+  { q: 'An Rh-negative woman delivers an Rh-positive baby. Anti-D immunoglobulin should be given…', options: ['only at the start of the next pregnancy', 'as soon as possible after delivery, ideally within 72 hours', 'only if the baby develops jaundice in the first week after birth', 'never after delivery, only during pregnancy'], answer: 1, why: 'Anti-D clears fetal Rh-positive cells before the mother’s immune system responds. It is also given routinely in pregnancy (around 28 weeks) and after sensitising events such as miscarriage or bleeding.' },
+  { q: 'Why is the first Rh-positive baby of an unsensitised Rh-negative mother usually unaffected?', options: ['Rh antigens are not expressed on fetal red cells until after birth, so nothing is attacked', 'Sensitisation mostly happens at delivery, and her first antibodies (IgM) do not cross the placenta', 'The father’s antibodies cross the placenta in the first pregnancy and protect the baby', 'The first baby of such a couple is always Rh-negative'], answer: 1, why: 'Fetal cells enter her circulation mainly at delivery. In a later pregnancy, IgG anti-D crosses the placenta and destroys fetal red cells.' },
   { q: 'In a population, 1 % of newborns have sickle cell disease (SS). Assuming Hardy–Weinberg, about what fraction of people carry HbS (AS)?', options: ['1 %', '9 %', '18 %', '50 %'], answer: 2, why: 'q² = 0.01, so q = 0.1 and p = 0.9. Carriers = 2pq = 2 × 0.9 × 0.1 = 0.18.' },
   { q: 'A mother is group O and the father group AB. Their children can be…', options: ['O or AB', 'A or B only', 'A, B, AB or O', 'AB only'], answer: 1, why: 'The mother passes i; the father passes Iᴬ or Iᴮ. Children are Iᴬi (A) or Iᴮi (B), never O or AB.' },
 ]);
 
 /* ================= Init ================= */
 ['popN', 'popP0', 'popG', 'popR', 'wAA', 'wAa', 'waa'].forEach(id => PV[id] = +$('#' + id).value); PV.hwP = +$('#hwP').value;
-setOrg('pea', 3); drawOrgCards(); S.quiet = true; mix(); S.quiet = false; S.anim = null; popRun(); POP.anim = 1e9; popUI(); loop.start();
+setOrg('pea', 3); drawOrgCards(); S.quiet = true; mix(); S.quiet = false; S.anim = null; popRun(); POP.anim = 1e9; popUI();
+(window.requestIdleCallback || (f => setTimeout(f, 60)))(() => loop.start(), { timeout: 400 });
 window.GM = { S, ORGS, setOrg, applyPreset, mix, distribution, gametes, chiTest, chiP, popRun, PV, POP, genoStr, phen, selUI, PRESETS };
 /* ==MEDDEMO== */
   /* ===================== WATCH DEMO, CLINICAL CASES, DRILLS, OSCE ===================== */
@@ -1430,13 +1566,13 @@ window.GM = { S, ORGS, setOrg, applyPreset, mix, distribution, gametes, chiTest,
             run: async A => { hp('ABO: Iᴬi × Iᴮi'); setN(200); mix(); }, ms: 4600 },
           { cap: '<b>Population view:</b> where malaria is common, AS carriers survive best, so HbS settles at a stable frequency instead of disappearing.', hl: '#popPresets',
             run: async A => { setView('pop'); await A.sleep(200); const b = [...$$('#popPresets button')].find(x => /Sickle/.test(x.textContent)); if (b) b.click(); }, ms: 5400 },
-          { cap: 'Now open a <b>clinical case</b> below, or the counselling station in the <b>Clinical &amp; exam</b> tab.',
-            run: async A => { const sc = $('#dkScen'); if (sc) sc.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' }); }, ms: 3000 },
+          { cap: 'Your turn: the <b>Clinical cases &amp; OSCE</b> tab is open. Try a clinical case, then the counselling OSCE station.',
+            run: async A => { DemoKit.goCases(); }, capFixed: true, ms: 3000 },
         ]
       });
 
       DK.scenarios({
-        before: '.lab', mount: '.tabs', key: 'sl-gene-mixer-cases',
+        before: '.lab', mount: DemoKit.clinPanel(), mountIn: true, key: 'sl-gene-mixer-cases',
         intro: 'These clinical cases are teaching examples, not counselling or treatment advice: follow current MoH/KNH protocols and your supervisors.',
         list: [
           { id: 'asxas', where: 'Premarital counselling · Kakamega', title: 'Two carriers plan a family', goal: 'An engaged couple both tested HbAS at a screening day. Breed at least 400 children from their cross and compare the share with sickle cell disease with the 1 in 4 you would quote them.', success: '400 or more children from AS × AS with the SS share within 21–29 %.', hint: 'Set Offspring in the batch to 400 or more, then press Mix genes (mix again if chance takes you outside the range).',
@@ -1506,7 +1642,7 @@ window.GM = { S, ORGS, setOrg, applyPreset, mix, distribution, gametes, chiTest,
       });
       MK.osce('#mkOsce', {
         key: 'sl-gene-mixer-osce', title: 'OSCE station: counselling a sickle-cell carrier couple', minutes: 6,
-        intro: 'A timed counselling station. Set up the cross in the lab (the live tasks tick themselves), answer the questions, then submit. Pass mark 5 of 7.',
+        intro: 'A timed counselling station. Set up the cross in the lab (the live tasks tick themselves), answer the questions, then submit. Pass mark 70 % (5 of 7).',
         items: () => [
           { kind: 'live', text: 'Set up the couple’s cross: human, haemoglobin gene, mother AS × father AS.', go: () => { setView('cross'); $('#stage').scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' }); }, check: () => S.org.id === 'human' && S.track.includes('HB') && gs(S.p1, 'HB') === 'AS' && gs(S.p2, 'HB') === 'AS', why: 'Use the Sickle: carrier × carrier preset or set both parents to Hbᴬ Hbˢ.' },
           { kind: 'live', text: 'Show them the Punnett square for this cross.', go: () => { setView('punnett'); $('#stage').scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' }); }, check: () => S.view === 'punnett' && S.org.id === 'human' && gs(S.p1, 'HB') === 'AS' && gs(S.p2, 'HB') === 'AS', why: 'Four equally likely boxes: AA, AS, SA, SS.' },
@@ -1526,7 +1662,7 @@ window.GM = { S, ORGS, setOrg, applyPreset, mix, distribution, gametes, chiTest,
     const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
     const startTour = () => SL.tour(jump([
       { el: '#orgs', title: 'Choose an organism', text: 'Each organism teaches a different pattern: Mendel\'s peas, snapdragons, blood groups, Labradors, fruit flies and more.' },
-      { el: '#dkPlay', title: 'Watch a demo', text: 'Short on time? Press <b>Watch demo</b> (or the D key) for a captioned run-through of the key ideas. Stop it at any time; your settings come back afterwards. <b>Scenarios</b> (S) opens the clinical cases.' },
+      { el: '#dkPlay', title: 'Watch a demo', text: 'Short on time? Press <b>Watch demo</b> (or the D key) for a captioned run-through of the key ideas. Stop it at any time; your settings come back afterwards. <b>Cases &amp; OSCE</b> (C) opens the clinical cases and the OSCE station.' },
       { el: '#stage', title: 'Parents, gametes and offspring', text: 'The parents sit at the top with their possible gametes. Tap two plants to cross them, or one to self-pollinate.' },
       { el: '#presets', title: 'Start from a classic cross', text: 'Presets set up the textbook crosses: a monohybrid F1 × F1, a test cross, or Mendel\'s dihybrid cross.' },
       { el: '#parentsBox', title: 'Set the genotypes', text: 'Tap the allele buttons to change each parent. Capital letters are dominant alleles.' },

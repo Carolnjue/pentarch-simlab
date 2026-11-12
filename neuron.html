@@ -243,8 +243,7 @@
       <button><i data-lucide="calculator"></i> Nernst & Goldman</button>
       <button><i data-lucide="list-ordered"></i> Worked examples</button>
       <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments & challenges</button>
-      <button id="tabCases"><i data-lucide="stethoscope"></i> Clinical cases</button>
-      <button id="tabOsce"><i data-lucide="clipboard-check"></i> OSCE station</button>
+      <button id="tabCases"><i data-lucide="stethoscope"></i> Clinical cases &amp; OSCE</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
     </div>
 
@@ -414,18 +413,16 @@
     </div>
 
     <div class="tabpanel">
-      <div class="prose">
+      <div class="prose" id="casesSec" style="scroll-margin-top:calc(var(--hdr,64px) + 10px)">
         <h3>Clinical cases at the membrane</h3>
         <p>Eight conditions and agents that Kenyan health workers meet, each explained in the simulators above. Press <b>Set up the simulation</b> to load the settings, run it, then answer the check questions. Every case names the physiology that explains the sign at the bedside.</p>
         <div class="callout"><i data-lucide="info"></i><div>Teaching cases only. Drug and electrolyte figures are illustrative examples for understanding mechanism; management follows current MoH/hospital protocols and your supervisor.</div></div>
       </div>
       <div id="caseList"></div>
-    </div>
 
-    <div class="tabpanel">
-      <div class="prose">
+      <div class="prose" id="osceSec" style="margin-top:28px;scroll-margin-top:calc(var(--hdr,64px) + 10px)">
         <h3>OSCE station: explain the action potential to an examiner</h3>
-        <p>A common physiology viva station. You have <b>six minutes</b> at the simulator: the examiner asks you to explain one action potential from rest to recovery, using the trace and the channel diagram. Start the timer, talk out loud (or write your answer), then tick each point you actually said. Mark yourself honestly: the pass mark is 11 of 18.</p>
+        <p>A common physiology viva station. You have <b>six minutes</b> at the simulator: the examiner asks you to explain one action potential from rest to recovery, using the trace and the channel diagram. Start the timer, talk out loud (or write your answer), then tick each point you actually said. Mark yourself honestly: the pass mark is 70 % (13 of 18).</p>
       </div>
       <div class="panel osce">
         <div class="btn-row">
@@ -439,7 +436,7 @@
       <div class="panel" style="margin-top:12px">
         <div class="stats">
           <div class="stat"><div class="k">Your mark</div><div class="v"><span id="osceScore">0</span><small>/ 18</small></div></div>
-          <div class="stat"><div class="k">Pass mark</div><div class="v">11<small>/ 18</small></div></div>
+          <div class="stat"><div class="k">Pass mark (70 %)</div><div class="v">13<small>/ 18</small></div></div>
           <div class="stat"><div class="k">Verdict</div><div class="v" id="osceVerdict" style="font-size:1rem">—</div></div>
         </div>
       </div>
@@ -462,6 +459,71 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=15"></script>
+<script>
+/* SLPerf: frame budget for phones (student audit finding 10).
+   - Drawing is capped at 30 fps on touch / low-core devices and drops to ~12 fps while the scene is idle
+     (no running animation and no recent input); 4 fps with prefers-reduced-motion.
+   - Visibility comes from an IntersectionObserver, so the loop never forces a layout read per frame.
+   - put() writes text/HTML only when it changed, so idle readouts cause no repaint. */
+window.SLPerf = (() => {
+  const low = matchMedia('(pointer: coarse)').matches || (navigator.hardwareConcurrency || 8) <= 4;
+  const rm = matchMedia('(prefers-reduced-motion: reduce)');
+  let lastInput = -1e9;
+  const poke = () => { lastInput = performance.now(); };
+  ['pointerdown', 'pointermove', 'keydown', 'input', 'wheel', 'click'].forEach(t => addEventListener(t, poke, { passive: true, capture: true }));
+  const seen = new WeakMap();
+  const io = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => seen.set(e.target, e.isIntersecting)), { rootMargin: '40px 0px' }) : null;
+  const measure = el => { const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom > 0 && r.top < innerHeight; };
+  return {
+    low,
+    poke,
+    /** multiply canvas shadowBlur by this: glow halos are expensive to raster on phones */
+    glow: low ? 0 : 1,
+    /** is el (nearly) on screen? */
+    on(el) {
+      if (!el) return false;
+      if (!io) return measure(el);
+      if (!seen.has(el)) { seen.set(el, measure(el)); io.observe(el); }
+      return seen.get(el);
+    },
+    /** gate(dt, busy): the time to advance and draw now, or 0 to skip this frame */
+    gate(idleFps) {
+      let acc = 0;
+      return (dt, busy) => {
+        acc += dt;
+        const active = busy || performance.now() - lastInput < 1200;
+        const fps = rm.matches ? (active ? 30 : 4) : active ? (low ? 30 : 60) : (idleFps || 12);
+        if (acc < 1 / fps - 0.004) return 0;
+        const d = Math.min(0.1, acc); acc = 0; return d;
+      };
+    },
+    /** SL.canvas with a lighter backing store on phones (1.5× instead of 2×: about 45% fewer pixels to raster) */
+    canvas(cv, onResize) {
+      const ctx = cv.getContext('2d'), state = { ctx, w: 0, h: 0, dpr: 1 };
+      let first = true;
+      const fit = () => {
+        const r = cv.getBoundingClientRect();
+        const dpr = Math.min(window.devicePixelRatio || 1, low ? 1.5 : 2);
+        const w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+        if (w === state.w && h === state.h && dpr === state.dpr) return;
+        cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); ctx.setTransform(cv.width / w, 0, 0, cv.height / h, 0, 0);
+        Object.assign(state, { w, h, dpr });
+        if (!onResize) return;
+        if (first) { first = false; Promise.resolve().then(() => onResize(state.w, state.h)); } else onResize(w, h);
+      };
+      if ('ResizeObserver' in window) new ResizeObserver(fit).observe(cv); else addEventListener('resize', fit);
+      fit();
+      return state;
+    },
+    /** set innerHTML (or textContent when text is true) only if the value changed */
+    put(el, v, text) {
+      if (!el) return; v = String(v);
+      if (el.__slp === v && el.firstChild === el.__slpF) return;
+      el.__slp = v; if (text) el.textContent = v; else el.innerHTML = v; el.__slpF = el.firstChild;
+    },
+  };
+})();
+</script>
 <!-- ==DEMOKIT== -->
 <script>
 /* Watch-demo runner and goal-based scenarios (page-local kit) */
@@ -537,6 +599,17 @@
     cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
     (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // phones: the caption is pinned to the bottom of the screen for the whole demo, and each highlighted control
+    // is scrolled into the band between the header and the caption (student audit finding 24)
+    const narrow = () => innerWidth <= 600;
+    async function keepInView(sel, A) {
+      const el = $(sel); if (!el) return; const r = el.getBoundingClientRect(); if (!r.height) return;
+      const pinned = cap.classList.contains('fixed') || cap.classList.contains('over');
+      const top = 76, bot = innerHeight - (pinned ? cap.offsetHeight + 20 : 0);
+      if (r.top >= top && r.bottom <= bot) return;
+      const y = r.height > bot - top ? scrollY + r.top - top - 6 : scrollY + r.top - top - ((bot - top) - r.height) / 2;
+      scrollTo({ top: Math.max(0, y), behavior: reduce ? 'auto' : 'smooth' }); await A.sleep(reduce ? 60 : 520);
+    }
     let run = null; // {abort, stepMode, nextRes}
     const D = { running: () => !!run };
     function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
@@ -568,8 +641,9 @@
         for (let i = 0; i < steps.length; i++) {
           const st = steps[i]; if (r.abort) throw ABORT;
           cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
-          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); cap.classList.toggle('over', !!st.capFixed || narrow()); pg.style.width = (i / steps.length * 100) + '%';
           if (st.run) await st.run(A);
+          if (st.hl) await keepInView(st.hl, A);
           if (r.abort) throw ABORT;
           pg.style.width = ((i + 1) / steps.length * 100) + '%';
           const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
@@ -581,7 +655,7 @@
     }
     function end(restore, msg) {
       const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
-      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      cap.classList.remove('show', 'over'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
       if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
       if (o.onStop) try { o.onStop(); } catch (e) {}
       SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
@@ -674,30 +748,40 @@
   const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
   const icons = el => { try { SL.refreshIcons(el); } catch (e) {} };
   /** CaseNav({title, intro, groups:[{title, icon, items:[{tag, t, sub, done?, go}]}]}) — reuses the kit bar's second button */
-  window.CaseNav = function (o) {
+  /* Cases & OSCE (consistency standard): the bar button and the C key always open the
+     "Clinical cases & OSCE" tab and scroll to it, with a toast that offers the way back.
+     #cases and #osce deep-link to each part of the tab. No pop-up. */
+  const hdrH = () => (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hdr')) || 64) + 10;
+  const rmo = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function reveal(el, smooth) {
+    if (!el) return; const t = document.getElementById('tabCases'); if (t && !t.classList.contains('on')) t.click();
+    const go = sm => scrollTo({ top: el.getBoundingClientRect().top + scrollY - hdrH(), behavior: sm && !rmo() ? 'smooth' : 'auto' });
+    requestAnimationFrame(() => { go(smooth); setTimeout(() => { if (Math.abs(el.getBoundingClientRect().top - hdrH()) > 30) go(false); }, smooth ? 900 : 250); });
+  }
+  function goCases() {
+    const t = document.getElementById('tabCases'); if (!t) return; const from = scrollY;
+    reveal(t.closest('.tabs') || t, true);
+    setTimeout(() => { try { t.focus({ preventScroll: true }); } catch (e) {} }, 900);
+    const nc = document.querySelectorAll('#caseList details.case').length;
+    SL.toast(`<b>Clinical cases &amp; OSCE</b> is open: ${nc || 'the'} clinical cases, then the timed OSCE viva (pass mark 70 %). <button class="btn sm dk-back" style="margin-left:6px">Back to the lab</button>`, 'ok', 6000);
+    const box = document.querySelectorAll('.toasts .toast'), bk = box.length && box[box.length - 1].querySelector('.dk-back');
+    if (bk) bk.onclick = () => { bk.closest('.toast').remove(); scrollTo({ top: from, behavior: rmo() ? 'auto' : 'smooth' }); };
+  }
+  const HASH = { cases: '#casesSec', osce: '#osceSec' };
+  function onHash() { const h = decodeURIComponent(location.hash.slice(1)).toLowerCase(); if (HASH[h]) reveal(document.querySelector(HASH[h]), false); }
+  addEventListener('hashchange', onHash);
+  addEventListener('load', () => setTimeout(onHash, 60));
+  /** CaseNav(): wires the kit bar's second button to the Clinical cases & OSCE tab */
+  window.CaseNav = function () {
     const bar = document.querySelector('.dk-bar'), btn = bar.querySelector('#dkScenBtn');
-    btn.innerHTML = '<i data-lucide="stethoscope"></i> Cases &amp; OSCE'; btn.title = 'Clinical cases and OSCE stations (C)'; btn.setAttribute('aria-expanded', 'false'); btn.setAttribute('aria-controls', 'cxPop');
-    const pop = document.createElement('section'); pop.className = 'panel cx-pop'; pop.id = 'cxPop'; pop.hidden = true; pop.setAttribute('aria-label', 'Clinical cases and OSCE stations');
-    bar.parentNode.insertBefore(pop, bar.nextSibling);
-    let flat = [];
-    function render() {
-      flat = [];
-      pop.innerHTML = `<div class="cx-head"><div><h3><i data-lucide="stethoscope"></i> ${o.title || 'Clinical cases &amp; OSCE practice'}</h3><p>${o.intro || ''}</p></div><button class="btn sm ghost" data-cx="close" aria-label="Close"><i data-lucide="x"></i></button></div>` +
-        o.groups.map(g => `<div class="cx-grp"><h4><i data-lucide="${g.icon || 'list'}"></i> ${g.title}</h4><div class="cx-list">${(typeof g.items === 'function' ? g.items() : g.items).map(it => { flat.push(it); return `<button class="cx-card${it.done && it.done() ? ' done' : ''}" data-cx="${flat.length - 1}">${it.tag ? `<span class="cx-tag">${it.tag}</span>` : ''}<b>${it.t}</b>${it.sub ? `<span>${it.sub}</span>` : ''}</button>`; }).join('')}</div></div>`).join('');
-      icons(pop);
-    }
-    function open(v) {
-      const want = v == null ? pop.hidden : v; if (want) render(); pop.hidden = !want; btn.classList.toggle('cx-on', want); btn.setAttribute('aria-expanded', String(want));
-      if (want) { const r = pop.getBoundingClientRect(); if (r.top < 70 || r.top > innerHeight * 0.6) window.scrollTo({ top: scrollY + r.top - 140, behavior: 'smooth' }); const f = pop.querySelector('.cx-card'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 60); }
-    }
-    btn.onclick = () => open();
-    pop.addEventListener('click', e => { const c = e.target.closest('[data-cx]'); if (!c) return; if (c.dataset.cx === 'close') { open(false); btn.focus(); return; } const it = flat[+c.dataset.cx]; open(false); if (window.DemoKit && DemoKit._demo && DemoKit._demo.running()) DemoKit._demo.stop(false); try { it.go(); } catch (er) { console.warn(er); } });
+    btn.innerHTML = '<i data-lucide="stethoscope"></i> Cases &amp; OSCE'; btn.title = 'Open the Clinical cases & OSCE tab (C)';
+    icons(btn);
+    btn.onclick = goCases;
     document.addEventListener('keydown', e => {
       if (typing(e) || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('.sl-tour, .modal.show')) return;
-      if (e.key === 'c' || e.key === 'C') { e.preventDefault(); open(); }
-      else if (e.key === 'Escape' && !pop.hidden) { open(false); }
+      if (e.key === 'c' || e.key === 'C') { e.preventDefault(); goCases(); }
     });
-    return { open, render };
+    return { open: goCases };
   };
   /** shared helpers for page demos */
   window.DemoHelp = {
@@ -870,8 +954,8 @@
   }
 
   /* ---------------- drawing ---------------- */
-  const cv = $('#cvHH'); const S = SL.canvas(cv);
-  const gS = SL.canvas($('#cvGate')), cS = SL.canvas($('#cvCur'));
+  const cv = $('#cvHH'); const S = SLPerf.canvas(cv);
+  const gS = SLPerf.canvas($('#cvGate')), cS = SLPerf.canvas($('#cvCur'));
   const rnd = mulberry(7);
   const bg = []; for (let i = 0; i < 160; i++) bg.push({ x: rnd(), y: rnd(), outside: i < 90, out: i < 90 ? (i < 75 ? 'Na' : 'K') : (i < 145 ? 'K' : 'Na'), ph: rnd() * 6.28 });
   let flux = []; const acc = { Na: 0, K: 0 };
@@ -968,7 +1052,7 @@
       if (t < 0.5) { y = p.y + p.vy * (t / 0.5) * (half * 2 + 36); x = p.x; }
       else { y = p.y + p.vy * (half * 2 + 36) + p.vy * (t - 0.5) * 30; x = p.x + p.dx * (t - 0.5); }
       ctx.globalAlpha = t < 1.2 ? 1 : (1.6 - t) / 0.4;
-      ctx.fillStyle = p.type === 'Na' ? NA : K; ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 8;
+      ctx.fillStyle = p.type === 'Na' ? NA : K; ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 8 * SLPerf.glow;
       ctx.beginPath(); ctx.arc(x, y, 3.3, 0, 7); ctx.fill(); ctx.shadowBlur = 0; ctx.globalAlpha = 1;
     });
     // legend
@@ -1022,7 +1106,7 @@
     ref(M.ENa, 'rgba(251,191,36,.7)', 'E(Na) ' + M.ENa.toFixed(0) + ' mV'); ref(M.EK, 'rgba(167,139,250,.8)', 'E(K) ' + M.EK.toFixed(0) + ' mV');
     // history
     hist.forEach((s, k) => { if (s.L !== sim.L) return; line(ctx, s, s.V, s.N - 1, X, Y, '#94a3b8', 1.3, 0.18 + 0.1 * k); if (s.label) { const j = s.N - 1; ctx.fillStyle = 'rgba(148,163,184,.7)'; ctx.textAlign = 'left'; ctx.fillText(s.label, X(s.t[Math.min(s.N - 1, idxAt(14))]), Y(s.V[Math.min(s.N - 1, idxAt(14))]) - 4); } });
-    ctx.shadowColor = ACC; ctx.shadowBlur = 10; line(ctx, sim, sim.V, i, X, Y, ACC, 2.4); ctx.shadowBlur = 0;
+    ctx.shadowColor = ACC; ctx.shadowBlur = 10 * SLPerf.glow; line(ctx, sim, sim.V, i, X, Y, ACC, 2.4); ctx.shadowBlur = 0;
     // cursor
     ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.moveTo(X(cursor), pt); ctx.lineTo(X(cursor), pt + ph); ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(X(sim.t[i]), Y(sim.V[i]), 4, 0, 7); ctx.fill();
@@ -1042,9 +1126,9 @@
       ctx.fillStyle = 'rgba(5,9,19,.9)'; ctx.strokeStyle = '#2a3a5c'; rr(ctx, bx, pt + 6, tw, 22, 6); ctx.fill(); ctx.stroke();
       ctx.fillStyle = '#e6ecf7'; ctx.textAlign = 'left'; ctx.fillText(txt, bx + 7, pt + 21);
     }
-    $('#hT').textContent = cursor.toFixed(2); $('#hV').textContent = sim.V[i].toFixed(1).replace('-', '−');
-    $('#phase').textContent = phaseLabel(i);
-    drawSmall(gS, i, 'gate'); drawSmall(cS, i, 'cur');
+    SLPerf.put($('#hT'), cursor.toFixed(2), 1); SLPerf.put($('#hV'), sim.V[i].toFixed(1).replace('-', '−'), 1);
+    SLPerf.put($('#phase'), phaseLabel(i), 1);
+    if (SLPerf.on(gS.ctx.canvas)) drawSmall(gS, i, 'gate'); if (SLPerf.on(cS.ctx.canvas)) drawSmall(cS, i, 'cur');
   }
   function drawSmall(st, i, kind) {
     const { ctx, w, h } = st; ctx.clearRect(0, 0, w, h);
@@ -1066,7 +1150,7 @@
   /* =====================================================================
      ANATOMY & CONDUCTION
      ===================================================================== */
-  let AX = null; AX = SL.canvas($('#cvAx'), () => { if (AX) buildAnat(); });
+  let AX = null; AX = SLPerf.canvas($('#cvAx'), () => { if (AX) buildAnat(); });
   let axMode = 'anat', anat = null, axHover = null, impulse = -1, race = null;
   const R = { d: 10, demy: 0 };
   SL.bind('#diam', v => { R.d = v; race = null; raceInfo(); }, v => v.toFixed(1) + ' µm');
@@ -1172,14 +1256,14 @@
     const tN = k => 1.0 + k * (1.4 / (a.nodes.length - 1));
     a.nodes.forEach((x, k) => {
       ctx.fillStyle = glow('node') ? '#fde047' : '#22c55e'; ctx.fillRect(x - 2, a.sy - a.axW / 2 - 2, 4, a.axW + 4);
-      if (T >= 0) { const dtt = T - tN(k); if (dtt > 0 && dtt < 0.35) { const al = 1 - dtt / 0.35; ctx.fillStyle = `rgba(253,224,71,${al})`; ctx.shadowColor = '#fde047'; ctx.shadowBlur = 18; ctx.beginPath(); ctx.arc(x, a.sy, 7 + dtt * 20, 0, 7); ctx.fill(); ctx.shadowBlur = 0; }
+      if (T >= 0) { const dtt = T - tN(k); if (dtt > 0 && dtt < 0.35) { const al = 1 - dtt / 0.35; ctx.fillStyle = `rgba(253,224,71,${al})`; ctx.shadowColor = '#fde047'; ctx.shadowBlur = 18 * SLPerf.glow; ctx.beginPath(); ctx.arc(x, a.sy, 7 + dtt * 20, 0, 7); ctx.fill(); ctx.shadowBlur = 0; }
         if (k < a.nodes.length - 1 && T > tN(k) && T < tN(k + 1)) { const f = (T - tN(k)) / (tN(k + 1) - tN(k)); ctx.strokeStyle = 'rgba(253,224,71,.6)'; ctx.lineWidth = 2; ctx.beginPath(); const x2 = a.nodes[k + 1]; ctx.moveTo(x, a.sy - 16); ctx.quadraticCurveTo((x + x2) / 2, a.sy - 40, SL.lerp(x, x2, f), a.sy - 16 - 24 * Math.sin(f * Math.PI)); ctx.stroke(); } }
     });
     // terminals
     a.term.forEach(t => {
       ctx.strokeStyle = glow('term') ? '#a7f3d0' : '#4fbf98'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(t.x, t.y); ctx.quadraticCurveTo(t.cx, t.cy, t.x2, t.y2); ctx.stroke();
       const lit = T > 2.4 && T < 3.3; ctx.fillStyle = glow('bout') ? '#fde68a' : (lit ? '#fde047' : '#34d399');
-      if (lit) { ctx.shadowColor = '#fde047'; ctx.shadowBlur = 14; }
+      if (lit) { ctx.shadowColor = '#fde047'; ctx.shadowBlur = 14 * SLPerf.glow; }
       ctx.beginPath(); ctx.arc(t.x2, t.y2, 7, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
       ctx.fillStyle = 'rgba(6,16,31,.55)'; for (let j = 0; j < 3; j++) { ctx.beginPath(); ctx.arc(t.x2 - 2 + j * 2, t.y2 - 1 + (j % 2) * 3, 1.3, 0, 7); ctx.fill(); }
     });
@@ -1203,7 +1287,7 @@
       const tt = a.term[0]; lab('Axon terminals', (tt.x + tt.x2) / 2, (tt.y + tt.y2) / 2, Math.min(w - 50, tt.x2), 26, 'term');
       const tb = a.term[a.term.length - 1]; lab('Synaptic boutons', tb.x2, tb.y2 + 6, Math.min(w - 60, tb.x2 - 10), h - 24, 'bout');
     }
-    $('#axHud').innerHTML = impulse >= 0 ? `<span class="readout">${T < .7 ? 'Graded potentials travel to the soma' : T < 1 ? 'Summed at the axon hillock: threshold reached' : T < 2.4 ? 'Saltatory conduction: node to node' : 'Transmitter release at the terminals'}</span>` : '';
+    SLPerf.put($('#axHud'), impulse >= 0 ? `<span class="readout">${T < .7 ? 'Graded potentials travel to the soma' : T < 1 ? 'Summed at the axon hillock: threshold reached' : T < 2.4 ? 'Saltatory conduction: node to node' : 'Transmitter release at the terminals'}</span>` : '');
   }
 
   // ---- race
@@ -1285,20 +1369,20 @@
       const x = x0 + k * segW; let col = '#22c55e', rad = 0;
       if (t >= 0 && k <= (m.block >= 0 ? m.block : m.nInt) && t >= m.nodeT[k]) { const age = t - m.nodeT[k]; const life = m.tU * 0.06; if (age < life) { rad = 10 * (1 - age / life) + 3; col = '#fde047'; } }
       ctx.fillStyle = col; ctx.fillRect(x - 1.5, yM - 6, 3, 12);
-      if (rad) { ctx.fillStyle = 'rgba(253,224,71,.7)'; ctx.shadowColor = '#fde047'; ctx.shadowBlur = 18; ctx.beginPath(); ctx.arc(x, yM, rad, 0, 7); ctx.fill(); ctx.shadowBlur = 0; }
+      if (rad) { ctx.fillStyle = 'rgba(253,224,71,.7)'; ctx.shadowColor = '#fde047'; ctx.shadowBlur = 18 * SLPerf.glow; ctx.beginPath(); ctx.arc(x, yM, rad, 0, 7); ctx.fill(); ctx.shadowBlur = 0; }
     }
     if (t >= 0) {
       ctx.textAlign = 'right'; ctx.font = '700 10px JetBrains Mono, monospace';
       if (m.block >= 0 && t > m.nodeT[m.block]) { ctx.fillStyle = '#ef4444'; const bx = x0 + (m.block + 1) * segW; ctx.textAlign = 'center'; ctx.fillText('conduction block', Math.min(x1 - 50, Math.max(x0 + 50, bx)), yM + 30); }
       else if (t >= m.tM) { ctx.fillStyle = '#34d399'; ctx.fillText('arrived ' + m.tM.toFixed(3) + ' ms', x1, yM + 30); }
     }
-    $('#axHud').innerHTML = `<span class="readout">t <b>${t >= 0 ? t.toFixed(3) : '0.000'}</b> ms</span><span class="readout">slowed ×<b>${SL.fmt(scale, 0)}</b></span>`;
+    SLPerf.put($('#axHud'), `<span class="readout">t <b>${t >= 0 ? t.toFixed(3) : '0.000'}</b> ms</span><span class="readout">slowed ×<b>${SL.fmt(scale, 0)}</b></span>`);
   }
 
   /* =====================================================================
      SYNAPSE & SUMMATION
      ===================================================================== */
-  const SY = SL.canvas($('#cvSyn'));
+  const SY = SLPerf.canvas($('#cvSyn'));
   const SYN = { E1: { A: 4, tau: 7, col: '#34d399', type: 'E', name: 'E1' }, E2: { A: 6, tau: 4, col: '#22d3ee', type: 'E', name: 'E2' }, I1: { A: -5, tau: 6, col: '#f472b6', type: 'I', name: 'I1' } };
   const syn = { t: 0, ev: [], spikes: [], speed: 20, aps: 0, last: 'E2', anim: [] };
   SL.bind('#synSpeed', v => syn.speed = v, v => v + ' ms/s');
@@ -1475,14 +1559,14 @@
     ctx.fillStyle = '#ef4444'; ctx.textAlign = 'left'; ctx.fillText('threshold −55 mV', pl + 4, Y(VT) - 4);
     ctx.fillStyle = '#93a1bd'; ctx.fillText('Vm at axon hillock (mV), last 120 ms', pl, pt - 8);
     ctx.save(); ctx.beginPath(); ctx.rect(pl, pt - 2, pw, ph + 4); ctx.clip();
-    ctx.strokeStyle = ACC; ctx.lineWidth = 2.2; ctx.shadowColor = ACC; ctx.shadowBlur = 8; ctx.beginPath();
+    ctx.strokeStyle = ACC; ctx.lineWidth = 2.2; ctx.shadowColor = ACC; ctx.shadowBlur = 8 * SLPerf.glow; ctx.beginPath();
     for (let k = 0; k <= 480; k++) { const t = t0 + k / 480 * win; const v = Vh(t); k ? ctx.lineTo(X(t), Y(v)) : ctx.moveTo(X(t), Y(v)); }
     ctx.stroke(); ctx.shadowBlur = 0; ctx.restore();
     syn.ev.forEach(e => { if (e.t > t0 && e.t <= t1) { ctx.fillStyle = SYN[e.k].col; ctx.beginPath(); ctx.moveTo(X(e.t), pt + ph + 2); ctx.lineTo(X(e.t) - 4, pt + ph + 9); ctx.lineTo(X(e.t) + 4, pt + ph + 9); ctx.fill(); } });
-    $('#synV').innerHTML = Vnow.toFixed(1) + '<small>mV</small>';
-    $('#synGap').innerHTML = Math.max(0, VT - Vnow).toFixed(1) + '<small>mV</small>';
-    $('#synN').textContent = syn.ev.filter(e => t1 - e.t < 40 && e.t <= t1).length;
-    $('#synAP').textContent = syn.aps;
+    SLPerf.put($('#synV'), Vnow.toFixed(1) + '<small>mV</small>');
+    SLPerf.put($('#synGap'), Math.max(0, VT - Vnow).toFixed(1) + '<small>mV</small>');
+    SLPerf.put($('#synN'), syn.ev.filter(e => t1 - e.t < 40 && e.t <= t1).length, 1);
+    SLPerf.put($('#synAP'), syn.aps, 1);
   }
 
   /* =====================================================================
@@ -1536,7 +1620,7 @@
     muscle: { kI: 155, kO: 4, naI: 12, naO: 145, clI: 4, clO: 120, tC: 37, pK: 1, pNa: 0.01, pCl: 2 },
   };
   const gIds = Object.keys(GP.mammal);
-  let ghkS = null; ghkS = SL.canvas($('#ghkCv'), () => { if (ghkS) calc(); });
+  let ghkS = null; ghkS = SLPerf.canvas($('#ghkCv'), () => { if (ghkS) calc(); });
   function loadG(k) { gIds.forEach(id => $('#' + id).value = GP[k][id]); calc(); }
   document.querySelectorAll('[data-ghk]').forEach(b => b.onclick = () => loadG(b.dataset.ghk));
   gIds.forEach(id => $('#' + id).addEventListener('input', calc));
@@ -1568,7 +1652,7 @@
   loadG('mammal');
 
   /* ---------------- strength–duration ---------------- */
-  let sdS = null; sdS = SL.canvas($('#sdCv'), () => { if (sdS) drawSD(); });
+  let sdS = null; sdS = SLPerf.canvas($('#sdCv'), () => { if (sdS) drawSD(); });
   let sdData = null;
   function drawSD() {
     const { ctx, w, h } = sdS; ctx.lineWidth = 1; ctx.clearRect(0, 0, w, h);
@@ -1794,8 +1878,8 @@
     let s = 0; $('#osceList').querySelectorAll('input').forEach((c, i) => { if (c.checked) s += OSCE[i][0]; });
     $('#osceScore').textContent = s;
     const v = $('#osceVerdict');
-    v.textContent = s >= 15 ? 'Strong pass' : s >= 11 ? 'Pass' : s === 0 ? '—' : 'Below pass mark';
-    v.style.color = s >= 11 ? 'var(--ok)' : (s ? 'var(--bad)' : 'inherit');
+    v.textContent = s >= 16 ? 'Strong pass' : s >= 13 ? 'Pass' : s === 0 ? '—' : 'Below pass mark';
+    v.style.color = s >= 13 ? 'var(--ok)' : (s ? 'var(--bad)' : 'inherit');
   }
   function osceClock() {
     const m = Math.floor(osceT / 60), s = osceT % 60;
@@ -1821,33 +1905,33 @@
   /* ---------------- quiz ---------------- */
   SL.quiz('#quiz', [
     { q: 'In the Hodgkin–Huxley model, which gating variable is responsible for Na⁺ channel inactivation?', options: ['m', 'h', 'n', 'g<sub>L</sub>'], answer: 1, why: 'The Na⁺ conductance is ḡ<sub>Na</sub>m³h. h starts near 0.6 at rest and falls during the spike, closing the inactivation gate.' },
-    { q: 'Why does the membrane potential approach but never reach E<sub>Na</sub> at the peak?', options: ['The Na⁺ pump removes Na⁺ instantly', 'K⁺ and leak currents are flowing at the same time and Na⁺ channels inactivate', 'E<sub>Na</sub> changes during the spike', 'The membrane capacitance becomes zero'], answer: 1, why: 'At the peak, outward K⁺ and leak currents oppose the Na⁺ current, and h is already falling, so V stops short of +50 mV.' },
+    { q: 'Why does the membrane potential approach but never reach E<sub>Na</sub> at the peak?', options: ['The Na⁺/K⁺ pump removes the incoming Na⁺ as fast as it enters', 'Na⁺ channels inactivate while K⁺ and leak currents are still flowing', 'E<sub>Na</sub> falls during the spike as intracellular Na⁺ rises sharply', 'The membrane capacitance falls to zero at the peak of the spike'], answer: 1, why: 'At the peak, outward K⁺ and leak currents oppose the Na⁺ current, and h is already falling, so V stops short of +50 mV.' },
     { q: 'What does tetrodotoxin (TTX) do?', options: ['Blocks voltage-gated K⁺ channels', 'Blocks voltage-gated Na⁺ channels', 'Inhibits the Na⁺/K⁺-ATPase', 'Blocks acetylcholine receptors'], answer: 1, why: 'TTX plugs the outer pore of voltage-gated Na⁺ channels, so no regenerative spike can occur. TEA blocks K⁺ channels.' },
     { q: 'With [K⁺]ₒ = 5 mM and [K⁺]ᵢ = 140 mM at 37 °C, E<sub>K</sub> is closest to:', options: ['−61 mV', '−89 mV', '+89 mV', '−70 mV'], answer: 1, why: 'E<sub>K</sub> = 26.7 ln(5/140) = 26.7 × (−3.33) ≈ −89 mV.' },
     { q: 'During the absolute refractory period a second spike cannot be fired because:', options: ['K⁺ channels are all closed', 'Most Na⁺ channels are inactivated', 'The concentration gradients have run down', 'The membrane capacitance is charged to E<sub>Na</sub>'], answer: 1, why: 'Inactivated Na⁺ channels (h ≈ 0) cannot open whatever the stimulus. Recovery of h sets the end of absolute refractoriness.' },
-    { q: 'Saltatory conduction is faster than continuous conduction mainly because myelin:', options: ['Increases the number of Na⁺ channels along the internode', 'Increases membrane resistance and decreases capacitance, so current spreads quickly to the next node', 'Makes the action potential larger', 'Removes the refractory period'], answer: 1, why: 'Less charge leaks out or is stored on the membrane under myelin, so the local current reaches the next node rapidly; spikes are regenerated only at nodes.' },
+    { q: 'Saltatory conduction is faster than continuous conduction mainly because myelin:', options: ['Adds many extra Na⁺ channels along the internode under the sheath', 'Raises membrane resistance and lowers capacitance, so current reaches the next node fast', 'Makes each action potential larger, so its local current spreads further along the axon', 'Removes the refractory period, so the axon can fire again at once'], answer: 1, why: 'Less charge leaks out or is stored on the membrane under myelin, so the local current reaches the next node rapidly; spikes are regenerated only at nodes.' },
     { q: 'Two EPSPs from the same synapse, 3 ms apart, sum to reach threshold. This is:', options: ['Spatial summation', 'Temporal summation', 'Saltatory conduction', 'Long-term potentiation'], answer: 1, why: 'Temporal summation: successive PSPs from one input overlap because the membrane time constant is longer than the interval between them.' },
     { q: 'Which ion entering the presynaptic terminal directly triggers vesicle fusion?', options: ['Na⁺', 'K⁺', 'Ca²⁺', 'Cl⁻'], answer: 2, why: 'Voltage-gated Ca²⁺ channels open; Ca²⁺ binds synaptotagmin, triggering SNARE-mediated fusion.' },
     { q: 'An unmyelinated axon conducts at 2 m/s. Roughly how much faster would an otherwise similar axon with 4 times the diameter conduct?', options: ['4 m/s', '8 m/s', '16 m/s', '2 m/s'], answer: 0, why: 'For unmyelinated axons v ∝ √d, so 4× the diameter gives 2× the speed: about 4 m/s.' },
-    { q: 'Opening GABA<sub>A</sub> receptors (Cl⁻ channels) when E<sub>Cl</sub> ≈ V<sub>rest</sub> is still inhibitory because:', options: ['It depolarises the cell', 'It shunts excitatory current, pulling V<sub>m</sub> towards E<sub>Cl</sub>', 'It blocks Na⁺ channels', 'It stops Ca²⁺ entry'], answer: 1, why: 'Shunting inhibition: the extra conductance clamps V<sub>m</sub> near E<sub>Cl</sub>, so EPSPs produce less depolarisation.' },
-    { q: 'Lidocaine infiltrated around a wound abolishes pain. Its molecular action is to:', options: ['Block voltage-gated K⁺ channels', 'Block voltage-gated Na⁺ channels, binding from the intracellular side', 'Block postsynaptic acetylcholine receptors', 'Inhibit the Na⁺/K⁺-ATPase'], answer: 1, why: 'Local anaesthetics cross the membrane unionised, then block the voltage-gated Na⁺ channel from the inner side, preferentially in its open or inactivated state. No regenerative upstroke can form, so no impulse passes the block.' },
+    { q: 'Opening GABA<sub>A</sub> receptors (Cl⁻ channels) when E<sub>Cl</sub> ≈ V<sub>rest</sub> is still inhibitory because:', options: ['It depolarises the cell slightly towards the firing threshold', 'It shunts excitatory current, holding V<sub>m</sub> near E<sub>Cl</sub>', 'It blocks voltage-gated Na⁺ channels at the axon hillock', 'It stops Ca²⁺ entry at the presynaptic terminal'], answer: 1, why: 'Shunting inhibition: the extra conductance clamps V<sub>m</sub> near E<sub>Cl</sub>, so EPSPs produce less depolarisation.' },
+    { q: 'Lidocaine infiltrated around a wound abolishes pain. Its molecular action is to:', options: ['Block voltage-gated K⁺ channels, prolonging repolarisation', 'Block voltage-gated Na⁺ channels from the intracellular side', 'Block postsynaptic acetylcholine receptors at the synapse', 'Inhibit the Na⁺/K⁺-ATPase so the axon depolarises'], answer: 1, why: 'Local anaesthetics cross the membrane unionised, then block the voltage-gated Na⁺ channel from the inner side, preferentially in its open or inactivated state. No regenerative upstroke can form, so no impulse passes the block.' },
     { q: 'After infiltrating a local anaesthetic, which sensation is lost first?', options: ['Vibration', 'Pain', 'Proprioception', 'Motor power'], answer: 1, why: 'Small unmyelinated C and thin myelinated Aδ fibres carrying pain are blocked at the lowest concentration; large myelinated Aα motor fibres are the most resistant. Hence pain, then temperature, then touch, with power last.' },
     { q: 'A patient with chronic kidney disease has serum K⁺ 7.4 mmol/L, flaccid weakness and a widening QRS. The membrane explanation is that:', options: ['The resting potential is more negative, so threshold is harder to reach', 'The resting potential is depolarised, holding Na⁺ channels inactivated', 'E<sub>Na</sub> has become more positive', 'Calcium channels are blocked'], answer: 1, why: 'Raising [K⁺]ₒ makes E<sub>K</sub> less negative, so the resting potential depolarises. Sustained depolarisation keeps the Na⁺ inactivation gate closed, so excitable tissue cannot fire: weakness, conduction delay and the risk of asystole.' },
-    { q: 'Concentrated intravenous potassium chloride must never be given as an undiluted bolus mainly because:', options: ['It is painful on injection', 'A sudden rise in extracellular K⁺ depolarises cardiac membranes and can cause fatal arrhythmia or asystole', 'It precipitates in the cannula', 'It causes hypocalcaemia'], answer: 1, why: 'A bolus produces an immediate, very high potassium concentration at the heart, inactivating Na⁺ channels within seconds. It is a classic fatal medication error, which is why KCl concentrate is a high-risk medicine, is always diluted (not above 40 mmol/L peripherally), infused slowly (normally not above 10 mmol/hour) and given by pump with monitoring, per protocol.' },
+    { q: 'Concentrated intravenous potassium chloride must never be given as an undiluted bolus mainly because:', options: ['It is painful and irritates the vein, so it often causes thrombophlebitis', 'A sudden rise in extracellular K⁺ can cause fatal arrhythmia or asystole', 'It precipitates in the cannula and blocks the line', 'It binds calcium in the blood and causes hypocalcaemia'], answer: 1, why: 'A bolus produces an immediate, very high potassium concentration at the heart, inactivating Na⁺ channels within seconds. It is a classic fatal medication error, which is why KCl concentrate is a high-risk medicine, is always diluted (not above 40 mmol/L peripherally), infused slowly (normally not above 10 mmol/hour) and given by pump with monitoring, per protocol.' },
     { q: 'Serum K⁺ is 2.3 mmol/L after days of diarrhoea. Compared with normal, the resting membrane potential is:', options: ['More negative, so a larger stimulus is needed to reach threshold', 'Less negative, so the cell fires spontaneously', 'Unchanged, because K⁺ does not affect the resting potential', 'Fixed at E<sub>Na</sub>'], answer: 0, why: 'Lowering [K⁺]ₒ makes E<sub>K</sub> more negative and hyperpolarises the membrane, moving it further from threshold. The result is weakness, ileus, flat T waves and U waves on the ECG.' },
-    { q: 'Twenty-four hours after thyroidectomy a patient develops perioral tingling and carpopedal spasm. The electrophysiological mechanism is that low extracellular Ca²⁺:', options: ['Depolarises the resting potential to threshold', 'Shifts Na⁺ channel gating to more negative potentials, lowering threshold towards rest', 'Blocks K⁺ channels, prolonging the action potential', 'Prevents transmitter release at the neuromuscular junction'], answer: 1, why: 'Ca²⁺ screens negative surface charge on the outer membrane. Less screening shifts the voltage dependence of gating negative (surface-charge effect), so motor axons reach threshold spontaneously: tetany. The resting potential itself is barely changed.' },
+    { q: 'Twenty-four hours after thyroidectomy a patient develops perioral tingling and carpopedal spasm. The electrophysiological mechanism is that low extracellular Ca²⁺:', options: ['Depolarises the resting membrane potential until it reaches threshold', 'Shifts Na⁺ channel gating negative, bringing threshold closer to rest', 'Blocks K⁺ channels, so each action potential lasts much longer than normal', 'Prevents transmitter release at the neuromuscular junction'], answer: 1, why: 'Ca²⁺ screens negative surface charge on the outer membrane. Less screening shifts the voltage dependence of gating negative (surface-charge effect), so motor axons reach threshold spontaneously: tetany. The resting potential itself is barely changed.' },
     { q: 'Inflating a blood-pressure cuff above systolic pressure for three minutes produces flexion of the wrist with extended fingers. This is:', options: ['Chvostek sign', 'Trousseau sign', 'Babinski sign', 'Kernig sign'], answer: 1, why: 'Trousseau sign of latent tetany in hypocalcaemia. Chvostek sign is the facial twitch on tapping over the facial nerve. Both reflect hyperexcitable motor axons.' },
-    { q: 'An anxious student hyperventilates and develops tingling and finger spasm. Total serum calcium is normal. Why?', options: ['Respiratory alkalosis increases calcium binding to albumin, lowering ionised calcium', 'Hyperventilation lowers total body calcium', 'Carbon dioxide blocks Na⁺ channels', 'Alkalosis raises extracellular potassium'], answer: 0, why: 'Alkalosis increases protein-bound calcium, so the physiologically active ionised fraction falls while total calcium is unchanged. The membrane effect, and therefore the tetany, is the same.' },
+    { q: 'An anxious student hyperventilates and develops tingling and finger spasm. Total serum calcium is normal. Why?', options: ['Alkalosis increases Ca²⁺ binding to albumin, lowering ionised Ca²⁺', 'Hyperventilation lowers total body calcium through the lungs', 'Loss of carbon dioxide blocks Na⁺ channels in the nerves', 'Alkalosis raises extracellular K⁺, which depolarises nerves'], answer: 0, why: 'Alkalosis increases protein-bound calcium, so the physiologically active ionised fraction falls while total calcium is unchanged. The membrane effect, and therefore the tetany, is the same.' },
     { q: 'Two days after an episode of diarrhoea, a young man has ascending symmetrical weakness with absent reflexes. Nerve conduction studies show markedly slowed velocity and conduction block. The lesion is:', options: ['Axonal degeneration', 'Demyelination of peripheral nerves', 'A neuromuscular junction receptor block', 'Muscle membrane disease'], answer: 1, why: 'Guillain–Barré syndrome: immune-mediated demyelination. Loss of myelin lets current leak out between nodes, so saltatory conduction slows and may fail (block). Axonal loss would instead reduce response amplitude with near-normal velocity.' },
-    { q: 'In a patient with ascending weakness, which single measurement should be repeated most urgently?', options: ['Random blood glucose', 'Vital capacity with swallow and cough assessment', 'Serum creatine kinase', 'Visual acuity'], answer: 1, why: 'Demyelination of the phrenic and bulbar nerves causes ventilatory failure and aspiration, which is how these patients die. Serial vital capacity identifies the patient who needs ventilatory support before arrest.' },
-    { q: 'A patient with multiple sclerosis reports that symptoms return in a hot shower (Uhthoff phenomenon). Why?', options: ['Heat increases myelin thickness', 'Faster gating kinetics shorten the action potential, so a marginally conducting demyelinated fibre blocks', 'Heat raises extracellular potassium', 'Heat blocks acetylcholine receptors'], answer: 1, why: 'Raising temperature speeds m, h and n, shortening the spike and reducing the charge available to fire the next node. In a fibre already conducting with a safety factor near one, that tips it into conduction block. You can produce the same heat block with the temperature slider in the lab.' },
-    { q: 'A farm worker presents with miosis, bronchorrhoea, salivation, bradycardia and muscle fasciculation after pesticide exposure. The primary biochemical lesion is:', options: ['Blockade of postsynaptic nicotinic receptors', 'Inhibition of acetylcholinesterase, so acetylcholine accumulates', 'Inhibition of choline acetyltransferase', 'Blockade of presynaptic calcium channels'], answer: 1, why: 'Organophosphates phosphorylate acetylcholinesterase. Acetylcholine is not hydrolysed and accumulates at muscarinic, nicotinic and central cholinergic synapses, giving the mixed syndrome.' },
-    { q: 'In organophosphate poisoning, atropine relieves the secretions and bradycardia but not the muscle weakness, because atropine:', options: ['Acts only at muscarinic receptors, while weakness is a nicotinic effect', 'Is given at too low a dose', 'Reactivates acetylcholinesterase', 'Acts only in the central nervous system'], answer: 0, why: 'Atropine is a muscarinic antagonist. Fasciculation and weakness come from excess acetylcholine at nicotinic end-plate receptors, producing depolarisation block; these require enzyme reactivation and, above all, ventilatory support.' },
-    { q: 'How can excess acetylcholine at the neuromuscular junction cause paralysis rather than continuous contraction?', options: ['Acetylcholine becomes an antagonist at high concentration', 'Persistent depolarisation of the end-plate inactivates muscle Na⁺ channels (depolarisation block)', 'Calcium stores are exhausted in seconds', 'Acetylcholine blocks the K⁺ channels'], answer: 1, why: 'A membrane held depolarised cannot recover its Na⁺ inactivation gates, so no muscle action potential can be generated. The same physiology explains hyperkalaemic weakness and the action of depolarising neuromuscular blockers.' },
+    { q: 'In a patient with ascending weakness, which single measurement should be repeated most urgently?', options: ['Random blood glucose, to exclude hypoglycaemia', 'Vital capacity, with swallow and cough assessment', 'Serum creatine kinase, to look for muscle breakdown', 'Visual acuity, to detect optic nerve involvement'], answer: 1, why: 'Demyelination of the phrenic and bulbar nerves causes ventilatory failure and aspiration, which is how these patients die. Serial vital capacity identifies the patient who needs ventilatory support before arrest.' },
+    { q: 'A patient with multiple sclerosis reports that symptoms return in a hot shower (Uhthoff phenomenon). Why?', options: ['Heat makes the remaining myelin swell, which squeezes the axon', 'Faster channel kinetics shorten the spike, so a marginal demyelinated fibre blocks', 'Heat raises extracellular K⁺ around the axons, causing depolarisation block', 'Heat blocks acetylcholine receptors at the neuromuscular junction'], answer: 1, why: 'Raising temperature speeds m, h and n, shortening the spike and reducing the charge available to fire the next node. In a fibre already conducting with a safety factor near one, that tips it into conduction block. You can produce the same heat block with the temperature slider in the lab.' },
+    { q: 'A farm worker presents with miosis, bronchorrhoea, salivation, bradycardia and muscle fasciculation after pesticide exposure. The primary biochemical lesion is:', options: ['Blockade of the postsynaptic nicotinic receptors at the end-plate', 'Inhibition of acetylcholinesterase, so acetylcholine accumulates', 'Inhibition of choline acetyltransferase, so less acetylcholine is made', 'Blockade of presynaptic calcium channels'], answer: 1, why: 'Organophosphates phosphorylate acetylcholinesterase. Acetylcholine is not hydrolysed and accumulates at muscarinic, nicotinic and central cholinergic synapses, giving the mixed syndrome.' },
+    { q: 'In organophosphate poisoning, atropine relieves the secretions and bradycardia but not the muscle weakness, because atropine:', options: ['Acts only at muscarinic receptors; the weakness is a nicotinic effect', 'Is usually given at too low a dose to reach the muscles', 'Reactivates acetylcholinesterase in glands and the heart only', 'Acts only in the central nervous system, not in the periphery'], answer: 0, why: 'Atropine is a muscarinic antagonist. Fasciculation and weakness come from excess acetylcholine at nicotinic end-plate receptors, producing depolarisation block; these require enzyme reactivation and, above all, ventilatory support.' },
+    { q: 'How can excess acetylcholine at the neuromuscular junction cause paralysis rather than continuous contraction?', options: ['Acetylcholine turns into an antagonist at high concentration', 'Persistent end-plate depolarisation inactivates muscle Na⁺ channels', 'Muscle calcium stores run out within a few seconds', 'Acetylcholine blocks the K⁺ channels that repolarise the muscle'], answer: 1, why: 'A membrane held depolarised cannot recover its Na⁺ inactivation gates, so no muscle action potential can be generated. The same physiology explains hyperkalaemic weakness and the action of depolarising neuromuscular blockers.' },
     { q: 'A patient three weeks after a foot wound has trismus, risus sardonicus, a rigid abdomen and reflex spasms, and is fully conscious. The toxin acts by:', options: ['Blocking acetylcholine release at the neuromuscular junction', 'Blocking release of inhibitory glycine and GABA in the spinal cord', 'Blocking postsynaptic nicotinic receptors', 'Inhibiting acetylcholinesterase'], answer: 1, why: 'Tetanus toxin cleaves SNARE proteins in inhibitory interneurons, so motor neurons lose inhibition and fire in spasm. Consciousness is preserved because the toxin does not act on cortical pathways.' },
-    { q: 'Botulinum toxin and tetanus toxin share the same molecular mechanism but produce opposite pictures because:', options: ['Botulinum is far more potent', 'They block vesicle release at different synapses: the neuromuscular junction versus central inhibitory synapses', 'Tetanus toxin also blocks Na⁺ channels', 'Botulinum toxin blocks receptors rather than release'], answer: 1, why: 'Both are zinc proteases that cleave SNARE proteins and prevent vesicle fusion. Blocking the cholinergic neuromuscular junction gives descending flaccid paralysis; blocking spinal inhibitory synapses gives rigidity and spasm.' },
-    { q: 'A patient bitten by an elapid snake has ptosis, diplopia, drooling and a nasal voice with minimal local swelling. The venom component responsible is best described as:', options: ['A cytotoxin causing local necrosis', 'A postsynaptic α-neurotoxin blocking nicotinic acetylcholine receptors', 'A procoagulant causing incoagulable blood', 'A myotoxin causing rhabdomyolysis'], answer: 1, why: 'α-neurotoxins produce a curare-like, non-depolarising postsynaptic block, giving descending paralysis that starts with ptosis and ophthalmoplegia. Minimal local swelling is characteristic and must never be taken as reassurance.' },
-    { q: 'An anticholinesterase trial may transiently improve power in cobra-type envenoming because raising cleft acetylcholine:', options: ['Destroys the venom', 'Competes with the α-neurotoxin for the postsynaptic receptor', 'Blocks venom absorption from the bite site', 'Hyperpolarises the muscle membrane'], answer: 1, why: 'The block is competitive at the receptor, so more acetylcholine can displace some toxin. It does not help where the toxin acts presynaptically, or where the venom itself inhibits the esterase (mamba fasciculins), which is why the Kenya MoH guideline excludes suspected mamba bites from the test.' },
+    { q: 'Botulinum toxin and tetanus toxin share the same molecular mechanism but produce opposite pictures because:', options: ['Botulinum toxin blocks acetylcholine receptors on muscle, whereas tetanus toxin blocks release', 'They block release at different synapses: neuromuscular versus central inhibitory', 'Tetanus toxin also blocks Na⁺ channels in the motor neurons', 'Botulinum toxin is far more potent, so it overwhelms the nerves'], answer: 1, why: 'Both are zinc proteases that cleave SNARE proteins and prevent vesicle fusion. Blocking the cholinergic neuromuscular junction gives descending flaccid paralysis; blocking spinal inhibitory synapses gives rigidity and spasm.' },
+    { q: 'A patient bitten by an elapid snake has ptosis, diplopia, drooling and a nasal voice with minimal local swelling. The venom component responsible is best described as:', options: ['A cytotoxin causing necrosis of the tissue around the bite', 'A postsynaptic α-neurotoxin blocking nicotinic acetylcholine receptors', 'A procoagulant toxin that consumes fibrinogen and leaves the blood incoagulable', 'A myotoxin causing rhabdomyolysis and dark urine'], answer: 1, why: 'α-neurotoxins produce a curare-like, non-depolarising postsynaptic block, giving descending paralysis that starts with ptosis and ophthalmoplegia. Minimal local swelling is characteristic and must never be taken as reassurance.' },
+    { q: 'An anticholinesterase trial may transiently improve power in cobra-type envenoming because raising cleft acetylcholine:', options: ['Destroys the circulating venom', 'Competes with the α-neurotoxin for the postsynaptic receptor', 'Blocks absorption of the venom from the bite site into the lymph', 'Hyperpolarises the muscle membrane so it fires more easily'], answer: 1, why: 'The block is competitive at the receptor, so more acetylcholine can displace some toxin. It does not help where the toxin acts presynaptically, or where the venom itself inhibits the esterase (mamba fasciculins), which is why the Kenya MoH guideline excludes suspected mamba bites from the test.' },
     { q: 'Nerve conduction studies stimulate at the wrist and record at the elbow, 250 mm away, with a latency difference of 5.0 ms. The conduction velocity is:', options: ['5 m/s', '20 m/s', '50 m/s', '125 m/s'], answer: 2, why: 'v = distance / time = 0.250 m / 0.005 s = 50 m/s, a normal value for a large myelinated sensory or motor fibre. Note that 250 mm = 0.25 m and 5.0 ms = 0.005 s.' },
     { q: 'An unmyelinated C fibre conducts at 1 m/s. Roughly how long does a pain signal take to travel 1 m from the toe to the spinal cord?', options: ['1 ms', '17 ms', '100 ms', '1 s'], answer: 3, why: 't = 1 m ÷ 1 m/s = 1 s. A 10 µm myelinated Aβ fibre at about 60 m/s takes only 17 ms, which is why the sharp first pain of a stubbed toe arrives long before the dull second pain.' },
     { q: 'Which statement about the all-or-none law is correct?', options: ['A stronger stimulus produces a taller action potential', 'A stronger stimulus produces a higher firing frequency', 'Sub-threshold stimuli produce small action potentials', 'Spike amplitude falls along a healthy myelinated axon'], answer: 1, why: 'Above threshold the spike amplitude is essentially fixed, so intensity is coded as frequency (and by how many fibres are recruited). A healthy axon regenerates the spike, so amplitude does not decline along it.' },
@@ -1857,14 +1941,24 @@
   /* ---------------- main loop ---------------- */
   run(false); started = true;
   const hhSec = $('#hhLab'), axSec = $('#axStage'), synSec = $('#synStage');
-  SL.loop((dt) => {
+  // Frame budget (finding 10): 30 fps cap on phones while something moves, ~12 fps when idle,
+  // nothing drawn off-screen, and no layout reads per frame.
+  const gate = SLPerf.gate(12);
+  const raceRunning = () => axMode === 'race' && race && race.t < race.tU * 1.29;
+  const synBusy = () => syn.anim.length > 0 || nt.length > 0 || ca.length > 0 || ions.length > 0 || syn.ev.some(e => syn.t - e.t < 60);
+  const loopFn = (dt0) => {
     if (document.hidden) return;
+    const busy = playing || flux.length > 0 || hover || impulse >= 0 || raceRunning() || synBusy();
+    const dt = gate(dt0, busy); if (!dt) return;
     if (playing) { const adv = dt * P.speed; cursor += adv; P_dtSim = adv; if (cursor >= sim.L) { cursor = sim.L; playing = false; } } else P_dtSim = 0;
-    if (visible(hhSec)) drawHH();
-    if (visible(axSec)) { if (axMode === 'anat') drawAnat(dt); else drawRace(dt); }
+    if (SLPerf.on(hhSec)) drawHH();
+    if (SLPerf.on(axSec)) { if (axMode === 'anat') drawAnat(dt); else drawRace(dt); }
     synStep(dt);
-    if (visible(synSec)) drawSyn(dt);
-  }).start();
+    if (SLPerf.on(synSec)) drawSyn(dt);
+  };
+  // start drawing once the page has finished its first layout, to shorten the start-up long task
+  const mainLoop = SL.loop(loopFn);
+  (window.requestIdleCallback || (f => setTimeout(f, 60)))(() => mainLoop.start(), { timeout: 400 });
   /* ==DEMOPASS== */
   /* ===== Watch demo, Cases & OSCE navigator, shortcuts, remembered settings ===== */
   window.__neuron = { P, get sim() { return sim; }, get cursor() { return cursor; }, get playing() { return playing; }, get thr() { return thrVal; }, get race() { return race; }, setMode, preset, run };
@@ -1890,7 +1984,7 @@
           run: async A => { await DH.view(A, '#hhStage'); setMode('single'); preset({ ttx: 0, tea: 0, ko: 1, cao: 1, temp: 6.3, amp: 10, dur: 1, speed: 10 }); await playOut(A, 18); setRange('speed', 25); } },
         { cap: '<b>Rising phase:</b> voltage-gated Na⁺ channels open (m rises) and Na⁺ rushes in, positive feedback taking V<sub>m</sub> to about +40 mV. <b>Falling phase:</b> Na⁺ channels inactivate (h falls) and K⁺ channels open (n rises), so K⁺ leaves. The dip below rest is the <b>after-hyperpolarisation</b>.', hl: '#hhCharts', ms: 6000,
           run: async A => { await DH.view(A, '#hhCharts'); } },
-        { cap: '<b>Threshold.</b> Find threshold searches for the smallest 1 ms pulse that fires.', hl: '#thrBtn', ms: 5000,
+        { cap: '<b>Threshold.</b> Find threshold searches for the smallest 1 ms pulse that fires.', hl: '#hhStage', ms: 5000,
           run: async A => { await DH.view(A, '#hhStage'); $('#thrBtn').click(); thr0 = thrVal; await A.sleep(300); DH.cap(`<b>Threshold</b> for a 1 ms pulse is <b>${SL.fmt(thrVal, 2)} µA/cm²</b>. At 85% and 97% of it the membrane gives only a passive bump; at 103% and 120% it fires a full spike of the <i>same</i> height. That is the <b>all-or-none</b> law: strength is coded by firing frequency, not spike size.`); await playOut(A); } },
         { cap: '<b>Absolute refractory period.</b> Two identical pulses 5 ms apart: the second fails completely, because most Na⁺ channels are still inactivated (h is low). Even a much stronger second pulse fails at this interval.', hl: '#modeSeg', ms: 3800,
           run: async A => { setMode('pair'); preset({ ttx: 0, tea: 0, ko: 1, cao: 1, temp: 6.3, amp: 10, dur: 1, gap: 5, amp2: 10 }); await playOut(A); } },
@@ -1900,7 +1994,7 @@
           run: async A => { const b = document.querySelector('#axSeg button[data-m=race]'); if (axMode !== 'race') b.click(); setRange('diam', 10); setRange('demy', 0); await DH.view(A, '#axStage'); $('#raceBtn').click(); raceInfo(); tRace0 = race.tM; } },
         { cap: '<b>Demyelination</b> (as in Guillain–Barré syndrome or multiple sclerosis): with stripped internodes current leaks away, conduction slows, and three bare internodes in a row cause <b>conduction block</b>.', hl: '#axInfo', ms: 5000,
           run: async A => { setRange('demy', 40); $('#raceBtn').click(); raceInfo(); await DH.view(A, '#axStage'); if (race.block < 0) DH.cap(`<b>Demyelination</b> (as in Guillain–Barré syndrome or multiple sclerosis): with ${race.dam.size} of ${race.nInt} internodes stripped, current leaks away and the myelinated impulse now takes <b>${SL.fmt(race.tM, 2)} ms</b> instead of ${SL.fmt(tRace0, 2)} ms to cover 10 mm. Three bare internodes in a row would cause <b>conduction block</b>.`); } },
-        { cap: '<b>A sodium-channel block.</b> Back at the membrane patch, a lidocaine-type local anaesthetic blocks 60% of the Na⁺ channels. The same 10 µA/cm² pulse that fired before now gives only a small passive bump: no spike, so no pain signal passes.', hl: '.ctl:has(#ttx)', ms: 4200,
+        { cap: '<b>A sodium-channel block.</b> Back at the membrane patch, a lidocaine-type local anaesthetic blocks 60% of the Na⁺ channels. The same 10 µA/cm² pulse that fired before now gives only a small passive bump: no spike, so no pain signal passes.', hl: '#hhStage', ms: 4200,
           run: async A => { await DH.view(A, '#hhStage'); setMode('single'); preset({ ttx: 60, tea: 0, ko: 1, cao: 1, temp: 6.3, amp: 10, dur: 1 }); await playOut(A); } },
         { cap: '<b>The threshold rises.</b>', hl: '#sThr', ms: 5600,
           run: async A => { $('#thrBtn').click(); await A.sleep(300); DH.cap(`<b>The threshold rises</b> from ${SL.fmt(thr0, 2)} to <b>${SL.fmt(thrVal, 2)} µA/cm²</b> with 60% of Na⁺ channels blocked. Thin pain fibres block first, which is why the wound goes numb while the patient can still move his fingers. Full block (pufferfish tetrodotoxin) abolishes the spike entirely.`); await playOut(A); } },
@@ -1909,18 +2003,8 @@
       ],
     });
 
-    /* Cases & OSCE: the existing clinical cases and the viva station */
-    const openCase = c => { $('#tabCases').click(); const d = $('#case-' + c.id); if (d) d.open = true; c.apply(); };
-    CaseNav({
-      intro: 'Each case sets up the simulation for you; its questions open in the Clinical cases tab below. The OSCE station is a timed six-minute viva with a mark sheet.',
-      groups: [
-        { title: 'Clinical cases', icon: 'stethoscope', items: CASES.map(c => ({ tag: c.tag, t: c.title, sub: c.hint, go: () => openCase(c) })) },
-        { title: 'OSCE and exam practice', icon: 'clipboard-check', items: [
-          { tag: '6 min', t: 'OSCE station: explain the action potential', sub: 'Talk an examiner through the trace, then mark yourself against the 18-point checklist.', go: () => { $('#tabOsce').click(); const t = $('#tabs'); window.scrollTo({ top: t.getBoundingClientRect().top + scrollY - 80, behavior: DH.reduce() ? 'auto' : 'smooth' }); } },
-          { tag: 'Self-checking', t: 'Experiments and challenges', sub: 'Guided tasks that tick themselves off as you use the labs.', go: () => { $('#tabChal').click(); const t = $('#tabs'); window.scrollTo({ top: t.getBoundingClientRect().top + scrollY - 80, behavior: DH.reduce() ? 'auto' : 'smooth' }); } },
-        ] },
-      ],
-    });
+    /* Cases & OSCE: the bar button opens the Clinical cases & OSCE tab */
+    CaseNav();
 
     /* remembered settings: stimulus protocol, amplitude, duration and playback speeds */
     { const u = ui.get(null);
@@ -1956,8 +2040,7 @@
       { el: '#presetTTX', title: 'Try a drug', text: 'Presets apply pufferfish toxin, high potassium, a local anaesthetic or a refractory test. Each one explains itself.' },
       { el: '#axSeg', title: 'Anatomy and the conduction race', text: 'Below, explore a motor neuron part by part, then switch to <b>Conduction race</b> to send spikes down myelinated and unmyelinated axons side by side.' },
       { el: '#tabChal', title: 'Take the challenges', text: 'Guided tasks check themselves as you run the simulations.', before: () => document.getElementById('tabChal').click() },
-      { el: '#tabCases', title: 'Clinical cases', text: 'Eight conditions explained at the membrane: local anaesthetic blocks, hyper- and hypokalaemia, hypocalcaemic tetany, demyelination, organophosphate poisoning, tetanus and botulinum, and elapid snakebite. Each one sets the simulation up for you.', before: () => document.getElementById('tabCases').click() },
-      { el: '#tabOsce', title: 'OSCE station', text: 'A timed six-minute viva: explain the action potential to an examiner, then mark yourself against the checklist.', before: () => document.getElementById('tabOsce').click() },
+      { el: '#tabCases', title: 'Clinical cases & OSCE', text: 'Eight conditions explained at the membrane: local anaesthetic blocks, hyper- and hypokalaemia, hypocalcaemic tetany, demyelination, organophosphate poisoning, tetanus and botulinum, and elapid snakebite. Each one sets the simulation up for you. Below them is a timed six-minute OSCE viva with a mark sheet (pass mark 70 %).', before: () => document.getElementById('tabCases').click() },
     ]));
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
   } // end tour
