@@ -370,6 +370,187 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=13"></script>
 <script>
+/* Watch-demo runner and goal-based scenarios (page-local kit) */
+(function () {
+  if (window.DemoKit) return;
+  const css = `
+  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
+  .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .dk-bar .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto}
+  .dk-bar .dk-keys kbd{font-size:.72rem}
+  .dk-goal{flex-basis:100%;display:none;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;padding:10px 12px}
+  .dk-goal.show{display:flex}
+  .dk-goal.won{border-color:#34d399;background:color-mix(in srgb,#34d399 10%,var(--panel))}
+  .dk-goal .ic{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+  .dk-goal.won .ic{color:#34d399;background:color-mix(in srgb,#34d399 18%,transparent)}
+  .dk-goal .tx{flex:1;min-width:0;font-size:.86rem;line-height:1.45}
+  .dk-goal .tx b{display:block;font-size:.92rem}
+  .dk-goal .st{display:block;margin-top:3px;font:500 .78rem var(--mono);color:var(--accent)}
+  .dk-goal.won .st{color:#34d399}
+  .dk-goal .hint{display:none;margin-top:4px;color:var(--muted)}
+  .dk-goal .hint.show{display:block}
+  .dk-goal .acts{display:flex;gap:6px;flex-wrap:wrap;flex:none}
+  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.93);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap.show{display:block}
+  .dk-cap.fixed{position:fixed;bottom:12px}
+  .dk-cap .row{display:flex;align-items:center;gap:8px}
+  .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
+  .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
+  .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
+  .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem;flex:none;width:auto;min-width:0}
+  .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
+  @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  .dk-scen{margin:18px 0 6px;scroll-margin-top:calc(var(--hdr,64px) + 10px)}
+  .dk-scen h3 .ct{margin-left:auto;font:500 .74rem var(--mono);color:var(--dim)}
+  .dk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:8px}
+  .dk-card{display:flex;flex-direction:column;gap:6px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+  .dk-card.on{border-color:var(--accent)}
+  .dk-card.done{border-color:color-mix(in srgb,#34d399 55%,var(--line))}
+  .dk-card .top{display:flex;align-items:center;gap:8px}
+  .dk-card .top b{flex:1;font-size:.93rem;line-height:1.3}
+  .dk-card .where{font:500 .7rem var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  .dk-card p{margin:0;font-size:.84rem;color:var(--muted);line-height:1.45;flex:1}
+  .dk-card .ok{color:#34d399;display:none}
+  .dk-card.done .ok{display:inline-flex}
+  .dk-card .ok svg{width:17px;height:17px}
+  .dk-card .btn{align-self:flex-start}
+  @media (max-width:520px){.dk-bar .dk-keys{display:none}.dk-cap{bottom:8px}.dk-cap p{font-size:.86rem}.dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}`;
+  const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+  const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+  const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
+
+  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  function bar(before) {
+    let b = document.querySelector('.dk-bar'); if (b) return b;
+    b = document.createElement('div'); b.className = 'dk-bar';
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
+  }
+
+  const DemoKit = { bar };
+  /** add page shortcuts to the hint, e.g. '<kbd>1</kbd>–<kbd>5</kbd> modes' */
+  DemoKit.keys = html => { const k = document.querySelector('.dk-keys'); if (k) k.innerHTML = html + ' · ' + k.innerHTML; };
+  /** demo({before, stage, steps:[{cap, run(api), ms, hl}], save(), restore(snap), onStop?}) */
+  DemoKit.demo = function (o) {
+    const b = bar(o.before), btn = b.querySelector('#dkPlay');
+    const stage = $(o.stage); if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
+    const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
+    (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let run = null; // {abort, stepMode, nextRes}
+    const D = { running: () => !!run };
+    function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
+    function hl(sel) { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); if (sel) { const e = $(sel); if (e) e.classList.add('dk-hl'); } }
+    const ABORT = { abort: true };
+    function api(r) {
+      const chk = () => { if (r.abort) throw ABORT; };
+      const sleep = ms => new Promise((res, rej) => { const t0 = performance.now(); const tick = () => { if (r.abort) return rej(ABORT); if (performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tick); }; tick(); });
+      const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+      return {
+        sleep, chk,
+        set(sel, v) { chk(); const el = $(sel); if (!el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; fire(el, 'input'); fire(el, 'change'); },
+        async slide(sel, to, ms) { const el = $(sel); if (!el) return; const a = +el.value, n = Math.max(1, Math.round((ms || 1200) / 60)); const stp = +el.step || 0; for (let i = 1; i <= n; i++) { chk(); let v = a + (to - a) * i / n; if (stp) v = Math.round(v / stp) * stp; el.value = v; fire(el, 'input'); await sleep((ms || 1200) / n); } el.value = to; fire(el, 'input'); fire(el, 'change'); },
+        click(sel) { chk(); const el = $(sel); if (el) el.click(); },
+        async until(fn, ms) { const t0 = performance.now(); while (!fn()) { if (performance.now() - t0 > (ms || 10000)) return false; await sleep(120); } return true; },
+        hl
+      };
+    }
+    async function start() {
+      if (run) return stop(true);
+      if (DemoKit._scen && DemoKit._scen.active()) DemoKit._scen.quit(true);
+      let snap = null; try { snap = o.save ? o.save() : null; } catch (e) {}
+      const r = run = { abort: false, stepMode: reduce, snap };
+      btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); setMode();
+      if (o.onStart) try { o.onStart(); } catch (e) {}
+      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
+      if (stage.getBoundingClientRect().top < 0 || stage.getBoundingClientRect().bottom > innerHeight) stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' });
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const st = steps[i]; if (r.abort) throw ABORT;
+          cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          if (st.run) await st.run(A);
+          if (r.abort) throw ABORT;
+          pg.style.width = ((i + 1) / steps.length * 100) + '%';
+          const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
+          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+          r.nextRes = null;
+        }
+        end(true);
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+    }
+    function end(restore, msg) {
+      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
+      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
+      if (o.onStop) try { o.onStop(); } catch (e) {}
+      SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+    }
+    function stop(restore) { end(restore !== false, restore === false ? null : 'Demo stopped. Your settings are back as they were.'); }
+    D.stop = stop; D.start = start;
+    btn.onclick = start;
+    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
+    // the student takes over: any trusted interaction with the lab outside the caption ends the demo where it is
+    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .dk-bar')) end(false); }, true);
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (run && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); stop(true); }
+      else if (run && e.key === 'ArrowRight' && run.nextRes) { e.preventDefault(); run.nextRes(); }
+      else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); start(); }
+    }, true);
+    DemoKit._demo = D; return D;
+  };
+
+  /** scenarios({before, mount, key, list:[{id, title, where, goal, success, hint, setup(), check()->bool, status()->html}], onQuit}) */
+  DemoKit.scenarios = function (o) {
+    const b = bar(o.before), goal = b.querySelector('#dkGoal');
+    const sec = document.createElement('section'); sec.className = 'panel dk-scen'; sec.id = 'dkScen';
+    let done = {}; try { done = JSON.parse(localStorage.getItem(o.key) || '{}') || {}; } catch (e) { done = {}; }
+    const save = () => { try { localStorage.setItem(o.key, JSON.stringify(done)); } catch (e) {} };
+    const ct = () => `${o.list.filter(s => done[s.id]).length}/${o.list.length} achieved`;
+    sec.innerHTML = `<h3><i data-lucide="map-pinned"></i> Scenarios: real-world goals <span class="ct"></span></h3><p class="small muted" style="margin:0">Each scenario sets up the lab, states the goal and checks it live. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
+    const m = $(o.mount); if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
+    let act = null, timer = 0;
+    function paint() { sec.querySelector('.ct').textContent = ct(); sec.querySelectorAll('.dk-card').forEach(c => { c.classList.toggle('done', !!done[c.dataset.id]); c.classList.toggle('on', !!act && act.s.id === c.dataset.id); const bt = c.querySelector('[data-go]'); bt.innerHTML = act && act.s.id === c.dataset.id ? '<i data-lucide="rotate-ccw"></i> Restart' : done[c.dataset.id] ? '<i data-lucide="repeat"></i> Play again' : '<i data-lucide="play"></i> Start'; }); icons(sec); }
+    function banner() {
+      if (!act) { goal.classList.remove('show', 'won'); goal.innerHTML = ''; return; }
+      const s = act.s; goal.classList.add('show'); goal.classList.toggle('won', act.won);
+      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the scenario up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
+      icons(goal); tick();
+    }
+    function tick() {
+      if (!act) return; const s = act.s; let st = '';
+      try { st = s.status ? s.status() : ''; } catch (e) {}
+      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
+    }
+    function startS(id) {
+      const s = o.list.find(x => x.id === id); if (!s) return;
+      if (DemoKit._demo && DemoKit._demo.running()) DemoKit._demo.stop(false);
+      if (act && act.s.quit) try { act.s.quit(); } catch (e) {}
+      act = { s, won: false, t0: performance.now() }; try { s.setup(); } catch (e) { console.warn(e); }
+      clearInterval(timer); timer = setInterval(tick, 300); paint(); banner();
+      const lab = o.scrollTo ? $(o.scrollTo) : b; if (lab) lab.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }
+    function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
+    sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
+    goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
+    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
+    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
+    paint();
+    const API = { active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
+    DemoKit._scen = API; return API;
+  };
+  window.DemoKit = DemoKit;
+})();
+</script>
+<script>
 (() => {
   'use strict';
   const $ = s => document.querySelector(s);
@@ -1072,6 +1253,7 @@
   const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
   tourGo([
     { el: '#netStage', before: () => document.querySelector('#modes .tablist button:nth-child(1)').click(), title: 'A small campus network', text: 'Laptops and a phone connect through a switch and Wi-Fi to the campus router, then across the Internet to a DNS resolver and a web server. Drag devices to rearrange them.' },
+    { el: '#dkPlay', title: 'Watch demo', text: 'A one-minute expert run-through: a page load packet by packet, NAT in the inspector, re-routing round a fibre cut, retransmissions on a lossy link and subnetting. Press D to start and Esc to stop; your settings come back afterwards. Scenarios (S) give real-world goals.' },
     { el: '#netSend', title: 'Open a website', text: 'Choose the client and the site, then press <b>Open website</b> (or <b>Step</b> one packet at a time). Turn the caches on to see which packets disappear.' },
     { el: '#phases', before: () => { if (!J.steps.length) $('#stepB').click(); }, title: 'Follow the phases', text: 'The first packet is on its way. The strip at the top shows where the page load has got to: ARP finds the gateway, DNS finds the server, TCP and TLS set up the connection, and HTTP fetches the page.' },
     { el: '#logPanel', title: 'Packet sequence', text: 'Every packet in order, colour-coded by protocol. Tap one to open it in the inspector.' },
@@ -1081,6 +1263,107 @@
     { el: '#tabChal', title: 'Challenges', text: 'Auto-checked tasks, such as loading a page with cached answers or reading a NAT-translated header.' },
   ]);
 
+/* ==DEMOPASS== */
+  /* ===================== WATCH DEMO + SCENARIOS ===================== */
+  (function () {
+    const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+    const modeBtns = () => [...document.querySelectorAll('#modes > .tablist > button')];
+    const goMode = i => { const b = modeBtns()[i]; if (b && !b.classList.contains('on')) b.click(); };
+    const curMode = () => Math.max(0, modeBtns().findIndex(b => b.classList.contains('on')));
+    const IDS = ['client', 'server', 'tls', 'arpC', 'dnsC', 'pspd', 'win', 'loss', 'rto', 'tspd', 'ipIn', 'ip2', 'split'];
+    function resetJourney() { J.auto = false; J.anim = null; J.steps = []; J.cur = -1; J.inspect = null; setGo(); renderLog(); hideCard(); $('#insp').innerHTML = 'No packet selected.'; $('#insp').className = 'muted small'; $('#netHud').innerHTML = 'Press <b>Open website</b> to send a request'; $('#phases').style.display = 'none'; }
+    function save() {
+      return { mode: curMode(), v: IDS.map(id => { const e = $('#' + id); return e.type === 'checkbox' ? e.checked : e.value; }), proto: T.proto, RL: RL.map(l => ({ c: l.c, up: l.up })), src: RT.src, dst: RT.dst, playing: T.playing };
+    }
+    function restore(s) {
+      IDS.forEach((id, i) => { const e = $('#' + id); if (e.type === 'checkbox') e.checked = s.v[i]; else e.value = s.v[i]; if (e.type === 'range') fire(e, 'input'); });
+      resetJourney();
+      const pb = $(`#proto [data-v="${s.proto}"]`); if (pb) pb.click();
+      if (!T.playing !== !s.playing) $('#tPlay').click();
+      RL.forEach((l, i) => { if (s.RL[i]) { l.c = s.RL[i].c; l.up = s.RL[i].up; } }); RT.flood = null; RT.pkt = null; RT.selL = null; RT.src = s.src; RT.dst = s.dst; RT.djStep = -1; recompute(); renderLinkPanel();
+      renderSub(); goMode(s.mode);
+    }
+    const until = (A, fn, ms) => A.until(fn, ms);
+    DemoKit.demo({
+      before: '#modes', stage: '#modes', capHost: 'body', capFixed: true, scrollBlock: 'start', save, restore, takeover: '#modes',
+      steps: [
+        { cap: 'The student laptop opens portal.example.ac.ke with empty caches. First, ARP shouts on the LAN: “who has 192.168.1.1?” to learn the gateway router’s hardware (MAC) address.', hl: '#phases',
+          run: async A => { goMode(0); resetJourney(); $('#client').value = nodes.find(n => n.name === 'Student laptop').id; $('#server').value = nodes.find(n => n.type === 'web').id; A.set('#tls', true); A.set('#arpC', false); A.set('#dnsC', false); A.set('#pspd', 3); A.click('#go'); await until(A, () => J.steps.length && J.steps[J.cur] && J.steps[J.cur].proto !== 'ARP', 15000); } , ms: 300 },
+        { cap: 'DNS: a UDP query on port 53 asks the resolver for the server’s IP address. Only now does the laptop know where to send the request.', hl: '#logPanel',
+          run: async A => { await until(A, () => J.steps[J.cur] && !['ARP', 'DNS'].includes(J.steps[J.cur].proto), 15000); }, ms: 300 },
+        { cap: 'TCP three-way handshake (SYN, SYN-ACK, ACK), then TLS 1.3 agrees encryption keys. Each packet is listed in the sequence panel, colour-coded by protocol.', hl: '#logPanel',
+          run: async A => { await until(A, () => J.steps[J.cur] && J.steps[J.cur].proto === 'HTTP', 20000); }, ms: 300 },
+        { cap: 'HTTP finally fetches the page. Opening any packet beyond the router shows NAT at work: the private source 192.168.1.23 has become the campus’s public 198.51.100.7.', hl: '#inspector',
+          run: async A => { await until(A, () => !J.auto && !J.anim, 20000); const i = J.steps.findIndex(s => s.proto === 'HTTP'); const st = J.steps[i]; if (st) { let k = 0; for (let j = 0; j < st.path.length - 1; j++) if (headersAt(st, j).natted) { k = j; break; } inspect(i, k); } $('#inspector').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, ms: 5200 },
+        { cap: 'Routing: R1 reaches R6 along the lowest total link cost (yellow), found with Dijkstra’s algorithm. Each router builds its table from the same link-state map.', hl: '#rtTable',
+          run: async A => { goMode(1); rReset(); RT.src = 0; RT.dst = 5; recompute(); renderLinkPanel(); $('#modes').scrollIntoView({ block: 'start', behavior: 'smooth' }); }, ms: 4200 },
+        { cap: 'A fibre cut on R4–R5. The neighbours flood link-state adverts (purple rings), every router reruns Dijkstra, and traffic converges on a new route.', hl: '#rtHud',
+          run: async A => { const l = RL.find(l => (l.a === 3 && l.b === 4) || (l.a === 4 && l.b === 3)); RT.selL = l; renderLinkPanel(); await A.sleep(900); A.click('#lUp'); await until(A, () => !RT.flood, 8000); }, ms: 3600 },
+        { cap: 'Reliability: 20 % of packets are lost. Go-Back-N resends every segment after each loss, so the sender keeps repeating work it has already done.', hl: '#tsR',
+          run: async A => { goMode(2); A.click('#proto [data-v="gbn"]'); A.set('#win', 8); A.set('#loss', 20); A.set('#rto', 1.5); A.set('#tspd', 2); if (!T.playing) A.click('#tPlay'); }, ms: 7000 },
+        { cap: 'Selective Repeat resends only the segments that were actually lost. Fewer retransmissions, higher goodput on the same lossy link.', hl: '#tsG',
+          run: async A => { A.click('#proto [data-v="sr"]'); }, ms: 7000 },
+        { cap: 'Subnetting: each extra prefix bit halves the block. /24 holds 254 hosts, /25 holds 126, /26 holds 62: the network/host boundary moves right.', hl: '#pfx',
+          run: async A => { goMode(3); A.set('#ipIn', '192.168.10.77/24'); renderSub(); A.set('#split', 0); await A.sleep(1200); await A.slide('#pfx', 26, 2400); }, ms: 3400 },
+      ]
+    });
+
+    /* ---- scenarios ---- */
+    let gaveUp = false, kcseLink = null;
+    $('#faultBody').addEventListener('click', e => { const b = e.target.closest('[data-ft="reveal"]'); if (b) gaveUp = true; }, true);
+    const named = n => nodes.find(x => x.name === n);
+    const linkOf = (a, b) => links.find(l => (l.a === a.id && l.b === b.id) || (l.a === b.id && l.b === a.id));
+    const downCount = () => RL.filter(l => !l.up).length;
+    const subState = () => { const m = $('#ipIn').value.trim().match(/^([\d.]+)\s*\/\s*(\d{1,2})$/); return { ip: m ? m[1] : '', p: m ? +m[2] : +$('#pfx').value, b: +$('#split').value }; };
+    DemoKit.scenarios({
+      before: '#modes', mount: '#learn', key: 'sl-net-scen',
+      list: [
+        { id: 'kcse', where: 'Embu · secondary school ICT lab', title: 'Diagnose why the school lab can’t reach the KCSE portal',
+          goal: 'Results day: the lab PCs and the teachers’ phones on Wi-Fi all fail to open the results portal, yet the campus router itself is healthy. Find the broken cable before the candidates arrive.',
+          success: 'report the faulty cable from the Fault-finding panel without pressing Give up.',
+          hint: 'Ping from the Lab PC to the Switch, then to the Campus router. The fault lies between the last device that answers and the first that does not.',
+          setup: () => {
+            goMode(0); if (FT.link) FT.link.down = false; defaultTopo(); populateSelects(); resetJourney(); J.selLink = null; J.selNode = null;
+            const pc = named('Lab PC'), sw = nodes.find(n => n.type === 'switch'), r = nodes.find(n => n.type === 'router');
+            kcseLink = linkOf(sw, r); kcseLink.down = true; gaveUp = false;
+            Object.assign(FT, { on: true, f: { why: 'The uplink cable between the lab switch and the campus router had failed. Devices on the switch could still reach each other (and the Wi-Fi access point), but nothing could reach the gateway, so ARP for 192.168.1.1 went unanswered and no packet ever left the building.' }, link: kcseLink, revealed: null, tries: 0, tests: 0, log: [], from: String(pc.id), to: String(r.id) });
+            $('#client').value = pc.id; $('#arpC').checked = false; $('#dnsC').checked = false; renderFault();
+            $('#netHud').innerHTML = 'Fault-finding: open the website from the <b>Lab PC</b> to reproduce the problem';
+          },
+          status: () => FT.on ? `${FT.tests} test${FT.tests === 1 ? '' : 's'} run · ${FT.tries} report${FT.tries === 1 ? '' : 's'}` : '',
+          check: () => kcseLink && !FT.on && FT.revealed === kcseLink && !gaveUp,
+          quit: () => { if (FT.on && FT.link === kcseLink) { kcseLink.down = false; FT.on = false; renderFault(); } } },
+        { id: 'fibre', where: 'Nairobi–Mombasa backbone', title: 'Find the fibre cuts that isolate the coast',
+          goal: 'R1 is the Nairobi exchange and R6 the Mombasa cable-landing station. Planners want to know the fewest fibre cuts that would cut Mombasa off from Nairobi. Take links down until R6 is unreachable from R1, using as few cuts as possible.',
+          success: 'R6 unreachable from R1 with exactly 2 links down (the minimum cut).',
+          hint: 'Look at the routers at either end: how many links does R6 have? Any single cut leaves a detour; cutting every link of one router does not.',
+          setup: () => { goMode(1); rReset(); RT.src = 0; RT.dst = 5; recompute(); renderLinkPanel(); },
+          status: () => { const p = RT.res && pathTo(RT.res, RT.src, RT.dst); return `${downCount()} link${downCount() === 1 ? '' : 's'} down · R6 ${RT.flood ? 'converging…' : p ? 'still reachable (cost ' + RT.res.D[RT.dst] + ')' : 'unreachable'}`; },
+          check: () => RT.src === 0 && RT.dst === 5 && !RT.flood && !pathTo(RT.res, 0, 5) && downCount() === 2 },
+        { id: 'g3', where: 'Marsabit · rural 3G link', title: 'Download exam results over a lossy 3G link',
+          goal: 'A school on a weak 3G signal loses a quarter of its packets. The default settings crawl. Choose the protocol, window and timeout so that all 60 segments arrive quickly.',
+          success: 'all 60 segments delivered in under 60 s of simulated time at 25 % loss or more.',
+          hint: 'A bigger window keeps more data in flight; Selective Repeat or TCP-style fast retransmit avoids resending what already arrived; a timeout just above 1 RTT reacts to losses sooner.',
+          setup: () => { goMode(2); $('#proto [data-v="gbn"]').click(); $('#win').value = 3; fire($('#win'), 'input'); $('#loss').value = 25; fire($('#loss'), 'input'); $('#rto').value = 3; fire($('#rto'), 'input'); $('#tspd').value = 2; fire($('#tspd'), 'input'); if (!T.playing) $('#tPlay').click(); tReset(); },
+          status: () => { const s = window.__net.S(); return `${T.proto.toUpperCase()} · W ${T.W} · ${s.rbase}/60 delivered · ${SL.fmt(s.done ? s.doneT : s.t, 1)} s${s.done && s.doneT >= 60 ? ' (too slow: change the settings, then Restart)' : ''}`; },
+          check: () => { const s = window.__net.S(); return s.done && s.doneT < 60 && T.loss >= 0.25; } },
+        { id: 'class', where: 'Nakuru · county school', title: 'Give four classrooms their own subnets',
+          goal: 'The county gave the school 10.20.0.0/24. Each of the four classrooms needs its own subnet with room for 50 devices, so a broadcast storm in one room cannot slow the others.',
+          success: '10.20.0.0/24 split into 4 subnets of at least 50 usable hosts each.',
+          hint: 'Borrowing b host bits makes 2ᵇ subnets. A /26 has 2⁶ − 2 = 62 usable hosts.',
+          setup: () => { goMode(3); $('#ipIn').value = '10.20.0.0/24'; renderSub(); $('#split').value = 0; fire($('#split'), 'input'); },
+          status: () => { const s = subState(), np = s.p + s.b; return `${s.ip}/${s.p} → ${2 ** s.b} subnet${s.b ? 's' : ''} of /${np} (${Math.max(0, 2 ** (32 - np) - 2)} hosts each)`; },
+          check: () => { const s = subState(); return /^10\.20\.0\.\d+$/.test(s.ip) && s.p === 24 && s.b === 2; } },
+      ]
+    });
+    DemoKit.keys('<kbd>1</kbd>–<kbd>4</kbd> labs');
+    document.addEventListener('keydown', e => { const t = e.target; if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && t.type !== 'range' && t.type !== 'checkbox' || document.querySelector('.sl-tour')) return; const i = '1234'.indexOf(e.key); if (i >= 0 && e.key.length === 1) goMode(i); });
+    /* remember the last lab tab */
+    $('#modes').addEventListener('tab', e => { try { localStorage.setItem('sl-net-mode', e.detail); } catch (er) {} });
+    const remembered = () => { try { const m = +localStorage.getItem('sl-net-mode'); if (m > 0 && m < 4) goMode(m); } catch (e) {} };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', remembered); else remembered();
+  })();
+/* ==/DEMOPASS== */
   window.__net = { buildScript, headersAt, startJourney, J, nodes: () => nodes, links: () => links, dijkstra, R: () => R, RL: () => RL, RT, recompute, S: () => S, T, subnet };
   rReset(); renderLinkPanel();
 })();
