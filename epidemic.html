@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Epidemic Simulator · Pentarch SimLab</title>
-<meta name="description" content="Agent-based town and SEIR(D)+V compartmental epidemic simulator: R0, herd immunity, vaccination, masks, isolation, school closure and hospital capacity.">
+<meta name="description" content="Agent-based town and SEIR(D)+V epidemic simulator with Kenyan cholera, measles, malaria and respiratory outbreak scenarios, the KEPI schedule, herd immunity, contact tracing and an outbreak investigation OSCE.">
 <link rel="icon" href="https://pentarchcommunications.com/wp-content/uploads/2026/01/LOGO-SYMBOL-TRANSPARENT-150x150.png" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
@@ -44,6 +44,31 @@
   /* keyboard focus always visible */
   main :is(button,a,[tabindex],summary,select,input):focus-visible{outline:2px solid var(--accent)!important;outline-offset:2px}
   @media (min-width:981px) and (min-height:860px){.lab>.ep-col{position:sticky;top:84px;align-self:start}}
+  .scn h4 .stag,.kepi-tag{font:600 .66rem var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);border-radius:99px;padding:2px 8px;white-space:nowrap}
+  .scn h4{flex-wrap:wrap}
+  .mrcalc{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 10px}
+  .mrcalc p{margin:6px 0 0;color:var(--text)!important}
+  .hitTool{margin:16px 0}
+  .facts{background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 12%,var(--panel)),var(--panel));border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);border-radius:14px;padding:14px 18px;margin:0 0 18px}
+  .facts h3{margin-top:0!important;display:flex;align-items:center;gap:8px}
+  .facts h3 svg{width:18px;height:18px;color:var(--accent)}
+  .facts ul{margin:6px 0 0;padding-left:1.2em}.facts li{margin:4px 0;font-size:.92rem}
+  .osce-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+  .timer{font:600 1.05rem var(--mono);padding:4px 10px;border-radius:8px;background:var(--bg2);border:1px solid var(--line2)}
+  .timer.low{color:var(--bad);border-color:var(--bad)}
+  .obq{border-top:1px dashed var(--line);padding:12px 0}
+  .obq>p{margin:0 0 8px}
+  .obq .quiz{max-width:none}.obq .quiz .q{background:var(--bg2);margin:0;padding:10px}
+  .quiz .opt.sel{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+  table.line td,table.line th{padding:5px 7px;font-size:.8rem;white-space:nowrap}
+  table.line input{width:18px;height:18px;accent-color:var(--accent)}
+  .epi{background:#050913;border:1px solid var(--line);border-radius:12px;padding:8px;margin-top:10px;max-width:520px}
+  .epi svg{width:100%;height:auto;display:block}.epi text{font:10px var(--mono);fill:var(--muted)}
+  @media (max-width:600px){.epi text{font-size:12.5px}}
+  @media (min-width:900px){.scrollhint{display:none}}
+  .dans{display:flex;gap:8px;align-items:center}.dans input{max-width:160px;font-family:var(--mono)}.dans .u{font:500 .82rem var(--mono);color:var(--muted)}
+  .mark-ok{color:var(--ok);font-weight:700}.mark-no{color:var(--bad);font-weight:700}
+  #vecNote b{font-family:var(--mono);color:var(--text)}
 </style>
 </head>
 <body data-page="epidemic">
@@ -76,8 +101,10 @@
         <h3><i data-lucide="biohazard"></i> Pathogen</h3>
         <div class="ctl" style="grid-template-columns:1fr"><label for="preset">Preset (textbook ranges)</label>
           <select id="preset">
-            <option value="covid">COVID-19, ancestral strain (R₀ ≈ 2.5–3)</option>
-            <option value="measles">Measles (R₀ ≈ 12–18)</option>
+            <option value="covid">COVID-like respiratory virus (R₀ ≈ 2.5–3)</option>
+            <option value="measles">Measles (R₀ ≈ 12–18) · MR vaccine</option>
+            <option value="cholera">Cholera (R₀ ≈ 2) · WASH and ORS</option>
+            <option value="malaria">Malaria, vector-adjusted (teaching R₀ 5) · nets and IRS</option>
             <option value="flu">Seasonal influenza (R₀ ≈ 1.3–2)</option>
             <option value="ebola">Ebola virus disease (R₀ ≈ 1.5–2)</option>
             <option value="custom">Custom</option>
@@ -98,6 +125,12 @@
         <div class="ctl"><label for="delay">Testing delay: infectious → isolated</label><output></output><input type="range" id="delay" min="0" max="7" step="0.5" value="3"></div>
         <label class="toggle"><span>Close schools</span><input type="checkbox" id="school"></label>
         <label class="toggle"><span>Contact tracing (household quarantine)</span><input type="checkbox" id="trace"></label>
+        <label class="toggle hide" id="tgOrs"><span>ORS points and cholera treatment centres (cut deaths)</span><input type="checkbox" id="ors"></label>
+        <div id="vecBox" class="hide">
+          <div class="ctl"><label for="itn">Insecticide-treated net use (ITN)</label><output></output><input type="range" id="itn" min="0" max="100" step="1" value="0"></div>
+          <div class="ctl"><label for="irs">Indoor residual spraying coverage (IRS)</label><output></output><input type="range" id="irs" min="0" max="100" step="1" value="0"></div>
+          <p class="p5n" id="vecNote"></p>
+        </div>
         <div class="panel-title">Health system</div>
         <div class="ctl hide" id="ctlCap"><label for="cap">Hospital beds for this disease</label><output></output><input type="range" id="cap" min="10" max="600" step="5" value="150"></div>
         <div class="ctl" id="ctlBeds"><label for="beds">Town health-centre beds</label><output></output><input type="range" id="beds" min="1" max="20" step="1" value="5"></div>
@@ -118,9 +151,20 @@
       <button><i data-lucide="calculator"></i> Worked examples</button>
       <button id="tabChal"><i data-lucide="flask-conical"></i> Experiments & challenges</button>
       <button><i data-lucide="circle-help"></i> Quiz</button>
+      <button id="tabKenya"><i data-lucide="map-pin"></i> Kenya outbreaks & KEPI</button>
       <button><i data-lucide="list"></i> Pathogen table</button>
     </div>
     <div class="tabpanel prose">
+      <div class="facts"><h3><i data-lucide="sparkles"></i> Key facts to remember</h3><ul>
+        <li><b>R₀</b> = secondary cases from one case in a fully susceptible population; <b>R<sub>eff</sub></b> = R₀ × fraction susceptible. Outbreak grows while R<sub>eff</sub> &gt; 1.</li>
+        <li><b>Herd immunity threshold</b> = 1 − 1/R₀. Coverage needed = threshold ÷ vaccine efficacy. Measles (R₀ 12–18) needs ~93–95% immune: hence two MR doses and a 95% coverage target.</li>
+        <li><b>KEPI:</b> BCG + OPV0 at birth; OPV, Penta, PCV10 and Rota at 6, 10, 14 weeks; IPV at 14 weeks (and 9 months); MR at 9 and 18 months; malaria vaccine at 6, 7, 9, 24 months in selected counties; HPV single dose for girls at 10.</li>
+        <li><b>Attack rate</b> = new cases ÷ population at risk (× 100). <b>CFR</b> = deaths ÷ cases (× 100). <b>Risk ratio</b> = attack rate in exposed ÷ attack rate in unexposed.</li>
+        <li><b>Epi curve:</b> one sharp peak within one incubation period = point source; successive growing waves = propagated (person-to-person).</li>
+        <li><b>Cholera:</b> suspected case in an outbreak area = anyone with (or dying from) acute watery diarrhoea; confirm by culture or PCR. WASH stops transmission; prompt ORS/Ringer's lactate keeps CFR below 1%. Follow contacts for 5 days.</li>
+        <li><b>Malaria:</b> vector control (ITNs, IRS) works best by killing adult mosquitoes, because transmission needs a mosquito to survive the ~10-day parasite development. Test with mRDT, treat with AL.</li>
+        <li><b>Contact tracing:</b> list contacts, follow daily for the maximum incubation period (measles 21 days), refer anyone who becomes ill, report through the CHA to IDSR.</li>
+      </ul></div>
       <h3>Compartmental models</h3>
       <p>Compartmental models split a population of size $N$ into groups by infection status and describe the flows between them with differential equations. The classic <b>SIR</b> model (Kermack and McKendrick, 1927) has Susceptible, Infectious and Removed people. In words: each day new infections happen at a rate proportional to how often susceptible and infectious people meet ($S \times I/N$), and a fixed fraction of infectious people recover. $S$, $I$ and $R$ are the numbers of people in each group and $t$ is time in days:</p>
       <div class="eq">$$\frac{dS}{dt}=-\beta\frac{SI}{N},\qquad \frac{dI}{dt}=\beta\frac{SI}{N}-\gamma I,\qquad \frac{dR}{dt}=\gamma I$$</div>
@@ -200,15 +244,107 @@
     </div>
     <div class="tabpanel"><div id="quiz"></div></div>
     <div class="tabpanel prose">
+      <p>Four teaching outbreaks set in Kenya. <b>Load scenario</b> sets up the lab (scroll up to watch it), then use the measures to meet the target. Each scenario checks itself as you move the controls. Numbers are textbook-range teaching values, not data for any real county.</p>
+      <div id="scnList"></div>
+
+      <h3 id="kepiH">KEPI routine immunisation schedule and herd immunity</h3>
+      <div style="overflow-x:auto"><table class="data kepi">
+        <tr><th>Age</th><th>Vaccines</th><th>Protects against</th></tr>
+        <tr><td>Birth (or first contact)</td><td>BCG (0.05 mL intradermal, right upper arm); OPV 0</td><td>Severe childhood TB (miliary, meningitis); polio</td></tr>
+        <tr><td>6 weeks</td><td>OPV 1; Penta 1; PCV10 1; Rota 1</td><td rowspan="3">Penta = diphtheria, tetanus, whole-cell pertussis, hepatitis B, <i>Haemophilus influenzae</i> type b. PCV10: pneumococcal pneumonia, meningitis, otitis media. Rota: rotavirus diarrhoea (Rotavac, 3 oral doses).</td></tr>
+        <tr><td>10 weeks</td><td>OPV 2; Penta 2; PCV10 2; Rota 2</td></tr>
+        <tr><td>14 weeks</td><td>OPV 3; Penta 3; PCV10 3; Rota 3; IPV 1</td></tr>
+        <tr><td>6 months</td><td>Vitamin A 100 000 IU; malaria vaccine 1*</td><td rowspan="2">Malaria vaccine (RTS,S, now transitioning to R21): clinical and severe malaria in young children</td></tr>
+        <tr><td>7 months</td><td>Malaria vaccine 2*</td></tr>
+        <tr><td>9 months</td><td>Measles–rubella (MR) 1; IPV 2; malaria vaccine 3*; yellow fever†</td><td>Measles, rubella (and congenital rubella syndrome); polio; yellow fever</td></tr>
+        <tr><td>12 months onward</td><td>Vitamin A 200 000 IU every 6 months to 59 months</td><td>Vitamin A deficiency; lowers measles deaths</td></tr>
+        <tr><td>18 months</td><td>MR 2</td><td>Catches the ~15% not protected by one dose at 9 months</td></tr>
+        <tr><td>24 months</td><td>Malaria vaccine 4*</td><td>Booster</td></tr>
+        <tr><td>10 years (girls)</td><td>HPV, single dose (since late 2025)</td><td>Cervical cancer</td></tr>
+      </table></div>
+      <p class="small muted">* Malaria vaccine only in selected malaria-endemic counties (first rolled out in the Lake region: Kisumu, Siaya, Homa Bay, Migori, Busia, Bungoma, Kakamega, Vihiga). † Yellow fever in designated high-risk counties. A hepatitis B birth dose is being piloted (e.g. Baringo and Kisumu) but is not yet routine nationally. Schedules change: always check the current KEPI chart and the child's Mother and Child Health Handbook. Sources checked: Kenya MoH/National Vaccines and Immunization Programme announcements (single-dose HPV, October 2025), WHO/UNICEF estimates of national immunization coverage (WUENIC, 2025 revision), WHO AFRO and Gavi reports on the malaria and rotavirus vaccines.</p>
+
+      <div class="panel hitTool">
+        <h3><i data-lucide="shield-check"></i> Is coverage high enough for herd immunity?</h3>
+        <div class="ctl" style="grid-template-columns:1fr"><label for="hiDis">Disease (KEPI vaccine)</label>
+          <select id="hiDis">
+            <option value="measles">Measles (MR, 2 doses)</option>
+            <option value="rubella">Rubella (MR)</option>
+            <option value="pertussis">Pertussis (Penta, 3 doses)</option>
+            <option value="diphtheria">Diphtheria (Penta, 3 doses)</option>
+            <option value="polio">Polio (OPV + IPV)</option>
+          </select></div>
+        <div class="ctl"><label for="hiCov">Coverage in your county</label><output></output><input type="range" id="hiCov" min="40" max="100" step="1" value="80"></div>
+        <div id="hiOut" class="hit"></div>
+        <div class="btn-row" style="margin-top:10px"><button class="btn sm" id="hiLoad"><i data-lucide="play"></i> Try it in the lab</button></div>
+        <p class="p5n" style="margin-top:8px">BCG has no herd-immunity threshold in this sense: it protects infants from severe TB but does little to stop adults transmitting. Hib and PCV give some herd protection by reducing carriage. IPV prevents paralysis but gives weak gut immunity, which is why oral polio vaccine is still used to stop transmission.</p>
+      </div>
+
+      <h3>Contact tracing and isolation: the community health promoter's role</h3>
+      <p>Community health promoters (CHPs) and their community health assistant (CHA) are the first link in Kenya's Integrated Disease Surveillance and Response (IDSR) system. In the lab, the <b>Contact tracing</b> toggle quarantines the households of isolated cases; in the community it looks like this:</p>
+      <ol class="steps">
+        <li><b>Recognise and report.</b> A person meeting the community case definition (e.g. fever with rash for measles; acute watery diarrhoea for cholera) is referred to the link facility and reported at once to the CHA, who alerts the sub-county disease surveillance coordinator.</li>
+        <li><b>Protect yourself and the household.</b> Hand hygiene; chlorinated water and safe handling of vomit and stool for cholera; a mask and good ventilation for respiratory illness.</li>
+        <li><b>Isolate the case as advised.</b> Measles: keep away from others until 4 days after the rash appears. Cholera: treatment at an ORS point or cholera treatment centre, household disinfection. Respiratory outbreaks: separate room, mask, as per current guidance.</li>
+        <li><b>List the contacts.</b> Household members, carers, schoolmates, people who shared water, food, a matatu or a church service: name, age, phone, village, date of last contact and vaccination status.</li>
+        <li><b>Follow up every contact daily</b> for the maximum incubation period after the last exposure, asking about symptoms and recording visits (registers or eCHIS).</li>
+        <li><b>Act on what you find.</b> A contact who becomes ill is now a suspected case: refer, report and list their contacts. Refer unvaccinated measles contacts for MR vaccine (within 72 hours of exposure it can prevent disease).</li>
+        <li><b>Close and report.</b> When the follow-up period ends without symptoms, discharge the contact and submit the summary to the CHA.</li>
+      </ol>
+      <div class="grid2">
+        <div><table class="data"><tr><th>Disease</th><th>Follow contacts for</th></tr><tr><td>Cholera</td><td class="num">5 days</td></tr><tr><td>Measles</td><td class="num">21 days</td></tr><tr><td>Ebola, Marburg</td><td class="num">21 days</td></tr><tr><td>Mpox</td><td class="num">21 days</td></tr><tr><td>COVID-19 (as used in 2020–21)</td><td class="num">14 days</td></tr></table></div>
+        <div class="panel"><h3><i data-lucide="calendar-check"></i> Follow-up calculator</h3>
+          <div class="ctl" style="grid-template-columns:1fr"><label for="fuDis">Disease</label><select id="fuDis"><option value="5">Cholera (5 days)</option><option value="21" selected>Measles (21 days)</option><option value="21">Ebola / Mpox (21 days)</option><option value="14">COVID-19 (14 days)</option></select></div>
+          <div class="ctl" style="grid-template-columns:1fr"><label for="fuDate">Date of last contact with the case</label><input type="date" id="fuDate"></div>
+          <p class="small" id="fuOut" style="margin:8px 0 0"></p></div>
+      </div>
+
+      <h3 id="osceH">OSCE station: outbreak investigation</h3>
+      <div class="panel" id="obPanel">
+        <div class="osce-head"><span class="timer" id="obTime">10:00</span><button class="btn sm" id="obStart"><i data-lucide="timer"></i> Start 10-minute timer</button><span class="small muted">7 marks</span></div>
+        <p>Teaching case. In mid-March, after heavy rain, a health centre serving three villages (A: population 400; B: 250; C: 350) sees a rise in adults and children with profuse watery diarrhoea. Stool samples are sent to the county laboratory. A household survey finds that <b>300</b> of the 1000 residents had collected drinking water from <b>water kiosk K</b> in the week before the outbreak. You are the clinician on the rapid response team.</p>
+        <div class="obq"><p><b>1.</b> Which is the best working case definition for this investigation?</p>
+          <div class="quiz"><div class="q" data-ob="def"><div class="opts">
+            <button class="opt" data-j="0">Any person in Kenya with diarrhoea</button>
+            <button class="opt" data-j="1">Any person living in or visiting villages A–C since 1 March who has (or died of) acute watery diarrhoea, with or without vomiting</button>
+            <button class="opt" data-j="2">Any person with bloody diarrhoea and fever</button>
+            <button class="opt" data-j="3">Only patients with <i>Vibrio cholerae</i> grown on stool culture</button></div></div></div></div>
+        <div class="obq"><p><b>2.</b> Apply your definition to the line list: tick the patients who are cases. The epidemic curve builds from your ticks.<span class="small muted scrollhint"> Swipe the table sideways to see symptoms, water source and outcome.</span></p>
+          <div style="overflow-x:auto"><table class="data line" id="obLine"></table></div>
+          <div class="epi" id="obEpi"></div></div>
+        <div class="obq"><p><b>3.</b> What does the shape of the epidemic curve suggest?</p>
+          <div class="quiz"><div class="q" data-ob="curve"><div class="opts">
+            <button class="opt" data-j="0">A point-source outbreak: one sharp peak within about one incubation period</button>
+            <button class="opt" data-j="1">A propagated (person-to-person) outbreak with successive, growing waves</button>
+            <button class="opt" data-j="2">An endemic level with no outbreak</button>
+            <button class="opt" data-j="3">Seasonal variation only</button></div></div></div></div>
+        <div class="obq"><p><b>4.</b> Attack rate in village A (%, 1 decimal place)</p><div class="dans"><input type="text" inputmode="decimal" id="obAR" aria-label="Attack rate in village A"><span class="u">%</span></div></div>
+        <div class="obq"><p><b>5.</b> Risk ratio for drinking kiosk K water (attack rate in kiosk users ÷ attack rate in non-users, 1 decimal place)</p><div class="dans"><input type="text" inputmode="decimal" id="obRR" aria-label="Risk ratio"><span class="u">×</span></div></div>
+        <div class="obq"><p><b>6.</b> Case fatality ratio among the cases (%, 1 decimal place)</p><div class="dans"><input type="text" inputmode="decimal" id="obCFR" aria-label="Case fatality ratio"><span class="u">%</span></div></div>
+        <div class="obq"><p><b>7.</b> What is the most urgent next public-health action?</p>
+          <div class="quiz"><div class="q" data-ob="act"><div class="opts">
+            <button class="opt" data-j="0">Wait for culture results before doing anything</button>
+            <button class="opt" data-j="1">Close or chlorinate kiosk K, set up ORS points, notify the sub-county surveillance coordinator and start active case search</button>
+            <button class="opt" data-j="2">Give every resident antibiotics</button>
+            <button class="opt" data-j="3">Close all schools in the county</button></div></div></div></div>
+        <div class="btn-row" style="margin-top:12px"><button class="btn primary" id="obMark"><i data-lucide="clipboard-check"></i> Submit for marking</button><button class="btn" id="obReset"><i data-lucide="rotate-ccw"></i> Reset</button></div>
+        <div id="obResult" aria-live="polite"></div>
+      </div>
+    </div>
+
+
+    <div class="tabpanel prose">
       <p>Typical textbook values. Real values vary with setting, population and strain.</p>
       <table class="data">
         <tr><th>Disease</th><th>R₀</th><th>Latent / incubation</th><th>Infectious period</th><th>HIT (1 − 1/R₀)</th><th>Transmission</th></tr>
         <tr><td>Measles</td><td class="num">12–18</td><td class="num">~10–12 d</td><td class="num">~8 d</td><td class="num">92–94%</td><td>Airborne</td></tr>
         <tr><td>COVID-19 (ancestral)</td><td class="num">2.5–3</td><td class="num">~5 d</td><td class="num">~7 d</td><td class="num">60–67%</td><td>Respiratory droplets, aerosols</td></tr>
         <tr><td>Seasonal influenza</td><td class="num">1.3–2</td><td class="num">1–2 d</td><td class="num">~4–5 d</td><td class="num">23–50%</td><td>Respiratory droplets</td></tr>
+        <tr><td>Cholera</td><td class="num">~1.1–2.7 (setting-dependent)</td><td class="num">2 h–5 d</td><td class="num">~5 d symptomatic shedding</td><td class="num">~50%</td><td>Faecal–oral: water, food</td></tr>
+        <tr><td>Malaria (P. falciparum)</td><td class="num">&lt;5 in highlands to &gt;100 in holoendemic areas</td><td class="num">~10–14 d in humans + ~10 d in mosquito</td><td class="num">weeks if untreated</td><td class="num">n/a (partial immunity)</td><td>Anopheles mosquito bite</td></tr>
         <tr><td>Ebola virus disease</td><td class="num">1.5–2</td><td class="num">2–21 d (mean ~9)</td><td class="num">~7–10 d</td><td class="num">33–50%</td><td>Contact with body fluids</td></tr>
       </table>
-      <p class="small muted">The lab's case fatality ratios (COVID-19 0.8%, measles 0.3%, influenza 0.1%, Ebola 50%) are illustrative; they depend strongly on age, health care and nutrition.</p>
+      <p class="small muted">The lab's case fatality ratios (COVID-19 0.8%, measles 0.3%, influenza 0.1%, Ebola 50%, cholera 10% without rehydration falling to 0.8% with ORS points, malaria 0.3%) are illustrative; they depend strongly on age, health care and nutrition.</p>
     </div>
   </section>
 </main>
@@ -228,18 +364,23 @@
     measles: { R0: 15, lat: 10, inf: 8, cfr: 0.3, hosp: 5, eff: 97 },
     flu: { R0: 1.5, lat: 1.5, inf: 4, cfr: 0.1, hosp: 1, eff: 60 },
     ebola: { R0: 1.8, lat: 9, inf: 10, cfr: 50, hosp: 50, eff: 97 },
+    cholera: { R0: 2, lat: 1.5, inf: 5, cfr: 10, hosp: 20, eff: 65 },
+    malaria: { R0: 5, lat: 14, inf: 14, cfr: 0.3, hosp: 3, eff: 0 },
   };
-  const P = { R0: 2.8, lat: 4, inf: 7, cfr: 0.8, hosp: 4, cov: 0, eff: 90, mask: 0, iso: 0, delay: 3, school: false, trace: false, cap: 150, beds: 5, townN: 70 };
+  const P = { R0: 2.8, lat: 4, inf: 7, cfr: 0.8, hosp: 4, cov: 0, eff: 90, mask: 0, iso: 0, delay: 3, school: false, trace: false, cap: 150, beds: 5, townN: 70, ors: false, itn: 0, irs: 0, scn: 'covid' };
   let mode = 'town';
 
-  const Rc = p => p.R0 * (1 - p.mask / 100) * (p.school ? 0.8 : 1) * (1 - p.iso / 100 * (1 - Math.min(1, p.delay / p.inf))) * (p.trace ? 1 - 0.4 * p.iso / 100 : 1);
+  // Ross–Macdonald vector factor (malaria): R ∝ a² e^(−g n)/g. Nets cut the biting rate a; nets and IRS raise mosquito mortality g; n = 10-day extrinsic incubation.
+  const vecMult = p => { const a = 1 - 0.4 * p.itn / 100, g0 = 0.1, n = 10, g = g0 + 0.04 * p.itn / 100 + 0.12 * p.irs / 100; return a * a * (Math.exp(-g * n) / g) / (Math.exp(-g0 * n) / g0); };
+  const effCfr = p => p.cfr * (p.scn === 'cholera' && p.ors ? 0.08 : 1);
+  const Rc = p => (p.scn === 'malaria' ? vecMult(p) : 1) * p.R0 * (1 - p.mask / 100) * (p.school ? 0.8 : 1) * (1 - p.iso / 100 * (1 - Math.min(1, p.delay / p.inf))) * (p.trace ? 1 - 0.4 * p.iso / 100 : 1);
   const disruption = p => Math.min(100, p.mask * 0.8 + (p.school ? 20 : 0) + p.iso * 0.1 + (p.iso > 0 ? Math.max(0, (p.inf - p.delay) / p.inf) * 10 : 0) + (p.trace ? 10 : 0));
 
   /* ================= ODE model ================= */
   const N = 1e6, DAYS = 365;
   let ODE = null;
   function solveODE(p) {
-    const g = 1 / p.inf, s = 1 / p.lat, b = Rc(p) * g, f = p.cfr / 100, h = p.hosp / 100, cap = p.cap / 1e5 * N;
+    const g = 1 / p.inf, s = 1 / p.lat, b = Rc(p) * g, f = effCfr(p) / 100, h = p.hosp / 100, cap = p.cap / 1e5 * N;
     const V = p.cov / 100 * p.eff / 100 * N;
     let E = 10, I = 10, S = N - V - E - I, R = 0, D = 0;
     const dt = 0.05, out = { t: [], S: [], E: [], I: [], R: [], D: [], V: [], H: [], Reff: [] };
@@ -361,7 +502,7 @@
         if (!a.iso && !a.bed && now >= a.isoAt) { a.iso = true; if (p.trace) A.forEach(b => { if (b.home === a.home && b !== a && b.st !== 'D') b.quar = Math.max(b.quar, T.day + 10); }); }
         if (!a.bed && a.needBed && now >= a.bedAt && !a.noBed) { if (T.bedsUsed < p.beds) { a.bed = true; a.iso = false; T.bedsUsed++; } else a.noBed = true; }
         if (now >= a.tEnd) {
-          const pd = Math.min(1, p.cfr / 100 * (a.noBed ? 2 : 1));
+          const pd = Math.min(1, effCfr(p) / 100 * (a.noBed ? 2 : 1));
           if (a.bed) { T.bedsUsed--; a.bed = false; }
           a.iso = false; a.st = rng() < pd ? 'D' : 'R'; if (a.st === 'D') T.deaths++;
           T.secDone.push({ d: now, n: a.sec });
@@ -377,7 +518,7 @@
     // transmission (only infectious, not isolated/in bed)
     const grid = new Map();
     A.forEach((a, i) => { if (a.st === 'S' || (a.st === 'V' && false)) { const key = (a.x / RAD | 0) + ',' + (a.y / RAD | 0); (grid.get(key) || grid.set(key, []).get(key)).push(i); } });
-    const pc = p.R0 / (p.inf * 24 * T.cbar) * (1 - p.mask / 100);
+    const pc = p.R0 / (p.inf * 24 * T.cbar) * (1 - p.mask / 100) * (p.scn === 'malaria' ? vecMult(p) : 1);
     const prob = 1 - Math.exp(-pc * dtH);
     let contacts = 0;
     for (const a of A) {
@@ -561,22 +702,41 @@
     }
     $('#stats').innerHTML = h;
     const ok = immune >= hit;
-    $('#hit').innerHTML = `Herd immunity threshold 1 − 1/R₀ = <b>${(hit * 100).toFixed(1)}%</b>. Coverage needed at ${P.eff}% efficacy: <b>${need > 1 ? '&gt;100% (not achievable by vaccine alone)' : (need * 100).toFixed(1) + '%'}</b>. Protected now: <b style="color:${ok ? 'var(--ok)' : 'var(--bad)'}">${(immune * 100).toFixed(1)}%</b> ${ok ? '(above threshold)' : '(below threshold)'}.`;
+    if (P.scn === 'malaria') { $('#hit').innerHTML = `Vector-adjusted model: nets and spraying multiply R₀ by <b>${vecMult(P).toFixed(2)}</b>. R<sub>c</sub> = <b style="color:${rc < 1 ? 'var(--ok)' : 'var(--bad)'}">${rc.toFixed(2)}</b>. Malaria leaves only partial immunity, so the herd-immunity idea is replaced by keeping vector capacity low year after year.`; return; }
+    $('#hit').innerHTML = (P.scn === 'cholera' ? `Case fatality ratio in use: <b style="color:${effCfr(P) <= 1 ? 'var(--ok)' : 'var(--bad)'}">${effCfr(P).toFixed(1)}%</b> (WHO target &lt;1%). ` : '') + `Herd immunity threshold 1 − 1/R₀ = <b>${(hit * 100).toFixed(1)}%</b>. Coverage needed at ${P.eff}% efficacy: <b>${need > 1 ? '&gt;100% (not achievable by vaccine alone)' : (need * 100).toFixed(1) + '%'}</b>. Protected now: <b style="color:${ok ? 'var(--ok)' : 'var(--bad)'}">${(immune * 100).toFixed(1)}%</b> ${ok ? '(above threshold)' : '(below threshold)'}.`;
   }
 
   /* ================= Controls ================= */
-  const fm = { R0: v => SL.fmt(v, 1), lat: v => v + ' d', inf: v => v + ' d', cfr: v => v + '%', hosp: v => v + '%', cov: v => v + '%', eff: v => v + '%', mask: v => v + '%', iso: v => v + '%', delay: v => v + ' d', cap: v => v + ' /100k', beds: v => v, townN: v => v };
+  const fm = { R0: v => SL.fmt(v, 1), lat: v => v + ' d', inf: v => v + ' d', cfr: v => v + '%', hosp: v => v + '%', cov: v => v + '%', eff: v => v + '%', mask: v => v + '%', iso: v => v + '%', delay: v => v + ' d', itn: v => v + '%', irs: v => v + '%', cap: v => v + ' /100k', beds: v => v, townN: v => v };
   let init = true;
   Object.keys(fm).forEach(k => SL.bind('#' + k, v => { P[k] = v; if (['R0', 'lat', 'inf', 'cfr', 'hosp'].includes(k) && !init && !loadingPreset) $('#preset').value = 'custom'; changed(k); }, fm[k]));
-  ['school', 'trace'].forEach(k => $('#' + k).addEventListener('change', e => { P[k] = e.target.checked; changed(k); }));
+  ['school', 'trace', 'ors'].forEach(k => $('#' + k).addEventListener('change', e => { P[k] = e.target.checked; changed(k); }));
   let loadingPreset = false;
   function setR(id, v) { const el = $('#' + id); el.value = v; el.dispatchEvent(new Event('input')); }
   function loadPreset(key, extra) {
     loadingPreset = true; const pr = Object.assign({}, PRESETS[key], extra || {});
-    Object.entries(pr).forEach(([k, v]) => { if (k === 'school' || k === 'trace') { $('#' + k).checked = v; P[k] = v; } else setR(k, v); });
+    P.scn = key; applyScenario();
+    Object.entries(pr).forEach(([k, v]) => { if (k === 'school' || k === 'trace' || k === 'ors') { $('#' + k).checked = v; P[k] = v; } else setR(k, v); });
     $('#preset').value = key; loadingPreset = false; changed('preset');
   }
-  $('#preset').addEventListener('change', e => { if (e.target.value !== 'custom') loadPreset(e.target.value); });
+  $('#preset').addEventListener('change', e => { if (e.target.value !== 'custom') loadPreset(e.target.value, e.target.value === 'malaria' ? { mask: 0, school: false, trace: false, cov: 0 } : e.target.value === 'cholera' ? { cov: 0 } : null); });
+  // relabel and show the measures that make sense for each disease
+  const LBL0 = {}; ['mask', 'iso', 'delay', 'cov', 'eff'].forEach(k => LBL0[k] = $(`label[for=${k}]`).textContent); LBL0.trace = $('#trace').previousElementSibling.textContent;
+  const LBL = {
+    cholera: { mask: 'WASH: safe water, latrines, handwashing (transmission cut)', iso: 'Cases treated at ORS points / treatment centres', delay: 'Onset → treatment delay', cov: 'Oral cholera vaccine coverage', eff: 'Oral cholera vaccine efficacy', trace: 'Household follow-up (chlorine, hygiene kits)' },
+    malaria: { iso: 'Fever cases tested (mRDT) and treated with AL', delay: 'Fever → treatment delay' },
+    measles: { cov: 'Measles–rubella (MR) vaccine coverage', eff: 'MR efficacy (≈85% one dose at 9 mo, 97% two doses)' },
+  };
+  function applyScenario() {
+    const L = Object.assign({}, LBL0, LBL[P.scn] || {});
+    ['mask', 'iso', 'delay', 'cov', 'eff'].forEach(k => $(`label[for=${k}]`).textContent = L[k]); $('#trace').previousElementSibling.textContent = L.trace;
+    const mal = P.scn === 'malaria';
+    ['mask', 'cov', 'eff'].forEach(k => $('#' + k).closest('.ctl').classList.toggle('hide', mal));
+    $('#school').closest('.toggle').classList.toggle('hide', mal); $('#trace').closest('.toggle').classList.toggle('hide', mal);
+    $('#tgOrs').classList.toggle('hide', P.scn !== 'cholera'); $('#vecBox').classList.toggle('hide', !mal);
+    vecNote();
+  }
+  function vecNote() { if (P.scn !== 'malaria') return; $('#vecNote').innerHTML = `Vector factor <b>×${vecMult(P).toFixed(2)}</b> on R₀. Nets cut the biting rate, and it counts twice (a mosquito must bite to get infected and again to transmit); nets and IRS also kill mosquitoes, and few survive the ~10 days the parasite needs inside them. The malaria vaccine protects young children from disease rather than stopping transmission, so it is not modelled here.`; }
   let rq = 0;
   function changed(k) {
     if (init) return;
@@ -585,7 +745,7 @@
       ODE = solveODE(P);
       // town: structural changes need a rebuild
       if (['cov', 'eff', 'townN', 'preset', 'R0', 'inf', 'lat'].includes(k) && mode === 'town') resetTown();
-      updateStats(); chalAuto();
+      updateStats(); vecNote(); chalAuto();
     });
   }
   function resetTown() { buildTown(P); }
@@ -679,7 +839,7 @@
   $('#chalList').innerHTML = CH.map(c => `<div class="chal" id="ch-${c.id}"><h4><span class="led"></span>${c.title}</h4><p>${c.text}</p><div class="btn-row"><button class="btn sm" data-setup="${c.id}"><i data-lucide="settings-2"></i> Set up</button>${c.id !== 'town' ? `<button class="btn sm primary" data-check="${c.id}"><i data-lucide="check"></i> Check</button>` : ''}</div><p class="small" data-msg style="margin:8px 0 0"></p></div>`).join('');
   function runCheck(c, silent) { const [ok, msg] = c.check(); const box = $('#ch-' + c.id); if (!silent || ok) box.querySelector('[data-msg]').innerHTML = msg; if (ok) { box.querySelector('.led').className = 'led on'; if (!done[c.id]) { done[c.id] = 1; SL.toast(`<b>Challenge complete:</b> ${c.title}`, 'ok'); } } else if (!silent) { box.querySelector('.led').className = 'led warn'; SL.toast(msg, 'warn'); } }
   let userTouched = false; $('aside').addEventListener('input', () => userTouched = true, true);
-  function chalAuto() { if (userTouched) CH.filter(c => c.auto).forEach(c => { if (!done[c.id]) runCheck(c, true); }); }
+  function chalAuto() { if (userTouched) CH.concat(typeof SCN !== 'undefined' ? SCN : []).filter(c => c.auto).forEach(c => { if (!done[c.id]) runCheck(c, true); }); }
   function chalTown(ar) {
     const box = $('#ch-town'); if (P.cov > 0 || Math.abs(P.R0 - 2.8) > 0.01) return;
     if (ar < 0.2 && Rc(P) > 2.79) { box.querySelector('[data-msg]').textContent = `Only ${Math.round(ar * 100)}% infected, but with no measures in place this was chance extinction. Add interventions and run it again.`; return; }
@@ -692,6 +852,113 @@
     if (k) runCheck(CH.find(c => c.id === k.dataset.check));
   });
 
+  /* ================= Kenya outbreak scenarios ================= */
+  const SCN = [
+    { id: 'kchol', tag: 'Cholera', title: 'Cholera after the long rains',
+      text: 'Teaching scenario: floods in an informal settlement contaminate shallow wells and water pipes. Cholera spreads through water and food contaminated with stool (R₀ ≈ 2 here; incubation a few hours to 5 days). Most deaths come from dehydration within hours of onset, so the case fatality ratio depends on how quickly people reach oral rehydration salts (ORS) or IV Ringer\'s lactate.',
+      task: 'Without vaccine: bring R<sub>c</sub> below 1 with WASH and early treatment at ORS points, and switch on ORS points and treatment centres so the case fatality ratio is at or below the WHO target of 1%.',
+      setup: () => { $('#mode button[data-m=ode]').click(); loadPreset('cholera', { cov: 0, mask: 0, iso: 0, delay: 2, school: false, trace: false, ors: false }); },
+      check: () => { if (P.scn !== 'cholera') return [false, 'Load the cholera scenario first.']; if (P.cov > 0) return [false, 'No oral cholera vaccine in this task: set coverage to 0.']; const r = Rc(P), cf = effCfr(P); if (!P.ors) return [false, `R<sub>c</sub> = ${r.toFixed(2)}. Case fatality ${cf.toFixed(1)}%: switch on ORS points and treatment centres.`]; return [r < 1 && cf <= 1, r < 1 ? `R<sub>c</sub> = ${r.toFixed(2)} and case fatality ${cf.toFixed(1)}%: transmission is falling and few cases die.` : `Case fatality is down to ${cf.toFixed(1)}%, but R<sub>c</sub> = ${r.toFixed(2)}: add more WASH (safe water, latrines, handwashing) or treat cases sooner.`]; } },
+    { id: 'kmeas', tag: 'Measles', title: 'Measles in a county with low second-dose coverage',
+      text: 'Kenya gives measles–rubella vaccine at 9 months (MR1) and 18 months (MR2). One dose at 9 months protects about 85% of children; two doses about 97%. National MCV1 coverage was about 80% in 2025 (WHO/UNICEF provisional estimate), well below the 95% target, so outbreaks keep occurring. Use the calculator to see what MR1 and MR2 coverage achieve, then apply them to the model.',
+      task: 'Find MR1 and MR2 coverage that keep R<sub>eff</sub> below 1 from the start (protected share at or above the herd immunity threshold, 93% for R₀ = 15).', mr: true,
+      setup: () => { $('#mode button[data-m=ode]').click(); loadPreset('measles', { cov: 80, eff: 85, mask: 0, iso: 0, school: false, trace: false }); },
+      check: () => { if (P.scn !== 'measles' || P.R0 < 12) return [false, 'Load the measles scenario first.']; const prot = P.cov * P.eff / 1e4, hit = 1 - 1 / P.R0; return [prot >= hit, prot >= hit ? `${(prot * 100).toFixed(1)}% protected, above the ${(hit * 100).toFixed(1)}% threshold: an imported case cannot start a large outbreak.` : `${(prot * 100).toFixed(1)}% protected, below the ${(hit * 100).toFixed(1)}% threshold.`]; } },
+    { id: 'kmal', tag: 'Malaria', title: 'Highland malaria epidemic in western Kenya',
+      text: 'Teaching scenario: an unusually warm, wet season brings an epidemic to a highland area where people have little immunity. Malaria spreads person → mosquito → person, so here R₀ is <b>vector-adjusted</b> (Ross–Macdonald): nets cut biting, and nets and indoor residual spraying (IRS) kill mosquitoes before the parasite finishes its ~10-day development inside them. Prompt testing with mRDT and treatment with artemether–lumefantrine also shortens how long people infect mosquitoes.',
+      task: 'Bring R<sub>c</sub> below 1 with net use no higher than 80% (a realistic distribution target), adding IRS and/or prompt test-and-treat.',
+      setup: () => { $('#mode button[data-m=ode]').click(); loadPreset('malaria', { cov: 0, mask: 0, iso: 0, delay: 4, school: false, trace: false, itn: 40, irs: 0 }); },
+      check: () => { if (P.scn !== 'malaria') return [false, 'Load the malaria scenario first.']; if (P.itn > 80) return [false, 'Keep net use at or below 80%.']; const r = Rc(P); return [r < 1, r < 1 ? `R<sub>c</sub> = ${r.toFixed(2)} (vector factor ×${vecMult(P).toFixed(2)}): the epidemic is controlled.` : `R<sub>c</sub> = ${r.toFixed(2)}. Vector factor ×${vecMult(P).toFixed(2)}.`]; } },
+    { id: 'kresp', tag: 'Respiratory', title: 'A COVID-like respiratory outbreak in Nairobi',
+      text: 'Teaching scenario: a new respiratory virus (R₀ 2.8) spreads in a crowded estate. Lockdowns and school closures are very costly for families who earn daily. CHPs can find cases early, link them to testing and isolation, and follow up their household contacts.',
+      task: 'Get R<sub>c</sub> below 1 with schools open, masks and distancing at 20% or less and no vaccine: rely on fast isolation and contact tracing.',
+      setup: () => { $('#mode button[data-m=town]').click(); loadPreset('covid', { cov: 0, mask: 0, iso: 0, delay: 3, school: false, trace: false }); },
+      check: () => { if (P.scn !== 'covid') return [false, 'Load the respiratory scenario first.']; if (P.school || P.mask > 20 || P.cov > 0) return [false, 'Schools open, masks at most 20%, no vaccine.']; const r = Rc(P); return [r < 1, r < 1 ? `R<sub>c</sub> = ${r.toFixed(2)}: case finding, isolation within ${P.delay} day(s) and tracing stop the spread.` : `R<sub>c</sub> = ${r.toFixed(2)}. Isolate more cases, faster, and switch on contact tracing.`]; } },
+  ];
+  SCN.forEach(s => s.auto = true);
+  $('#scnList').innerHTML = SCN.map(c => `<div class="chal scn" id="ch-${c.id}"><h4><span class="led"></span><span class="stag">${c.tag}</span>${c.title}</h4><p>${c.text}</p><p><b>Your task:</b> ${c.task}</p>${c.mr ? `<div class="mrcalc"><div class="ctl"><label for="mr1">MR1 coverage (9 months)</label><output></output><input type="range" id="mr1" min="50" max="100" step="1" value="80"></div><div class="ctl"><label for="mr2">MR2 coverage (18 months)</label><output></output><input type="range" id="mr2" min="0" max="100" step="1" value="60"></div><p class="small" id="mrOut"></p></div>` : ''}<div class="btn-row"><button class="btn sm" data-setup="${c.id}"><i data-lucide="settings-2"></i> Load scenario</button>${c.mr ? '<button class="btn sm" id="mrApply"><i data-lucide="arrow-up-right"></i> Apply to model</button>' : ''}<button class="btn sm primary" data-check="${c.id}"><i data-lucide="check"></i> Check</button></div><p class="small" data-msg style="margin:8px 0 0"></p></div>`).join('');
+  const MR = { m1: 80, m2: 60 };
+  const mrProt = () => { const m2 = Math.min(MR.m2, MR.m1); return (m2 * 0.97 + (MR.m1 - m2) * 0.85) / 100; };
+  function mrShow() { const p = mrProt(), hit = 1 - 1 / 15; $('#mrOut').innerHTML = `Protected = MR2 × 97% + (MR1 − MR2) × 85% = <b>${(p * 100).toFixed(1)}%</b> of children; threshold for R₀ = 15 is <b>${(hit * 100).toFixed(1)}%</b>. ${p >= hit ? '<span style="color:var(--ok)">Above the threshold.</span>' : '<span style="color:var(--bad)">Below the threshold: outbreaks remain possible.</span>'}${MR.m2 > MR.m1 ? ' (MR2 cannot exceed MR1; capped.)' : ''}`; }
+  SL.bind('#mr1', v => { MR.m1 = v; mrShow(); }, v => v + '%'); SL.bind('#mr2', v => { MR.m2 = v; mrShow(); }, v => v + '%'); mrShow();
+  $('#mrApply').addEventListener('click', () => { if (P.scn !== 'measles') loadPreset('measles', { mask: 0, iso: 0, school: false, trace: false }); const p = mrProt(); userTouched = true; setR('cov', MR.m1); setR('eff', Math.min(100, Math.round(p / (MR.m1 / 100) * 100))); SL.toast(`Model set to ${MR.m1}% coverage with ${$('#eff').value}% average efficacy (${(p * 100).toFixed(1)}% protected).`, 'ok'); });
+  $('#scnList').addEventListener('click', e => {
+    const s = e.target.closest('[data-setup]'), k = e.target.closest('[data-check]');
+    if (s) { SCN.find(c => c.id === s.dataset.setup).setup(); userTouched = true; window.scrollTo({ top: $('.modebar').getBoundingClientRect().top + scrollY - 80, behavior: 'smooth' }); }
+    if (k) runCheck(SCN.find(c => c.id === k.dataset.check));
+  });
+
+  /* ---- herd immunity tool ---- */
+  const HI = {
+    measles: { r: [12, 18], r0: 15, eff: 97, cov: 80, covNote: 'MCV1 ≈ 80% (2025)', lat: 10, inf: 8 },
+    rubella: { r: [6, 7], r0: 6.5, eff: 95, cov: 80, covNote: 'MCV1 ≈ 80% (2025)', lat: 14, inf: 10 },
+    pertussis: { r: [12, 17], r0: 14, eff: 85, cov: 88, covNote: 'DTP3 ≈ 88% (2025)', lat: 8, inf: 14 },
+    diphtheria: { r: [6, 7], r0: 6.5, eff: 95, cov: 88, covNote: 'DTP3 ≈ 88% (2025)', lat: 4, inf: 14 },
+    polio: { r: [5, 7], r0: 6, eff: 90, cov: 88, covNote: 'third-dose coverage similar to DTP3 ≈ 88%', lat: 7, inf: 14 },
+  };
+  let hiCov = 80;
+  function hiShow() {
+    const d = HI[$('#hiDis').value], hit = 1 - 1 / d.r0, need = hit / (d.eff / 100), prot = hiCov / 100 * d.eff / 100, ok = prot >= hit;
+    $('#hiOut').innerHTML = `R₀ ${d.r[0]}–${d.r[1]} (using ${d.r0}) → herd immunity threshold 1 − 1/R₀ = <b>${(hit * 100).toFixed(0)}%</b>. Vaccine effectiveness about ${d.eff}%, so coverage needed ≈ ${(hit * 100).toFixed(0)}% ÷ ${d.eff}% = <b>${need > 1 ? '&gt;100%' : (need * 100).toFixed(0) + '%'}</b>. Kenya national estimate: ${d.covNote}. At ${hiCov}% coverage, <b style="color:${ok ? 'var(--ok)' : 'var(--bad)'}">${(prot * 100).toFixed(0)}% protected</b>: ${ok ? 'above the threshold.' : `a gap of ${((hit - prot) * 100).toFixed(0)} percentage points, so outbreaks are possible.`}`;
+  }
+  $('#hiDis').addEventListener('change', () => { const d = HI[$('#hiDis').value]; const el = $('#hiCov'); el.value = d.cov; el.dispatchEvent(new Event('input')); });
+  SL.bind('#hiCov', v => { hiCov = v; hiShow(); }, v => v + '%'); hiShow();
+  $('#hiLoad').addEventListener('click', () => { const k = $('#hiDis').value, d = HI[k]; if (k === 'measles') loadPreset('measles', { cov: hiCov, eff: d.eff, mask: 0, iso: 0, school: false, trace: false }); else { loadPreset('measles', { mask: 0, iso: 0, school: false, trace: false }); loadingPreset = true; setR('R0', d.r0); setR('lat', d.lat); setR('inf', d.inf); setR('cov', hiCov); setR('eff', d.eff); loadingPreset = false; $('#preset').value = 'custom'; P.scn = 'custom'; applyScenario(); changed('preset'); } window.scrollTo({ top: $('.modebar').getBoundingClientRect().top + scrollY - 80, behavior: 'smooth' }); });
+
+  /* ---- contact follow-up date ---- */
+  { const d = new Date(); $('#fuDate').value = d.toISOString().slice(0, 10);
+    const fu = () => { const v = $('#fuDate').value, n = +$('#fuDis').value; if (!v) { $('#fuOut').textContent = ''; return; } const t = new Date(v + 'T12:00:00'); t.setDate(t.getDate() + n); $('#fuOut').innerHTML = `Visit or call each contact <b>every day until ${t.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</b> (${n} days after the last contact). If they stay well, discharge them then.`; };
+    $('#fuDate').addEventListener('input', fu); $('#fuDis').addEventListener('change', fu); fu(); }
+
+  /* ---- outbreak investigation OSCE ---- */
+  const LINE = [
+    [34, 'F', 'A', 11, 'Watery diarrhoea, vomiting', 'Kiosk K', 'Recovered', 1], [29, 'M', 'D (20 km, no travel)', 12, 'Watery diarrhoea', 'Own well', 'Recovered', 0],
+    [8, 'M', 'A', 12, 'Watery diarrhoea', 'Kiosk K', 'Recovered', 1], [45, 'M', 'C', 12, 'Watery diarrhoea, vomiting', 'Kiosk K', 'Died', 1],
+    [27, 'F', 'A', 12, 'Watery diarrhoea', 'Kiosk K', 'Recovered', 1], [19, 'F', 'B', 12, 'Watery diarrhoea', 'Borehole', 'Recovered', 1],
+    [52, 'F', 'A', 13, 'Watery diarrhoea, vomiting', 'Kiosk K', 'Recovered', 1], [6, 'F', 'C', 13, 'Watery diarrhoea', 'Kiosk K', 'Recovered', 1],
+    [30, 'M', 'A', 13, 'Bloody diarrhoea, fever', 'River', 'Recovered', 0], [61, 'M', 'A', 13, 'Watery diarrhoea, vomiting', 'Kiosk K', 'Recovered', 1],
+    [13, 'M', 'C', 13, 'Watery diarrhoea', 'Kiosk K', 'Recovered', 1], [24, 'F', 'B', 13, 'Watery diarrhoea', 'Kiosk K', 'Recovered', 1],
+    [40, 'F', 'A', 13, 'Watery diarrhoea', 'Kiosk K', 'Recovered', 1], [3, 'F', 'C', 13, 'Watery diarrhoea, vomiting', 'Borehole', 'Recovered', 1],
+    [37, 'M', 'A', 14, 'Watery diarrhoea', 'Kiosk K', 'Recovered', 1], [55, 'F', 'A', 14, 'Watery diarrhoea', 'Kiosk K', 'Recovered', 1],
+  ];
+  const obAns = { def: 1, curve: 0, act: 1 }, obPick = {};
+  $('#obLine').innerHTML = `<tr><th>Case?</th><th>No.</th><th>Age</th><th>Sex</th><th>Village</th><th>Onset</th><th>Symptoms</th><th>Water source</th><th>Outcome</th></tr>` + LINE.map((r, i) => `<tr><td><input type="checkbox" data-li="${i}" aria-label="Patient ${i + 1} is a case"></td><td class="num">${i + 1}</td><td class="num">${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]} Mar</td><td>${r[4]}</td><td>${r[5]}</td><td>${r[6]}</td></tr>`).join('');
+  function epi() {
+    const days = [10, 11, 12, 13, 14, 15, 16], cnt = days.map(d => LINE.filter((r, i) => r[3] === d && $(`[data-li="${i}"]`).checked).length), mx = Math.max(4, ...cnt), W = 360, H = 150, bw = 40;
+    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Epidemic curve of ticked cases by date of onset">`;
+    for (let k = 0; k <= mx; k += mx > 6 ? 2 : 1) { const y = 120 - k / mx * 100; s += `<line x1="34" x2="${W - 8}" y1="${y}" y2="${y}" stroke="rgba(255,255,255,.07)"/><text x="28" y="${y + 4}" text-anchor="end">${k}</text>`; }
+    days.forEach((d, j) => { const x = 44 + j * (bw + 4); for (let c = 0; c < cnt[j]; c++) { const y = 120 - (c + 1) / mx * 100; s += `<rect x="${x}" y="${y + 1}" width="${bw}" height="${100 / mx - 2}" rx="2" style="fill:color-mix(in srgb,var(--accent) 70%,transparent)"/>`; } s += `<text x="${x + bw / 2}" y="136" text-anchor="middle">${d}</text>`; });
+    s += `<text x="${W / 2}" y="150" text-anchor="middle">date of onset (March) · one box = one case</text><text x="8" y="12">cases</text></svg>`;
+    $('#obEpi').innerHTML = s;
+  }
+  $('#obLine').addEventListener('change', epi); epi();
+  $('#obPanel').addEventListener('click', e => { const o = e.target.closest('.q[data-ob] .opt'); if (!o) return; const q = o.closest('.q'); if (q.classList.contains('marked')) return; q.querySelectorAll('.opt').forEach(x => x.classList.toggle('sel', x === o)); obPick[q.dataset.ob] = +o.dataset.j; });
+  let obT = null, obEnd = 0;
+  $('#obStart').onclick = () => { obEnd = Date.now() + 600000; clearInterval(obT); obT = setInterval(() => { const s = Math.max(0, Math.ceil((obEnd - Date.now()) / 1000)); $('#obTime').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; $('#obTime').classList.toggle('low', s <= 60); if (s <= 0) { clearInterval(obT); SL.toast('Time is up: the station has been marked.', 'warn'); obMark(); } }, 250); };
+  const numIn = id => { const m = String($(id).value).replace(',', '.').match(/-?\d*\.?\d+/); return m ? parseFloat(m[0]) : NaN; };
+  function obMark() {
+    clearInterval(obT);
+    const ticks = LINE.map((r, i) => $(`[data-li="${i}"]`).checked), lineOk = ticks.every((t, i) => t === !!LINE[i][7]);
+    const nCase = LINE.filter(r => r[7]).length, aCase = LINE.filter(r => r[7] && r[2] === 'A').length, kCase = LINE.filter(r => r[7] && r[5] === 'Kiosk K').length, dead = LINE.filter(r => r[7] && r[6] === 'Died').length;
+    const AR = aCase / 400 * 100, RR = (kCase / 300) / ((nCase - kCase) / 700), CFR = dead / nCase * 100;
+    const items = [
+      ['Case definition has person, place and time', obPick.def === obAns.def, 'A working (suspected) case definition is sensitive and states <i>who</i>, <i>where</i> and <i>since when</i>. Culture confirms cases but is too slow and insensitive to define the outbreak.'],
+      ['Line list: correct cases ticked', lineOk, `${nCase} cases. Exclude patient 2 (lives outside the area, no travel: fails "place") and patient 9 (bloody diarrhoea with fever suggests dysentery, e.g. <i>Shigella</i>).`],
+      ['Epi curve interpreted', obPick.curve === obAns.curve, 'All onsets fall within 4 days (11–14 March), with one peak: consistent with a common point source, within the cholera incubation period of hours to 5 days.'],
+      ['Attack rate, village A', Math.abs(numIn('#obAR') - AR) <= 0.05, `${aCase} cases ÷ 400 people × 100 = ${AR.toFixed(1)}%.`],
+      ['Risk ratio for kiosk K', Math.abs(numIn('#obRR') - RR) <= 0.15, `Kiosk users: ${kCase}/300 = ${(kCase / 3).toFixed(1)}%. Non-users: ${nCase - kCase}/700 = ${((nCase - kCase) / 7).toFixed(2)}%. Risk ratio = ${(kCase / 300).toFixed(4)} ÷ ${((nCase - kCase) / 700).toFixed(5)} = ${RR.toFixed(1)}: kiosk users were ${RR.toFixed(0)} times more likely to fall ill.`],
+      ['Case fatality ratio', Math.abs(numIn('#obCFR') - CFR) <= 0.1, `${dead} death ÷ ${nCase} cases × 100 = ${CFR.toFixed(1)}%, far above the 1% target: people are not reaching rehydration in time.`],
+      ['Public-health action', obPick.act === obAns.act, 'Act on the epidemiological evidence now: control the source, treat (ORS points, Ringer\'s lactate for severe dehydration), notify through IDSR and search actively for more cases. Mass antibiotic prophylaxis is not recommended.'],
+    ];
+    const sc = items.filter(x => x[1]).length;
+    $$('#obPanel .q[data-ob]').forEach(q => { q.classList.add('marked', 'done'); const a = obAns[q.dataset.ob]; q.querySelectorAll('.opt').forEach((o, j) => { if (j === a) o.classList.add('right'); else if (o.classList.contains('sel')) o.classList.add('wrong'); }); });
+    $('#obResult').innerHTML = `<div class="osce-head" style="margin-top:14px"><span class="timer">${sc}/7</span><span class="small muted">${sc >= 6 ? '<b style="color:var(--ok)">Competent</b>' : '<b style="color:var(--warn)">Review the feedback and try again</b>'}</span></div><table class="data">${items.map(x => `<tr><td class="${x[1] ? 'mark-ok' : 'mark-no'}">${x[1] ? '✓' : '✗'}</td><td><b>${x[0]}</b><br><span class="small muted">${x[2]}</span></td></tr>`).join('')}</table>`;
+    if (sc === 7) SL.toast('<b>Station complete:</b> outbreak investigation 7/7.', 'ok');
+  }
+  $('#obMark').onclick = obMark;
+  $('#obReset').onclick = () => { clearInterval(obT); $('#obTime').textContent = '10:00'; $('#obTime').classList.remove('low'); $$('#obPanel [data-li]').forEach(c => c.checked = false); ['#obAR', '#obRR', '#obCFR'].forEach(id => $(id).value = ''); Object.keys(obPick).forEach(k => delete obPick[k]); $$('#obPanel .q[data-ob]').forEach(q => { q.classList.remove('marked', 'done'); q.querySelectorAll('.opt').forEach(o => o.classList.remove('sel', 'right', 'wrong')); }); $('#obResult').innerHTML = ''; epi(); };
+  SL.refreshIcons($('#scnList'));
+
   SL.quiz('#quiz', [
     { q: 'In the SIR model with β = 0.5 per day and an infectious period of 5 days, what is R₀?', options: ['0.1', '2.5', '5.5', '10'], answer: 1, why: 'γ = 1/5 = 0.2 per day, so R₀ = β/γ = 0.5/0.2 = 2.5.' },
     { q: 'What is the herd immunity threshold for a disease with R₀ = 4?', options: ['25%', '50%', '75%', '400%'], answer: 2, why: 'HIT = 1 − 1/R₀ = 1 − 0.25 = 0.75.' },
@@ -701,6 +968,18 @@
     { q: 'Why does an epidemic with R₀ = 2 infect about 80% of people, more than the 50% herd immunity threshold?', options: ['Because of reinfection', 'Overshoot: many people are still infectious when R_eff falls below 1', 'Because vaccines fail', 'It does not; it stops at 50%'], answer: 1, why: 'After the peak, the remaining infectious people still cause new infections while the epidemic declines. The final size relation z = 1 − e^(−2z) gives z ≈ 0.80.' },
     { q: 'Isolating 60% of cases reduces transmission most when…', options: ['testing is slow', 'testing and isolation happen early in the infectious period', 'only children are isolated', 'R₀ is very high'], answer: 1, why: 'Isolated cases still transmit until they are isolated; the reduction factor is 1 − q(1 − d/D).' },
     { q: 'Which can an agent-based model show that a deterministic ODE model cannot?', options: ['Exponential growth', 'Chance extinction of an outbreak with R₀ > 1', 'Herd immunity', 'A peak in infections'], answer: 1, why: 'Random events in small numbers can end an outbreak early. A deterministic ODE always takes off when R₀ > 1.' },
+    { q: 'In a village of 1 500 people, 45 develop cholera during an outbreak. What is the attack rate?', options: ['0.3%', '3%', '4.5%', '33%'], answer: 1, why: 'Attack rate = 45 ÷ 1500 × 100 = 3%.' },
+    { q: 'Kenya reported 8 926 cholera cases and 145 deaths in the 2022–23 outbreak. What was the case fatality ratio?', options: ['0.16%', '1.6%', '6.2%', '16%'], answer: 1, why: '145 ÷ 8926 × 100 = 1.6%, above the WHO target of less than 1%.' },
+    { q: 'At what ages does the Kenyan routine schedule give measles–rubella vaccine?', options: ['6 weeks and 14 weeks', '9 months and 18 months', '12 months and 5 years', 'At birth only'], answer: 1, why: 'MR1 at 9 months and MR2 at 18 months. The second dose protects most of the ~15% who do not respond to the first.' },
+    { q: 'With R₀ = 15 for measles and two-dose efficacy of 97%, what coverage is needed for herd immunity?', options: ['About 67%', 'About 85%', 'About 96%', 'It cannot be reached'], answer: 2, why: 'Threshold = 1 − 1/15 = 93.3%; coverage = 93.3 ÷ 0.97 = 96%.' },
+    { q: 'Which KEPI vaccine gives essentially no herd protection, because it does little to stop adults transmitting the infection?', options: ['Measles–rubella', 'BCG', 'Pentavalent (pertussis component)', 'Oral polio vaccine'], answer: 1, why: 'BCG protects infants against severe forms of TB (miliary TB, TB meningitis) but has little effect on adult pulmonary TB, which drives transmission.' },
+    { q: 'An epidemic curve shows all cases within 3 days and one sharp peak. This most suggests…', options: ['a propagated person-to-person outbreak', 'a point-source outbreak, e.g. one contaminated water source or meal', 'an endemic disease', 'a vector-borne outbreak spreading over months'], answer: 1, why: 'A point source exposes many people at once, so onsets cluster within one incubation period. Propagated outbreaks show successive waves about one serial interval apart.' },
+    { q: 'Which single measure most reduces deaths in a cholera outbreak?', options: ['Antibiotics for all residents', 'Rapid rehydration with ORS and IV Ringer\'s lactate for severe cases', 'Closing markets', 'Vaccinating everyone after the outbreak ends'], answer: 1, why: 'Cholera kills by dehydration. Rehydration reduces the CFR from tens of percent to below 1%. WASH reduces transmission; antibiotics are for severe cases only.' },
+    { q: 'For how long should a community health promoter follow up the contacts of a measles case?', options: ['5 days', '7 days', '21 days', '3 months'], answer: 2, why: 'Contacts are followed daily for the maximum incubation period after the last exposure: 21 days for measles (5 days for cholera).' },
+    { q: 'In the Ross–Macdonald model, which change reduces malaria transmission the most?', options: ['Larger mosquito breeding sites', 'Killing adult female mosquitoes so fewer survive the parasite\'s ~10-day development', 'Fewer people sleeping indoors', 'Longer human infectious period'], answer: 1, why: 'R₀ depends on e^(−gn)/g: a small rise in mosquito daily mortality g cuts the share surviving the extrinsic incubation period n steeply. ITNs and IRS both raise g.' },
+    { q: 'At which ages is the malaria vaccine given in the Kenyan counties that use it?', options: ['Birth, 6 and 10 weeks', '6, 7, 9 and 24 months', '9 and 18 months', '10 years'], answer: 1, why: 'Four doses at 6, 7, 9 and 24 months, in selected malaria-endemic counties (first introduced in the Lake region).' },
+    { q: 'Kiosk water users: 12 cases among 300; non-users: 2 cases among 700. The risk ratio is about…', options: ['0.07', '6', '14', '24'], answer: 2, why: '12/300 = 4%; 2/700 = 0.29%; 4 ÷ 0.286 = 14. Kiosk users were 14 times more likely to fall ill.' },
+    { q: 'Which vaccines does the pentavalent (Penta) vaccine in KEPI contain?', options: ['Measles, mumps, rubella, varicella, polio', 'Diphtheria, tetanus, pertussis, hepatitis B, Haemophilus influenzae type b', 'BCG, polio, rotavirus, pneumococcus, measles', 'Typhoid, cholera, yellow fever, rabies, hepatitis A'], answer: 1, why: 'DTwP–HepB–Hib, given at 6, 10 and 14 weeks.' },
   ]);
 
   // init
@@ -718,6 +997,7 @@
       { el: '#epiCap', title: 'What is happening', text: 'This caption explains the curve as it unfolds: why cases grow while R<sub>eff</sub> &gt; 1 and fall once enough people are immune.' },
       { el: '#hit', title: 'Herd immunity', text: 'The share that must be immune to stop spread, and the vaccine coverage needed to get there with an imperfect vaccine.' },
       { el: '#mode', title: 'Town or whole country', text: 'Switch to the SEIR model to run the same disease through a population of a million with smooth equations.' },
+      { el: '#tabKenya', title: 'Kenya outbreaks and KEPI', text: 'Cholera, measles, malaria and respiratory scenarios, the KEPI schedule with herd-immunity thresholds, contact tracing by CHPs and an outbreak-investigation OSCE station.', before: () => document.getElementById('tabKenya').click() },
       { el: '#tabChal', title: 'Take the challenges', text: 'Contain outbreaks under constraints. Each challenge checks itself.', before: () => document.getElementById('tabChal').click() },
     ]));
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
