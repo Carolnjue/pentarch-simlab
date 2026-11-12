@@ -43,6 +43,20 @@
   .seg.full{display:flex}
   .seg.full button{flex:1;text-align:center}
   .drawhint{position:absolute;inset:0;display:none;align-items:center;justify-content:center;pointer-events:none;color:var(--muted);font:500 1rem var(--font)}
+  /* first four harmonics by default; the rest on request */
+  .hrows:not(.all) .hrow:nth-child(n+5){display:none}
+  .hrows:not(.all){max-height:none}
+  .moreh{width:100%;justify-content:center;margin-top:8px}
+  @media (pointer:coarse){.hrow input[type=range]{height:30px}.hrow{padding:8px 0}}
+  /* wow mode promotion */
+  .modebar .seg button.wow:not(.on){color:#fde68a;background:linear-gradient(90deg,rgba(250,204,21,.14),rgba(244,114,182,.14));box-shadow:inset 0 0 0 1px rgba(250,204,21,.35)}
+  .btn.wowbtn{background:linear-gradient(90deg,#f59e0b,#ec4899);border-color:transparent;color:#fff;box-shadow:0 0 18px rgba(236,72,153,.35)}
+  .btn.wowbtn:hover{filter:brightness(1.1)}
+  .wowbtn.hide{display:none}
+  .soundbtn{position:absolute;right:12px;top:96px;z-index:3;display:none}
+  .soundbtn.show{display:inline-flex}
+  .soundbtn.on{border-color:#facc15;color:#facc15}
+  @media (max-width:520px){.soundbtn{top:auto;bottom:12px}.wowbtn{width:100%;justify-content:center}}
 </style>
 </head>
 <body data-page="fourier">
@@ -56,9 +70,10 @@
       <button data-m="spec" aria-pressed="false"><i data-lucide="bar-chart-3"></i>Spectrum</button>
       <button data-m="samp" aria-pressed="false"><i data-lucide="scan-line"></i>Sampling</button>
       <button data-m="filt" aria-pressed="false"><i data-lucide="filter"></i>Filters</button>
-      <button data-m="draw" aria-pressed="false"><i data-lucide="pen-tool"></i>Fourier drawing</button>
+      <button data-m="draw" aria-pressed="false" class="wow"><i data-lucide="sparkles"></i>Fourier drawing</button>
     </div>
-    <span class="small dim" id="modeHint"></span>
+    <button class="btn primary sm wowbtn" id="wowBtn"><i data-lucide="sparkles"></i> Watch circles draw Africa</button>
+    <span class="small dim" id="modeHint" style="flex-basis:100%"></span>
   </div>
 
   <section class="lab wide-controls">
@@ -66,6 +81,7 @@
       <canvas id="cv" role="img" aria-label="Signal plot for the current mode: rotating phasors and the summed wave, a spectrum, sampled points, filter response or Fourier epicycles retracing a drawing. The readouts above the plot and the side panels give the values."></canvas>
       <div class="hud" id="hud"></div>
       <div class="legend" id="legend"></div>
+      <button class="btn sm soundbtn" id="soundBtn" aria-pressed="false"></button>
       <div class="drawhint" id="drawHint">Draw a closed shape here with your mouse or finger</div>
     </div>
     <aside>
@@ -82,6 +98,7 @@
         <p class="small muted" style="margin:6px 0">Harmonic n is a sine wave n times faster than the fundamental (n = 1). Aₙ sets its size; φₙ shifts its starting point.</p>
         <div class="hhead"><span>n</span><span>Amplitude Aₙ</span><span>Phase φₙ</span></div>
         <div class="hrows" id="hrows"></div>
+        <button class="btn sm moreh" id="moreH" aria-expanded="false"><i data-lucide="chevron-down"></i> Show harmonics 5–16</button>
       </div>
       <!-- SPECTRUM -->
       <div class="panel" data-for="spec">
@@ -902,6 +919,7 @@
     $('#listen').style.display = (m === 'build' || m === 'filt' || m === 'spec') ? '' : 'none';
     $('#playBuild').style.display = m === 'filt' ? 'none' : ''; $('#playFilt').style.display = m === 'filt' ? '' : 'none'; $('#f0Row').style.display = m === 'filt' ? 'none' : '';
     $('#modeHint').textContent = HINTS[m];
+    $('#wowBtn').classList.toggle('hide', m === 'draw'); if (typeof soundUI === 'function') try { soundUI(); } catch (e) {}
     $('#drawHint').style.display = m === 'draw' && !S.coefs.length ? 'flex' : 'none';
     cv.style.cursor = m === 'draw' ? 'crosshair' : 'default';
     if (m !== 'spec' && mic) { stopMic(); S.src = 'built'; $$('#sSrc button').forEach(b => b.classList.toggle('on', b.dataset.v === 'built')); }
@@ -912,6 +930,26 @@
     S.specImg = null; S.dirty = true;
   }
   $$('#modes button').forEach(b => b.onclick = () => setMode(b.dataset.m));
+  /* ---- promote the drawing mode ---- */
+  $('#wowBtn').onclick = () => { setMode('draw'); loadShape('africa'); $('#stage').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+  /* ---- show more harmonics ---- */
+  $('#moreH').onclick = () => { const all = hrows.classList.toggle('all'); $('#moreH').setAttribute('aria-expanded', all); $('#moreH').innerHTML = all ? '<i data-lucide="chevron-up"></i> Show only harmonics 1–4' : '<i data-lucide="chevron-down"></i> Show harmonics 5–16'; SL.refreshIcons($('#moreH')); };
+  /* ---- sound on first interaction: a short, quiet preview while you shape the wave ---- */
+  let soundOn = true, autoOsc = false, autoT = 0;
+  try { soundOn = localStorage.getItem('sl-fourier-sound') !== 'off'; } catch (e) {}
+  function soundUI() { const b = $('#soundBtn'); b.classList.toggle('show', S.mode === 'build'); b.classList.toggle('on', !!osc); b.setAttribute('aria-pressed', String(soundOn)); b.innerHTML = soundOn ? (osc ? '<i data-lucide="volume-2"></i> Playing' : '<i data-lucide="volume-1"></i> Sound on') : '<i data-lucide="volume-x"></i> Sound off'; SL.refreshIcons(b); }
+  function preview() {
+    if (!soundOn || S.mode !== 'build') return;
+    if (!osc) { if (S.vol > 0.4) { S.vol = 0.4; $('#vol').value = 0.4; $('#vol').dispatchEvent(new Event('input')); } $('#playB').click(); autoOsc = true; }
+    if (autoOsc) { clearTimeout(autoT); autoT = setTimeout(() => { if (autoOsc && osc) { stopAll(); autoOsc = false; soundUI(); } }, 5000); }
+    soundUI();
+  }
+  $('#soundBtn').onclick = () => { soundOn = !soundOn; try { localStorage.setItem('sl-fourier-sound', soundOn ? 'on' : 'off'); } catch (e) {} if (!soundOn && osc) { stopAll(); autoOsc = false; } else if (soundOn) preview(); soundUI(); };
+  $('#playB').addEventListener('click', () => { if (!autoOsc) clearTimeout(autoT); setTimeout(soundUI); }, true);
+  $('#playB').addEventListener('click', e => { if (e.isTrusted) autoOsc = false; });
+  hrows.addEventListener('input', e => { if (e.isTrusted) preview(); });
+  $('#bN').addEventListener('input', e => { if (e.isTrusted) preview(); });
+  $('#bPreset').addEventListener('click', e => { if (e.isTrusted && e.target.closest('button') && e.target.closest('button').dataset.v !== 'clear') preview(); });
 
   function render(dt) {
     const { w, h } = st; ctx.clearRect(0, 0, w, h);

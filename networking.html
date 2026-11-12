@@ -66,6 +66,29 @@
   .stage.html{padding:18px;overflow:auto;height:auto;min-height:0}
   table.data.sm td,table.data.sm th{padding:5px 7px;font-size:.8rem}
   .osi td:first-child{font-family:var(--mono);font-weight:700}
+  /* phone: all four modes visible as a 2 x 2 grid */
+  @media (max-width:600px){
+    #modes>.tablist{display:grid;grid-template-columns:1fr 1fr;gap:6px;border-bottom:0;-webkit-mask-image:none;mask-image:none;padding-right:0;overflow:visible}
+    #modes>.tablist button{justify-content:center;padding:10px 8px;font-size:.86rem;border:1px solid var(--line2);border-radius:10px}
+    #modes>.tablist button.on{background:color-mix(in srgb,var(--accent) 16%,transparent);border-color:var(--accent)}
+  }
+  /* packet header card */
+  .tapcue{color:var(--accent);font-weight:600}
+  .pktcard{position:absolute;z-index:6;width:min(300px,calc(100% - 24px));background:rgba(8,13,26,.96);border:1px solid var(--pc,#60a5fa);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.6);padding:10px 12px;font:500 .76rem var(--mono)}
+  .pktcard .ph{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .pktcard .ph b{font:600 .8rem var(--font);color:#fff;flex:1}
+  .pktcard .ph button{all:unset;cursor:pointer;color:var(--dim);padding:2px 6px;border-radius:6px}
+  .pktcard .ph button:hover{color:#fff;background:var(--panel2)}
+  .pktcard .hop{color:var(--muted);font-size:.72rem;margin-bottom:6px}
+  .pktcard .kv{display:grid;grid-template-columns:auto 1fr;gap:3px 10px}
+  .pktcard .kv span{color:var(--dim);text-transform:uppercase;font-size:.62rem;letter-spacing:.06em;align-self:center}
+  .pktcard .kv b{color:#e6ecf7;font-weight:600;word-break:break-all}
+  .pktcard .kv b.hl{color:#fbbf24}
+  .pktcard .acts{display:flex;gap:6px;margin-top:8px}
+  /* fault-finding */
+  .fault .mission{border-left:3px solid #f87171;background:var(--bg2);border-radius:8px;padding:8px 10px;font-size:.86rem;margin:0 0 8px}
+  .flog{list-style:none;margin:8px 0 0;padding:0;max-height:170px;overflow:auto;font-size:.78rem;color:var(--muted)}
+  .flog li{padding:4px 0;border-bottom:1px dashed var(--line)}
 </style>
 </head>
 <body data-page="networking">
@@ -87,6 +110,7 @@
         <div class="stage s-net" id="netStage">
           <canvas id="netCv" role="img" aria-label="Network diagram of devices and cables; packets travel along the links as the request runs. Each packet is listed in the Packet sequence panel and its headers in the Packet inspector."></canvas>
           <div class="hud" style="flex-direction:column;align-items:flex-start"><span class="readout" id="netHud">Press <b>Open website</b> to send a request</span><span class="readout phases" id="phases" style="display:none" title="Phases of loading a web page"></span></div>
+          <div class="pktcard" id="pktCard" hidden></div>
           <div class="stage-toolbar"><button class="btn sm" id="nLink" title="Link tool: drag from one device to another"><i data-lucide="cable"></i> Link tool</button><button class="btn sm" id="nDel" title="Delete selected" aria-label="Delete selected"><i data-lucide="trash-2"></i></button></div>
         </div>
         <aside>
@@ -103,6 +127,10 @@
               <button class="btn primary" id="go"><i data-lucide="play"></i> Open website</button>
               <button class="btn" id="stepB" title="Next packet"><i data-lucide="step-forward"></i> Step</button>
             </div>
+          </div>
+          <div class="panel fault" id="faultPanel">
+            <h3><i data-lucide="stethoscope"></i> Fault-finding</h3>
+            <div id="faultBody"></div>
           </div>
           <div class="panel" id="logPanel">
             <h3><i data-lucide="list-ordered"></i> Packet sequence</h3>
@@ -362,6 +390,7 @@
     ['newhost', 'Grow the LAN', 'Add a new device, cable it in, and load the page from it.'],
     ['reroute', 'Self-healing network', 'Take a link on the current shortest path down and watch the network re-route around it.'],
     ['norout', 'Partition', 'Break links until the destination is unreachable from the source.'],
+    ['fault', 'Fault finder', 'In the Fault-finding panel, work out why the phone cannot open the portal: test, narrow it down, and report the broken cable.'],
     ['tcpdone', 'Reliable over lossy', 'Deliver all 60 segments with loss of at least 20 %.'],
     ['srwin', 'Fill the pipe', 'With 0 % loss, reach the maximum 4 segments/s goodput.'],
     ['sub62', 'Right-size a subnet', 'A computer lab needs 100 addresses. Set the smallest subnet (longest prefix) that still fits them.'],
@@ -397,7 +426,7 @@
   const N = id => nodes.find(n => n.id === id);
   const isHost = n => ['laptop', 'phone', 'web', 'dns'].includes(n.type);
   const isL3 = n => isHost(n) || n.type === 'router' || n.type === 'cloud';
-  const nbr = id => links.filter(l => l.a === id || l.b === id).map(l => l.a === id ? l.b : l.a);
+  const nbr = id => links.filter(l => !l.down && (l.a === id || l.b === id)).map(l => l.a === id ? l.b : l.a);
   function bfsPath(a, b, avoidL3) { const prev = new Map([[a, null]]), q = [a]; while (q.length) { const u = q.shift(); if (u === b) break; for (const v of nbr(u)) if (!prev.has(v)) { if (avoidL3 && v !== b && isL3(N(v))) continue; prev.set(v, u); q.push(v); } } if (!prev.has(b)) return null; const p = []; for (let u = b; u !== null; u = prev.get(u)) p.push(u); return p.reverse(); }
   function nextIp(prefix, start) { const used = new Set(nodes.map(n => n.ip)); for (let k = start; k < 255; k++) if (!used.has(prefix + k)) return prefix + k; return prefix + '254'; }
 
@@ -439,9 +468,10 @@
     const cl = N(+$('#client').value), web = N(+$('#server').value), dns = nodes.find(n => n.type === 'dns');
     if (!cl || !web) return { err: 'Choose a client and a website.' };
     if (!dns) return { err: 'Add a DNS server to the network first.' };
-    const pW = bfsPath(cl.id, web.id), pD = bfsPath(cl.id, dns.id);
-    if (!pW) return { err: `No route from ${cl.name} to ${web.name}: check the cabling.` };
-    if (!pD) return { err: `No route from ${cl.name} to the DNS server.` };
+    const pW = bfsPath(cl.id, web.id), pD = bfsPath(cl.id, dns.id), rtr = nodes.find(n => n.type === 'router'), tip = FT.on ? '' : ' Check the cabling.';
+    if (rtr && !bfsPath(cl.id, rtr.id)) return { err: `ARP got no reply: ${cl.name} cannot reach its gateway ${rtr.ip}.` + tip, phase: 'ARP' };
+    if (!pD && !J.dns) return { err: `DNS query to ${dns.ip} timed out: the gateway answered, but no reply came back from the resolver.` + tip, phase: 'DNS' };
+    if (!pW) return { err: `TCP SYN to ${web.ip} timed out: ${J.dns ? 'the address was cached' : 'DNS answered'}, but ${web.name} never replied.` + tip, phase: 'TCP' };
     // gateway = first L3 node after the client on the path to the web server
     const gwId = pW.slice(1).find(id => isL3(N(id))), gw = N(gwId);
     const lanSeg = pW.slice(0, pW.indexOf(gwId) + 1);
@@ -553,7 +583,7 @@
 
   function startJourney() {
     J.arp = $('#arpC').checked; J.dns = $('#dnsC').checked;
-    const r = buildScript(); if (r.err) { SL.toast(r.err, 'warn'); return false; }
+    const r = buildScript(); if (r.err) { SL.toast(r.err, 'warn', 5000); $('#netHud').innerHTML = `<span style="color:#f87171">✗ ${esc(r.phase || 'Error')}</span> ${esc(r.err)}`; if (FT.on) faultLog(`Open website from ${esc(N(+$('#client').value).name)}: <b style="color:#f87171">failed at ${r.phase}</b> (${esc(r.err)})`); return false; }
     J.steps = r.S; J.cur = -1; J.anim = null; J.cachedRun = J.arp && J.dns; J.client = J.steps[0].cl;
     renderLog(); return true;
   }
@@ -567,13 +597,14 @@
       while (frontier.length) { const nf = []; for (const u of frontier) { if (u !== st.from.id && isL3(N(u))) continue; for (const v of nbr(u)) if (!seen.has(v)) { seen.add(v); segs.push({ a: u, b: v, d: depth }); nf.push(v); } } frontier = nf; depth++; }
     } else st.path.forEach((id, k) => { if (k) segs.push({ a: st.path[k - 1], b: id, d: k - 1 }); });
     J.anim = { i, segs, t: 0, maxD: Math.max(...segs.map(s => s.d)), k: 0 };
-    $('#netHud').innerHTML = `<b>${st.proto}</b> ${esc(st.info)}`;
+    $('#netHud').innerHTML = `<b>${st.proto}</b> ${esc(st.info)} <span class="tapcue">· tap the packet to see its headers</span>`;
   }
   function stepDone() {
     const i = J.anim.i; J.anim = null;
     if (i >= J.steps.length - 1) {
       J.auto = false; setGo(); $('#netHud').innerHTML = `Page loaded in <b>${J.steps.length}</b> packets`; renderPhases();
       SL.toast(`Page loaded: ${J.steps.length} packets. ARP and DNS answers are now cached.`, 'ok');
+      if (FT.on) faultLog(`Open website from ${esc(J.client.name)}: <b style="color:#4ade80">page loaded</b>`);
       check('journey', true); if (J.cachedRun) check('cached', true); if (J.client && J.client.added) check('newhost', true);
       $('#arpC').checked = true; $('#dnsC').checked = true;
     } else if (J.auto) launchStep(i + 1);
@@ -615,11 +646,12 @@
   // pointer
   let nd = null;
   function nodeAt(x, y) { const r = 30 * icoS(); return nodes.slice().reverse().find(n => { const p = P(n); return Math.abs(p.x - x) < r && Math.abs(p.y - y) < r; }); }
-  function pktAt(x, y) { if (!J.anim) return false; const pos = pktPositions(); return pos.some(p => Math.hypot(p.x - x, p.y - y) < 18); }
+  function pktAt(x, y, touch) { if (!J.anim) return null; const pos = pktPositions(); return pos.find(p => Math.hypot(p.x - x, p.y - y) < (touch ? 30 : 20)) || null; }
   const segD = (p, a, b) => { const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy || 1, t = SL.clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / L, 0, 1); return Math.hypot(a.x + t * dx - p.x, a.y + t * dy - p.y); };
   $('#netCv').addEventListener('pointerdown', e => {
     const p = SL.ptr(e, e.currentTarget);
-    if (pktAt(p.x, p.y)) { inspect(J.anim.i, J.anim.k); $('#inspector').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return; }
+    const pk = pktAt(p.x, p.y, e.pointerType === 'touch'); if (pk) { inspect(J.anim.i, J.anim.k); showCard(pk); return; }
+    if (J.paused) hideCard();
     const n = nodeAt(p.x, p.y);
     if (n) { e.currentTarget.setPointerCapture(e.pointerId); nd = { n, link: J.linkMode, x: p.x, y: p.y }; J.selNode = n; J.selLink = null; return; }
     const l = links.find(l => segD(p, P(N(l.a)), P(N(l.b))) < 8); J.selLink = l || null; J.selNode = null;
@@ -644,7 +676,7 @@
     if (document.hidden || netCv.ctx.canvas.offsetParent === null || !onScreen(netCv.ctx.canvas)) return;
     const { ctx, w, h } = netCv; netFit(); ctx.clearRect(0, 0, w, h);
     if (J.anim) {
-      const A = J.anim; A.t += dt * J.speed * 1.1;
+      const A = J.anim; if (!J.paused) A.t += dt * J.speed * 1.1;
       const active = A.segs.find(s => A.t - s.d >= 0 && A.t - s.d <= 1); if (active) A.k = J.steps[A.i].flood ? 0 : active.d;
       A.segs.forEach(s => { if (A.t - s.d >= 0 && A.t - s.d <= 1) { const l = links.find(l => (l.a === s.a && l.b === s.b) || (l.a === s.b && l.b === s.a)); if (l) l.load = 1; } });
       if (A.t > A.maxD + 1.15) stepDone();
@@ -657,6 +689,7 @@
       l.load = Math.max(0, l.load - dt * 1.5);
     });
     if (nd && nd.link) { const a = P(nd.n); ctx.strokeStyle = '#fff'; ctx.setLineDash([5, 5]); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(nd.x, nd.y); ctx.stroke(); ctx.setLineDash([]); }
+    if (FT.revealed) { const l = FT.revealed, a = P(N(l.a)), b = P(N(l.b)), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2; ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 4; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(mx, my, 11, 0, 7); ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(mx - 5, my - 5); ctx.lineTo(mx + 5, my + 5); ctx.moveTo(mx + 5, my - 5); ctx.lineTo(mx - 5, my + 5); ctx.stroke(); }
     nodes.forEach(n => drawDevice(ctx, n, J.selNode === n, t));
     // packets
     if (J.anim) {
@@ -664,10 +697,85 @@
       pktPositions().forEach(p => {
         ctx.save(); ctx.translate(p.x, p.y); ctx.shadowColor = col; ctx.shadowBlur = 18; ctx.fillStyle = col;
         ctx.beginPath(); ctx.roundRect(-17, -9, 34, 18, 5); ctx.fill(); ctx.shadowBlur = 0;
-        ctx.fillStyle = '#06101f'; ctx.font = `700 9px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText(st.proto, 0, 3.5); ctx.restore();
+        ctx.fillStyle = '#06101f'; ctx.font = `700 9px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText(st.proto, 0, 3.5);
+        if (J.paused) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(-22, -14, 44, 28, 8); ctx.stroke(); }
+        else if (!J.seenCard) { ctx.strokeStyle = col; ctx.globalAlpha = 0.5 + 0.5 * Math.sin(t * 6); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.roundRect(-24, -16, 48, 32, 9); ctx.stroke(); ctx.globalAlpha = 1; }
+        ctx.restore();
       });
     }
   }).start();
+
+
+  /* ---------- packet header card (tap a moving packet) ---------- */
+  function showCard(pk) {
+    const st = J.steps[J.anim.i], k = J.anim.k, H = headersAt(st, k), a = N(st.path[k]), b = N(st.path[k + 1]);
+    J.paused = true; J.seenCard = true;
+    const rows = H.arp ? [['Type', 'ARP ' + H.arp.op], ['Src MAC', H.eth.src], ['Dst MAC', H.eth.dst], ['Asks for', H.arp.tpa]]
+      : [['Src', `${H.ip.src} : ${H.l4.sport}`], ['Dst', `${H.ip.dst} : ${H.l4.dport}`], ['Protocol', H.l4.kind + (H.l4.flags ? ' · ' + H.l4.flags : '')], ['TTL', String(H.ip.ttl), 1], ['Size', H.ip.len + ' B (IP)'], ['MAC', `${H.eth.src.slice(-8)} → ${H.eth.dst.slice(-8)}`]];
+    const c = $('#pktCard'); c.style.setProperty('--pc', PC[st.proto]);
+    c.innerHTML = `<div class="ph"><span class="proto" style="background:${PC[st.proto]}">${st.proto}</span><b>${esc(st.info)}</b><button data-pc="close" aria-label="Close">✕</button></div>
+      <div class="hop">Hop ${k + 1} of ${st.path.length - 1}: ${esc(a.name)} → ${esc(b.name)}${H.natted ? ' · after NAT' : ''}</div>
+      <div class="kv">${rows.map(([kk, v, hl]) => `<span>${kk}</span><b class="${hl ? 'hl' : ''}">${esc(v)}</b>`).join('')}</div>
+      <div class="acts"><button class="btn sm primary" data-pc="resume"><i data-lucide="play"></i> Resume</button><button class="btn sm" data-pc="full"><i data-lucide="layers"></i> All layers</button></div>`;
+    c.hidden = false; SL.refreshIcons(c);
+    const sw = $('#netStage').clientWidth, sh = $('#netStage').clientHeight, cw = c.offsetWidth, chh = c.offsetHeight;
+    let x = pk.x + 24, y = pk.y - chh / 2; if (x + cw > sw - 8) x = pk.x - cw - 24; if (x < 8) x = (sw - cw) / 2;
+    if (sw < 520) { x = (sw - cw) / 2; y = pk.y + 34; if (y + chh > sh - 60) y = pk.y - chh - 34; }
+    c.style.left = Math.round(x) + 'px'; c.style.top = Math.round(SL.clamp(y, 56, sh - chh - 56)) + 'px';
+  }
+  function hideCard() { $('#pktCard').hidden = true; J.paused = false; }
+  $('#pktCard').addEventListener('click', e => { const b = e.target.closest('[data-pc]'); if (!b) return; const a = b.dataset.pc; hideCard(); if (a === 'full') $('#inspector').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+
+  /* ---------- fault-finding exercise on the journey topology ---------- */
+  const FT = { on: false, link: null, revealed: null, tries: 0, tests: 0, log: [] };
+  const FAULTS = [
+    { a: 'ap', b: 'switch', why: 'The cable between the Wi-Fi access point and the switch had failed. The phone (on Wi-Fi) could not even reach its gateway, while wired devices worked normally.' },
+    { a: 'router', b: 'cloud', why: 'The campus router lost its internet uplink. Every device reached the gateway (ARP worked) but nothing beyond it: DNS and the portal both timed out for everyone.' },
+    { a: 'cloud', b: 'dns', why: 'The link to the DNS resolver was down. Name lookups failed, but with the address already cached the page loaded: the portal itself was fine.' },
+    { a: 'cloud', b: 'web', why: 'The portal\'s server link was down. DNS answered, so names resolved, but the TCP SYN to the portal never got a reply.' },
+  ];
+  const linkBetween = (ta, tb) => links.find(l => { const A = N(l.a), B = N(l.b); return (A.type === ta && B.type === tb) || (A.type === tb && B.type === ta); });
+  function faultLog(h) { FT.log.unshift(h); FT.tests++; renderFault(); }
+  function renderFault() {
+    const body = $('#faultBody');
+    if (!FT.on) {
+      body.innerHTML = `<p class="small muted" style="margin:0 0 8px">${FT.revealed ? 'Fault cleared. ' : ''}A user reports: <b>"My phone can't open portal.example.ac.ke."</b> Something on the network is broken, but every cable still looks fine on the diagram. Find it like a network technician would.</p><button class="btn primary" data-ft="start" style="width:100%"><i data-lucide="search"></i> ${FT.revealed ? 'Try another fault' : 'Start fault-finding'}</button>`;
+    } else {
+      const devs = nodes.filter(n => n.type !== 'cloud');
+      body.innerHTML = `<div class="mission"><b>"My phone can't open the portal."</b> Narrow it down: open the website from different devices (try with and without the DNS cache), and run reachability tests. Then tap the cable you think is broken and report it.</div>
+        <div class="row"><div class="field"><label for="ftFrom">Test from</label><select id="ftFrom">${nodes.filter(n => n.type === 'laptop' || n.type === 'phone').map(n => `<option value="${n.id}">${esc(n.name)}</option>`).join('')}</select></div><div class="field"><label for="ftTo">to</label><select id="ftTo">${devs.map(n => `<option value="${n.id}">${esc(n.name)}</option>`).join('')}</select></div></div>
+        <div class="btn-row"><button class="btn sm" data-ft="ping"><i data-lucide="radar"></i> Reachability test (ping)</button></div>
+        <div class="btn-row" style="margin-top:6px"><button class="btn sm primary" data-ft="report"><i data-lucide="flag"></i> Report selected cable</button><button class="btn sm" data-ft="reveal"><i data-lucide="eye"></i> Give up</button></div>
+        <ul class="flog">${FT.log.map(x => `<li>${x}</li>`).join('') || '<li>No tests yet. Start with the phone, then compare with a wired laptop.</li>'}</ul>`;
+      const f = $('#ftFrom'), t = $('#ftTo'); f.value = FT.from || nodes.find(n => n.type === 'phone').id; t.value = FT.to || nodes.find(n => n.type === 'web').id; f.onchange = () => FT.from = f.value; t.onchange = () => FT.to = t.value;
+    }
+    SL.refreshIcons(body);
+  }
+  $('#faultBody').addEventListener('click', e => {
+    const b = e.target.closest('[data-ft]'); if (!b) return; const a = b.dataset.ft;
+    if (a === 'start') {
+      if (FT.link) FT.link.down = false;
+      defaultTopo(); populateSelects(); J.steps = []; J.anim = null; J.auto = false; J.selLink = null; J.selNode = null; setGo(); renderLog(); hideCard();
+      const pool = FAULTS.filter(f => f !== FT.last); const f = pool[rnd(pool.length)]; FT.last = f;
+      FT.on = true; FT.f = f; FT.link = linkBetween(f.a, f.b); FT.link.down = true; FT.revealed = null; FT.tries = 0; FT.tests = 0; FT.log = []; FT.from = null; FT.to = null;
+      const ph = nodes.find(n => n.type === 'phone'), web = nodes.find(n => n.type === 'web'); $('#client').value = ph.id; $('#server').value = web.id; $('#arpC').checked = false; $('#dnsC').checked = false;
+      $('#netHud').innerHTML = 'Fault-finding: open the website from the <b>Phone</b> to reproduce the problem';
+      renderFault(); $('#netStage').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    if (a === 'ping') { const A = N(+$('#ftFrom').value), B = N(+$('#ftTo').value); if (!A || !B) return; const ok = A === B || !!bfsPath(A.id, B.id); faultLog(`Test ${esc(A.name)} → ${esc(B.name)}: ${ok ? '<b style="color:#4ade80">reply</b>' : '<b style="color:#f87171">no reply</b>'}`); }
+    if (a === 'report') {
+      const l = J.selLink; if (!l) return SL.toast('Tap a cable on the diagram first, then press Report.', 'warn');
+      FT.tries++;
+      if (l === FT.link) {
+        FT.on = false; FT.revealed = l; l.down = false; renderFault();
+        SL.modal(`<h3>Fault found</h3><p>${FT.f.why}</p><p class="small muted">You used ${FT.tests} test${FT.tests === 1 ? '' : 's'} and ${FT.tries} report${FT.tries === 1 ? '' : 's'}. The technique: reproduce the problem, compare a working path with a failing one, then test hop by hop outwards from the user until the replies stop. The fault lies between the last device that answers and the first that does not.</p><p class="small muted">The cable has been repaired; try the website again.</p>`);
+        check('fault', true); setTimeout(() => { FT.revealed = null; }, 6000);
+      } else SL.toast('That cable tests fine. Compare which devices still answer and which do not: the fault sits between the last that answers and the first that does not.', 'warn', 6000);
+    }
+    if (a === 'reveal') { FT.on = false; FT.revealed = FT.link; FT.link.down = false; renderFault(); SL.modal(`<h3>The fault</h3><p>${FT.f.why}</p><p class="small muted">It is marked in red on the diagram and has now been repaired.</p>`); setTimeout(() => { FT.revealed = null; }, 6000); }
+  });
+  renderFault();
+  window.__netX = { pktPositions, J, FT };
 
   /* =====================================================================
      2. ROUTING (link state + Dijkstra)
