@@ -123,9 +123,10 @@
   .ck-svgwrap{max-width:380px;margin:0 auto}
   .ck-svg{display:block;width:100%;height:auto;touch-action:manipulation;user-select:none;-webkit-user-select:none}
   .ck-hs{cursor:pointer} .ck-hs circle{fill:rgba(7,12,26,.82);stroke:var(--accent);stroke-width:2;stroke-dasharray:4 3}
-  .ck-hs text{fill:var(--accent);font:700 13px var(--mono);pointer-events:none}
+  .ck-hs circle.ck-hit{fill:transparent;stroke:none} .ck-hs.on circle.ck-hit{fill:transparent}
+  .ck-hs text{fill:var(--accent);font:700 12px var(--mono);pointer-events:none}
   .ck-hs.on circle{fill:var(--accent);stroke-dasharray:none} .ck-hs.on text{fill:#06101f}
-  .ck-hs:focus-visible circle{stroke:#fff;stroke-width:3}
+  .ck-hs:focus-visible circle:not(.ck-hit){stroke:#fff;stroke-width:3}
   .ck-seq{margin-top:6px;min-height:1.2em}
   .ck-dans{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px}
   .ck-dans input,.ck-in input,.ck-in select{box-sizing:border-box;background:var(--bg2);border:1px solid var(--line2);color:var(--text);border-radius:8px;padding:8px 10px;font:500 .95rem var(--mono);width:120px;min-height:40px}
@@ -173,11 +174,17 @@
   @media (max-width:560px){.dk-cap .row{flex-wrap:wrap;row-gap:4px}.dk-cap .n{flex-basis:100%}.dk-keys{display:none}.dk-cap{bottom:8px;padding:8px 10px 7px}.dk-cap p{font-size:.85rem;margin:4px 0 6px}.sec-head .dk-cases{align-self:flex-start}}
   @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}
 
+  /* off-screen atlases stop their decorative animations */
+  .atl-off *, .atl-off *::before, .atl-off *::after{animation-play-state:paused!important}
+  /* the marching-dash hotspot rings repaint the whole atlas every frame: keep them still on phones and for reduced motion */
+  @media (pointer:coarse), (prefers-reduced-motion:reduce){.atl-hs>circle{animation:none}}
+
   #heartAtlas{height:660px;--ar:1.4286}
   .wig-stage{height:560px}
   .circ-wrap{background:radial-gradient(120% 90% at 50% 40%,#0c1528 0%,#050913 70%);border:1px solid var(--line);border-radius:var(--r);padding:8px}
   .circ-wrap svg{display:block;width:100%;height:auto}
   .flow{fill:none;stroke-linecap:round;stroke-dasharray:3 13;animation:flowA var(--dur,1.2s) linear infinite}
+  #circSvg.off .flow{animation-play-state:paused}
   @keyframes flowA{to{stroke-dashoffset:-16}}
   #heartSvg.cond-mode .blood{opacity:.35}
   #heartSvg.cond-mode .cond{filter:drop-shadow(0 0 4px #facc15)}
@@ -191,6 +198,7 @@
   #heartSvg.simple-mode :is([data-s=svc],[data-s=ivc],[data-s=aorta],[data-s=arch],[data-s=rpa],[data-s=lpa],[data-s=pv],[data-s=pt],[data-s=pap],[data-s=chordae],.cor-g,#condG,#streams,#atrWave,#ventWave,.myo-tex){opacity:0!important;pointer-events:none}
   #heartSvg.simple-mode [data-s=myo]{opacity:.55}
   .sarr path.body{fill:none;stroke-linecap:round;stroke-width:9;stroke-dasharray:14 10;animation:sArr 0.9s linear infinite;transition:opacity .25s}
+  #heartSvg:not(.simple-mode) .sarr path.body{animation:none}
   @keyframes sArr{to{stroke-dashoffset:-24}}
   .sarr text{font:700 13px var(--mono);paint-order:stroke;stroke:#050913;stroke-width:4px;letter-spacing:.04em}
   .vflash circle{fill:none;stroke-width:3}
@@ -202,7 +210,10 @@
   .chal{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
   .chal .led{margin-top:6px;flex:none} .chal b{display:block}
   @media (max-width:980px){#heartAtlas{height:auto}.wig-stage{height:620px}}
-  @media (max-width:560px){#heartAtlas .hud-b{display:none}.vflash text{font-size:30px;stroke-width:9px}.sarr text{font-size:27px;stroke-width:8px}.vflash circle{stroke-width:5}}
+  .vcap{display:none}
+  /* phones: phase and valve-event captions sit in a strip under the heart instead of over the numbered labels */
+  @media (max-width:560px){.vcap{display:flex;gap:8px;align-items:center;min-height:30px;margin:6px 2px 0;padding:5px 10px;border:1px solid var(--line);border-radius:10px;background:rgba(5,9,19,.6);font:600 .78rem var(--mono);color:var(--muted)} .vcap b{color:#e6ecf7;font-weight:700} .vcap span{color:var(--c,#fde68a)} .vflash text{display:none}
+  #heartAtlas .hud-b{display:none}.vflash text{font-size:30px;stroke-width:9px}.sarr text{font-size:27px;stroke-width:8px}.vflash circle{stroke-width:5}}
 </style>
 </head>
 <body data-page="heart">
@@ -298,6 +309,7 @@
         <button class="btn sm" id="bPause" aria-label="Pause"><i data-lucide="pause"></i><span>Pause</span></button>
       </div>
     </div>
+    <div class="vcap" id="vCap" aria-live="off"><b>–</b><span></span></div>
     <aside>
       <div class="panel">
         <h3><i data-lucide="activity"></i> Rhythm</h3>
@@ -336,7 +348,7 @@
         <div class="rhythm-name" id="rhName">Normal sinus rhythm</div>
         <div class="stats">
           <div class="stat"><div class="k">Heart rate</div><div class="v" id="sHR">–<small>bpm</small></div></div>
-          <div class="stat"><div class="k">Stroke volume</div><div class="v" id="sSV">–<small>ml</small></div></div>
+          <div class="stat"><div class="k">Stroke volume</div><div class="v" id="sSV">–<small>mL</small></div></div>
           <div class="stat"><div class="k">Cardiac output</div><div class="v" id="sCO">–<small>L/min</small></div></div>
           <div class="stat"><div class="k">Ejection fraction</div><div class="v" id="sEF">–<small>%</small></div></div>
           <div class="stat"><div class="k">EDV / ESV</div><div class="v" id="sEDV" style="font-size:.95rem">–</div></div>
@@ -362,10 +374,10 @@
     <div class="circ-wrap"><svg id="circSvg" viewBox="0 0 560 620" role="img" aria-label="Diagram of the pulmonary and systemic circulations"></svg></div>
     <div class="prose">
       <div class="tblwrap"><table class="data"><tr><th>Circuit</th><th>Pressure (mmHg)</th><th>Resistance</th><th>Blood volume</th></tr>
-        <tr><td>Systemic</td><td>Aorta ≈ 120/80, mean ≈ 93</td><td>High (≈ 1 mmHg·s/ml)</td><td>≈ 84 %</td></tr>
+        <tr><td>Systemic</td><td>Aorta ≈ 120/80, mean ≈ 93</td><td>High (≈ 1 mmHg·s/mL)</td><td>≈ 84 %</td></tr>
         <tr><td>Pulmonary</td><td>Pulmonary artery ≈ 25/10, mean ≈ 15</td><td>About one-tenth of systemic</td><td>≈ 9 %</td></tr></table></div>
       <p>Both ventricles pump the same volume per minute: in the steady state the outputs of the right and left heart must match, or blood would pile up in one circuit. That is why left heart failure causes pulmonary congestion (breathlessness) and right heart failure causes swollen ankles and a congested liver.</p>
-      <table class="data small"><tr><th>Organ (at rest)</th><th>Share of CO</th><th>≈ ml/min at 5 L/min</th></tr>
+      <table class="data small"><tr><th>Organ (at rest)</th><th>Share of CO</th><th>≈ mL/min at 5 L/min</th></tr>
         <tr><td>Liver &amp; gut (splanchnic)</td><td>25 %</td><td>1250</td></tr><tr><td>Kidneys</td><td>20 %</td><td>1000</td></tr><tr><td>Skeletal muscle</td><td>20 %</td><td>1000</td></tr>
         <tr><td>Brain</td><td>15 %</td><td>750</td></tr><tr><td>Skin</td><td>5 %</td><td>250</td></tr><tr><td>Heart (coronary)</td><td>5 %</td><td>250</td></tr><tr><td>Other</td><td>10 %</td><td>500</td></tr></table>
       <p class="small muted">During heavy exercise cardiac output can rise four- to five-fold and skeletal muscle may receive over 80 % of it.</p>
@@ -383,14 +395,14 @@
     <div class="tabpanel prose">
       <div class="ck-safe"><i data-lucide="shield-alert"></i><span>For learning only, not a clinical tool. Drug doses and energies on this page are teaching examples: always follow current Ministry of Health, KNH and hospital protocols and your supervisor.</span></div>
       <div class="ck-facts"><h3><i data-lucide="list-checks"></i> Key facts to remember</h3><ul>
-        <li><b>Normal adult at rest:</b> HR 60–100 bpm, BP below 120/80 mmHg, SV ≈ 70 ml, CO = HR × SV ≈ 5 L/min, EF 55–70 %.</li>
+        <li><b>Normal adult at rest:</b> HR 60–100 bpm, BP below 120/80 mmHg, SV ≈ 70 mL, CO = HR × SV ≈ 5 L/min, EF 55–70 %.</li>
         <li><b>MAP ≈ DBP + ⅓(SBP − DBP)</b>. A MAP of at least about 65 mmHg is needed to perfuse the brain, kidneys and gut.</li>
         <li><b>Hypertension</b> (Kenya CVD guidelines): ≥ 140/90 mmHg on two or more visits; stage 2 ≥ 160/100; ≥ 180/120 is a hypertensive crisis (an emergency if organs are being damaged).</li>
         <li><b>Valve areas:</b> aortic 2nd right intercostal space (ICS) at the sternal edge; pulmonary 2nd left ICS; tricuspid 4th–5th left ICS at the lower sternal edge; mitral at the apex, 5th left ICS mid-clavicular line.</li>
         <li><b>S1</b> = mitral and tricuspid closing (start of systole); <b>S2</b> = aortic and pulmonary closing (start of diastole). Time a murmur against the carotid pulse.</li>
         <li><b>Rheumatic heart disease</b> follows repeated group A streptococcal sore throats and rheumatic fever; the mitral valve is affected in over 90 %. <b>Mitral stenosis</b>: low-pitched mid-diastolic rumble at the apex after an opening snap, loud S1; listen with the bell, patient turned to the left.</li>
         <li><b>Secondary prophylaxis</b> for RHD: benzathine penicillin G by deep IM injection every 3–4 weeks for years (WHO).</li>
-        <li><b>Arrest rhythms:</b> VF and pulseless VT are <b>shockable</b>; asystole and PEA are <b>not</b>. CPR at once; children 15 : 2, 4 J/kg per shock, adrenaline 10 micrograms/kg (RCUK paediatric ALS).</li>
+        <li><b>Arrest rhythms:</b> VF and pulseless VT are <b>shockable</b>; asystole and PEA are <b>not</b>. CPR at once; children 15 : 2, 4 J/kg per shock, adrenaline 10 mcg/kg (RCUK paediatric ALS).</li>
         <li><b>ECG at 25 mm/s:</b> one large square = 0.2 s, one small square = 0.04 s. HR = 300 ÷ large squares (or 1500 ÷ small squares) between R waves.</li>
       </ul><p class="ck-src">Sources: Kenya National Guidelines for Cardiovascular Diseases Management; WHO fact sheet on rheumatic heart disease; Resuscitation Council UK paediatric ALS algorithm (2025); standard physiology texts.</p></div>
       <h3>Structure and the path of blood</h3>
@@ -406,7 +418,7 @@
       <h3>Cardiac output, stroke volume and ejection fraction</h3>
       <div class="eq">$$SV = EDV - ESV, \qquad CO = HR \times SV, \qquad EF = \frac{SV}{EDV}\times 100\%$$</div>
       <div class="eq">$$MAP \approx DBP + \tfrac13\,(SBP - DBP), \qquad MAP \approx CO \times SVR$$</div>
-      <p>Typical adult values at rest: HR 60–100 bpm, SV ≈ 70 ml, CO ≈ 5 L/min, EF 55–70 %. Stroke volume depends on <b>preload</b> (filling; the Frank–Starling law: a more stretched ventricle contracts more strongly), <b>afterload</b> (the pressure it ejects against) and <b>contractility</b>. At very high heart rates diastole shortens so much that filling, and therefore stroke volume, falls.</p>
+      <p>Typical adult values at rest: HR 60–100 bpm, SV ≈ 70 mL, CO ≈ 5 L/min, EF 55–70 %. Stroke volume depends on <b>preload</b> (filling; the Frank–Starling law: a more stretched ventricle contracts more strongly), <b>afterload</b> (the pressure it ejects against) and <b>contractility</b>. At very high heart rates diastole shortens so much that filling, and therefore stroke volume, falls.</p>
       <h3>The model behind the labs</h3>
       <p>The left ventricle is a <b>time-varying elastance</b>: $P_{LV}(t) = E(t)\,[V_{LV}(t) - V_0]$, where $E(t)$ rises from a diastolic value $E_{min}$ to a systolic peak $E_{max}$ after each ventricular activation (a normalised "double-Hill" activation curve). The left atrium is a smaller elastance with its own contraction, fed from the pulmonary veins. Valves are one-way resistors, and the arteries are a three-element Windkessel (characteristic impedance, compliance $C$ and systemic resistance $R$): $C\,\dfrac{dP}{dt} = Q_{AV} - \dfrac{P}{R}$. The right heart is assumed to move the same volume with the same timing. The model has no baroreflex or autonomic control, so it shows the direct mechanical effect of each rhythm.</p>
       <h3>Electrical conduction and the ECG</h3>
@@ -434,16 +446,16 @@
       <div id="ckDrill"></div>
       <h3 class="ck-sec">Worked examples</h3>
       <div class="worked"><h4>1. Cardiac output and ejection fraction</h4><ol class="steps">
-        <li>EDV = 130 ml, ESV = 55 ml: $SV = 130 - 55 = 75$ ml.</li>
-        <li>HR = 72 bpm: $CO = 72 \times 75 = 5400$ ml/min $= 5.4$ L/min.</li>
+        <li>EDV = 130 mL, ESV = 55 mL: $SV = 130 - 55 = 75$ mL.</li>
+        <li>HR = 72 bpm: $CO = 72 \times 75 = 5400$ mL/min $= 5.4$ L/min.</li>
         <li>$EF = 75/130 = 58\%$: normal. Compare the live values in Lab 2.</li></ol></div>
       <div class="worked" style="margin-top:14px"><h4>2. Mean arterial pressure and resistance</h4><ol class="steps">
         <li>BP 120/80: $MAP \approx 80 + (120-80)/3 = 93$ mmHg.</li>
-        <li>With CO = 5.4 L/min = 90 ml/s and right atrial pressure ≈ 0: $SVR = 93/90 = 1.03$ mmHg·s/ml (≈ 1380 dyn·s·cm⁻⁵ after multiplying by 1333).</li></ol></div>
+        <li>With CO = 5.4 L/min = 90 mL/s and right atrial pressure ≈ 0: $SVR = 93/90 = 1.03$ mmHg·s/mL (≈ 1380 dyn·s·cm⁻⁵ after multiplying by 1333).</li></ol></div>
       <div class="worked" style="margin-top:14px"><h4>3. Why tachycardia does not raise output for ever</h4><ol class="steps">
         <li>At 72 bpm each beat lasts 0.83 s; systole ≈ 0.3 s, diastole ≈ 0.53 s.</li>
         <li>At 180 bpm each beat lasts 0.33 s; systole shortens only to ≈ 0.2 s, leaving ≈ 0.13 s to fill.</li>
-        <li>In the model SV falls from about 80 ml to about 32 ml, so CO stays near 5.7 L/min even though the rate has more than doubled (set 180 bpm and see). In a real heart, sympathetic drive also shortens systole, speeds relaxation and raises contractility and venous return, so output keeps rising up to about 150–170 bpm; the model has no autonomic control, so it shows only the filling-time limit.</li></ol></div>
+        <li>In the model SV falls from about 80 mL to about 32 mL, so CO stays near 5.7 L/min even though the rate has more than doubled (set 180 bpm and see). In a real heart, sympathetic drive also shortens systole, speeds relaxation and raises contractility and venous return, so output keeps rising up to about 150–170 bpm; the model has no autonomic control, so it shows only the filling-time limit.</li></ol></div>
       <div class="worked" style="margin-top:14px"><h4>4. Heart rate from an ECG</h4><ol class="steps">
         <li>At 25 mm/s one large square (5 mm) = 0.2 s.</li>
         <li>R–R = 4 large squares = 0.8 s: $HR = 60/0.8 = 75$ bpm (or 300 ÷ 4).</li>
@@ -453,9 +465,9 @@
         <li>Classify by the <b>higher</b> category of either number: systolic 168 ≥ 160 and diastolic 104 ≥ 100, so stage 2 hypertension (below 180/120, so not a crisis).</li>
         <li>$MAP = 104 + (168 - 104)/3 = 104 + 21.3 = 125$ mmHg; pulse pressure $= 64$ mmHg.</li></ol></div>
       <div class="worked" style="margin-top:14px"><h4>6. Adrenaline in a paediatric arrest (teaching example)</h4><ol class="steps">
-        <li>Dose 10 micrograms/kg IV or IO. A 14 kg child: $10 \times 14 = 140$ micrograms $= 0.14$ mg.</li>
-        <li>Adrenaline 1 : 10,000 contains 1 mg in 10 ml $= 0.1$ mg/ml $= 100$ micrograms/ml.</li>
-        <li>$\text{Volume} = \dfrac{D}{H}\times V = \dfrac{140}{100}\times 1\text{ ml} = 1.4$ ml, i.e. 0.1 ml/kg of 1 : 10,000. Repeat every 3–5 minutes during CPR (RCUK paediatric ALS).</li></ol></div>
+        <li>Dose 10 mcg/kg IV or IO. A 14 kg child: $10 \times 14 = 140$ mcg $= 0.14$ mg.</li>
+        <li>Adrenaline 1 in 10,000 contains 1 mg in 10 mL $= 0.1$ mg/mL $= 100$ mcg/mL.</li>
+        <li>$\text{Volume} = \dfrac{D}{H}\times V = \dfrac{140}{100}\times 1\text{ mL} = 1.4$ mL, i.e. 0.1 mL/kg of 0.1 mg/mL (1 in 10,000). Repeat every 3–5 minutes during CPR (RCUK paediatric ALS).</li></ol></div>
     </div>
     <div class="tabpanel">
       <div class="ck-safe"><i data-lucide="shield-alert"></i><span>Practice cases for learning. They are simplified; real patients need full assessment and the current MoH/KNH protocols.</span></div>
@@ -497,6 +509,8 @@ function Atlas(cfg) {
       <feMerge><feMergeNode in="b"/><feMergeNode in="s"/></feMerge></filter>`;
   }).join('');
   svg.insertBefore(defs, svg.firstChild);
+  // pause the decorative CSS animations (hotspot dashes etc.) while the atlas is off screen
+  try { new IntersectionObserver(es => es.forEach(e => root.classList.toggle('atl-off', !e.isIntersecting)), { rootMargin: '100px' }).observe(root); } catch (e) {}
   const labelsG = document.createElementNS(NS, 'g'); labelsG.setAttribute('class', 'atl-labels'); svg.appendChild(labelsG);
   const hotG = document.createElementNS(NS, 'g'); hotG.setAttribute('class', 'atl-hot'); svg.appendChild(hotG);
   const tip = root.querySelector('.atl-tip'), crumbs = root.querySelector('.atl-crumbs'), qbar = root.querySelector('.atl-q');
@@ -767,7 +781,8 @@ window.CK = (() => {
     return { show };
   }
 
-  /* OSCE station: st = {title, time (s), brief, pass (0-1), steps:[{mark, m, type:'pick'|'multi'|'order'|'num', q, o|items, a, alt, tol, unit, svg:{vb, bg, pts}, why}]} */
+  /* OSCE station: st = {title, time (s), brief, pass (0-1, default 0.7), steps:[{mark, m, type:'pick'|'multi'|'order'|'num', q, o|items, a, alt, tol, unit, svg:{vb, bg, pts}, why}]} */
+  const PASS = st => Math.round((st.pass || 0.7) * 100); // SimLab health labs: OSCE pass mark is 70 % everywhere
   function osce(el, st, opt = {}) {
     el = q$(el); if (!el) return; el.classList.add('ck-osce');
     const total = st.steps.reduce((a, s) => a + (s.m || 1), 0);
@@ -775,7 +790,7 @@ window.CK = (() => {
     const stop = () => { if (timer) clearInterval(timer); timer = null; };
     function intro() {
       stop();
-      el.innerHTML = `<div class="ck-head"><span class="ck-tag">OSCE station · ${Math.round(st.time / 60)} min · ${total} marks</span><h4>${st.title}</h4></div><div class="ck-stem">${st.brief}</div><button class="btn primary ck-start"><i data-lucide="timer"></i> Start the station</button>`;
+      el.innerHTML = `<div class="ck-head"><span class="ck-tag">OSCE station · ${Math.round(st.time / 60)} min · ${total} marks · pass mark ${PASS(st)} %</span><h4>${st.title}</h4></div><div class="ck-stem">${st.brief}</div><button class="btn primary ck-start"><i data-lucide="timer"></i> Start the station</button>`;
       el.querySelector('.ck-start').onclick = start; icons(el); math(el);
     }
     function start() {
@@ -797,7 +812,8 @@ window.CK = (() => {
       let body = '';
       if (ty === 'pick' || ty === 'multi') body = `<div class="ck-opts">${s.o.map((o, j) => `<button class="btn ck-o" data-j="${j}">${ty === 'multi' ? '<span class="ck-box"></span>' : ''}${o}</button>`).join('')}</div>`;
       if (ty === 'order') {
-        if (s.svg) body = `<div class="ck-svgwrap"><svg viewBox="${s.svg.vb}" class="ck-svg" role="img" aria-label="${s.svg.label || 'Diagram'}">${s.svg.bg}${s.svg.pts.map(([x, y], j) => `<g class="ck-hs" data-j="${j}" tabindex="0" role="button" aria-label="Point ${String.fromCharCode(65 + j)}"><circle cx="${x}" cy="${y}" r="15"/><text x="${x}" y="${y + 5}" text-anchor="middle">${String.fromCharCode(65 + j)}</text></g>`).join('')}</svg></div>`;
+        if (s.svg) { const L = shuffle(s.svg.pts.map((_, j) => j)); s._let = j => String.fromCharCode(65 + L.indexOf(j)); const r = s.svg.r || 11;
+          body = `<div class="ck-svgwrap"><svg viewBox="${s.svg.vb}" class="ck-svg" role="img" aria-label="${s.svg.label || 'Diagram'}">${s.svg.bg}${L.map(j => { const [x, y] = s.svg.pts[j]; return `<g class="ck-hs" data-j="${j}" tabindex="0" role="button" aria-label="Point ${s._let(j)}"><circle class="ck-hit" cx="${x}" cy="${y}" r="${r + 8}"/><circle cx="${x}" cy="${y}" r="${r}"/><text x="${x}" y="${y + 4.5}" text-anchor="middle">${s._let(j)}</text></g>`; }).join('')}</svg></div>`; }
         else { s._ord = s._ord || shuffle(s.items.map((_, j) => j)); body = `<div class="ck-opts ck-ord">${s._ord.map(j => `<button class="btn ck-o" data-j="${j}"><span class="ck-badge"></span>${s.items[j]}</button>`).join('')}</div>`; }
         body += `<div class="ck-seq small muted"></div><div class="btn-row" style="margin-top:6px"><button class="btn sm ck-undo">Undo</button><button class="btn sm ck-clr">Clear</button></div>`;
       }
@@ -809,8 +825,8 @@ window.CK = (() => {
       const refresh = () => {
         if (ty === 'pick' || ty === 'multi') box.querySelectorAll('.ck-o').forEach(b => b.classList.toggle('on', sel.includes(+b.dataset.j)));
         if (ty === 'order') {
-          const lab = j => s.svg ? String.fromCharCode(65 + j) : s.items[j];
-          box.querySelectorAll('[data-j]').forEach(b => { const n = sel.indexOf(+b.dataset.j); b.classList.toggle('on', n >= 0); const bd = b.querySelector('.ck-badge, text'); if (bd) bd.textContent = n >= 0 ? n + 1 : (b.tagName === 'g' ? String.fromCharCode(65 + +b.dataset.j) : ''); });
+          const lab = j => s.svg ? s._let(j) : s.items[j];
+          box.querySelectorAll('[data-j]').forEach(b => { const n = sel.indexOf(+b.dataset.j); b.classList.toggle('on', n >= 0); const bd = b.querySelector('.ck-badge, text'); if (bd) bd.textContent = n >= 0 ? n + 1 : (b.tagName === 'g' ? s._let(+b.dataset.j) : ''); });
           box.querySelector('.ck-seq').textContent = sel.length ? 'Your order: ' + sel.map(lab).join(' → ') : `Tap ${need} in order.`;
         }
         go.disabled = ty === 'num' ? !isFinite(num(box.querySelector('input').value)) : ty === 'order' ? sel.length !== need : !sel.length;
@@ -842,8 +858,8 @@ window.CK = (() => {
       let score = 0;
       const rows = st.steps.map((s, j) => { const r = res[j] || { got: 0, given: '<i>not attempted</i>' }; score += r.got; const m = s.m || 1;
         return `<div class="ck-row ${r.got >= m ? 'ok' : r.got > 0 ? 'part' : 'no'}"><div class="ck-rh"><span>${j + 1}. ${s.mark}</span><b>${r.got} / ${m}</b></div><div class="small"><span class="muted">You:</span> ${r.given}</div><div class="small ck-rw">${s.why}</div></div>`; }).join('');
-      const pct = Math.round(score / total * 100), pass = pct >= (st.pass || 0.6) * 100;
-      el.innerHTML = `<div class="ck-head"><span class="ck-tag">Examiner's mark sheet</span><h4>${st.title}</h4></div><div class="ck-total ${pass ? 'ok' : 'no'}"><b>${score} / ${total}</b> (${pct} %) · ${pass ? 'Pass' : 'Below the pass mark'} (pass mark ${Math.round((st.pass || 0.6) * 100)} %)</div><div class="ck-sheet">${rows}</div><div class="btn-row" style="margin-top:12px"><button class="btn primary ck-again"><i data-lucide="rotate-ccw"></i> Try the station again</button></div>`;
+      const pct = Math.round(score / total * 100), pass = pct >= PASS(st);
+      el.innerHTML = `<div class="ck-head"><span class="ck-tag">Examiner's mark sheet</span><h4>${st.title}</h4></div><div class="ck-total ${pass ? 'ok' : 'no'}"><b>${score} / ${total}</b> (${pct} %) · ${pass ? 'Pass' : 'Below the pass mark'} (pass mark ${PASS(st)} %)</div><div class="ck-sheet">${rows}</div><div class="btn-row" style="margin-top:12px"><button class="btn primary ck-again"><i data-lucide="rotate-ccw"></i> Try the station again</button></div>`;
       el.querySelector('.ck-again').onclick = start; icons(el); math(el);
       opt.onDone && opt.onDone(score, total);
     }
@@ -910,22 +926,52 @@ window.DK = (() => {
   const K = {}; let bar = null, D = null, casesSel = '#tabClin';
   const hint = [];
 
-  /* jump to the Clinical tab (cases and OSCE stations) */
-  function goCases() {
-    const t = $(casesSel); if (!t) return; t.click();
-    const tabs = t.closest('.tabs') || t, hdr = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hdr')) || 68) + 10;
-    const go = sm => scrollTo({ top: tabs.getBoundingClientRect().top + scrollY - hdr, behavior: sm && !reduce() ? 'smooth' : 'auto' });
-    go(true); setTimeout(() => { try { t.focus({ preventScroll: true }); } catch (e) {} if (Math.abs(tabs.getBoundingClientRect().top - hdr) > 24) go(true); }, 900);
+  /* open the tab that holds an element, then scroll to it below the fixed header */
+  const hdrH = () => (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hdr')) || 68) + 10;
+  function openTabOf(el) {
+    const panel = el && el.closest('.tabpanel'); if (!panel) return;
+    const root = panel.parentElement, panels = [...root.querySelectorAll(':scope > .tabpanel')], btns = root.querySelectorAll(':scope > .tablist > button');
+    const b = btns[panels.indexOf(panel)]; if (b && !b.classList.contains('on')) b.click();
   }
-  /** init({before, cases, len}): bar with Watch demo + Cases & OSCE above the first stage, plus a Cases & OSCE link beside every lab heading */
+  function reveal(el, smooth) {
+    if (!el) return; openTabOf(el);
+    let want = 0;
+    const go = sm => { want = Math.round(el.getBoundingClientRect().top + scrollY - hdrH()); scrollTo({ top: want, behavior: sm && !reduce() ? 'smooth' : 'auto' }); };
+    go(smooth);
+    // late layout (fonts, canvases, icons) can shift the target: re-aim a few times unless the reader has scrolled away
+    [smooth ? 900 : 250, 800, 1600].forEach(ms => setTimeout(() => { if (Math.abs(scrollY - want) > 40 && !smooth) return; if (Math.abs(el.getBoundingClientRect().top - hdrH()) > 24) go(false); }, ms));
+  }
+  /* jump to the Clinical cases & OSCE tab: always opens the tab, says where you are and offers the way back */
+  function goCases() {
+    const t = $(casesSel); if (!t) return;
+    const from = scrollY, tabs = t.closest('.tabs') || t;
+    t.click(); reveal(tabs, true);
+    setTimeout(() => { try { t.focus({ preventScroll: true }); } catch (e) {} }, 900);
+    const nc = document.querySelectorAll('.ck-cases .ck-ct').length, no = document.querySelectorAll('.ck-osce').length;
+    SL.toast(`<b>Clinical cases &amp; OSCE</b> is open: ${nc} cases${no ? ` and ${no === 1 ? 'a timed OSCE station' : no + ' timed OSCE stations'}` : ''}. <button class="btn sm dk-back" style="margin-left:6px">Back to the lab</button>`, 'ok', 6000);
+    const box = document.querySelectorAll('.toasts .toast'), b = box.length && box[box.length - 1].querySelector('.dk-back');
+    if (b) b.onclick = () => { b.closest('.toast').remove(); scrollTo({ top: from, behavior: reduce() ? 'auto' : 'smooth' }); };
+  }
+  /* deep links: #cases, #osce and page extras (e.g. #rinne, #fracture) open the right tab and scroll there */
+  let HASH = { cases: '#ckCases', osce: '#ckOsce' };
+  function onHash() {
+    const h = decodeURIComponent(location.hash.slice(1)).toLowerCase(); if (!HASH[h]) return;
+    let el = $(HASH[h]); if (!el) return;
+    // land on the section heading above the widget when there is one
+    let pe = el.previousElementSibling; if (pe && pe.matches('.ck-lead')) pe = pe.previousElementSibling; if (pe && pe.matches('h3')) el = pe;
+    reveal(el, false);
+  }
+  addEventListener('hashchange', onHash);
+  /** init({before, cases, len, hashes}): bar with Watch demo + Cases & OSCE above the first stage, plus a Cases & OSCE link beside every lab heading */
   function init(o) {
-    casesSel = o.cases || casesSel;
+    casesSel = o.cases || casesSel; HASH = Object.assign(HASH, o.hashes || {});
     bar = document.createElement('div'); bar.className = 'dk-bar';
-    bar.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch a captioned run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><span class="dk-len">${o.len || '≈ 45 s'}</span><button class="btn sm" id="dkCases" title="Clinical cases and timed OSCE stations (C)"><i data-lucide="stethoscope"></i> Cases &amp; OSCE</button><span class="dk-keys"></span>`;
+    bar.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch a captioned run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><span class="dk-len">${o.len || '≈ 45 s'}</span><button class="btn sm" id="dkCases" title="Open the Clinical cases &amp; OSCE tab (C)"><i data-lucide="stethoscope"></i> Cases &amp; OSCE</button><span class="dk-keys"></span>`;
     const ref = $(o.before); ref.parentNode.insertBefore(bar, ref);
     bar.querySelector('#dkCases').onclick = goCases;
-    document.querySelectorAll('.sec-head').forEach((h, i) => { if (!i || h.querySelector('.dk-cases')) return; const b = document.createElement('button'); b.className = 'btn sm ghost dk-cases'; b.title = 'Jump to the clinical cases and OSCE stations (C)'; b.innerHTML = '<i data-lucide="stethoscope"></i> Cases &amp; OSCE'; b.onclick = goCases; h.appendChild(b); });
+    document.querySelectorAll('.sec-head').forEach((h, i) => { if (!i || h.querySelector('.dk-cases')) return; const b = document.createElement('button'); b.className = 'btn sm ghost dk-cases'; b.title = 'Open the Clinical cases & OSCE tab (C)'; b.innerHTML = '<i data-lucide="stethoscope"></i> Cases &amp; OSCE'; b.onclick = goCases; h.appendChild(b); });
     icons(document); key('c', 'Cases &amp; OSCE', goCases, true); key('d', 'demo', () => D && D.start(), true);
+    if (location.hash) { const run = () => setTimeout(onHash, 60); if (document.readyState === 'complete') run(); else addEventListener('load', run, { once: true }); }
     return bar;
   }
   /** key(k, label, fn, front): register a single-key shortcut and list it in the hint */
@@ -1024,17 +1070,22 @@ window.DK = (() => {
 (() => {
   const $ = s => document.querySelector(s);
   const NS = 'http://www.w3.org/2000/svg';
+  // write an SVG attribute or style only when its value changes (keeps per-frame DOM work down)
+  const setA = (e, k, v) => { const c = e.__a || (e.__a = {}); v = String(v); if (c[k] !== v) { c[k] = v; e.setAttribute(k, v); } };
+  const setSt = (e, k, v) => { const c = e.__s || (e.__s = {}); if (c[k] !== v) { c[k] = v; e.style[k] = v; } };
+  // phones, low-core CPUs and reduced-motion users get a lighter animation (fewer flow dots, 30 fps cap)
+  const LOW = (() => { try { return matchMedia('(pointer: coarse)').matches || (navigator.hardwareConcurrency || 8) <= 4 || matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
   const CH = [
     ['co8', 'With a sinus rhythm, raise the Sinus rate and Contractility sliders until Cardiac output in Lab 2 exceeds 7 L/min. (Without extra venous return, which this model does not include, output cannot rise much further.)'],
-    ['tachyfall', 'Push the Sinus rate above 170 beats/min and watch Stroke volume in Lab 2: the challenge completes when it falls below 50 ml, because diastole is too short for the ventricle to fill.'],
-    ['af', 'Choose Atrial fibrillation in the Rhythm menu and let it run for several beats; it completes when two consecutive stroke volumes differ by more than 15 ml.'],
+    ['tachyfall', 'Push the Sinus rate above 170 beats/min and watch Stroke volume in Lab 2: the challenge completes when it falls below 50 mL, because diastole is too short for the ventricle to fill.'],
+    ['af', 'Choose Atrial fibrillation in the Rhythm menu and let it run for several beats; it completes when two consecutive stroke volumes differ by more than 15 mL.'],
     ['chb', 'Choose Third-degree (complete) heart block in the Rhythm menu and watch the slow escape rhythm drop Cardiac output below 4 L/min.'],
     ['rhythm', 'Name that rhythm: in Lab 2 press New mystery strip and diagnose three unlabelled ECGs correctly.'],
     ['valves', 'In Lab 1, choose the valves view under View (or click a valve).'],
     ['cond', 'In Lab 1, open the conduction view under View and click the AV node, the yellow node near the centre of the heart where the atria meet the ventricles.'],
     ['quiz8', 'Press Test yourself in Lab 1 and click each structure it names. Score at least 8 / 10.'],
     ['arrest', 'Choose Ventricular fibrillation in the Rhythm menu and watch the monitor until the MAP falls below 25 mmHg: the ventricles quiver but pump nothing.'],
-    ['osce', 'Clinical cases &amp; OSCE tab: score at least 80 % in the cardiovascular OSCE station.'],
+    ['osce', 'Clinical cases &amp; OSCE tab: reach the 70 % pass mark in the cardiovascular OSCE station.'],
     ['drill', 'Worked examples tab: answer five practice-drill questions correctly in a row.'],
   ];
   const doneSet = new Set();
@@ -1060,7 +1111,10 @@ window.DK = (() => {
     const mx = (h[0] + tx) / 2, my = (h[1] + ty) / 2;
     return { d: `M${h[0]} ${h[1]} Q ${(mx + nx * w).toFixed(1)} ${(my + ny * w).toFixed(1)} ${tx.toFixed(1)} ${ty.toFixed(1)} Q ${(mx - nx * w * .2).toFixed(1)} ${(my - ny * w * .2).toFixed(1)} ${h[0]} ${h[1]} Z`, tip: [tx, ty] };
   }
+  let lastValveKey = '';
   function drawValves() {
+    const vk = Object.values(VALVES).map(v => v.o.toFixed(3)).join();
+    if (vk === lastValveKey) return; lastValveKey = vk;
     let ch = '';
     Object.values(VALVES).forEach(v => v.leaf.forEach((lf, i) => { const r = leafPath(lf, v.o); v.paths[i].setAttribute('d', r.d);
       if (v.pap) { const p = v.pap[i]; ch += `M${r.tip[0].toFixed(1)} ${r.tip[1].toFixed(1)} L${p[0]} ${p[1]} M${(r.tip[0] * .6 + lf[0][0] * .4).toFixed(1)} ${(r.tip[1] * .6 + lf[0][1] * .4).toFixed(1)} L${p[0]} ${p[1]} `; } }));
@@ -1282,31 +1336,32 @@ window.DK = (() => {
 
   /* ================= SVG animation: chambers, valves, conduction, flow ================= */
   const chambers = { RA: { el: $('#gRA'), o: [392, 426] }, RV: { el: $('#gRV'), o: [392, 436] }, LA: { el: $('#gLA'), o: [656, 398] }, LV: { el: $('#gLV'), o: [600, 400] }, RVOT: { el: $('#gRVOT'), o: [478, 446] } };
-  function setScale(c, s) { const [x, y] = chambers[c].o; chambers[c].el.setAttribute('transform', `translate(${x} ${y}) scale(${s.toFixed(4)}) translate(${-x} ${-y})`); }
+  function setScale(c, s) { const [x, y] = chambers[c].o; setA(chambers[c].el, 'transform', `translate(${x} ${y}) scale(${s.toFixed(3)}) translate(${-x} ${-y})`); }
   const sa = document.querySelector('[data-s="sa"]'), avn = document.querySelector('[data-s="avn"]');
   const condPaths = ['his', 'bb', 'purk'].map(k => { const p = document.querySelector(`[data-s="${k}"]`); const L = p.getTotalLength(); p.dataset.len = L; return p; });
-  let atrFire = -1, ventFire = -1, ventWide = false;
+  let atrFire = -1, ventFire = -1, ventWide = false; const atrWave = $('#atrWave'), ventWave = $('#ventWave');
   function fireAtria() { atrFire = st.t; }
   function fireVent(w) { ventFire = st.t; ventWide = w; }
   function animateConduction() {
     const t = st.t, da = t - atrFire, dv = t - ventFire;
-    const aw = $('#atrWave');
-    if (da >= 0 && da < 0.12) { const r = 20 + da / 0.1 * 260; aw.setAttribute('cx', 360 + da * 1500 > 520 ? 520 : 360 + da * 1500); aw.setAttribute('cy', 300); aw.setAttribute('rx', r); aw.setAttribute('ry', r * 0.55); aw.setAttribute('opacity', (1 - da / 0.12).toFixed(2)); }
-    else aw.setAttribute('opacity', 0);
-    sa.setAttribute('fill', da >= 0 && da < 0.06 && rhythm !== 'af' ? '#fff' : '#facc15');
+    const aw = atrWave;
+    if (da >= 0 && da < 0.12) { const r = 20 + da / 0.1 * 260; setA(aw, 'cx', Math.min(520, 360 + da * 1500).toFixed(0)); setA(aw, 'cy', 300); setA(aw, 'rx', r.toFixed(0)); setA(aw, 'ry', (r * 0.55).toFixed(0)); setA(aw, 'opacity', (1 - da / 0.12).toFixed(2)); }
+    else setA(aw, 'opacity', 0);
+    setA(sa, 'fill', da >= 0 && da < 0.06 && rhythm !== 'af' ? '#fff' : '#facc15');
     const avOn = rhythm !== 'af' && rhythm !== 'avb3' && rhythm !== 'vt' && da > 0.06 && da < PRof() + 0.01;
-    avn.setAttribute('fill', avOn ? '#fff7cc' : '#facc15'); avn.setAttribute('rx', avOn ? 14 : 11);
+    setA(avn, 'fill', avOn ? '#fff7cc' : '#facc15'); setA(avn, 'rx', avOn ? 14 : 11);
     condPaths.forEach((p, i) => { const L = +p.dataset.len, t0 = ventWide ? 0.03 + i * 0.03 : i * 0.012, dur = ventWide ? 0.09 : 0.04, f = SL.clamp((dv - t0) / dur, 0, 1);
-      if (dv >= 0 && dv < 0.35) { p.style.strokeDasharray = `${L * f} ${L}`; p.style.stroke = '#fff59d'; } else { p.style.strokeDasharray = ''; p.style.stroke = ''; } });
-    const vw = $('#ventWave'); vw.setAttribute('opacity', dv >= 0 && dv < 0.35 ? (0.9 * Math.min(1, dv / 0.05) * (1 - dv / 0.35)).toFixed(2) : 0);
+      if (dv >= 0 && dv < 0.35) { setSt(p, 'strokeDasharray', `${(L * f).toFixed(0)} ${L.toFixed(0)}`); setSt(p, 'stroke', '#fff59d'); } else { setSt(p, 'strokeDasharray', ''); setSt(p, 'stroke', ''); } });
+    setA(ventWave, 'opacity', dv >= 0 && dv < 0.35 ? (0.9 * Math.min(1, dv / 0.05) * (1 - dv / 0.35)).toFixed(2) : 0);
   }
   // particles: chamber blood dots shown in proportion to volume
-  const PT = { RA: [], RV: [], LA: [], LV: [] };
+  const PT = { RA: [], RV: [], LA: [], LV: [] }, PTG = {}, PTN = {};
   function seedPts() {
     const sets = { RA: ['#gRA', 'ra', '#c7d2fe', 34], RV: ['#gRV', 'rv', '#c7d2fe', 44], LA: ['#gLA', 'la', '#fecaca', 34], LV: ['#gLV', 'lv', '#fecaca', 44] };
     for (const [k, [gid, sid, col, n]] of Object.entries(sets)) {
-      const path = document.querySelector(`${gid} [data-s="${sid}"]`), bb = path.getBBox(), grp = document.querySelector(gid + ' .pts');
-      let tries = 0; while (PT[k].length < n && tries++ < 4000) { const x = bb.x + Math.random() * bb.width, y = bb.y + Math.random() * bb.height; if (path.isPointInFill(new DOMPoint(x, y))) { const c = document.createElementNS(NS, 'circle'); c.setAttribute('r', 3); c.setAttribute('fill', col); c.setAttribute('pointer-events', 'none'); c.setAttribute('opacity', .8); grp.appendChild(c); PT[k].push({ c, x, y, ph: Math.random() * 7 }); } }
+      const path = document.querySelector(`${gid} [data-s="${sid}"]`), bb = path.getBBox(), grp = document.querySelector(gid + ' .pts'); PTG[k] = grp;
+      const want = LOW ? Math.round(n * 0.6) : n;
+      let tries = 0; while (PT[k].length < want && tries++ < 4000) { const x = bb.x + Math.random() * bb.width, y = bb.y + Math.random() * bb.height; if (path.isPointInFill(new DOMPoint(x, y))) { const c = document.createElementNS(NS, 'circle'); c.setAttribute('r', 3); c.setAttribute('fill', col); c.setAttribute('pointer-events', 'none'); c.setAttribute('opacity', .8); grp.appendChild(c); PT[k].push({ c, x, y, ph: Math.random() * 7 }); } }
     }
   }
   // streams through vessels and valves
@@ -1320,16 +1375,24 @@ window.DK = (() => {
   };
   const SPL = {}; Object.entries(SP).forEach(([k, p]) => { let L = 0; const seg = []; for (let i = 1; i < p.length; i++) { const l = Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]); seg.push(l); L += l; } SPL[k] = { p, seg, L }; });
   const at = (k, s) => { const { p, seg, L } = SPL[k]; let d = s * L; for (let i = 0; i < seg.length; i++) { if (d <= seg[i]) { const f = d / seg[i]; return [p[i][0] + (p[i + 1][0] - p[i][0]) * f, p[i][1] + (p[i + 1][1] - p[i][1]) * f]; } d -= seg[i]; } return p[p.length - 1]; };
-  const streamsG = $('#streams'); const flows = []; const acc = {};
-  function spawn(k, col) { const c = document.createElementNS(NS, 'circle'); c.setAttribute('r', 3.3); c.setAttribute('fill', col); c.setAttribute('stroke', 'rgba(255,255,255,.5)'); c.setAttribute('stroke-width', .8); streamsG.appendChild(c); flows.push({ k, s: 0, c, off: (Math.random() - .5) * 10 }); }
+  // flow dots are drawn as round-capped zero-length segments in three paths (outline, blue, red),
+  // so the whole stream costs three attribute writes per frame instead of three per dot
+  const streamsG = $('#streams'); const flows = []; const acc = {}; const DOTR = LOW ? 4 : 3.3;
+  const mkP = (col, w) => { const p = document.createElementNS(NS, 'path'); p.setAttribute('fill', 'none'); p.setAttribute('stroke', col); p.setAttribute('stroke-width', w); p.setAttribute('stroke-linecap', 'round'); p.setAttribute('pointer-events', 'none'); streamsG.appendChild(p); return p; };
+  const flowOut = mkP('rgba(255,255,255,.5)', 2 * DOTR + 1.6), flowBlue = mkP('#93a8ff', 2 * DOTR), flowRed = mkP('#ff8b98', 2 * DOTR);
+  const BLUEK = new Set(['svc', 'ivc', 'tri', 'rvout', 'rvoutR']);
+  function spawn(k) { flows.push({ k, s: 0, off: (Math.random() - .5) * 10 }); }
   function animFlows(dt, on) {
-    if (!on) { streamsG.style.display = 'none'; return; } streamsG.style.display = '';
+    if (!on) { setSt(streamsG, 'display', 'none'); return; } setSt(streamsG, 'display', '');
     const rate = { svc: st.Qpv * 0.35, ivc: st.Qpv * 0.65, tri: st.Qmv, rvout: st.Qav * 0.55, rvoutR: st.Qav * 0.45, pv1: st.Qpv * 0.5, pv2: st.Qpv * 0.5, mit: st.Qmv, lvout: st.Qav * 0.8, lvoutB: st.Qav * 0.2 };
-    const col = k => ['svc', 'ivc', 'tri', 'rvout', 'rvoutR'].includes(k) ? '#93a8ff' : '#ff8b98';
-    for (const k in rate) { acc[k] = (acc[k] || 0) + rate[k] * dt / 3.5; while (acc[k] > 1) { acc[k] -= 1; spawn(k, col(k)); } }
+    for (const k in rate) { acc[k] = (acc[k] || 0) + rate[k] * dt / (LOW ? 7 : 3.5); while (acc[k] > 1) { acc[k] -= 1; spawn(k); } }
+    let db = '', dr = '';
     for (let i = flows.length - 1; i >= 0; i--) { const f = flows[i], r = rate[f.k]; const v = (40 + r * 1.3) / SPL[f.k].L; f.s += v * dt;
-      if (f.s >= 1) { f.c.remove(); flows.splice(i, 1); continue; }
-      const p = at(f.k, f.s); f.c.setAttribute('cx', (p[0] + f.off * .4).toFixed(1)); f.c.setAttribute('cy', (p[1] + f.off * .4).toFixed(1)); f.c.setAttribute('opacity', (Math.min(1, f.s * 8, (1 - f.s) * 8)).toFixed(2)); }
+      if (f.s >= 1) { flows.splice(i, 1); continue; }
+      if (f.s < 0.04 || f.s > 0.96) continue; // fade in and out at the ends of each stream
+      const p = at(f.k, f.s), seg = `M${(p[0] + f.off * .4).toFixed(0)} ${(p[1] + f.off * .4).toFixed(0)}h0`;
+      if (BLUEK.has(f.k)) db += seg; else dr += seg; }
+    setA(flowOut, 'd', db + dr); setA(flowBlue, 'd', db); setA(flowRed, 'd', dr);
   }
   let EDVref = 130;
   function animateHeart(tReal) {
@@ -1344,10 +1407,13 @@ window.DK = (() => {
     drawValves();
     // particle visibility & jiggle
     const vol = { RA: st.Vla / 70, LA: st.Vla / 70, RV: st.Vlv / 140, LV: st.Vlv / 140 };
-    for (const k in PT) { const n = Math.round(PT[k].length * SL.clamp(vol[k], 0.15, 1)); PT[k].forEach((p, i) => { p.c.style.display = i < n ? '' : 'none'; if (i < n) { p.c.setAttribute('cx', (p.x + 2 * Math.sin(tReal * 2 + p.ph)).toFixed(1)); p.c.setAttribute('cy', (p.y + 2 * Math.cos(tReal * 1.7 + p.ph)).toFixed(1)); } }); }
-    $('#hPhase').textContent = PHN[phase];
+    // show dots in proportion to volume (only touch the ones whose visibility changes); the whole group drifts gently
+    for (const k in PT) { const n = Math.round(PT[k].length * SL.clamp(vol[k], 0.15, 1)), was = PTN[k] ?? PT[k].length;
+      if (n !== was) { for (let i = Math.min(n, was); i < Math.max(n, was); i++) PT[k][i].c.style.display = i < n ? '' : 'none'; PTN[k] = n; }
+      if (PTG[k]) setA(PTG[k], 'transform', `translate(${(1.6 * Math.sin(tReal * 2 + k.length)).toFixed(1)} ${(1.6 * Math.cos(tReal * 1.7 + k.charCodeAt(1))).toFixed(1)})`); }
+    if (hPhase.textContent !== PHN[phase]) hPhase.textContent = PHN[phase];
     // simplified-view arrows follow the valves
-    if (svgEl.classList.contains('simple-mode')) { arrAV.forEach(a => a.style.opacity = (.12 + .88 * VALVES.mit.o).toFixed(2)); arrSL.forEach(a => a.style.opacity = (.12 + .88 * VALVES.aov.o).toFixed(2)); }
+    if (svgEl.classList.contains('simple-mode')) { arrAV.forEach(a => setSt(a, 'opacity', (.12 + .88 * VALVES.mit.o).toFixed(2))); arrSL.forEach(a => setSt(a, 'opacity', (.12 + .88 * VALVES.aov.o).toFixed(2))); }
     // valve events flash on the anatomy (linked to the markers on the Wiggers diagram)
     while (vq.length) { const k = vq.shift(); flashes.push({ k, t0: tReal }); }
     let fh = '';
@@ -1356,9 +1422,14 @@ window.DK = (() => {
       E.at.forEach(([x, y]) => { fh += `<circle cx="${x}" cy="${y}" r="${r.toFixed(1)}" stroke="${col}" opacity="${op}"/>`; });
       const newer = flashes.slice(i + 1).some(g => VEV[g.k].ty === E.ty);
       if (!newer) fh += `<text x="${E.tx}" y="${E.ty}" fill="${col}" text-anchor="middle" opacity="${Math.min(1, 2.2 * (1 - a)).toFixed(2)}">${E.txt}</text>`; }
-    vFlash.innerHTML = fh;
+    if (fh !== lastFh) { vFlash.innerHTML = fh; lastFh = fh; }
+    // phone caption strip: current phase plus the latest valve event
+    if (narrowMQ.matches) { const f = flashes[flashes.length - 1], E = f && VEV[f.k], t = E ? E.txt : '';
+      if (vCapB.textContent !== PHN[phase]) vCapB.textContent = PHN[phase];
+      if (vCapS.textContent !== t) { vCapS.textContent = t; if (E) vCapS.style.setProperty('--c', E.col); } }
   }
-  const svgEl = $('#heartSvg'), vFlash = $('#vFlash'), flashes = [];
+  let lastFh = ''; const narrowMQ = matchMedia('(max-width: 560px)'), vCapB = $('#vCap b'), vCapS = $('#vCap span');
+  const svgEl = $('#heartSvg'), vFlash = $('#vFlash'), hPhase = $('#hPhase'), flashes = [];
   const arrAV = [...document.querySelectorAll('.sarr [data-a=av]')], arrSL = [...document.querySelectorAll('.sarr [data-a=sl]')];
   const VEV = { MC: { at: [[392, 462], [657, 428]], col: '#fde68a', tx: 530, ty: 612, txt: 'Mitral + tricuspid close · S1' }, MO: { at: [[392, 462], [657, 428]], col: '#a7f3d0', tx: 530, ty: 612, txt: 'AV valves open · filling' },
     AO: { at: [[494, 362], [594, 292]], col: '#fdba74', tx: 640, ty: 150, txt: 'Aortic + pulmonary open' }, AC: { at: [[494, 362], [594, 292]], col: '#f9a8d4', tx: 640, ty: 150, txt: 'Aortic + pulmonary close · S2' } };
@@ -1368,7 +1439,7 @@ window.DK = (() => {
   function drawWig() {
     const { ctx, w, h } = wc; if (w < 10) return; ctx.clearRect(0, 0, w, h);
     const L = 54, R = w - 12, X = i => L + i / NBUF * (R - L);
-    const panels = [['ECG', 0.2, -0.6, 1.5, 'mV'], ['PRESSURE', 0.37, 0, 150, 'mmHg'], ['', 0.09, 0, 1, ''], ['LV VOLUME', 0.2, 0, 200, 'ml'], ['HEART SOUNDS', 0.1, -1.2, 1.2, '']];
+    const panels = [['ECG', 0.2, -0.6, 1.5, 'mV'], ['PRESSURE', 0.37, 0, 150, 'mmHg'], ['', 0.09, 0, 1, ''], ['LV VOLUME', 0.2, 0, 200, 'mL'], ['HEART SOUNDS', 0.1, -1.2, 1.2, '']];
     let y0 = 10; const H = h - 26;
     const geo = panels.map(([n, f, lo, hi, u]) => { const ph = H * f, yy = y0, o = { n, y: yy, h: ph, lo, hi, u, Y: v => yy + ph - 6 - (v - lo) / (hi - lo) * (ph - 16) }; y0 += ph; return o; });
     // phase bands on pressure panel
@@ -1421,8 +1492,8 @@ window.DK = (() => {
   function updUI() {
     if (ARR.has(rhythm) && st.t - lastQRS > 1.5) {
       // cardiac arrest: no ejection, so no pulse; aortic pressure decays towards zero
-      $('#sHR').innerHTML = '0<small>bpm</small>'; $('#sSV').innerHTML = '0<small>ml</small>'; $('#sCO').innerHTML = '0.00<small>L/min</small>'; $('#sEF').innerHTML = '0<small>%</small>';
-      $('#sEDV').innerHTML = Math.round(st.Vlv) + ' / ' + Math.round(st.Vlv) + '<small>ml</small>'; $('#sBP').innerHTML = 'no pulse'; $('#sMAP').innerHTML = Math.round(st.Pc) + '<small>mmHg</small>'; $('#sPR').innerHTML = '– / –';
+      $('#sHR').innerHTML = '0<small>bpm</small>'; $('#sSV').innerHTML = '0<small>mL</small>'; $('#sCO').innerHTML = '0.00<small>L/min</small>'; $('#sEF').innerHTML = '0<small>%</small>';
+      $('#sEDV').innerHTML = Math.round(st.Vlv) + ' / ' + Math.round(st.Vlv) + '<small>mL</small>'; $('#sBP').innerHTML = 'no pulse'; $('#sMAP').innerHTML = Math.round(st.Pc) + '<small>mmHg</small>'; $('#sPR').innerHTML = '– / –';
       if (st.Pc < 25) done('arrest');
       return;
     }
@@ -1430,8 +1501,8 @@ window.DK = (() => {
     const b = beats.slice(-3), sv = b.map(x => x.EDV - x.ESV), lb = beats[beats.length - 1];
     const SV = sv.reduce((a, c) => a + c, 0) / sv.length, EDV = b.reduce((a, c) => a + c.EDV, 0) / b.length, ESV = EDV - SV, HR = curRate(), CO = HR * SV / 1000;
     const sys = Math.max(...b.map(x => x.maxP)), dia = Math.min(...b.map(x => x.minP));
-    $('#sHR').innerHTML = Math.round(HR) + '<small>bpm</small>'; $('#sSV').innerHTML = Math.round(SV) + '<small>ml</small>'; $('#sCO').innerHTML = SL.fmt(CO, 2) + '<small>L/min</small>';
-    $('#sEF').innerHTML = Math.round(SV / EDV * 100) + '<small>%</small>'; $('#sEDV').innerHTML = Math.round(EDV) + ' / ' + Math.round(ESV) + '<small>ml</small>';
+    $('#sHR').innerHTML = Math.round(HR) + '<small>bpm</small>'; $('#sSV').innerHTML = Math.round(SV) + '<small>mL</small>'; $('#sCO').innerHTML = SL.fmt(CO, 2) + '<small>L/min</small>';
+    $('#sEF').innerHTML = Math.round(SV / EDV * 100) + '<small>%</small>'; $('#sEDV').innerHTML = Math.round(EDV) + ' / ' + Math.round(ESV) + '<small>mL</small>';
     $('#sBP').innerHTML = Math.round(sys) + '/' + Math.round(dia) + '<small>mmHg</small>'; $('#sMAP').innerHTML = Math.round(dia + (sys - dia) / 3) + '<small>mmHg</small>';
     $('#sPR').innerHTML = (ARR.has(rhythm) || rhythm === 'af' || rhythm === 'avb3' || rhythm === 'vt' ? '–' : PRof().toFixed(2) + ' s') + ' / ' + (rhythm === 'vt' || rhythm === 'avb3' ? '0.16 s' : '0.08 s');
     EDVref = SL.lerp(EDVref, Math.max(60, EDV), 0.2);
@@ -1468,27 +1539,27 @@ window.DK = (() => {
 
   /* ================= quiz ================= */
   SL.quiz('#quiz', [
-    { q: 'Which chamber has the thickest wall, and why?', options: ['Right atrium: it receives the most blood', 'Left ventricle: it must generate about 120 mmHg to drive the systemic circulation', 'Right ventricle: it pumps to the lungs', 'Left atrium: it receives oxygenated blood'], answer: 1, why: 'Wall thickness matches the pressure load: LV ≈ 120 mmHg systolic versus ≈ 25 mmHg in the RV.' },
-    { q: 'The first heart sound (S1) is produced mainly by…', options: ['opening of the aortic valve', 'closure of the mitral and tricuspid valves at the start of systole', 'closure of the aortic and pulmonary valves', 'blood hitting the apex'], answer: 1, why: 'S1 = AV valve closure when ventricular pressure exceeds atrial pressure; S2 = semilunar valve closure.' },
-    { q: 'During isovolumetric contraction…', options: ['all four valves are closed and ventricular pressure rises', 'blood is ejected into the aorta', 'the ventricles fill rapidly', 'the atria contract'], answer: 0, why: 'Between mitral closure and aortic opening volume cannot change, so pressure rises steeply.' },
-    { q: 'HR = 80 bpm, EDV = 120 ml, ESV = 50 ml. What are the cardiac output and ejection fraction?', options: ['5.6 L/min, 58 %', '9.6 L/min, 42 %', '4.0 L/min, 70 %', '5.6 L/min, 42 %'], answer: 0, why: 'SV = 70 ml; CO = 80 × 70 = 5600 ml/min; EF = 70/120 = 58 %.' },
-    { q: 'What is the main purpose of the delay at the AV node?', options: ['To let the ventricles relax', 'To allow the atria to finish emptying into the ventricles before ventricular contraction', 'To generate the T wave', 'To slow the SA node'], answer: 1, why: 'The ≈ 0.1 s delay (part of the PR interval) lets atrial systole complete ventricular filling.' },
+    { q: 'Which chamber has the thickest wall, and why?', options: ['Right atrium: it receives the whole systemic venous return', 'Left ventricle: it pumps against about 120 mmHg systemic pressure', 'Right ventricle: it must drive blood through both lungs', 'Left atrium: it fills against the high pulmonary vein pressure'], answer: 1, why: 'Wall thickness matches the pressure load: LV ≈ 120 mmHg systolic versus ≈ 25 mmHg in the RV.' },
+    { q: 'The first heart sound (S1) is produced mainly by…', options: ['opening of the aortic and pulmonary valves early in systole', 'closure of the mitral and tricuspid valves as systole begins', 'closure of the aortic and pulmonary valves as systole ends', 'rapid ventricular filling as the AV valves open'], answer: 1, why: 'S1 = AV valve closure when ventricular pressure exceeds atrial pressure; S2 = semilunar valve closure.' },
+    { q: 'During isovolumetric contraction…', options: ['all four valves are closed and ventricular pressure rises', 'the aortic valve is open and blood is ejected into the aorta', 'the AV valves are open and the ventricles fill rapidly', 'the atria contract to top up the ventricular volume'], answer: 0, why: 'Between mitral closure and aortic opening volume cannot change, so pressure rises steeply.' },
+    { q: 'HR = 80 bpm, EDV = 120 mL, ESV = 50 mL. What are the cardiac output and ejection fraction?', options: ['5.6 L/min, 58 %', '9.6 L/min, 42 %', '4.0 L/min, 70 %', '5.6 L/min, 42 %'], answer: 0, why: 'SV = 70 mL; CO = 80 × 70 = 5600 mL/min; EF = 70/120 = 58 %.' },
+    { q: 'What is the main purpose of the delay at the AV node?', options: ['To let the ventricles relax fully before the next beat', 'To let the atria finish emptying into the ventricles before they contract', 'To give the ventricles time to repolarise and form the T wave', 'To slow the SA node so that the resting heart rate stays normal'], answer: 1, why: 'The ≈ 0.1 s delay (part of the PR interval) lets atrial systole complete ventricular filling.' },
     { q: 'An ECG shows no P waves, a wavy baseline and irregularly irregular QRS complexes. The rhythm is…', options: ['Sinus arrhythmia', 'Atrial fibrillation', 'Ventricular tachycardia', 'Complete heart block'], answer: 1, why: 'Chaotic atrial activity replaces P waves; the AV node conducts at random intervals.' },
-    { q: 'In third-degree heart block…', options: ['every P wave is followed by a QRS after a long PR', 'P waves and QRS complexes are unrelated and the ventricular rate is slow', 'there are no P waves', 'the QRS is always narrow and fast'], answer: 1, why: 'Atria and ventricles beat independently; a slow junctional or ventricular escape rhythm takes over.' },
-    { q: 'Why does stroke volume fall at very high heart rates?', options: ['Contractility falls', 'Diastole (filling time) shortens much more than systole, so EDV falls', 'The valves stop working', 'Afterload falls'], answer: 1, why: 'Systole shortens only modestly; filling time collapses, reducing preload and stroke volume.' },
+    { q: 'In third-degree heart block…', options: ['every P wave is followed by a QRS, but after a long PR interval', 'P waves and QRS complexes are unrelated and the ventricular rate is slow', 'there are no P waves and the QRS rhythm is irregularly irregular', 'the PR lengthens beat by beat until one QRS is dropped'], answer: 1, why: 'Atria and ventricles beat independently; a slow junctional or ventricular escape rhythm takes over.' },
+    { q: 'Why does stroke volume fall at very high heart rates?', options: ['Contractility falls because the myocardium runs out of calcium', 'Diastole (filling time) shortens much more than systole, so EDV falls', 'The AV valves cannot close fast enough, so blood regurgitates', 'Afterload falls, so the ventricles empty less completely'], answer: 1, why: 'Systole shortens only modestly; filling time collapses, reducing preload and stroke volume.' },
     { q: 'Which vessel carries deoxygenated blood away from the heart?', options: ['Aorta', 'Pulmonary veins', 'Pulmonary trunk', 'Coronary arteries'], answer: 2, why: 'Arteries are defined by direction (away from the heart), not oxygen content.' },
     { q: 'Where is the mitral area for auscultation?', options: ['2nd right intercostal space at the sternal edge', '2nd left intercostal space at the sternal edge', '4th left intercostal space at the lower sternal edge', '5th left intercostal space in the mid-clavicular line'], answer: 3, why: 'The mitral area is the apex: 5th left ICS, mid-clavicular line. The others are the aortic, pulmonary and tricuspid areas.' },
     { q: 'The murmur of mitral stenosis is best described as…', options: ['ejection systolic at the right 2nd ICS, radiating to the neck', 'pansystolic at the apex, radiating to the axilla', 'low-pitched mid-diastolic rumble at the apex after an opening snap', 'high-pitched early diastolic at the left sternal edge'], answer: 2, why: 'Blood crosses the narrowed mitral valve in diastole. The other options describe aortic stenosis, mitral regurgitation and aortic regurgitation.' },
-    { q: 'Rheumatic fever follows infection with…', options: ['Staphylococcus aureus skin infection', 'Group A beta-haemolytic streptococcus (Streptococcus pyogenes) throat infection', 'Streptococcus pneumoniae', 'Plasmodium falciparum'], answer: 1, why: 'An immune cross-reaction after group A streptococcal pharyngitis damages the heart valves (molecular mimicry). Treating sore throats with penicillin is primary prevention.' },
-    { q: 'Secondary prophylaxis for a patient with rheumatic heart disease is…', options: ['benzathine penicillin G deep IM every 3–4 weeks', 'amoxicillin 5 days each month', 'ceftriaxone once a year', 'aspirin daily'], answer: 0, why: 'WHO recommends benzathine penicillin G every 3–4 weeks for many years to prevent recurrent rheumatic fever; Kenyan teaching prefers 3-weekly in high-risk settings.' },
+    { q: 'Rheumatic fever follows infection with…', options: ['Staphylococcus aureus infection of the skin', 'Group A streptococcus (S. pyogenes) throat infection', 'Streptococcus pneumoniae infection of the lungs', 'Plasmodium falciparum infection of red cells'], answer: 1, why: 'An immune cross-reaction after group A streptococcal pharyngitis damages the heart valves (molecular mimicry). Treating sore throats with penicillin is primary prevention.' },
+    { q: 'Secondary prophylaxis for a patient with rheumatic heart disease is…', options: ['benzathine penicillin G deep IM every 3–4 weeks', 'oral amoxicillin for 5 days at the start of each month', 'ceftriaxone IM once a year before the rainy season', 'low-dose aspirin daily for life to prevent clots'], answer: 0, why: 'WHO recommends benzathine penicillin G every 3–4 weeks for many years to prevent recurrent rheumatic fever; Kenyan teaching prefers 3-weekly in high-risk settings.' },
     { q: 'A patient’s BP is 140/80 mmHg. The mean arterial pressure is about…', options: ['110 mmHg', '100 mmHg', '93 mmHg', '60 mmHg'], answer: 1, why: 'MAP ≈ 80 + (140 − 80)/3 = 80 + 20 = 100 mmHg. 60 mmHg is the pulse pressure.' },
     { q: 'An adult has 162/96 mmHg on two visits. Using the Kenya CVD guidelines this is…', options: ['Elevated', 'Stage 1 hypertension', 'Stage 2 hypertension', 'Hypertensive emergency'], answer: 2, why: 'Take the higher category: systolic 162 is stage 2 (≥ 160) even though the diastolic is stage 1. An emergency needs ≥ 180/120 with organ damage.' },
-    { q: 'An unresponsive patient’s monitor shows chaotic waves with no QRS complexes. The rhythm and its key treatment are…', options: ['asystole: adrenaline only', 'ventricular fibrillation: CPR and early defibrillation', 'atrial fibrillation: digoxin', 'sinus rhythm: observe'], answer: 1, why: 'VF is a shockable arrest rhythm. Every minute without CPR and defibrillation lowers survival.' },
+    { q: 'An unresponsive patient’s monitor shows chaotic waves with no QRS complexes. The rhythm and its key treatment are…', options: ['asystole: give adrenaline, do not shock', 'ventricular fibrillation: CPR and early defibrillation', 'atrial fibrillation: rate control with digoxin', 'sinus rhythm with artefact: observe and check the leads'], answer: 1, why: 'VF is a shockable arrest rhythm. Every minute without CPR and defibrillation lowers survival.' },
     { q: 'Which of these rhythms is NOT shockable?', options: ['Ventricular fibrillation', 'Pulseless ventricular tachycardia', 'Asystole', 'Coarse VF'], answer: 2, why: 'Asystole and pulseless electrical activity are non-shockable: give CPR and adrenaline as soon as possible and look for reversible causes.' },
-    { q: 'Teaching example: a 20 kg child in arrest needs adrenaline 10 micrograms/kg as 1 : 10,000 (100 micrograms/ml). Volume?', options: ['0.2 ml', '2 ml', '20 ml', '1 ml'], answer: 1, why: '10 × 20 = 200 micrograms; 200 ÷ 100 = 2 ml (0.1 ml/kg of 1 : 10,000).' },
+    { q: 'Teaching example: a 20 kg child in arrest needs adrenaline 10 mcg/kg as 0.1 mg/mL (1 in 10,000; 100 mcg/mL). Volume?', options: ['0.2 mL', '2 mL', '20 mL', '1 mL'], answer: 1, why: '10 × 20 = 200 mcg; 200 ÷ 100 = 2 mL (0.1 mL/kg of 0.1 mg/mL (1 in 10,000)).' },
     { q: 'On an ECG at 25 mm/s the R–R interval is 5 large squares. The heart rate is…', options: ['50 bpm', '60 bpm', '75 bpm', '100 bpm'], answer: 1, why: '5 × 0.2 s = 1.0 s per beat, so 60 bpm (300 ÷ 5).' },
-    { q: 'HR 110 bpm and stroke volume 45 ml. Cardiac output is about…', options: ['2.4 L/min', '4.95 L/min', '6.5 L/min', '49.5 L/min'], answer: 1, why: 'CO = 110 × 45 = 4950 ml/min ≈ 4.95 L/min: the fast rate keeps output near normal despite a small stroke volume.' },
-    { q: 'For a Black African adult with stage 1 hypertension and no diabetes or kidney disease, a suitable first-line drug is…', options: ['Amlodipine (calcium-channel blocker)', 'Propranolol', 'Furosemide', 'Digoxin'], answer: 0, why: 'Kenyan and WHO guidance favour a calcium-channel blocker or thiazide-type diuretic first in this group; ACE inhibitors are first for diabetes with kidney disease.' },
+    { q: 'HR 110 bpm and stroke volume 45 mL. Cardiac output is about…', options: ['2.4 L/min', '4.95 L/min', '6.5 L/min', '49.5 L/min'], answer: 1, why: 'CO = 110 × 45 = 4950 mL/min ≈ 4.95 L/min: the fast rate keeps output near normal despite a small stroke volume.' },
+    { q: 'For a Black African adult with stage 1 hypertension and no diabetes or kidney disease, a suitable first-line drug is…', options: ['Amlodipine (calcium-channel blocker)', 'Propranolol (beta-blocker)', 'Furosemide (loop diuretic)', 'Digoxin (cardiac glycoside)'], answer: 0, why: 'Kenyan and WHO guidance favour a calcium-channel blocker or thiazide-type diuretic first in this group; ACE inhibitors are first for diabetes with kidney disease.' },
   ]);
 
   /* ================= main loop ================= */
@@ -1515,19 +1586,33 @@ window.DK = (() => {
     $('#rqScore').textContent = `Score: ${rqRight} / ${rqN}`; rqReveal(); if (rqRight >= 3) done('rhythm'); });
   $('#rqEnd').addEventListener('click', () => { $('#rqOpts').innerHTML = ''; rqReveal(); });
   let tReal = 0;
-  const inView = el => { if (!el) return false; const r = el.getBoundingClientRect(); return r.bottom > -100 && r.top < innerHeight + 100 && r.width > 0; };
+  // visibility of each heart view, tracked by an IntersectionObserver (no per-frame layout reads)
+  const visMap = new Map();
+  const inView = el => { if (!el) return false; if (visMap.has(el)) return visMap.get(el); const r = el.getBoundingClientRect(); return r.bottom > -100 && r.top < innerHeight + 100 && r.width > 0; };
+  const tFlow = $('#tFlow'), circEl = $('#circSvg'); let circOff = null;
   const heartEls = ['#heartAtlas', '.wig-stage', '#circSvg'].map(s => document.querySelector(s)).filter(Boolean);
-  SL.loop(dt => {
+  try { const io = new IntersectionObserver(es => es.forEach(e => visMap.set(e.target, e.isIntersecting && e.boundingClientRect.width > 0)), { rootMargin: '100px 0px' }); heartEls.forEach(e => io.observe(e)); } catch (e) {}
+  let frameAcc = 0, lastDur = ''; const FRAME = 1 / 21;
+  SL.loop(dt0 => {
     // pause the model and drawing when the tab is hidden or every heart view is scrolled out of sight
-    if (document.hidden || !heartEls.some(inView)) { if (rumble) rumble.g.gain.value = 0; return; }
+    const vis = heartEls.map(inView);
+    // the circulation diagram's CSS flow animation also stops when it is off screen
+    const off = document.hidden || !vis[2]; if (off !== circOff) { circOff = off; circEl.classList.toggle('off', off); }
+    if (document.hidden || !vis.some(Boolean)) { if (rumble) rumble.g.gain.value = 0; frameAcc = 0; return; }
+    // light mode (phones, low-core CPUs): redraw about 20 times a second; when paused, nothing moves, so 10 times a second is plenty
+    frameAcc += dt0; if (frameAcc < (paused ? 0.1 : LOW ? FRAME : 0)) return;
+    const dt = Math.min(frameAcc, 0.1); frameAcc = 0;
     tReal += dt;
     if (!paused) {
       const simDt = dt * speed, n = Math.max(1, Math.ceil(simDt / 0.0005)), h = simDt / n;
       for (let i = 0; i < n; i++) { step(h); sampAcc += h; if (sampAcc >= 1 / FS) { sampAcc -= 1 / FS; sample(); } }
       if (ev.length < 6) schedule(st.t);
     }
-    animateConduction(); animateHeart(tReal); animFlows(paused ? 0 : dt * speed, $('#tFlow').checked); drawWig(); rumbleTick();
-    uiT += dt; if (uiT > 0.4) { uiT = 0; updUI(); document.querySelectorAll('#circSvg .flow').forEach(p => p.style.setProperty('--dur', (60 / curRate() * 1.2 / Math.max(.2, speed)).toFixed(2) + 's')); }
+    // only redraw the views that are on screen
+    if (vis[0]) { animateConduction(); animateHeart(tReal); animFlows(paused ? 0 : dt * speed, tFlow.checked); } else vq.length = 0;
+    if (vis[1]) drawWig();
+    rumbleTick();
+    uiT += dt; if (uiT > 0.4) { uiT = 0; updUI(); const d = (60 / curRate() * 1.2 / Math.max(.2, speed)).toFixed(1) + 's'; if (d !== lastDur) { lastDur = d; circEl.querySelectorAll('.flow').forEach(p => p.style.setProperty('--dur', d)); } }
   }).start();
 
   /* ================= clinical cases, OSCE, calculator and drill ================= */
@@ -1560,7 +1645,7 @@ window.DK = (() => {
         { q: 'What is the rhythm and is it shockable?', o: ['Ventricular fibrillation: shockable', 'Asystole: not shockable', 'Sinus bradycardia: shockable', 'Atrial fibrillation: not shockable'], a: 1, why: 'A flat line is asystole (check leads and gain). It is not shockable; treat with CPR and adrenaline.' },
         { q: 'Why do children usually arrest this way?', o: ['Most have congenital VF', 'Arrest in children is usually the end of hypoxia or shock, so the heart slows and stops', 'Children never have heart disease', 'Because of high blood pressure'], a: 1, why: 'In children hypoxia from respiratory failure (here pneumonia) or circulatory failure causes bradycardia then asystole. Airway and breathing come first.' },
         { q: 'What is the right compression-to-ventilation ratio for her (healthcare providers)?', o: ['30 : 2', '15 : 2', '5 : 1', 'Compressions only'], a: 1, why: 'Paediatric life support uses 15 : 2 after 5 initial rescue breaths (RCUK paediatric ALS; ETAT+ teaches the same airway-first approach).' },
-        { q: 'Teaching example: adrenaline 10 micrograms/kg of 1 : 10,000 (100 micrograms/ml). What volume for 14 kg?', o: ['0.14 ml', '1.4 ml', '14 ml', '0.7 ml'], a: 1, why: '10 × 14 = 140 micrograms; 140 ÷ 100 = 1.4 ml (0.1 ml/kg of 1 : 10,000). Given IV or IO as soon as possible in a non-shockable rhythm, then every 3–5 minutes.' },
+        { q: 'Teaching example: adrenaline 10 mcg/kg of 0.1 mg/mL (1 in 10,000; 100 mcg/mL). What volume for 14 kg?', o: ['0.14 mL', '1.4 mL', '14 mL', '0.7 mL'], a: 1, why: '10 × 14 = 140 mcg; 140 ÷ 100 = 1.4 mL (0.1 mL/kg of 0.1 mg/mL (1 in 10,000)). Given IV or IO as soon as possible in a non-shockable rhythm, then every 3–5 minutes.' },
       ], take: 'For a child: airway, breathing, then circulation. Asystole is treated with CPR and adrenaline, never a shock.' },
     { t: 'Dizzy spells in an elderly farmer', tag: 'Heart block', stem: 'Mzee Kiprono, 78, from Eldoret has had three sudden blackouts in a month, each lasting seconds and followed by flushing. His pulse is regular but very slow, and the ECG shows P waves marching through at 75/min with broad QRS complexes at 38/min unrelated to them.', vit: ['Pulse 38 regular', 'BP 96/50'], lab: { label: 'Show the rhythm on the monitor', icon: 'activity', fn: () => toMonitor('avb3') },
       qs: [
@@ -1568,6 +1653,20 @@ window.DK = (() => {
         { q: 'Why is his blood pressure low?', o: ['The heart rate is so slow that cardiac output falls despite a large stroke volume', 'His stroke volume is zero', 'His aortic valve is leaking', 'He is dehydrated'], a: 0, why: 'CO = HR × SV. A large SV cannot make up for a rate of 38, so CO and BP fall (see the live stats on the monitor).' },
         { q: 'What is the definitive treatment?', o: ['Digoxin', 'A permanent pacemaker', 'A beta-blocker', 'Defibrillation'], a: 1, why: 'Symptomatic complete heart block needs pacing. Atropine or temporary pacing may bridge until a permanent pacemaker is placed; rate-slowing drugs are dangerous.' },
       ], take: 'A slow pulse with blackouts in an older person: think complete heart block and check the ECG.' },
+    { t: "Crushing chest pain, Mombasa", tag: "Acute myocardial infarction", stem: "Bakari, 58, a port clerk with diabetes, has had heavy central chest pain spreading to his jaw for 90 minutes, with sweating and vomiting. His ECG shows ST elevation in leads II, III and aVF. Two hours after arrival his pulse suddenly falls to 40/min.", vit: ["Pulse 92 → 40", "BP 132/84 → 92/58", "SpO₂ 96 %"], lab: { label: 'Show the slow rhythm on the monitor', icon: 'activity', fn: () => toMonitor('avb3') },
+      qs: [
+        { q: "ST elevation in II, III and aVF points to an infarct of which wall, and which artery is usually blocked?", o: ["Septum: left main stem", "Anterior wall: left anterior descending", "Inferior wall: right coronary artery", "Lateral wall: circumflex artery"], a: 2, why: "Leads II, III and aVF look at the inferior surface of the heart, which in most people is supplied by the right coronary artery (see the Coronary view of the explorer)." },
+        { q: "Which treatment should he get at once, unless he is allergic to it?", o: ["Furosemide 40 mg by mouth", "Atropine 0.5 mg IV", "Two litres of IV fluid, fast", "Aspirin 300 mg, chewed"], a: 3, why: "A loading dose of aspirin (300 mg chewed) stops platelets piling onto the ruptured plaque. Give oxygen only if SpO₂ is below 90 %: it does not help patients whose saturation is normal." },
+        { q: "What does \"time is muscle\" mean for his reperfusion?", o: ["Reopen the artery fast: PCI, or fibrinolysis within 12 h", "Repeat the ECG tomorrow, then decide", "Pain relief and bed rest; no reperfusion", "Reperfusion is only for patients under 40"], a: 0, why: "Heart muscle dies progressively while the artery is shut. Where primary PCI is not quickly available, fibrinolysis (e.g. streptokinase or tenecteplase) is given within 12 hours of symptom onset, ideally within 30 minutes of arrival." },
+        { q: "Open the monitor. His new slow rhythm has P waves marching through, unrelated to broad QRS complexes. Why is this common with his infarct?", o: ["Vomiting slows the heart permanently", "The left anterior descending supplies the SA node", "The right coronary artery usually supplies the AV node", "Aspirin blocks conduction in the AV node"], a: 2, why: "In most people the AV nodal artery arises from the right coronary artery, so an inferior MI can cause complete heart block. It often recovers once the artery is reopened; atropine or temporary pacing may bridge the gap." },
+      ], take: "Chest pain with ST elevation: aspirin, then reperfusion as fast as possible. An inferior MI can block the AV node." },
+    { t: "Breathless at night with swollen legs, Meru", tag: "Heart failure", stem: "Mama Kendi, 67, has had poorly controlled hypertension for years. For two weeks she has woken at night gasping for breath and now sleeps propped on three pillows. Her ankles are swollen, her JVP is raised to the earlobe, and you hear fine crackles at both lung bases and a third heart sound.", vit: ["HR 108", "BP 164/96", "RR 28", "SpO₂ 88 %"],
+      qs: [
+        { q: "Which findings show fluid backing up behind the LEFT ventricle?", o: ["An enlarged liver and fluid in the abdomen", "Swollen ankles and a raised JVP", "Orthopnoea, night breathlessness, basal crackles", "A slow, regular pulse at the wrist"], a: 2, why: "Left-sided failure raises pulmonary venous pressure, so fluid leaks into the lungs: orthopnoea, paroxysmal nocturnal dyspnoea and crackles. A raised JVP, ankle oedema and a big liver are right-sided signs; she has both (congestive cardiac failure)." },
+        { q: "What do you do first?", o: ["Give one litre of saline quickly", "Start a full-dose beta-blocker tonight", "Lie her flat and raise her legs", "Sit her up, give oxygen and IV furosemide"], a: 3, why: "Sitting upright with the legs down reduces venous return; oxygen corrects the hypoxaemia (SpO₂ 88 %); IV furosemide (e.g. 40 mg) removes fluid. A fluid bolus would worsen the pulmonary oedema." },
+        { q: "Which monitoring tells you best whether the diuretic is working?", o: ["Temperature every hour through the night", "Pupil size and reaction twice a day", "Blood sugar before every meal", "Daily weight, urine output and fluid balance"], a: 3, why: "Weight falls about 1 kg for each litre of fluid lost. Check potassium and creatinine too, because furosemide causes hypokalaemia." },
+        { q: "Once she is stable, which long-term plan fits heart failure with a weak left ventricle?", o: ["Strict bed rest at home for three months", "Stop all of her blood pressure tablets", "Digoxin on its own, with no other drugs", "ACE inhibitor, low-dose beta-blocker, spironolactone"], a: 3, why: "These drugs reduce deaths and admissions in heart failure with reduced ejection fraction; the beta-blocker is started low and increased slowly once she is no longer overloaded. Teach less salt and daily weights, and to report a gain of 2 kg in 3 days." },
+      ], take: "Left failure fills the lungs, right failure fills the neck veins and legs: sit up, oxygen, furosemide, then the drugs that change the outlook." },
   ], { onDone: () => {} });
 
   const chest = `<defs><linearGradient id="ckSk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b2a24"/><stop offset="1" stop-color="#2a1d19"/></linearGradient></defs>
@@ -1580,10 +1679,10 @@ window.DK = (() => {
     <text x="150" y="76" font-size="8.5" fill="#f5e6dc" text-anchor="middle" font-family="monospace">angle</text>
     <text x="18" y="24" font-size="11" fill="#e2e8f0" font-family="sans-serif" font-weight="700">Patient's RIGHT</text><text x="282" y="24" font-size="11" fill="#e2e8f0" text-anchor="end" font-family="sans-serif" font-weight="700">LEFT</text>`;
   CK.osce('#ckOsce', {
-    title: 'Examine the precordium and blood pressure of a patient with rheumatic heart disease', time: 360, pass: 0.6,
+    title: 'Examine the precordium and blood pressure of a patient with rheumatic heart disease', time: 360, pass: 0.7,
     brief: '<b>Candidate instructions.</b> Rehema, 24, attends the RHD clinic at a county hospital for her monthly benzathine penicillin injection. You have <b>6 minutes</b>. You will (1) auscultate the four valve areas in the standard order, (2) describe and interpret what you hear, and (3) record and interpret her blood pressure. The chest diagram shows the patient facing you; MCL = mid-clavicular line, and the sternal angle marks the 2nd rib.',
     steps: [
-      { mark: 'Locates the four valve areas in order (aortic, pulmonary, tricuspid, mitral)', m: 4, type: 'order', q: 'Tap the four valve areas on the chest in the order you would auscultate them, starting with the <b>aortic</b> area. (Two of the six points are not valve areas.)', svg: { vb: '0 0 300 340', bg: chest, label: 'Front of the chest with six possible auscultation points', pts: [[127, 97], [173, 97], [167, 166], [210, 222], [90, 222], [210, 124]] }, items: ['Aortic (2nd right ICS, sternal edge)', 'Pulmonary (2nd left ICS, sternal edge)', 'Tricuspid (4th left ICS, lower sternal edge)', 'Mitral (5th left ICS, mid-clavicular line)', 'Right 5th ICS, mid-clavicular line (not a valve area)', 'Left 2nd ICS, mid-clavicular line (not a valve area)'], a: [0, 1, 2, 3], why: 'Aortic: 2nd right ICS at the sternal edge. Pulmonary: 2nd left ICS at the sternal edge. Tricuspid: 4th–5th left ICS at the lower sternal edge. Mitral: apex, 5th left ICS in the mid-clavicular line. Count down from the sternal angle (2nd rib). "All Physicians Take Money".' },
+      { mark: 'Locates the four valve areas in order (aortic, pulmonary, tricuspid, mitral)', m: 4, type: 'order', q: 'Tap the four valve areas on the chest in the order you would auscultate them, starting with the <b>aortic</b> area. (Two of the six points are not valve areas; the letters are shuffled on every attempt.)', svg: { vb: '0 0 300 340', bg: chest, label: 'Front of the chest with six possible auscultation points', pts: [[131, 100], [169, 100], [175, 160], [208, 212], [92, 212], [208, 122]] }, items: ['Aortic (2nd right ICS, sternal edge)', 'Pulmonary (2nd left ICS, sternal edge)', 'Tricuspid (4th–5th left ICS, lower sternal edge)', 'Mitral (5th left ICS, mid-clavicular line)', 'Right 5th ICS, mid-clavicular line (not a valve area)', 'Left 2nd ICS, mid-clavicular line (not a valve area)'], a: [0, 1, 2, 3], why: 'Aortic: 2nd right ICS at the sternal edge. Pulmonary: 2nd left ICS at the sternal edge. Tricuspid: 4th–5th left ICS at the lower sternal edge. Mitral: apex, 5th left ICS in the mid-clavicular line. Count down from the sternal angle (2nd rib). "All Physicians Take Money".' },
       { mark: 'Uses the correct technique for a mitral stenosis murmur', m: 2, type: 'pick', q: 'You suspect mitral stenosis. How do you listen for it?', o: ['Diaphragm over the aortic area, patient sitting forward, breath held in expiration', 'Bell lightly at the apex, patient rolled onto the left side', 'Diaphragm firmly at the apex, patient lying flat', 'Bell over the carotids'], a: 1, why: 'The MS rumble is low-pitched (bell, light pressure) and is brought closer to the stethoscope by turning the patient to the left lateral position. Sitting forward in expiration is for aortic regurgitation.' },
       { mark: 'Times the murmur against the pulse', m: 1, type: 'pick', q: 'Which pulse do you feel while listening, to tell systole from diastole?', o: ['Radial pulse', 'Carotid pulse', 'Dorsalis pedis pulse', 'Femoral pulse'], a: 1, why: 'The carotid upstroke coincides with ventricular systole (just after S1); the radial pulse is delayed and misleading.' },
       { mark: 'Interprets the murmur', m: 2, type: 'pick', q: 'You hear a loud S1, then S2 followed by an opening snap and a low rumbling murmur. This murmur is…', o: ['Ejection systolic', 'Pansystolic', 'Mid-diastolic', 'Early diastolic, high-pitched'], a: 2, why: 'It starts after S2, so it is diastolic; the opening snap then a rumble is the mid-diastolic murmur of mitral stenosis.' },
@@ -1591,27 +1690,27 @@ window.DK = (() => {
       { mark: 'Calculates the mean arterial pressure', m: 2, type: 'num', q: 'Her BP is <b>112/70 mmHg</b>. Calculate her MAP (nearest whole number).', a: 84, tol: 1, unit: 'mmHg', why: 'MAP = 70 + (112 − 70)/3 = 70 + 14 = 84 mmHg.' },
       { mark: 'Plans the follow-up correctly', m: 1, type: 'pick', q: 'What should she receive today and how often?', o: ['Oral penicillin V for 5 days only', 'Benzathine penicillin G deep IM, repeated every 3–4 weeks', 'IV ceftriaxone daily', 'Nothing until she has a sore throat'], a: 1, why: 'Secondary prophylaxis with benzathine penicillin G every 3–4 weeks prevents recurrent rheumatic fever (WHO). Record the date and the next due date on her card.' },
     ],
-  }, { onDone: (sc, tot) => { if (sc / tot >= 0.8) done('osce'); } });
+  }, { onDone: (sc, tot) => { if (sc / tot >= 0.7) done('osce'); } });
 
   const bpCat = (s, d) => s >= 180 || d >= 120 ? ['Hypertensive crisis range (≥ 180/120): urgency, or emergency if organs are damaged', 'r'] : s >= 160 || d >= 100 ? ['Stage 2 hypertension (≥ 160/100)', 'r'] : s >= 140 || d >= 90 ? ['Stage 1 hypertension (140–159 / 90–99)', 'y'] : s >= 120 || d >= 80 ? ['Elevated / prehypertension (120–139 / 80–89)', 'y'] : s < 90 ? ['Low (systolic below 90): look for shock', 'r'] : ['Normal (below 120/80)', 'g'];
   CK.calc('#ckCalc', {
     presets: [{ label: 'Healthy adult', v: { s: 118, d: 76, hr: 75, sv: 80, cvp: 4 } }, { label: 'Stage 2 hypertension', v: { s: 168, d: 104, hr: 84, sv: 72, cvp: 5 } }, { label: 'Septic shock', v: { s: 82, d: 42, hr: 132, sv: 45, cvp: 3 } }, { label: 'Complete heart block', v: { s: 96, d: 50, hr: 38, sv: 95, cvp: 8 } }],
-    fields: [{ k: 's', label: 'Systolic BP', unit: 'mmHg', v: 118 }, { k: 'd', label: 'Diastolic BP', unit: 'mmHg', v: 76 }, { k: 'hr', label: 'Heart rate', unit: 'bpm', v: 75 }, { k: 'sv', label: 'Stroke volume', unit: 'ml', v: 80 }, { k: 'cvp', label: 'Central venous pressure', unit: 'mmHg', v: 4 }],
+    fields: [{ k: 's', label: 'Systolic BP', unit: 'mmHg', v: 118 }, { k: 'd', label: 'Diastolic BP', unit: 'mmHg', v: 76 }, { k: 'hr', label: 'Heart rate', unit: 'bpm', v: 75 }, { k: 'sv', label: 'Stroke volume', unit: 'mL', v: 80 }, { k: 'cvp', label: 'Central venous pressure', unit: 'mmHg', v: 4 }],
     run: v => {
       if (![v.s, v.d, v.hr, v.sv, v.cvp].every(isFinite) || v.d >= v.s || v.d <= 0) return '<p class="small muted">Enter a systolic above the diastolic, and positive numbers.</p>';
       const pp = v.s - v.d, map = v.d + pp / 3, co = v.hr * v.sv / 1000, svr = 80 * (map - v.cvp) / co, [cat, c] = bpCat(v.s, v.d);
       return `<div class="ck-res"><div class="hi"><small>MAP</small><b>${Math.round(map)}</b> mmHg</div><div><small>Pulse pressure</small><b>${pp}</b> mmHg</div><div class="hi"><small>Cardiac output</small><b>${SL.fmt(co, 2)}</b> L/min</div><div><small>SVR</small><b>${Math.round(svr)}</b> dyn·s·cm⁻⁵</div></div>
         <span class="ck-flag ${c}">${cat}</span>${map < 65 ? '<span class="ck-flag r">MAP below 65: organ perfusion at risk</span>' : ''}${co < 4 ? '<span class="ck-flag y">Low cardiac output (normal 4–8 L/min)</span>' : ''}${svr < 800 ? '<span class="ck-flag y">Low SVR (vasodilated, e.g. sepsis)</span>' : svr > 1200 ? '<span class="ck-flag y">High SVR (vasoconstricted)</span>' : ''}
-        <ol class="steps ck-ws"><li>Pulse pressure = SBP − DBP = ${v.s} − ${v.d} = <b>${pp}</b> mmHg.</li><li>MAP ≈ DBP + PP/3 = ${v.d} + ${pp}/3 = <b>${SL.fmt(map, 1)}</b> mmHg.</li><li>CO = HR × SV = ${v.hr} × ${v.sv} ml = ${Math.round(v.hr * v.sv)} ml/min = <b>${SL.fmt(co, 2)}</b> L/min.</li><li>SVR = 80 × (MAP − CVP) / CO = 80 × (${SL.fmt(map, 1)} − ${v.cvp}) / ${SL.fmt(co, 2)} = <b>${Math.round(svr)}</b> dyn·s·cm⁻⁵ (normal ≈ 800–1200).</li></ol>`;
+        <ol class="steps ck-ws"><li>Pulse pressure = SBP − DBP = ${v.s} − ${v.d} = <b>${pp}</b> mmHg.</li><li>MAP ≈ DBP + PP/3 = ${v.d} + ${pp}/3 = <b>${SL.fmt(map, 1)}</b> mmHg.</li><li>CO = HR × SV = ${v.hr} × ${v.sv} mL = ${Math.round(v.hr * v.sv)} mL/min = <b>${SL.fmt(co, 2)}</b> L/min.</li><li>SVR = 80 × (MAP − CVP) / CO = 80 × (${SL.fmt(map, 1)} − ${v.cvp}) / ${SL.fmt(co, 2)} = <b>${Math.round(svr)}</b> dyn·s·cm⁻⁵ (normal ≈ 800–1200).</li></ol>`;
     },
   });
   const ri = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
   CK.drill('#ckDrill', [
     { name: 'MAP', gen: () => { const d = ri(5, 11) * 10 + ri(0, 1) * 5, s = d + ri(3, 9) * 6; const m = d + (s - d) / 3; return { q: `BP is <b>${s}/${d} mmHg</b>. What is the mean arterial pressure? (nearest whole number)`, ans: Math.round(m), tol: 1, unit: 'mmHg', dp: 0, steps: [`Pulse pressure = ${s} − ${d} = ${s - d}`, `MAP = ${d} + ${s - d}/3 = ${d} + ${SL.fmt((s - d) / 3, 1)} = ${SL.fmt(m, 1)} mmHg`] }; } },
-    { name: 'Cardiac output', gen: () => { const hr = ri(50, 140), edv = ri(100, 160), esv = ri(35, 80), sv = edv - esv, co = hr * sv / 1000; return { q: `HR <b>${hr} bpm</b>, end-diastolic volume <b>${edv} ml</b>, end-systolic volume <b>${esv} ml</b>. What is the cardiac output?`, ans: +co.toFixed(2), tol: 0.06, unit: 'L/min', dp: 2, steps: [`SV = EDV − ESV = ${edv} − ${esv} = ${sv} ml`, `CO = HR × SV = ${hr} × ${sv} = ${hr * sv} ml/min = ${SL.fmt(co, 2)} L/min`] }; } },
+    { name: 'Cardiac output', gen: () => { const hr = ri(50, 140), edv = ri(100, 160), esv = ri(35, 80), sv = edv - esv, co = hr * sv / 1000; return { q: `HR <b>${hr} bpm</b>, end-diastolic volume <b>${edv} mL</b>, end-systolic volume <b>${esv} mL</b>. What is the cardiac output?`, ans: +co.toFixed(2), tol: 0.06, unit: 'L/min', dp: 2, steps: [`SV = EDV − ESV = ${edv} − ${esv} = ${sv} mL`, `CO = HR × SV = ${hr} × ${sv} = ${hr * sv} mL/min = ${SL.fmt(co, 2)} L/min`] }; } },
     { name: 'Rate from ECG', gen: () => { const big = Math.random() < .5; if (big) { const n = [2, 3, 4, 5, 6, 7, 8][ri(0, 6)]; return { q: `On an ECG at 25 mm/s there are <b>${n} large squares</b> between consecutive R waves. What is the heart rate?`, ans: Math.round(300 / n), tol: 1, unit: 'bpm', dp: 0, steps: [`Each large square = 0.2 s, so R–R = ${n} × 0.2 = ${SL.fmt(n * 0.2, 1)} s`, `HR = 60 / ${SL.fmt(n * 0.2, 1)} = 300 / ${n} = ${SL.fmt(300 / n, 0)} bpm`] }; } const n = ri(10, 30); return { q: `On an ECG at 25 mm/s there are <b>${n} small squares</b> between consecutive R waves. What is the heart rate?`, ans: Math.round(1500 / n), tol: 1, unit: 'bpm', dp: 0, steps: [`Each small square = 0.04 s, so R–R = ${n} × 0.04 = ${SL.fmt(n * 0.04, 2)} s`, `HR = 1500 / ${n} = ${SL.fmt(1500 / n, 0)} bpm`] }; } },
     { name: 'Classify BP', gen: () => { const set = [[ri(100, 118), ri(60, 78)], [ri(121, 138), ri(70, 88)], [ri(141, 158), ri(80, 98)], [ri(160, 178), ri(90, 118)], [ri(141, 155), ri(100, 108)], [ri(182, 210), ri(100, 125)]]; const [s, d] = set[ri(0, set.length - 1)]; const o = ['Normal', 'Elevated / prehypertension', 'Stage 1 hypertension', 'Stage 2 hypertension', 'Hypertensive crisis range']; const a = s >= 180 || d >= 120 ? 4 : s >= 160 || d >= 100 ? 3 : s >= 140 || d >= 90 ? 2 : s >= 120 || d >= 80 ? 1 : 0; return { q: `An adult has <b>${s}/${d} mmHg</b> on two separate visits. Classify it (Kenya CVD guidelines).`, o, a, steps: ['Classify each number separately and take the <b>higher</b> category.', 'Normal &lt; 120/80; elevated 120–139/80–89; stage 1 140–159/90–99; stage 2 ≥ 160/100; crisis ≥ 180/120.', `Here: ${o[a]}.`] }; } },
-    { name: 'Adrenaline (teaching)', gen: () => { const kg = ri(4, 30); return { q: `Teaching example: paediatric arrest, adrenaline <b>10 micrograms/kg</b> using 1 : 10,000 (100 micrograms/ml). Child weighs <b>${kg} kg</b>. Volume to draw up?`, ans: kg / 10, tol: 0.05, unit: 'ml', dp: 1, steps: [`Dose = 10 × ${kg} = ${kg * 10} micrograms`, `Volume = D/H × V = ${kg * 10} / 100 × 1 ml = ${SL.fmt(kg / 10, 1)} ml (0.1 ml/kg)`] }; } },
+    { name: 'Adrenaline (teaching)', gen: () => { const kg = ri(4, 30); return { q: `Teaching example: paediatric arrest, adrenaline <b>10 mcg/kg</b> using 0.1 mg/mL (1 in 10,000; 100 mcg/mL). Child weighs <b>${kg} kg</b>. Volume to draw up?`, ans: kg / 10, tol: 0.05, unit: 'mL', dp: 1, steps: [`Dose = 10 × ${kg} = ${kg * 10} mcg`, `Volume = D/H × V = ${kg * 10} / 100 × 1 mL = ${SL.fmt(kg / 10, 1)} mL (0.1 mL/kg)`] }; } },
   ], { onScore: st => { if (st >= 5) done('drill'); } });
 
 
@@ -1649,7 +1748,7 @@ window.DK = (() => {
       { stage: '#heartAtlas', ms: 4500, cap: 'Ventricular pressure is falling…', after: '<b>Filling.</b> Ventricular pressure drops below atrial pressure, the mitral and tricuspid valves open and blood pours in. The atrial contraction (after the P wave) tops the ventricles up at the end of diastole.', run: A => holdAt(A, 3) },
       { stage: '.wig-stage', hl: '.wig-stage', ms: 8000, cap: '<b>The same beat on the Wiggers diagram.</b> The ECG comes first (electrical), then the pressures. The markers MC, AO, AC and MO sit exactly where the pressure lines cross: S1 at mitral closure, S2 at aortic closure. The coloured bands are the four phases you just saw.',
         run: async () => { setSpeed(0.5); setPaused(false); } },
-      { stage: '.wig-stage', hl: '.stat:has(#sCO)', ms: 5500, cap: '<b>Real time.</b> LV volume (yellow) falls during ejection and refills in diastole. Stroke volume is about 70 ml, so cardiac output = heart rate × stroke volume ≈ 4–5 L/min.', run: async () => setSpeed(1) },
+      { stage: '.wig-stage', hl: '.stat:has(#sCO)', ms: 5500, cap: '<b>Real time.</b> LV volume (yellow) falls during ejection and refills in diastole. Stroke volume is about 70 mL, so cardiac output = heart rate × stroke volume ≈ 4–5 L/min.', run: async () => setSpeed(1) },
       { stage: '.wig-stage', block: 'end', ms: 9500, cap: '<b>Now a narrowed mitral valve: rheumatic mitral stenosis.</b> The left atrial pressure (blue) must stay far above LV pressure through diastole to push blood across. Listen and look at the bottom trace: a loud S1, an opening snap (OS) just after S2, then a low rumbling mid-diastolic murmur.',
         run: async () => { $('#tMS').checked = msOn = true; $('#tSnd').checked = sndOn = true; const ac = SL.audio(); try { ac && ac.resume && ac.resume(); } catch (e) {} } },
       { stage: '#heartAtlas', hl: '#dkCases', ms: 6500, cap: '<b>On the heart</b> the mitral leaflets now open only part of the way and the left atrium is under high pressure, which backs up into the lungs (breathlessness). Rheumatic heart disease after untreated strep throat is the commonest cause in Kenya. Try Akinyi\'s case in <b>Cases &amp; OSCE</b>.' },
@@ -1668,7 +1767,7 @@ window.DK = (() => {
     { el: '.hud-b', title: 'What is happening now', text: 'This caption names the phase of the cardiac cycle as it happens. Use ⅕ slow motion to follow each phase.' },
     { el: '.wig-stage', title: 'The Wiggers diagram', text: 'The same beat plotted against time: ECG, pressures, volume and heart sounds. The sweep line is now.' },
     { el: '.stat:has(#sCO)', title: 'Cardiac output', text: 'Heart rate × stroke volume. About 5 L/min at rest; watch it as you change rate and contractility.' },
-    { el: '#tabClin', title: 'Clinical cases and OSCE', text: 'Patients you will meet on the wards (rheumatic heart disease, hypertension, cardiac arrest) and a timed OSCE station with a mark sheet. The Worked examples tab has a BP and output calculator and a practice drill.', before: () => document.getElementById('tabClin').click() },
+    { el: '#tabClin', title: 'Clinical cases and OSCE', text: 'Patients you will meet on the wards (rheumatic heart disease, hypertension, heart attack, heart failure, cardiac arrest) and a timed OSCE station with a mark sheet. The Worked examples tab has a BP and output calculator and a practice drill.', before: () => document.getElementById('tabClin').click() },
     { el: '#tabChal', title: 'Take the challenges', text: 'Guided tasks check themselves as you use the labs.', before: () => { atlas.go('whole'); document.getElementById('tabChal').click(); } },
   ]));
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();

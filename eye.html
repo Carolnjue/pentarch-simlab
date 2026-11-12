@@ -123,9 +123,10 @@
   .ck-svgwrap{max-width:380px;margin:0 auto}
   .ck-svg{display:block;width:100%;height:auto;touch-action:manipulation;user-select:none;-webkit-user-select:none}
   .ck-hs{cursor:pointer} .ck-hs circle{fill:rgba(7,12,26,.82);stroke:var(--accent);stroke-width:2;stroke-dasharray:4 3}
-  .ck-hs text{fill:var(--accent);font:700 13px var(--mono);pointer-events:none}
+  .ck-hs circle.ck-hit{fill:transparent;stroke:none} .ck-hs.on circle.ck-hit{fill:transparent}
+  .ck-hs text{fill:var(--accent);font:700 12px var(--mono);pointer-events:none}
   .ck-hs.on circle{fill:var(--accent);stroke-dasharray:none} .ck-hs.on text{fill:#06101f}
-  .ck-hs:focus-visible circle{stroke:#fff;stroke-width:3}
+  .ck-hs:focus-visible circle:not(.ck-hit){stroke:#fff;stroke-width:3}
   .ck-seq{margin-top:6px;min-height:1.2em}
   .ck-dans{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px}
   .ck-dans input,.ck-in input,.ck-in select{box-sizing:border-box;background:var(--bg2);border:1px solid var(--line2);color:var(--text);border-radius:8px;padding:8px 10px;font:500 .95rem var(--mono);width:120px;min-height:40px}
@@ -172,6 +173,11 @@
   body.dk-running{padding-bottom:150px}
   @media (max-width:560px){.dk-cap .row{flex-wrap:wrap;row-gap:4px}.dk-cap .n{flex-basis:100%}.dk-keys{display:none}.dk-cap{bottom:8px;padding:8px 10px 7px}.dk-cap p{font-size:.85rem;margin:4px 0 6px}.sec-head .dk-cases{align-self:flex-start}}
   @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}
+
+  /* off-screen atlases stop their decorative animations */
+  .atl-off *, .atl-off *::before, .atl-off *::after{animation-play-state:paused!important}
+  /* the marching-dash hotspot rings repaint the whole atlas every frame: keep them still on phones and for reduced motion */
+  @media (pointer:coarse), (prefers-reduced-motion:reduce){.atl-hs>circle{animation:none}}
 
   #eyeAtlas{--ar:1.5625}
   .opt-stage{height:520px}
@@ -483,6 +489,8 @@ function Atlas(cfg) {
       <feMerge><feMergeNode in="b"/><feMergeNode in="s"/></feMerge></filter>`;
   }).join('');
   svg.insertBefore(defs, svg.firstChild);
+  // pause the decorative CSS animations (hotspot dashes etc.) while the atlas is off screen
+  try { new IntersectionObserver(es => es.forEach(e => root.classList.toggle('atl-off', !e.isIntersecting)), { rootMargin: '100px' }).observe(root); } catch (e) {}
   const labelsG = document.createElementNS(NS, 'g'); labelsG.setAttribute('class', 'atl-labels'); svg.appendChild(labelsG);
   const hotG = document.createElementNS(NS, 'g'); hotG.setAttribute('class', 'atl-hot'); svg.appendChild(hotG);
   const tip = root.querySelector('.atl-tip'), crumbs = root.querySelector('.atl-crumbs'), qbar = root.querySelector('.atl-q');
@@ -753,7 +761,8 @@ window.CK = (() => {
     return { show };
   }
 
-  /* OSCE station: st = {title, time (s), brief, pass (0-1), steps:[{mark, m, type:'pick'|'multi'|'order'|'num', q, o|items, a, alt, tol, unit, svg:{vb, bg, pts}, why}]} */
+  /* OSCE station: st = {title, time (s), brief, pass (0-1, default 0.7), steps:[{mark, m, type:'pick'|'multi'|'order'|'num', q, o|items, a, alt, tol, unit, svg:{vb, bg, pts}, why}]} */
+  const PASS = st => Math.round((st.pass || 0.7) * 100); // SimLab health labs: OSCE pass mark is 70 % everywhere
   function osce(el, st, opt = {}) {
     el = q$(el); if (!el) return; el.classList.add('ck-osce');
     const total = st.steps.reduce((a, s) => a + (s.m || 1), 0);
@@ -761,7 +770,7 @@ window.CK = (() => {
     const stop = () => { if (timer) clearInterval(timer); timer = null; };
     function intro() {
       stop();
-      el.innerHTML = `<div class="ck-head"><span class="ck-tag">OSCE station · ${Math.round(st.time / 60)} min · ${total} marks</span><h4>${st.title}</h4></div><div class="ck-stem">${st.brief}</div><button class="btn primary ck-start"><i data-lucide="timer"></i> Start the station</button>`;
+      el.innerHTML = `<div class="ck-head"><span class="ck-tag">OSCE station · ${Math.round(st.time / 60)} min · ${total} marks · pass mark ${PASS(st)} %</span><h4>${st.title}</h4></div><div class="ck-stem">${st.brief}</div><button class="btn primary ck-start"><i data-lucide="timer"></i> Start the station</button>`;
       el.querySelector('.ck-start').onclick = start; icons(el); math(el);
     }
     function start() {
@@ -783,7 +792,8 @@ window.CK = (() => {
       let body = '';
       if (ty === 'pick' || ty === 'multi') body = `<div class="ck-opts">${s.o.map((o, j) => `<button class="btn ck-o" data-j="${j}">${ty === 'multi' ? '<span class="ck-box"></span>' : ''}${o}</button>`).join('')}</div>`;
       if (ty === 'order') {
-        if (s.svg) body = `<div class="ck-svgwrap"><svg viewBox="${s.svg.vb}" class="ck-svg" role="img" aria-label="${s.svg.label || 'Diagram'}">${s.svg.bg}${s.svg.pts.map(([x, y], j) => `<g class="ck-hs" data-j="${j}" tabindex="0" role="button" aria-label="Point ${String.fromCharCode(65 + j)}"><circle cx="${x}" cy="${y}" r="15"/><text x="${x}" y="${y + 5}" text-anchor="middle">${String.fromCharCode(65 + j)}</text></g>`).join('')}</svg></div>`;
+        if (s.svg) { const L = shuffle(s.svg.pts.map((_, j) => j)); s._let = j => String.fromCharCode(65 + L.indexOf(j)); const r = s.svg.r || 11;
+          body = `<div class="ck-svgwrap"><svg viewBox="${s.svg.vb}" class="ck-svg" role="img" aria-label="${s.svg.label || 'Diagram'}">${s.svg.bg}${L.map(j => { const [x, y] = s.svg.pts[j]; return `<g class="ck-hs" data-j="${j}" tabindex="0" role="button" aria-label="Point ${s._let(j)}"><circle class="ck-hit" cx="${x}" cy="${y}" r="${r + 8}"/><circle cx="${x}" cy="${y}" r="${r}"/><text x="${x}" y="${y + 4.5}" text-anchor="middle">${s._let(j)}</text></g>`; }).join('')}</svg></div>`; }
         else { s._ord = s._ord || shuffle(s.items.map((_, j) => j)); body = `<div class="ck-opts ck-ord">${s._ord.map(j => `<button class="btn ck-o" data-j="${j}"><span class="ck-badge"></span>${s.items[j]}</button>`).join('')}</div>`; }
         body += `<div class="ck-seq small muted"></div><div class="btn-row" style="margin-top:6px"><button class="btn sm ck-undo">Undo</button><button class="btn sm ck-clr">Clear</button></div>`;
       }
@@ -795,8 +805,8 @@ window.CK = (() => {
       const refresh = () => {
         if (ty === 'pick' || ty === 'multi') box.querySelectorAll('.ck-o').forEach(b => b.classList.toggle('on', sel.includes(+b.dataset.j)));
         if (ty === 'order') {
-          const lab = j => s.svg ? String.fromCharCode(65 + j) : s.items[j];
-          box.querySelectorAll('[data-j]').forEach(b => { const n = sel.indexOf(+b.dataset.j); b.classList.toggle('on', n >= 0); const bd = b.querySelector('.ck-badge, text'); if (bd) bd.textContent = n >= 0 ? n + 1 : (b.tagName === 'g' ? String.fromCharCode(65 + +b.dataset.j) : ''); });
+          const lab = j => s.svg ? s._let(j) : s.items[j];
+          box.querySelectorAll('[data-j]').forEach(b => { const n = sel.indexOf(+b.dataset.j); b.classList.toggle('on', n >= 0); const bd = b.querySelector('.ck-badge, text'); if (bd) bd.textContent = n >= 0 ? n + 1 : (b.tagName === 'g' ? s._let(+b.dataset.j) : ''); });
           box.querySelector('.ck-seq').textContent = sel.length ? 'Your order: ' + sel.map(lab).join(' → ') : `Tap ${need} in order.`;
         }
         go.disabled = ty === 'num' ? !isFinite(num(box.querySelector('input').value)) : ty === 'order' ? sel.length !== need : !sel.length;
@@ -828,8 +838,8 @@ window.CK = (() => {
       let score = 0;
       const rows = st.steps.map((s, j) => { const r = res[j] || { got: 0, given: '<i>not attempted</i>' }; score += r.got; const m = s.m || 1;
         return `<div class="ck-row ${r.got >= m ? 'ok' : r.got > 0 ? 'part' : 'no'}"><div class="ck-rh"><span>${j + 1}. ${s.mark}</span><b>${r.got} / ${m}</b></div><div class="small"><span class="muted">You:</span> ${r.given}</div><div class="small ck-rw">${s.why}</div></div>`; }).join('');
-      const pct = Math.round(score / total * 100), pass = pct >= (st.pass || 0.6) * 100;
-      el.innerHTML = `<div class="ck-head"><span class="ck-tag">Examiner's mark sheet</span><h4>${st.title}</h4></div><div class="ck-total ${pass ? 'ok' : 'no'}"><b>${score} / ${total}</b> (${pct} %) · ${pass ? 'Pass' : 'Below the pass mark'} (pass mark ${Math.round((st.pass || 0.6) * 100)} %)</div><div class="ck-sheet">${rows}</div><div class="btn-row" style="margin-top:12px"><button class="btn primary ck-again"><i data-lucide="rotate-ccw"></i> Try the station again</button></div>`;
+      const pct = Math.round(score / total * 100), pass = pct >= PASS(st);
+      el.innerHTML = `<div class="ck-head"><span class="ck-tag">Examiner's mark sheet</span><h4>${st.title}</h4></div><div class="ck-total ${pass ? 'ok' : 'no'}"><b>${score} / ${total}</b> (${pct} %) · ${pass ? 'Pass' : 'Below the pass mark'} (pass mark ${PASS(st)} %)</div><div class="ck-sheet">${rows}</div><div class="btn-row" style="margin-top:12px"><button class="btn primary ck-again"><i data-lucide="rotate-ccw"></i> Try the station again</button></div>`;
       el.querySelector('.ck-again').onclick = start; icons(el); math(el);
       opt.onDone && opt.onDone(score, total);
     }
@@ -896,22 +906,52 @@ window.DK = (() => {
   const K = {}; let bar = null, D = null, casesSel = '#tabClin';
   const hint = [];
 
-  /* jump to the Clinical tab (cases and OSCE stations) */
-  function goCases() {
-    const t = $(casesSel); if (!t) return; t.click();
-    const tabs = t.closest('.tabs') || t, hdr = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hdr')) || 68) + 10;
-    const go = sm => scrollTo({ top: tabs.getBoundingClientRect().top + scrollY - hdr, behavior: sm && !reduce() ? 'smooth' : 'auto' });
-    go(true); setTimeout(() => { try { t.focus({ preventScroll: true }); } catch (e) {} if (Math.abs(tabs.getBoundingClientRect().top - hdr) > 24) go(true); }, 900);
+  /* open the tab that holds an element, then scroll to it below the fixed header */
+  const hdrH = () => (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hdr')) || 68) + 10;
+  function openTabOf(el) {
+    const panel = el && el.closest('.tabpanel'); if (!panel) return;
+    const root = panel.parentElement, panels = [...root.querySelectorAll(':scope > .tabpanel')], btns = root.querySelectorAll(':scope > .tablist > button');
+    const b = btns[panels.indexOf(panel)]; if (b && !b.classList.contains('on')) b.click();
   }
-  /** init({before, cases, len}): bar with Watch demo + Cases & OSCE above the first stage, plus a Cases & OSCE link beside every lab heading */
+  function reveal(el, smooth) {
+    if (!el) return; openTabOf(el);
+    let want = 0;
+    const go = sm => { want = Math.round(el.getBoundingClientRect().top + scrollY - hdrH()); scrollTo({ top: want, behavior: sm && !reduce() ? 'smooth' : 'auto' }); };
+    go(smooth);
+    // late layout (fonts, canvases, icons) can shift the target: re-aim a few times unless the reader has scrolled away
+    [smooth ? 900 : 250, 800, 1600].forEach(ms => setTimeout(() => { if (Math.abs(scrollY - want) > 40 && !smooth) return; if (Math.abs(el.getBoundingClientRect().top - hdrH()) > 24) go(false); }, ms));
+  }
+  /* jump to the Clinical cases & OSCE tab: always opens the tab, says where you are and offers the way back */
+  function goCases() {
+    const t = $(casesSel); if (!t) return;
+    const from = scrollY, tabs = t.closest('.tabs') || t;
+    t.click(); reveal(tabs, true);
+    setTimeout(() => { try { t.focus({ preventScroll: true }); } catch (e) {} }, 900);
+    const nc = document.querySelectorAll('.ck-cases .ck-ct').length, no = document.querySelectorAll('.ck-osce').length;
+    SL.toast(`<b>Clinical cases &amp; OSCE</b> is open: ${nc} cases${no ? ` and ${no === 1 ? 'a timed OSCE station' : no + ' timed OSCE stations'}` : ''}. <button class="btn sm dk-back" style="margin-left:6px">Back to the lab</button>`, 'ok', 6000);
+    const box = document.querySelectorAll('.toasts .toast'), b = box.length && box[box.length - 1].querySelector('.dk-back');
+    if (b) b.onclick = () => { b.closest('.toast').remove(); scrollTo({ top: from, behavior: reduce() ? 'auto' : 'smooth' }); };
+  }
+  /* deep links: #cases, #osce and page extras (e.g. #rinne, #fracture) open the right tab and scroll there */
+  let HASH = { cases: '#ckCases', osce: '#ckOsce' };
+  function onHash() {
+    const h = decodeURIComponent(location.hash.slice(1)).toLowerCase(); if (!HASH[h]) return;
+    let el = $(HASH[h]); if (!el) return;
+    // land on the section heading above the widget when there is one
+    let pe = el.previousElementSibling; if (pe && pe.matches('.ck-lead')) pe = pe.previousElementSibling; if (pe && pe.matches('h3')) el = pe;
+    reveal(el, false);
+  }
+  addEventListener('hashchange', onHash);
+  /** init({before, cases, len, hashes}): bar with Watch demo + Cases & OSCE above the first stage, plus a Cases & OSCE link beside every lab heading */
   function init(o) {
-    casesSel = o.cases || casesSel;
+    casesSel = o.cases || casesSel; HASH = Object.assign(HASH, o.hashes || {});
     bar = document.createElement('div'); bar.className = 'dk-bar';
-    bar.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch a captioned run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><span class="dk-len">${o.len || '≈ 45 s'}</span><button class="btn sm" id="dkCases" title="Clinical cases and timed OSCE stations (C)"><i data-lucide="stethoscope"></i> Cases &amp; OSCE</button><span class="dk-keys"></span>`;
+    bar.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch a captioned run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><span class="dk-len">${o.len || '≈ 45 s'}</span><button class="btn sm" id="dkCases" title="Open the Clinical cases &amp; OSCE tab (C)"><i data-lucide="stethoscope"></i> Cases &amp; OSCE</button><span class="dk-keys"></span>`;
     const ref = $(o.before); ref.parentNode.insertBefore(bar, ref);
     bar.querySelector('#dkCases').onclick = goCases;
-    document.querySelectorAll('.sec-head').forEach((h, i) => { if (!i || h.querySelector('.dk-cases')) return; const b = document.createElement('button'); b.className = 'btn sm ghost dk-cases'; b.title = 'Jump to the clinical cases and OSCE stations (C)'; b.innerHTML = '<i data-lucide="stethoscope"></i> Cases &amp; OSCE'; b.onclick = goCases; h.appendChild(b); });
+    document.querySelectorAll('.sec-head').forEach((h, i) => { if (!i || h.querySelector('.dk-cases')) return; const b = document.createElement('button'); b.className = 'btn sm ghost dk-cases'; b.title = 'Open the Clinical cases & OSCE tab (C)'; b.innerHTML = '<i data-lucide="stethoscope"></i> Cases &amp; OSCE'; b.onclick = goCases; h.appendChild(b); });
     icons(document); key('c', 'Cases &amp; OSCE', goCases, true); key('d', 'demo', () => D && D.start(), true);
+    if (location.hash) { const run = () => setTimeout(onHash, 60); if (document.readyState === 'complete') run(); else addEventListener('load', run, { once: true }); }
     return bar;
   }
   /** key(k, label, fn, front): register a single-key shortcut and list it in the hint */
@@ -1019,7 +1059,7 @@ window.DK = (() => {
     ['blind', 'Measure your blind spot with the test in Lab 3 (angle between 11° and 19°).'],
     ['ret', 'In Lab 1, use the Zoom level buttons to go from the whole eye down to the cell layers of the retina.'],
     ['quiz8', 'Press Test yourself in Lab 1 and find each structure it names. Score at least 8 / 10.'],
-    ['osce', 'Clinical cases &amp; OSCE tab: score at least 80 % in the visual acuity OSCE station.'],
+    ['osce', 'Clinical cases &amp; OSCE tab: reach the 70 % pass mark in the visual acuity OSCE station.'],
     ['drill', 'Worked examples tab: answer five practice-drill questions correctly in a row.'],
   ];
   const doneSet = new Set();
@@ -1634,7 +1674,7 @@ window.DK = (() => {
 
   /* ================== quiz ================== */
   SL.quiz('#quiz', [
-    { q: 'In trachoma control, SAFE stands for…', options: ['Screening, Antibiotics, Follow-up, Education', 'Surgery, Antibiotics, Facial cleanliness, Environmental improvement', 'Steroids, Atropine, Fluorescein, Eye patch', 'Sanitation, Awareness, Food, Exercise'], answer: 1, why: 'Surgery for trichiasis, Antibiotics (mass azithromycin), Facial cleanliness and Environmental improvement (water, latrines).' },
+    { q: 'In trachoma control, SAFE stands for…', options: ['Screening, Antibiotics, Follow-up, Education', 'Surgery, Antibiotics, Facial cleanliness, Environment', 'Steroids, Atropine, Fluorescein, Eye patching', 'Sanitation, Awareness, Food, Eyelash epilation'], answer: 1, why: 'Surgery for trichiasis, Antibiotics (mass azithromycin), Facial cleanliness and Environmental improvement (water, latrines).' },
     { q: 'Trachoma is caused by…', options: ['Neisseria gonorrhoeae', 'Chlamydia trachomatis', 'Onchocerca volvulus', 'Herpes simplex virus'], answer: 1, why: 'Ocular serovars of Chlamydia trachomatis, spread by eye-seeking flies, fingers and shared cloths.' },
     { q: 'WHO says trachoma is eliminated as a public health problem when follicular trachoma (TF) in children aged 1–9 is…', options: ['below 5 %', 'below 20 %', 'below 50 %', 'zero'], answer: 0, why: 'TF below 5 % in 1–9 year-olds, and trichiasis (TT) below 0.2 % in adults 15 and over.' },
     { q: 'The earliest symptom of vitamin A deficiency is…', options: ['Bitot\'s spots', 'Night blindness', 'Corneal ulcer', 'Red eye'], answer: 1, why: 'Rods need retinal to make rhodopsin, so dim-light vision fails first (XN). Bitot\'s spots are X1B.' },
@@ -1647,19 +1687,23 @@ window.DK = (() => {
     { q: 'A patient cannot read the 6/60 line at 6 m but reads it at 3 m. Record…', options: ['6/60', '3/60', '60/3', 'CF 3 m'], answer: 1, why: 'Test distance over line: 3/60.' },
     { q: 'A myope’s far point is 50 cm. The correcting contact lens is…', options: ['+2.00 D', '−2.00 D', '−0.50 D', '−5.00 D'], answer: 1, why: 'F = −1/0.50 m = −2.00 D. A minus (diverging) lens images distant objects at the far point.' },
     { q: 'Which structure provides most of the eye\'s focusing power?', options: ['The lens', 'The cornea', 'The vitreous', 'The retina'], answer: 1, why: 'The air–cornea interface has the largest refractive index change; the cornea gives ≈ 43 D of ≈ 60 D.' },
-    { q: 'When you look at a near object, the ciliary muscle…', options: ['relaxes, tightening the zonules and flattening the lens', 'contracts, slackening the zonules so the lens becomes rounder and more powerful', 'pulls the lens backwards', 'dilates the pupil'], answer: 1, why: 'Contraction of the ring-shaped ciliary muscle reduces tension on the zonules; the elastic lens rounds up.' },
-    { q: 'A myopic eye\'s far point is 50 cm in front of the eye. Ignoring vertex distance, the correcting lens is…', options: ['+2.00 D', '−2.00 D', '−0.50 D', '+0.50 D'], answer: 1, why: 'The lens must make parallel light appear to come from the far point: F = 1/(−0.50 m) = −2.00 D (diverging).' },
-    { q: 'Why can people over about 45 years old hold reading material further away?', options: ['Their corneas flatten', 'The lens stiffens and the amplitude of accommodation falls (presbyopia), moving the near point away', 'Their eyes become longer', 'Their pupils dilate'], answer: 1, why: 'Amplitude ≈ 18.5 − 0.3 × age: about 5 D at 45 (near point 20 cm) and 1–2 D by 55.' },
+    { q: 'When you look at a near object, the ciliary muscle…', options: ['relaxes, tightening the zonules and flattening the lens', 'contracts, slackening the zonules so the lens rounds up', 'contracts, pulling the lens backwards towards the retina', 'relaxes, dilating the pupil to let in more light'], answer: 1, why: 'Contraction of the ring-shaped ciliary muscle reduces tension on the zonules; the elastic lens rounds up.' },
+    { q: 'A 50-year-old with normal distance vision wants to read at 40 cm but has only 1.00 D of accommodation left. Ignoring any reserve, what reading addition does she need?', options: ['+1.50 D', '+2.50 D', '−1.50 D', '+0.40 D'], answer: 0, why: 'Reading at 40 cm needs 1/0.40 = 2.50 D of focusing power. She can supply 1.00 D herself, so the add = 2.50 − 1.00 = +1.50 D: a plus (converging) lens for presbyopia. In practice part of the remaining accommodation is kept in reserve, so the prescribed add is often a little stronger.' },
+    { q: 'Why can people over about 45 years old hold reading material further away?', options: ['Their corneas flatten and lose focusing power', 'The lens stiffens, so accommodation falls (presbyopia)', 'Their eyeballs grow longer and become myopic', 'Their pupils dilate and let in more light'], answer: 1, why: 'Amplitude ≈ 18.5 − 0.3 × age: about 5 D at 45 (near point 20 cm) and 1–2 D by 55.' },
     { q: 'Where are cones most densely packed?', options: ['At the optic disc', 'At the fovea', 'About 20° from the fovea', 'Evenly across the retina'], answer: 1, why: 'Foveal cone density reaches ~200,000/mm²; rods peak at around 20°, and the optic disc has no photoreceptors.' },
-    { q: 'You normally don\'t notice your blind spot because…', options: ['it is in the fovea', 'the two eyes\' blind spots fall on different parts of the visual field and the brain fills in the gap', 'the optic disc has extra rods', 'it only exists in dim light'], answer: 1, why: 'Each blind spot lies about 15° temporally in its own eye\'s field, covered by the other eye; with one eye the brain interpolates.' },
-    { q: 'Red–green colour blindness is much commoner in males because…', options: ['the L and M opsin genes are on the X chromosome', 'males have fewer cones', 'it is caused by the Y chromosome', 'testosterone damages cones'], answer: 0, why: 'Males have one X chromosome, so a single faulty opsin gene array causes the deficiency (X-linked recessive inheritance).' },
-    { q: 'A smaller pupil makes a slightly defocused image look sharper because…', options: ['it increases the lens power', 'the blur circle angle ≈ pupil diameter × defocus becomes smaller (greater depth of field)', 'it moves the retina', 'it adds more cones'], answer: 1, why: 'Halving the pupil diameter halves the blur angle for the same defocus. Pinholes can make almost anyone see clearly, though dimly.' },
+    { q: 'You normally don\'t notice your blind spot because…', options: ['it lies in the fovea, where the cones are densest', 'each eye covers the other’s blind spot; the brain fills in', 'the optic disc has extra rods that still sense light', 'it only exists in dim light, when the rods take over'], answer: 1, why: 'Each blind spot lies about 15° temporally in its own eye\'s field, covered by the other eye; with one eye the brain interpolates.' },
+    { q: 'Red–green colour blindness is much commoner in males because…', options: ['the L and M opsin genes are on the X chromosome', 'males have fewer cones in the fovea than females', 'the faulty gene is carried on the Y chromosome', 'testosterone damages cone cells during puberty'], answer: 0, why: 'Males have one X chromosome, so a single faulty opsin gene array causes the deficiency (X-linked recessive inheritance).' },
+    { q: 'A smaller pupil makes a slightly defocused image look sharper because…', options: ['it increases the refractive power of the lens', 'the blur circle shrinks, so depth of field increases', 'it moves the image forward onto the retina', 'it lets more cones receive light from each point'], answer: 1, why: 'Halving the pupil diameter halves the blur angle for the same defocus. Pinholes can make almost anyone see clearly, though dimly.' },
     { q: 'An astigmatic eye has a vertical meridian 2 D more powerful than the horizontal. Which lens fully corrects it (with a plano horizontal)?', options: ['−2.00 D sphere', '−2.00 D cylinder, axis 180°', '+2.00 D cylinder, axis 90°', '−2.00 D cylinder, axis 90°'], answer: 1, why: 'A cylinder has power perpendicular to its axis: axis 180° acts in the vertical meridian, removing the extra 2 D there.' },
   ]);
 
   /* ================== loop ================== */
-  const loop = SL.loop(() => {
-    drawOpt();
+  // the optics bench is static between changes: redraw it only when it is on screen and its state or size has changed
+  // (plus a slow refresh), instead of every frame
+  const optEl = $('.opt-stage'); let optVis = true, optKey = '', optT = 9;
+  try { new IntersectionObserver(es => es.forEach(e => { optVis = e.isIntersecting; }), { rootMargin: '100px 0px' }).observe(optEl); } catch (e) {}
+  const loop = SL.loop(dt => {
+    if (optVis) { optT += dt || 0; const k = JSON.stringify(ST) + '|' + optSt.w + 'x' + optSt.h; if (k !== optKey || optT > 0.5) { optKey = k; optT = 0; drawOpt(); } }
     if (bsRun) { bsX += 1.1; if (bsX > bs.w - 60) { bsRun = false; } drawBS(); }
   }).start();
   document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
@@ -1699,6 +1743,27 @@ window.DK = (() => {
         { q: 'Open the optics bench. Which spectacle lens corrects her?', o: ['A plus (convex) lens', 'A minus (concave) lens', 'A prism', 'A cylinder only'], a: 1, why: 'A diverging minus lens moves the image back onto the retina. Try it with the Sphere slider in Lab 2.' },
         { q: 'Her far point is 40 cm. What contact lens power corrects her?', o: ['+2.50 D', '−2.50 D', '−0.40 D', '−4.00 D'], a: 1, why: 'Contact lens power = −1/far point = −1/0.40 m = −2.50 D (spectacles 12 mm away need about −2.58 D).' },
       ], take: 'Uncorrected refractive error is the commonest, easiest-to-fix cause of poor vision in schoolchildren.' },
+    { t: "A red, painful eye and vomiting, Nyeri", tag: "Acute angle-closure glaucoma", stem: "Wambui, 63, who is long-sighted, developed severe pain in her right eye and a headache one evening, with blurred vision, coloured halos around lights and vomiting. The eye is red around the cornea, the cornea is hazy, the pupil is mid-dilated and does not react, and the eye feels rock hard.", vit: ["VA right: counting fingers", "VA left 6/9", "IOP right ≈ 60 mmHg"], lab: { label: 'Show the drainage angle', icon: 'eye', fn: () => { if (atlas.quizzing) atlas.stopQuiz(); $('#eyeAtlas').scrollIntoView({ block: 'center', behavior: 'smooth' }); Promise.resolve(atlas.view === 'front' ? 0 : atlas.go('front')).then(() => atlas.select('schlemm')); } },
+      qs: [
+        { q: "Open the drainage angle in the explorer. What is happening in her eye?", o: ["The retina has peeled off the choroid", "Bacteria are infecting the conjunctiva", "The lens has slowly become cloudy", "The iris blocks the drainage angle and pressure soars"], a: 3, why: "In a short, long-sighted eye the iris can bow forward and close the angle. Aqueous is still made but cannot drain through the trabecular meshwork into the canal of Schlemm, so pressure rises to 40–70 mmHg." },
+        { q: "Which finding separates this from simple conjunctivitis?", o: ["A sticky discharge on waking", "Both eyes red, gritty and itchy", "Poor vision and a fixed, mid-dilated pupil", "Normal vision with watery eyes"], a: 2, why: "Red-eye danger signs are reduced vision, severe pain, photophobia, a hazy cornea, an abnormal pupil and redness around the cornea (ciliary flush). Conjunctivitis keeps normal vision and a normal pupil." },
+        { q: "Which drug must you avoid?", o: ["Timolol drops", "Atropine or other dilating drops", "Pilocarpine drops", "Acetazolamide tablets"], a: 1, why: "Dilating the pupil pushes the iris further into the angle and makes the attack worse. Never dilate a painful red eye with a shallow anterior chamber." },
+        { q: "What is the right emergency plan?", o: ["Steroid drops only, then review", "Antibiotic drops and review in one week", "Pad the eye and send her home to rest", "Acetazolamide, timolol, pilocarpine; refer today"], a: 3, why: "Acetazolamide 500 mg (by mouth or IV) and timolol reduce aqueous production; pilocarpine constricts the pupil and pulls the iris out of the angle once the pressure starts to fall. She needs an eye unit the same day for laser iridotomy, usually in both eyes." },
+      ], take: "A red, painful eye with poor vision, halos and a hard globe is angle closure: lower the pressure, never dilate, refer the same day." },
+    { t: "Cement in the eye on a building site, Ruiru", tag: "Chemical (alkali) injury", stem: "Kamau, 27, a mason, was mixing cement when wet mortar splashed into his left eye 10 minutes ago. He is in severe pain, cannot open the eye, and there is grey paste on the lids. The site clinic is a short walk away.", vit: ["VA left: not yet tested"],
+      qs: [
+        { q: "What is the very first thing to do?", o: ["Pad the eye shut and refer him onwards", "Test and record his visual acuity first", "Put antibiotic ointment into the eye", "Irrigate at once with lots of water or saline"], a: 3, why: "A chemical injury is the one eye emergency where you treat before you examine: irrigate at once, with any clean water if saline is not to hand. A drop of topical anaesthetic helps him open the eye." },
+        { q: "Why is cement (lime) more dangerous than most acids?", o: ["Acids never cause any harm to the eye", "Alkalis dissolve cells and keep soaking into the eye", "Alkalis are always much hotter than acids", "Cement carries bacteria that infect the eye"], a: 1, why: "Alkalis cause liquefactive necrosis and keep penetrating into the cornea and anterior chamber; acids coagulate surface proteins, which limits their spread." },
+        { q: "How long do you irrigate?", o: ["2 minutes, then neutralise with vinegar", "At least 30 min, until tear pH ≈ 7–7.5", "Only until he says it feels better", "About 30 seconds is enough"], a: 1, why: "Irrigate for at least 30 minutes (often several litres), test the fluid in the lower fornix with litmus paper, and continue until the pH is normal. Never try to neutralise with an acid." },
+        { q: "What else must you do before he leaves for the eye unit?", o: ["Evert the lids and sweep out cement particles", "Give him dark glasses and send him home", "Nothing more: irrigation has fixed it", "Rub the eye firmly to remove the paste"], a: 0, why: "Particles trapped under the lids keep releasing alkali. Remove them with a moist cotton bud after everting the lids, then refer urgently to the eye unit." },
+      ], take: "Chemical in the eye: irrigate first, for at least 30 minutes, check the pH, clear the fornices, then refer." },
+    { t: "Swollen, sticky eyes in a newborn, Kisumu", tag: "Ophthalmia neonatorum", stem: "Baby Achieng, 3 days old and 3.2 kg, was born at home. Both eyelids are swollen and thick yellow pus wells out when they are opened. She did not receive eye ointment at birth. Her mother had a vaginal discharge late in pregnancy that was not treated.", vit: ["Temp 37.4 °C", "Weight 3.2 kg", "Age 3 days"],
+      qs: [
+        { q: "Copious pus in the first days of life after untreated maternal discharge most suggests…", o: ["Gonococcal conjunctivitis", "A blocked tear duct", "Allergic conjunctivitis", "Trachoma"], a: 0, why: "Neisseria gonorrhoeae picked up during birth causes a hyperacute purulent conjunctivitis within the first few days and can perforate the cornea quickly, so it is an emergency. Chlamydial conjunctivitis usually appears later (5–14 days) and is milder." },
+        { q: "Treatment at 0–7 days is ceftriaxone 50 mg/kg IM as a single dose, maximum 125 mg. How much do you give her?", o: ["50 mg", "125 mg", "160 mg", "250 mg"], a: 1, why: "50 × 3.2 = 160 mg, which is above the 125 mg maximum, so give 125 mg IM once (MSF/WHO). Clean the eyes with saline frequently too." },
+        { q: "Who else needs treatment?", o: ["Every child in the village", "The mother and her partner", "Nobody else at all", "Only the baby"], a: 1, why: "The infection came from the mother’s genital tract, so she and her partner need treatment for gonorrhoea and chlamydia; otherwise the baby can be reinfected." },
+        { q: "How is this prevented at birth in Kenya?", o: ["Washing the eyes with breast milk", "Tetracycline 1 % ointment to both eyes after birth", "Covering both eyes for the first week", "Drops only once pus has appeared"], a: 1, why: "Essential newborn care includes a ribbon of tetracycline 1 % eye ointment in both eyes within the first hour of birth. Antenatal STI treatment and facility births also prevent it." },
+      ], take: "Pus from a newborn’s eyes in the first week is an emergency: ceftriaxone, saline cleaning, treat the parents, and give eye prophylaxis at every birth." },
   ]);
 
   // Tumbling E chart drawn as SVG (letter height proportional to the Snellen denominator)
@@ -1716,7 +1781,7 @@ window.DK = (() => {
     return `<svg viewBox="0 0 320 ${y + 4}" style="display:block;width:100%;max-width:300px;margin:8px auto;background:#f8fafc;border-radius:10px" role="img" aria-label="Tumbling E chart with lines 6/60 to 6/6"><rect width="320" height="${y + 4}" fill="#f8fafc" rx="10"/>${h}</svg>`;
   };
   CK.osce('#ckOsce', {
-    title: 'Measure and record distance visual acuity', time: 300, pass: 0.6,
+    title: 'Measure and record distance visual acuity', time: 300, pass: 0.7,
     brief: '<b>Candidate instructions.</b> Mr Lokwang, 58, cannot read letters and has noticed blurred distance vision. You have <b>5 minutes</b>. Prepare, measure his visual acuity with a Tumbling E chart, record it correctly and interpret it. Explain what you are doing and gain consent first.',
     steps: [
       { mark: 'Chooses the right chart and distance', m: 1, type: 'pick', q: 'He cannot read letters. Which chart and distance do you use?', o: ['Snellen letter chart at 1 m', 'Tumbling E chart at 6 m (he points the direction of each E)', 'Reading card at 40 cm only', 'Any poster on the wall'], a: 1, why: 'The Tumbling E (or Landolt C) chart works for people who cannot read and for children; standard testing distance is 6 m (or a chart designed for 3 m).' },
@@ -1727,7 +1792,7 @@ window.DK = (() => {
       { mark: 'Converts and classifies', m: 2, type: 'num', q: 'What is the logMAR value of 6/18? (2 decimal places)', a: 0.48, tol: 0.011, unit: 'logMAR', why: 'logMAR = log₁₀(18/6) = log₁₀3 = 0.48. 6/6 is 0.00 and 6/60 is 1.00.' },
       { mark: 'Classifies vision impairment', m: 1, type: 'pick', q: 'If 6/18 is his better-eye presenting acuity, his WHO category is…', o: ['No impairment', 'Mild vision impairment', 'Moderate vision impairment', 'Blindness'], a: 1, why: 'Mild is worse than 6/12 down to and including 6/18. Moderate starts below 6/18.' },
     ],
-  }, { onDone: (sc, tot) => { if (sc / tot >= 0.8) done('osce'); } });
+  }, { onDone: (sc, tot) => { if (sc / tot >= 0.7) done('osce'); } });
 
   const vaCat = d => d <= 12 ? ['No vision impairment (6/12 or better)', 'g'] : d <= 18 ? ['Mild vision impairment', 'y'] : d <= 60 ? ['Moderate vision impairment', 'y'] : d <= 120 ? ['Severe vision impairment', 'r'] : ['Blindness', 'r'];
   CK.calc('#ckCalc', {
@@ -1805,7 +1870,7 @@ window.DK = (() => {
     { el: '.opt-stage', title: 'The optics bench', text: 'Real rays refracted through the cornea and lens. Where they meet tells you whether the image is focused on the retina.' },
     { el: '#optPre', title: 'Try a refractive error', text: 'Pick myopia or hyperopia and watch the focus fall in front of or behind the retina. Then switch on spectacles to correct it.' },
     { el: '.stat:has(#sRx)', title: 'Read the prescription', text: 'The lens power, in dioptres, that would put the image back on the retina. Minus lenses correct myopia, plus lenses hyperopia.' },
-    { el: '#tabClin', title: 'Clinical cases and OSCE', text: 'Trachoma, cataract, vitamin A deficiency and a schoolchild who cannot see the board, plus a timed visual acuity OSCE station. The Worked examples tab has acuity and lens calculators and a practice drill.', before: () => document.getElementById('tabClin').click() },
+    { el: '#tabClin', title: 'Clinical cases and OSCE', text: 'Trachoma, cataract, vitamin A deficiency, a schoolchild who cannot see the board, acute glaucoma, a chemical splash and a newborn with sticky eyes, plus a timed visual acuity OSCE station. The Worked examples tab has acuity and lens calculators and a practice drill.', before: () => document.getElementById('tabClin').click() },
     { el: '#tabChal', title: 'Take the challenges', text: 'Prescribe for a short-sighted eye, find the blind spot and more. Each task checks itself.', before: () => document.getElementById('tabChal').click() },
   ]));
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
