@@ -155,6 +155,7 @@
   }
 
   /* ---------------- Search palette ---------------- */
+  const KW = {"gears": "gear ratio torque gearbox posho mill transmission rpm sprocket worm planetary mechanism", "robot-arm": "robotics kinematics inverse kinematics manipulator automation dh denavit hartenberg", "engine": "internal combustion otto cycle diesel petrol piston thermodynamics motor boda", "beams": "bending moment shear force deflection structural civil stress strain", "truss-bridge": "bridge structure civil structural members tension compression", "circuits": "electricity electric ohms law ohm resistor capacitor voltage current electronics led solar battery breadboard oscilloscope", "projectile": "kinematics motion trajectory throw ball range physics", "wind-tunnel": "aerodynamics airfoil lift drag aeronautical bernoulli", "plane-builder": "aircraft aeroplane airplane flight fly pilot aviation", "helicopter": "rotor flight hover aviation pilot", "oscillations": "shm simple harmonic motion pendulum spring damping resonance vibration", "orbits": "gravity satellite kepler planets space rocket astronomy", "waves-optics": "light lens mirror interference diffraction refraction optics waves", "ear": "hearing audiology ent cochlea otitis rinne weber anatomy", "eye": "vision optometry ophthalmology refraction snellen cataract trachoma anatomy", "heart": "cardiology cardiac ecg ekg blood pressure auscultation murmur anatomy cardiovascular", "skeleton": "bones fracture orthopaedics xray x-ray joints muscles anatomy", "cell": "biology osmosis membrane organelles iv fluids diffusion", "neuron": "nerve action potential nervous system physiology electrolytes potassium", "chromosomes": "meiosis mitosis karyotype down syndrome genetics cell division", "dna-lab": "genetics transcription translation pcr crispr mutation sickle hiv genexpert", "gene-mixer": "genetics inheritance mendel punnett cross sickle blood group g6pd heredity", "pharmacology": "drugs dosage dose calculation drip rate pharmacokinetics medicine pharmacy nursing", "epidemic": "epidemiology outbreak sir model vaccination immunisation kepi cholera malaria covid public health", "vitals": "nursing triage news2 etat monitor vital signs emergency clinical osce", "periodic-table": "elements chemistry atoms electron configuration", "molecule-builder": "chemistry bonds vsepr molecular shape organic", "titration": "acid base acid-base ph neutralisation chemistry burette indicator", "gas-laws": "boyle charles pressure volume temperature ideal gas kinetic theory", "reaction-kinetics": "reaction rate equilibrium catalyst activation energy chemistry", "algorithms": "sorting searching computer science programming coding big o dijkstra pathfinding", "logic-gates": "digital electronics boolean binary and or not computer", "networking": "internet tcp ip packets routing computer networks", "calculus": "derivative integral differentiation integration limits maths mathematics", "fourier": "signals frequency spectrum fft sampling audio dsp", "matrices": "linear algebra transformation vectors eigenvalues maths mathematics", "tv-studio": "television broadcast director football match producer media", "radio-studio": "radio presenter broadcast fm media", "mixer": "sound audio mixing desk eq music production", "piano": "music keyboard chords notes scales", "camera": "photography exposure aperture shutter iso", "lighting": "film lighting three point studio photography", "newsroom": "journalism news editor pr public relations media", "plant-operator": "water treatment scada process control power station industrial operator", "power-grid": "electricity grid power station frequency kplc energy", "dispatch": "emergency call 999 112 ambulance dispatcher", "air-traffic": "atc air traffic control aviation radar airport", "ecosystem": "ecology predator prey wildlife population biology environment", "climate": "climate change global warming greenhouse co2 environment", "farm": "agriculture crops maize irrigation farming soil", "earthquake": "seismology seismic geology earthquakes waves rift valley", "market": "economics supply demand price stock market inflation", "business-finance": "business finance accounting loan interest rate cash flow break-even npv entrepreneurship"};
   function palette() {
     const el = document.createElement('div');
     el.className = 'palette'; el.id = 'slPalette';
@@ -164,7 +165,10 @@
     let sel = 0, list = [];
     const render = () => {
       const q = input.value.trim().toLowerCase();
-      list = MODULES.filter(m => !q || (m.title + ' ' + m.desc + ' ' + deptById[m.dept].name).toLowerCase().includes(q)).slice(0, 12);
+      const words = q.split(/[\s,]+/).filter(Boolean);
+      const hay = m => (m.title + ' ' + m.desc + ' ' + deptById[m.dept].name + ' ' + m.id.replace(/-/g, ' ') + ' ' + (KW[m.id] || '')).toLowerCase();
+      const score = m => { const h = hay(m), t = m.title.toLowerCase(); let sc = 0; for (const w of words) { const re = new RegExp('(^|[^a-z0-9])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')); if (!re.test(h)) return -1; sc += re.test(t) ? 3 : re.test(KW[m.id] || '') ? 2 : 1; } return sc; };
+      list = !words.length ? MODULES.slice(0, 12) : MODULES.map(m => [m, score(m)]).filter(x => x[1] >= 0).sort((a, b) => b[1] - a[1]).map(x => x[0]).slice(0, 12);
       sel = Math.min(sel, Math.max(0, list.length - 1));
       ul.innerHTML = list.map((m, i) => `<li class="${i === sel ? 'sel' : ''}" data-dept="${m.dept}"><a href="${m.id}.html"><span class="ic">${icon(m.icon)}</span><span><b>${m.title}</b><br><span class="small muted">${deptById[m.dept].name}</span></span></a></li>`).join('') || '<li class="muted small" style="padding:12px">No labs match.</li>';
       refreshIcons(ul);
@@ -453,6 +457,8 @@
     return el;
   }
 
+  // Phones and low-core devices: draw canvases at most 1.5x so simulations keep real-time speed.
+  const LOWEND = (window.matchMedia && matchMedia('(pointer:coarse)').matches) || (navigator.hardwareConcurrency || 8) <= 4;
   /** HiDPI canvas that tracks its container size. onResize(w,h) is called with CSS pixel size. */
   function canvas(cv, onResize) {
     const ctx = cv.getContext('2d');
@@ -460,7 +466,7 @@
     let first = true;
     const fit = () => {
       const r = cv.getBoundingClientRect();
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const dpr = Math.min(window.devicePixelRatio || 1, LOWEND ? 1.5 : 2);
       const w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
       if (w === state.w && h === state.h && dpr === state.dpr) return;
       cv.width = w * dpr; cv.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
