@@ -273,7 +273,9 @@
       ctx.restore();
     };
     if (reduce) { setTimeout(() => draw(0), 50); return; }
-    const lp = loop((dt, t) => draw(t)).start();
+    // Decorative only: 20 fps on phones/low-end devices, 30 fps elsewhere, so the lab below gets the CPU.
+    const minGap = LOWEND ? 50 : 33; let lastDraw = 0;
+    const lp = loop((dt, t) => { const n = performance.now(); if (n - lastDraw < minGap) return; lastDraw = n; draw(t); }).start();
     if ('IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(e => e.isIntersecting ? lp.start() : lp.stop())).observe(sec);
   }
 
