@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=15">
+<link rel="stylesheet" href="assets/css/simlab.css?v=16">
 <style>
   .stage.app{height:620px}
   @media (max-width:980px){.stage.app{height:560px}}
@@ -74,14 +74,12 @@
   @media (max-width:520px){
     .stage-toolbar{top:12px;bottom:auto}
     #hIndWrap{display:none}
-    .stage-toolbar .tx{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+    .stage-toolbar .tx{display:none}   /* icon buttons on phones; the buttons carry aria-labels */
     .chartbox{height:280px}
   }
   svg.diag text{font-family:var(--mono);font-size:11px;fill:#93a1bd}
   .stat .k{text-transform:none;letter-spacing:.03em}
   /* demo caption on phones; keep scrolled-to targets clear of the sticky header */
-  @media (max-width:520px){.dk-cap .row{flex-wrap:wrap;row-gap:6px}.dk-cap .row .n{flex:1 0 100%}}
-  @media (max-width:699px){.dk-cap{position:fixed;bottom:8px}}
   .stage,.lab,.dk-bar,.dk-scen{scroll-margin-top:84px}
 </style>
 </head>
@@ -101,8 +99,8 @@
       </div>
       <div class="stchart" id="stChart" aria-label="Titration curve beside the apparatus"></div>
       <div class="stage-toolbar">
-        <button class="btn sm" id="tLabels" aria-pressed="true" title="Show apparatus labels"><i data-lucide="tag"></i><span class="tx"> Labels</span></button>
-        <button class="btn sm" id="tStir" aria-pressed="true" title="Magnetic stirrer"><i data-lucide="refresh-cw"></i><span class="tx"> Stirrer</span></button>
+        <button class="btn sm" id="tLabels" aria-pressed="true" title="Show apparatus labels" aria-label="Labels"><i data-lucide="tag"></i><span class="tx"> Labels</span></button>
+        <button class="btn sm" id="tStir" aria-pressed="true" title="Magnetic stirrer" aria-label="Stirrer"><i data-lucide="refresh-cw"></i><span class="tx"> Stirrer</span></button>
       </div>
     </div>
     <aside>
@@ -313,18 +311,44 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=15"></script>
+<script src="assets/js/simlab.js?v=16"></script>
+<script>
+/* performance (page-local): no canvas glow (shadowBlur) on phones and low-end CPUs, and a cheap "is this element on screen?" test so secondary canvases draw only while visible */
+window.SLPerf = window.SLPerf || (() => {
+  const low = matchMedia('(pointer:coarse)').matches || (navigator.hardwareConcurrency || 8) <= 4;
+  if (low) try { Object.defineProperty(CanvasRenderingContext2D.prototype, 'shadowBlur', { get: () => 0, set: () => {}, configurable: true }); } catch (e) {}
+  const V = new WeakMap(), io = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => V.set(e.target, e.isIntersecting)), { rootMargin: '120px' }) : null;
+  const seen = el => { if (!io || !el) return true; if (!V.has(el)) { V.set(el, true); io.observe(el); } return V.get(el); };
+  return { low, seen };
+})();
+</script>
 <script>
 /* Watch-demo runner and goal-based scenarios (page-local kit) */
 (function () {
   if (window.DemoKit) return;
   const css = `
-  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 8px);display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin:10px 0 10px}
   .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
   .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
   .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
-  .dk-bar .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto}
-  .dk-bar .dk-keys kbd{font-size:.72rem}
+  .dk-bar .dk-start{flex:1 1 260px;min-width:0;margin:0;font-size:.86rem;line-height:1.4;color:var(--muted)}
+  .dk-bar .dk-start b{color:var(--text)}
+  .dk-bar .dk-keys{flex-basis:100%;font-size:.74rem;color:var(--dim);margin:-2px 0 0;background:none;border:0;padding:0;font-family:inherit;text-align:left;cursor:default}
+  .dk-bar button.dk-keys{cursor:pointer}.dk-bar button.dk-keys:hover{color:var(--text)}
+  .dk-bar .dk-keys kbd{font-size:.7rem}
+  .dk-more{position:relative}
+  .dk-more>summary{list-style:none;cursor:pointer;font-size:.82rem;color:var(--muted);padding:6px 10px;border:1px solid var(--line);border-radius:99px;display:inline-flex;align-items:center;gap:6px;min-height:34px}
+  .dk-more>summary::-webkit-details-marker{display:none}
+  .dk-more>summary svg{width:15px;height:15px}
+  .dk-more[open]>summary{color:var(--text);border-color:var(--line2)}
+  .dk-more .dk-menu{position:absolute;z-index:40;right:0;top:calc(100% + 6px);min-width:230px;display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--panel);border:1px solid var(--line2);border-radius:12px;box-shadow:0 12px 34px rgba(0,0,0,.45)}
+  .dk-more:not([open]) .dk-menu{display:none}
+  .dk-more .dk-menu>*{justify-content:flex-start;width:100%;margin:0}
+  .dk-more .dk-menu .chip{display:inline-flex!important}
+  @media (max-width:520px){.dk-more .dk-long{display:none}.dk-bar{gap:8px}.dk-bar .dk-start{flex-basis:100%;order:3;font-size:.84rem}.dk-more{order:2}.dk-goal{flex-wrap:wrap;order:4}.dk-goal .acts{width:100%}.dk-more .dk-menu{left:auto;right:0}}
+  @media (min-width:761px) and (max-height:820px){.page-hero{padding:14px 0 12px}.page-hero .crumbs{display:none}.page-hero .tag{margin-bottom:6px;padding:3px 9px}.page-hero h1{font-size:1.9rem;margin-bottom:.15em}.page-hero .lead{font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.page-hero .meta{display:none}}
+  @media (pointer:coarse),(max-width:760px){.page-hero .hero-fx{display:none}}
+  body.dk-nofx .page-hero .hero-fx{display:none}
   .dk-goal{flex-basis:100%;display:none;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;padding:10px 12px}
   .dk-goal.show{display:flex}
   .dk-goal.won{border-color:#34d399;background:color-mix(in srgb,#34d399 10%,var(--panel))}
@@ -337,17 +361,33 @@
   .dk-goal .hint{display:none;margin-top:4px;color:var(--muted)}
   .dk-goal .hint.show{display:block}
   .dk-goal .acts{display:flex;gap:6px;flex-wrap:wrap;flex:none}
-  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.93);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.95);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none}
   .dk-cap.show{display:block}
   .dk-cap.fixed{position:fixed;bottom:12px}
   .dk-cap .row{display:flex;align-items:center;gap:8px}
   .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
   .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap p.wait{color:var(--dim);font-style:italic}
   .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
   .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
   .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem;flex:none;width:auto;min-width:0}
+  .dk-cap .btn:disabled{opacity:.4;cursor:default}
+  .dk-cap .dk-end{display:none;gap:8px;flex-wrap:wrap;margin:2px 0 4px}
+  .dk-cap.ended .dk-end{display:flex}
+  .dk-cap.ended .row .btn,.dk-cap.ended .pg{display:none}
   .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
   @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  @media (max-width:699px){
+    .dk-cap.fixed{left:8px;right:8px;bottom:8px;width:auto;transform:none;max-height:30vh;overflow:auto;padding:8px 10px 7px}
+    .dk-cap .row{flex-wrap:wrap;row-gap:4px}.dk-cap .n{flex:1 1 auto;letter-spacing:.04em}
+    .dk-cap p{font-size:.86rem;margin:4px 0 6px}
+    .dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}
+  }
+  body.dk-capfixed .toasts{bottom:var(--dkcap,170px)}
+  @media (pointer:coarse){.dk-bar .dk-keys,.dk-keys{display:none!important}.dk-bar .btn,.dk-cap .btn,.dk-goal .btn,.dk-card .btn,.dk-more>summary{min-height:44px}.dk-more .dk-menu>*{min-height:44px}}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}
+  @media (pointer:coarse){.lab button:not(.el):not(.pel),.lab select,.lab summary,.lab .seg>*,.dk-scen .btn,.scn-pop .btn,.scn-active .btn{min-height:44px}.lab .stage-toolbar .btn,.lab .stage-toolbar button,.lab .seg>button{min-width:44px}}
+  @media (min-width:761px) and (max-height:820px){.lab .stage:has(>canvas){max-height:calc(100vh - 84px)}}
   .dk-scen{margin:18px 0 6px;scroll-margin-top:calc(var(--hdr,64px) + 10px)}
   .dk-scen h3 .ct{margin-left:auto;font:500 .74rem var(--mono);color:var(--dim)}
   .dk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:8px}
@@ -361,39 +401,77 @@
   .dk-card .ok{color:#34d399;display:none}
   .dk-card.done .ok{display:inline-flex}
   .dk-card .ok svg{width:17px;height:17px}
-  .dk-card .btn{align-self:flex-start}
-  @media (max-width:520px){.dk-bar .dk-keys{display:none}.dk-cap{bottom:8px}.dk-cap p{font-size:.86rem}.dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}}
-  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}`;
+  .dk-card .btn{align-self:flex-start}`;
   const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
   const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
   const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
   const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const phone = () => innerWidth < 700;
+  const hdrH = () => { const h = document.getElementById('slHeader'); const b = h ? h.getBoundingClientRect().bottom : 64; return Math.max(0, Math.min(140, b)) + 8; };
 
-  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  /* while a demo runs (and just after it restores), nothing the page does may count as the student's work */
+  let running = false, quietUntil = 0;
+  const quiet = () => running || performance.now() < quietUntil;
+  const toast0 = SL.toast;
+  const kitToast = (m, t, ms) => toast0.call(SL, m, t, ms);
+  SL.toast = function (msg, type, ms) {
+    if (running) {
+      if (/Challenge complete|Scenario (achieved|complete)/i.test(msg)) return;
+      return toast0.call(SL, /^\s*(<b>)?Demo:/.test(msg) ? msg : '<b>Demo:</b> ' + msg, type, ms);
+    }
+    if (performance.now() < quietUntil) return;
+    return toast0.call(SL, msg, type, ms);
+  };
+
+  /* the lab bar directly above the stage: Watch demo, Scenarios, keyboard hint and a one-line "Start here" */
   function bar(before) {
     let b = document.querySelector('.dk-bar'); if (b) return b;
     b = document.createElement('div'); b.className = 'dk-bar';
-    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
-    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-start" id="dkStart" hidden></span><details class="dk-more" hidden><summary><i data-lucide="sparkles"></i> More<span class="dk-long"> ways to learn</span></summary><div class="dk-menu"></div></details><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b);
+    // fold the hero's tour and Present buttons into "More ways to learn", so the bar is the one place to start
+    const more = b.querySelector('.dk-more'), menu = more.querySelector('.dk-menu');
+    const fold = () => { ['#slTourBtn', '#slPresentBtn'].forEach(q => { const x = document.querySelector(q); if (x && !x.closest('.dk-more')) { x.classList.add('btn', 'sm'); menu.appendChild(x); more.hidden = false; } }); try { SL.refreshIcons(more); } catch (e) {} };
+    fold(); setTimeout(fold, 0); setTimeout(fold, 400);
+    document.addEventListener('click', e => { if (more.open && !more.contains(e.target)) more.open = false; else if (more.open && e.target.closest('.dk-menu button, .dk-menu a')) setTimeout(() => { more.open = false; }, 0); });
+    // the hero animation stops drawing once the lab has the student's attention
+    try { const hero = document.querySelector('.page-hero'); if (hero && 'IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(en => document.body.classList.toggle('dk-nofx', en.intersectionRatio < 0.6)), { threshold: [0, 0.6, 1] }).observe(hero); } catch (e) {}
+    return b;
   }
 
-  const DemoKit = { bar };
+  const DemoKit = { bar, running: () => running, quiet };
   /** add page shortcuts to the hint, e.g. '<kbd>1</kbd>–<kbd>5</kbd> modes' */
   DemoKit.keys = html => { const k = document.querySelector('.dk-keys'); if (k) k.innerHTML = html + ' · ' + k.innerHTML; };
-  /** demo({before, stage, steps:[{cap, run(api), ms, hl}], save(), restore(snap), onStop?}) */
+  /** the one obvious first step, shown under the buttons */
+  DemoKit.hint = DemoKit.startHere = html => { const p = document.querySelector('.dk-bar .dk-start'); if (p) { p.innerHTML = '<b>Start here:</b> ' + html; p.hidden = false; } };
+  /** add an element to the "More ways to learn" menu */
+  DemoKit.more = el => { const d = document.querySelector('.dk-bar .dk-more'); if (!d) return; d.querySelector('.dk-menu').appendChild(el); d.hidden = false; icons(d); return el; };
+  /** demo({before, stage, start, steps:[{cap, run(api), ms, hl, view, live}], save(), restore(snap), onStart, onStop, tryIt}) */
   DemoKit.demo = function (o) {
     const b = bar(o.before), btn = b.querySelector('#dkPlay');
+    if (o.start) DemoKit.hint(o.start);
     const stage = $(o.stage); if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
     const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
-    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
-    (o.capHost ? $(o.capHost) : innerWidth < 700 ? document.body : stage).appendChild(cap); /* phones: the caption is fixed to the viewport */ if (o.capFixed || innerWidth < 700) cap.classList.add('fixed'); icons(cap);
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)" aria-label="Next step"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)" aria-label="Stop the demo"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="dk-end"><button class="btn sm primary" data-a="try"><i data-lucide="hand"></i> Try it yourself</button><button class="btn sm" data-a="again"><i data-lucide="rotate-ccw"></i> Watch again</button></div><div class="pg"><i></i></div>`;
+    const fixedCap = () => o.capFixed || phone();
+    const place = () => { const host = o.capHost ? $(o.capHost) : fixedCap() ? document.body : stage; if (cap.parentNode !== host) host.appendChild(cap); cap.classList.toggle('fixed', fixedCap()); };
+    place(); icons(cap);
     let run = null; // {abort, stepMode, nextRes}
     const D = { running: () => !!run };
-    function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
+    function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? (phone() ? 'Auto' : 'Auto-play') : (phone() ? 'Step' : 'Step through'); }
     function hl(sel) { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); if (sel) { const e = $(sel); if (e) e.classList.add('dk-hl'); } }
-    // phones: bring the highlighted element into view, above the fixed caption
-    function vis(sel) { if (!sel || innerWidth >= 700) return; const e = $(sel); if (!e) return; const r = e.getBoundingClientRect(); if (!r.width && !r.height) return; const top = 84, bot = innerHeight - (cap.classList.contains('show') ? cap.offsetHeight + 16 : 0); if (r.top >= top && r.bottom <= bot) return; const dy = (r.top < top || r.height > bot - top) ? r.top - top : r.bottom - bot; window.scrollBy({ top: dy, behavior: reduce ? 'auto' : 'smooth' }); }
+    /* bring the part being talked about into view, clear of the header and of a caption pinned to the bottom */
+    function vis(sel) {
+      const e = $(sel || stage); if (!e) return false; const r = e.getBoundingClientRect(); if (!r.width && !r.height) return false;
+      const top = hdrH(), bot = innerHeight - (cap.classList.contains('fixed') && cap.classList.contains('show') ? cap.offsetHeight + 16 : 8);
+      if (r.top >= top && r.bottom <= bot) return false;
+      const dy = (r.top < top || r.height > bot - top) ? r.top - top : r.bottom - bot;
+      if (Math.abs(dy) < 4) return false;
+      window.scrollBy({ top: dy, behavior: reduce ? 'auto' : 'smooth' }); return true;
+    }
+    /* with the caption inside the stage, scrolling away from the stage would hide the caption too */
+    const tgt = st => cap.classList.contains('fixed') ? (st.view || st.hl || null) : stage;
     const ABORT = { abort: true };
     function api(r) {
       const chk = () => { if (r.abort) throw ABORT; };
@@ -405,54 +483,90 @@
         async slide(sel, to, ms) { const el = $(sel); if (!el) return; const a = +el.value, n = Math.max(1, Math.round((ms || 1200) / 60)); const stp = +el.step || 0; for (let i = 1; i <= n; i++) { chk(); let v = a + (to - a) * i / n; if (stp) v = Math.round(v / stp) * stp; el.value = v; fire(el, 'input'); await sleep((ms || 1200) / n); } el.value = to; fire(el, 'input'); fire(el, 'change'); },
         click(sel) { chk(); const el = $(sel); if (el) el.click(); },
         async until(fn, ms) { const t0 = performance.now(); while (!fn()) { if (performance.now() - t0 > (ms || 10000)) return false; await sleep(120); } return true; },
-        hl
+        hl, vis
       };
     }
+    function setText(html, wait) { const p = cap.querySelector('p'); p.classList.toggle('wait', !!wait); p.innerHTML = html; try { SL.renderMath && SL.renderMath(p); } catch (e) {} lift(); }
+    /* toasts sit above a caption pinned to the bottom */
+    function lift() { const f = cap.classList.contains('fixed') && cap.classList.contains('show'); document.body.classList.toggle('dk-capfixed', f); if (f) document.body.style.setProperty('--dkcap', (cap.offsetHeight + 16) + 'px'); }
     async function start() {
       if (run) return stop(true);
       if (DemoKit._scen && DemoKit._scen.active()) DemoKit._scen.quit(true);
       let snap = null; try { snap = o.save ? o.save() : null; } catch (e) {}
-      const r = run = { abort: false, stepMode: reduce, snap };
+      const r = run = { abort: false, stepMode: reduce, snap }; running = true;
+      place(); cap.classList.remove('ended');
       btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); setMode();
+      if (cap.classList.contains('fixed')) document.body.style.paddingBottom = Math.round(innerHeight * 0.3 + 24) + 'px';
       if (o.onStart) try { o.onStart(); } catch (e) {}
       const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
-      if (stage.getBoundingClientRect().top < 0 || stage.getBoundingClientRect().bottom > innerHeight) stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' });
       try {
+        if (!phone()) { const sr = stage.getBoundingClientRect(); if (sr.top < hdrH() - 8 || sr.bottom > innerHeight) { stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' }); await A.sleep(reduce ? 0 : 450); } }
         for (let i = 0; i < steps.length; i++) {
           const st = steps[i]; if (r.abort) throw ABORT;
           cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
-          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
-          setTimeout(() => { if (run === r) vis(st.hl); }, 80);
+          pg.style.width = (i / steps.length * 100) + '%';
+          hl(st.hl);
+          if (vis(tgt(st))) { setText('Watch the lab…', true); await A.sleep(reduce ? 0 : 450); }
+          // the caption appears once the state it describes is on screen (live steps narrate a process as it happens)
+          const capOf = () => typeof st.cap === 'function' ? st.cap() : st.cap;
+          if (st.run && !st.live) setText('Watch the lab…', true); else { setText(capOf()); vis(tgt(st)); }
           if (st.run) await st.run(A);
-          if (run === r) vis(st.hl);
           if (r.abort) throw ABORT;
+          if (vis(tgt(st))) await A.sleep(reduce ? 0 : 350);
+          setText(capOf()); vis(tgt(st));
           pg.style.width = ((i + 1) / steps.length * 100) + '%';
-          const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
+          const ms = st.ms == null ? 3200 : Math.max(st.ms, 2600), t0 = performance.now();
           await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
           r.nextRes = null;
         }
-        end(true);
-      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+        end(true, true);
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true, true); } }
     }
-    function end(restore, msg) {
+    /** restore: put the student's set-up back silently; card: show the end card (finished or stopped) */
+    function end(restore, card) {
       const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
-      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      quietUntil = performance.now() + 1500;
       if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
       if (o.onStop) try { o.onStop(); } catch (e) {}
-      SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+      running = false; quietUntil = performance.now() + 1500;
+      if (card) {
+        cap.classList.add('ended'); cap.querySelector('.n').textContent = r.finished === false ? 'Demo stopped' : 'Demo complete';
+        setText(restore ? 'Your own settings are back as they were. Now it is your turn.' : 'The lab is yours.');
+        clearTimeout(cap._t); cap._t = setTimeout(closeCard, 20000);
+        requestAnimationFrame(() => vis(stage));   // back to the lab, where the student's turn starts
+      } else { closeCard(); if (!restore) kitToast('Demo stopped. You have the controls.', 'ok', 2600); }
     }
-    function stop(restore) { end(restore !== false, restore === false ? null : 'Demo stopped. Your settings are back as they were.'); }
+    function closeCard() { clearTimeout(cap._t); if (run) return; cap.classList.remove('show', 'ended'); document.body.style.paddingBottom = ''; lift(); }
+    function stop(restore) { if (run) run.finished = false; end(restore !== false, restore !== false); }
     D.stop = stop; D.start = start;
-    btn.onclick = start;
-    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
-    // the student takes over: any trusted interaction with the lab outside the caption ends the demo where it is
-    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .dk-bar')) end(false); }, true);
+    btn.onclick = () => { if (!run) closeCard(); start(); };
+    cap.addEventListener('click', e => {
+      const a = e.target.closest('[data-a]'); if (!a) return; const k = a.dataset.a;
+      if (k === 'try') { closeCard(); const t = $(o.tryIt || stage); if (t) { vis(t); const f = t.matches('button,input,select') ? t : t.querySelector('button, input, select'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 300); } return; }
+      if (k === 'again') { closeCard(); start(); return; }
+      if (!run) return;
+      if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); }
+    });
+    // the student takes over only by a deliberate tap or click on a control or on the stage, or by changing a control.
+    // A swipe that scrolls the page never stops the demo.
+    const scope = o.takeover || '.lab, .dk-bar';
+    const isCtl = t => t && t.closest && t.closest(scope) && !cap.contains(t) && !btn.contains(t) && (stage.contains(t) || t.closest('button, input, select, textarea, label, a, summary, [role=button], [tabindex], canvas, svg'));
+    let pd = null;
+    document.addEventListener('pointerdown', e => { pd = run && e.isTrusted ? { x: e.clientX, y: e.clientY, t: e.target } : null; }, true);
+    document.addEventListener('pointercancel', () => { pd = null; }, true);
+    document.addEventListener('pointerup', e => { const p = pd; pd = null; if (!run || !p || !e.isTrusted) return; if (Math.hypot(e.clientX - p.x, e.clientY - p.y) >= 10) return; if (isCtl(p.t)) end(false); }, true);
+    ['input', 'change'].forEach(ev => document.addEventListener(ev, e => { if (run && e.isTrusted && isCtl(e.target)) end(false); }, true));
+    // any tap elsewhere in the lab closes the end card
+    document.addEventListener('pointerdown', e => { if (!run && cap.classList.contains('ended') && !cap.contains(e.target) && !btn.contains(e.target) && e.target.closest(scope)) closeCard(); });
     document.addEventListener('keydown', e => {
       if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
       if (run && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); stop(true); }
+      else if (!run && e.key === 'Escape' && cap.classList.contains('ended')) closeCard();
       else if (run && e.key === 'ArrowRight' && run.nextRes) { e.preventDefault(); run.nextRes(); }
-      else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); start(); }
+      else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); closeCard(); start(); }
     }, true);
+    addEventListener('resize', () => { if (!run && !cap.classList.contains('show')) place(); });
     DemoKit._demo = D; return D;
   };
 
@@ -476,7 +590,7 @@
     function tick() {
       if (!act) return; const s = act.s; let st = '';
       try { st = s.status ? s.status() : ''; } catch (e) {}
-      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      if (!act.won && !quiet() && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
       const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
     }
     function startS(id) {
@@ -485,12 +599,12 @@
       if (act && act.s.quit) try { act.s.quit(); } catch (e) {}
       act = { s, won: false, t0: performance.now() }; try { s.setup(); } catch (e) { console.warn(e); }
       clearInterval(timer); timer = setInterval(tick, 300); paint(); banner();
-      const lab = o.scrollTo ? $(o.scrollTo) : b; if (lab) lab.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      const lab = o.scrollTo ? $(o.scrollTo) : b; if (lab) lab.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
     }
     function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
     sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
     goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
-    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
+    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
     document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
     paint();
     const API = { active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
@@ -952,13 +1066,21 @@
     nz = (Math.random() - .5) * 0.006;
   }
 
+  let bgLayer = null;
   function render() {
     const { ctx, w, h } = st;
     layout();
     ctx.save();
-    drawBackground(ctx, w, h);
+    // the room, bench and retort stand never change: draw them once per layout onto an offscreen layer
+    const key = [w, h, st.dpr, ox, oy, sc].map(v => (+v).toFixed(2)).join('|');
+    if (!bgLayer || bgLayer.key !== key) {
+      const c = bgLayer && bgLayer.c || document.createElement('canvas'); c.width = Math.ceil(w * st.dpr); c.height = Math.ceil(h * st.dpr);
+      const x = c.getContext('2d'); x.setTransform(st.dpr, 0, 0, st.dpr, 0, 0);
+      drawBackground(x, w, h); x.translate(ox, oy); x.scale(sc, sc); drawStand(x);
+      bgLayer = { c, key };
+    }
+    ctx.drawImage(bgLayer.c, 0, 0, w, h);
     ctx.translate(ox, oy); ctx.scale(sc, sc);
-    drawStand(ctx);
     drawStirrer(ctx);
     const ys = drawFlask(ctx);
     const yMen = drawBurette(ctx);
@@ -1149,7 +1271,7 @@
     $('#chkList').innerHTML = CHALL.map(c => `<li data-id="${c.id}"><span class="led ${S.chk[c.id] ? 'on' : ''}"></span><div style="flex:1"><b>${c.t}</b><span class="small muted">${c.d}</span>${c.quiz ? `<div class="btn-row" style="margin-top:8px">${c.quiz.opts.map((o, i) => `<button class="btn sm" data-q="${c.id}" data-i="${i}">${o}</button>`).join('')}</div>` : ''}${c.input ? `<div class="field" style="max-width:300px"><input type="number" step="0.01" id="pkaIn" placeholder="pKa"><button class="btn sm" id="pkaBtn">Check</button></div>` : ''}</div></li>`).join('');
   }
   function complete(id) {
-    if (S.chk[id] || S.demo) return; S.chk[id] = true;
+    if (S.chk[id] || S.demo || DemoKit.quiet()) return; S.chk[id] = true;
     const c = CHALL.find(x => x.id === id);
     SL.toast(`Challenge complete: <b>${c.t}</b>`, 'ok');
     const li = document.querySelector(`#chkList li[data-id="${id}"] .led`); if (li) li.classList.add('on');
@@ -1249,6 +1371,8 @@
   // press-and-hold on the stopcock in the picture
   const toBase = e => { const p = SL.ptr(e, cv); return { x: (p.x - ox) / sc, y: (p.y - oy) / sc }; };
   cv.addEventListener('pointerdown', e => { const p = toBase(e); if (Math.hypot(p.x - bx, p.y - SY) < 32) { cv.setPointerCapture(e.pointerId); holdOn(e); } });
+  // touch: holding the tap does not scroll the page; anywhere else on the stage a swipe scrolls
+  cv.addEventListener('touchstart', e => { if (e.touches.length !== 1) return; const p = toBase(e.touches[0]); if (Math.hypot(p.x - bx, p.y - SY) < 32) e.preventDefault(); }, { passive: false });
   cv.addEventListener('pointerup', holdOff); cv.addEventListener('pointercancel', holdOff);
   cv.addEventListener('pointermove', e => { const p = toBase(e); cv.style.cursor = Math.hypot(p.x - bx, p.y - SY) < 32 ? 'pointer' : 'default'; });
   // keyboard: space = hold
@@ -1281,8 +1405,10 @@
   labelsUpd();
   resetAll();
   let acc = 0;
+  let idleSkip = false;
   const L = SL.loop((dt) => {
-    step(dt); render();
+    // idle (nothing falling, mixing or being added): redraw at half rate on phones and low-end CPUs
+    step(dt); const busy = S.holding || S.drops.length || S.plumes.length || S.ripples.length; if (busy || !SLPerf.low || (idleSkip = !idleSkip)) render();
     acc += dt; if (acc > 0.1) { acc = 0; readouts(); if (chartDirty) { drawChart(); chartDirty = false; } }
   }).start();
   // pause the whole simulation while the lab is scrolled far out of view (reading the theory) or the tab is hidden
@@ -1331,6 +1457,7 @@
     const KEEP = ['Vadd', 'bur', 'runStart', 'runVol', 'refilledMidRun', 'pending', 'pHtrue', 'pHshow', 'pts', 'runs', 'roughDone', 'initRec', 'nudged', 'meanTitre', 'revealed', 'emptyWarned'];
     const holdUntil = async (A, v, ms) => { S.holdAcc = 0.3; S.holding = true; $('#holdBtn').classList.add('active'); try { await A.until(() => S.Vadd >= v - 1e-9, ms); } finally { S.holding = false; $('#holdBtn').classList.remove('active'); } };
     const eqV = () => eqInfo().eq[0].V;
+    const PH = innerWidth < 700;   // phones: keep the demo on the flask instead of jumping to controls far below
     DemoKit.demo({
       before: '.lab', stage: '#stage', scrollBlock: 'start', capFixed: true,
       save: () => ({ p: Object.assign(prefs(), { mystery: S.mystery }), s: clone(Object.fromEntries(KEEP.map(k => [k, S[k]]))), trueCa: S.trueCa, nb: $('#ans').value }),
@@ -1341,23 +1468,22 @@
         $('#ans').value = o.nb; renderNb(); renderInit(); chartDirty = true;
       },
       onStart: () => { S.demo = true; }, onStop: () => { S.demo = false; S.holding = false; $('#holdBtn').classList.remove('active'); },
+      start: 'watch the demo, then find the end point with <b>Hold to add</b> and <b>1 drop</b>.',
       steps: [
-        { cap: '<b>The set-up.</b> 25.00 mL of 0.100 M HCl is pipetted into the flask with phenolphthalein; the burette holds 0.100 M NaOH. Equivalence will be at exactly 25.00 mL.', hl: '#pair', ms: 3600,
-          run: async A => { setup({ mystery: false, pair: 'sa-sb', flask: 'acid', ca: 0.1, ct: 0.1, va: 25, ind: 'phph', mode: 'fast' }); S.runs = []; S.roughDone = false; renderNb(); resetAll();
-            if (innerWidth < 700) { await A.sleep(450); const r = $('#stage').getBoundingClientRect(); window.scrollTo({ top: scrollY + r.bottom - (innerHeight - 175), behavior: 'auto' }); } } }, // phones: keep the flask above the caption
-        { cap: '<b>Step 1: read the burette.</b> It never starts at exactly 0.00 mL, so note the initial reading. The titre is final − initial.', hl: '#burPanel', ms: 3200, run: async () => recInit(false) },
-        { cap: '<b>Run in the first 20 mL quickly.</b> The pH barely moves while excess acid remains, and each pink plume vanishes as the stirrer mixes it.', hl: '#hV', ms: 1500,
+        { cap: '<b>The set-up.</b> 25.00 mL of 0.100 M HCl is pipetted into the flask with phenolphthalein; the burette holds 0.100 M NaOH. Equivalence will be at exactly 25.00 mL.', hl: PH ? '#cv' : '#pair', ms: 3600,
+          run: async () => { setup({ mystery: false, pair: 'sa-sb', flask: 'acid', ca: 0.1, ct: 0.1, va: 25, ind: 'phph', mode: 'fast' }); S.runs = []; S.roughDone = false; renderNb(); resetAll(); } },
+        { cap: '<b>Step 1: read the burette.</b> It never starts at exactly 0.00 mL, so note the initial reading. The titre is final − initial.', hl: PH ? '#cv' : '#burPanel', ms: 3200, run: async () => recInit(false) },
+        { cap: '<b>Running in the first 20 mL quickly.</b> The pH barely moves while excess acid remains, and each pink plume vanishes as the stirrer mixes it.', hl: PH ? '#cv' : '#hV', ms: 1500, live: true,
           run: async A => { for (let i = 0; i < 20; i++) { A.click('#add1'); await A.sleep(260); } } },
-        { cap: '<b>Hold to add, in Fast mode.</b> Watch the lab warn you when you are within 2.5 mL of the end point: that is the cue to slow down.', hl: '#holdBtn', ms: 2600,
+        { cap: '<b>Hold to add, in Fast mode.</b> Watch the lab warn you when you are within 2.5 mL of the end point: that is the cue to slow down.', hl: PH ? '#cv' : '#holdBtn', ms: 2600, live: true,
           run: A => holdUntil(A, eqV() - 1.0, 9000) },
-        { cap: '<b>Dropwise.</b> Now each press of the hold adds one 0.05 mL drop. Pink flashes linger longer as you approach equivalence.', hl: '#modeSeg', ms: 1200,
+        { cap: '<b>Dropwise.</b> Now each press of the hold adds one 0.05 mL drop. Pink flashes linger longer as you approach equivalence.', hl: PH ? '#cv' : '#modeSeg', ms: 1200, live: true,
           run: async A => { setMode('drop'); await holdUntil(A, eqV() - 0.25, 7000); } },
-        { cap: '<b>One drop at a time</b> until the first faint pink stays after swirling: that is the end point. The pH jumps steeply right here.', hl: '#oneDrop', ms: 2400,
+        { cap: '<b>One drop at a time</b> until the first faint pink stays after swirling: that is the end point. The pH jumps steeply right here.', hl: PH ? '#cv' : '#oneDrop', ms: 2400, live: true,
           run: async A => { while (S.Vadd < eqV() - 1e-6) { A.click('#oneDrop'); await A.sleep(650); } } },
-        { cap: '<b>Record the end point.</b> The notebook stores the final reading and the titre. A good titre is within 0.10 mL (two drops) of the true equivalence volume.', hl: '#record', ms: 3600, run: async () => $('#record').click() },
-        { cap: '<b>The titration curve.</b> Flat buffer-free start, a near-vertical jump at 25 mL, and the shaded phenolphthalein range sitting inside the jump: the indicator is a good choice.', hl: '#cc', ms: 4200,
-          run: async () => { document.querySelector('#curvePanel').scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); } },
-        { cap: '<b>Your turn.</b> Repeat until two titres agree, then calculate the concentration. The Scenarios below set real lab tasks. Your own set-up is restored now.', hl: '#record', ms: 3600 },
+        { cap: '<b>End point recorded.</b> The notebook stores the final reading and the titre. A good titre is within 0.10 mL (two drops) of the true equivalence volume.', hl: PH ? '#cv' : '#record', ms: 3600, run: async () => $('#record').click() },
+        { cap: '<b>The titration curve.</b> Flat buffer-free start, a near-vertical jump at 25 mL, and the shaded phenolphthalein range sitting inside the jump: the indicator is a good choice.', hl: '#cc', ms: 4200 },
+        { cap: '<b>Your turn.</b> Repeat until two titres agree, then calculate the concentration. The Scenarios below set real lab tasks. Your own set-up is restored now.', hl: PH ? '#holdBtn' : '#record', ms: 3600 },
       ],
     });
 

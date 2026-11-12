@@ -9,13 +9,16 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=15">
+<link rel="stylesheet" href="assets/css/simlab.css?v=16">
 <style>
   .stage.box{height:580px}
   @media (max-width:980px){.stage.box{height:520px}}
-  @media (max-width:520px){.stage.box{height:600px}}
+  @media (max-width:520px){.stage.box{height:560px}}
   .phandle{position:absolute;touch-action:none;cursor:ns-resize;z-index:2;border-radius:10px}
   .phandle[hidden]{display:none}
+  .hud .readout small{font-size:.68em;color:var(--dim);font-weight:500}
+  .hud .readout .tk2{display:none}
+  @media (max-width:520px){.hud .readout .tk,.hud .readout .tset{display:none}.hud .readout .tk2{display:inline}}
   .hud .lk{display:none;color:#facc15;margin-left:2px}.hud .lk svg{width:12px;height:12px;vertical-align:-1px}
   .hud .readout.locked{border-color:#facc1588}.hud .readout.locked .lk{display:inline}
   .row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;margin-bottom:6px}
@@ -41,7 +44,6 @@
   .chk-list li b{display:block}
   .speedtbl td.num{font-family:var(--mono)}
   .stage-toolbar .tx{display:inline}
-  @media (max-width:520px){.stage-toolbar .tx{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}}
   .vecleg{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:3px;font:500 .7rem var(--mono);color:#e6ecf7;background:rgba(5,9,19,.78);border:1px solid var(--line2);border-radius:8px;padding:6px 9px;pointer-events:none}
   .vecleg[hidden]{display:none}
   .vecleg i{display:inline-block;vertical-align:middle;margin-right:5px}
@@ -51,8 +53,6 @@
   @media (pointer:coarse){.stage-toolbar .btn.sm{min-width:40px;min-height:38px;justify-content:center}#modeSeg button{padding:10px 8px}}
   .stat .k{text-transform:none;letter-spacing:.03em}
   /* demo caption on phones; keep scrolled-to targets clear of the sticky header */
-  @media (max-width:520px){.dk-cap .row{flex-wrap:wrap;row-gap:6px}.dk-cap .row .n{flex:1 0 100%}}
-  @media (max-width:699px){.dk-cap{position:fixed;bottom:8px}}
   .stage,.lab,.dk-bar,.dk-scen{scroll-margin-top:84px}
 </style>
 </head>
@@ -67,7 +67,7 @@
       <div class="hud">
         <span class="readout" id="roP">P <b id="hP">—</b> kPa<span class="lk" title="Held constant in this experiment"><i data-lucide="lock"></i></span></span>
         <span class="readout" id="roV">V <b id="hV">—</b> L<span class="lk" title="Held constant in this experiment"><i data-lucide="lock"></i></span></span>
-        <span class="readout" id="roT">T <b id="hT">—</b> K<span class="lk" title="Held constant in this experiment"><i data-lucide="lock"></i></span></span>
+        <span class="readout" id="roT" title="T from KE: the temperature measured from the molecules' kinetic energy. The heater setting is shown after it.">T<small class="tk"> from KE</small><small class="tk2">(KE)</small> <b id="hT">—</b> K<small class="tset" id="hTs"></small><span class="lk" title="Held constant in this experiment"><i data-lucide="lock"></i></span></span>
       </div>
       <div class="phandle" id="pHandle" aria-label="Drag to move the piston" title="Drag to move the piston"></div>
       <div class="vecleg" id="vecLeg" hidden><span><i class="ar"></i> velocity (every 3rd particle)</span><span><i class="ring"></i> wall impact: momentum 2mv</span></div>
@@ -231,18 +231,44 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=15"></script>
+<script src="assets/js/simlab.js?v=16"></script>
+<script>
+/* performance (page-local): no canvas glow (shadowBlur) on phones and low-end CPUs, and a cheap "is this element on screen?" test so secondary canvases draw only while visible */
+window.SLPerf = window.SLPerf || (() => {
+  const low = matchMedia('(pointer:coarse)').matches || (navigator.hardwareConcurrency || 8) <= 4;
+  if (low) try { Object.defineProperty(CanvasRenderingContext2D.prototype, 'shadowBlur', { get: () => 0, set: () => {}, configurable: true }); } catch (e) {}
+  const V = new WeakMap(), io = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => V.set(e.target, e.isIntersecting)), { rootMargin: '120px' }) : null;
+  const seen = el => { if (!io || !el) return true; if (!V.has(el)) { V.set(el, true); io.observe(el); } return V.get(el); };
+  return { low, seen };
+})();
+</script>
 <script>
 /* Watch-demo runner and goal-based scenarios (page-local kit) */
 (function () {
   if (window.DemoKit) return;
   const css = `
-  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 8px);display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin:10px 0 10px}
   .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
   .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
   .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
-  .dk-bar .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto}
-  .dk-bar .dk-keys kbd{font-size:.72rem}
+  .dk-bar .dk-start{flex:1 1 260px;min-width:0;margin:0;font-size:.86rem;line-height:1.4;color:var(--muted)}
+  .dk-bar .dk-start b{color:var(--text)}
+  .dk-bar .dk-keys{flex-basis:100%;font-size:.74rem;color:var(--dim);margin:-2px 0 0;background:none;border:0;padding:0;font-family:inherit;text-align:left;cursor:default}
+  .dk-bar button.dk-keys{cursor:pointer}.dk-bar button.dk-keys:hover{color:var(--text)}
+  .dk-bar .dk-keys kbd{font-size:.7rem}
+  .dk-more{position:relative}
+  .dk-more>summary{list-style:none;cursor:pointer;font-size:.82rem;color:var(--muted);padding:6px 10px;border:1px solid var(--line);border-radius:99px;display:inline-flex;align-items:center;gap:6px;min-height:34px}
+  .dk-more>summary::-webkit-details-marker{display:none}
+  .dk-more>summary svg{width:15px;height:15px}
+  .dk-more[open]>summary{color:var(--text);border-color:var(--line2)}
+  .dk-more .dk-menu{position:absolute;z-index:40;right:0;top:calc(100% + 6px);min-width:230px;display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--panel);border:1px solid var(--line2);border-radius:12px;box-shadow:0 12px 34px rgba(0,0,0,.45)}
+  .dk-more:not([open]) .dk-menu{display:none}
+  .dk-more .dk-menu>*{justify-content:flex-start;width:100%;margin:0}
+  .dk-more .dk-menu .chip{display:inline-flex!important}
+  @media (max-width:520px){.dk-more .dk-long{display:none}.dk-bar{gap:8px}.dk-bar .dk-start{flex-basis:100%;order:3;font-size:.84rem}.dk-more{order:2}.dk-goal{flex-wrap:wrap;order:4}.dk-goal .acts{width:100%}.dk-more .dk-menu{left:auto;right:0}}
+  @media (min-width:761px) and (max-height:820px){.page-hero{padding:14px 0 12px}.page-hero .crumbs{display:none}.page-hero .tag{margin-bottom:6px;padding:3px 9px}.page-hero h1{font-size:1.9rem;margin-bottom:.15em}.page-hero .lead{font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.page-hero .meta{display:none}}
+  @media (pointer:coarse),(max-width:760px){.page-hero .hero-fx{display:none}}
+  body.dk-nofx .page-hero .hero-fx{display:none}
   .dk-goal{flex-basis:100%;display:none;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;padding:10px 12px}
   .dk-goal.show{display:flex}
   .dk-goal.won{border-color:#34d399;background:color-mix(in srgb,#34d399 10%,var(--panel))}
@@ -255,17 +281,33 @@
   .dk-goal .hint{display:none;margin-top:4px;color:var(--muted)}
   .dk-goal .hint.show{display:block}
   .dk-goal .acts{display:flex;gap:6px;flex-wrap:wrap;flex:none}
-  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.93);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.95);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none}
   .dk-cap.show{display:block}
   .dk-cap.fixed{position:fixed;bottom:12px}
   .dk-cap .row{display:flex;align-items:center;gap:8px}
   .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
   .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap p.wait{color:var(--dim);font-style:italic}
   .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
   .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
   .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem;flex:none;width:auto;min-width:0}
+  .dk-cap .btn:disabled{opacity:.4;cursor:default}
+  .dk-cap .dk-end{display:none;gap:8px;flex-wrap:wrap;margin:2px 0 4px}
+  .dk-cap.ended .dk-end{display:flex}
+  .dk-cap.ended .row .btn,.dk-cap.ended .pg{display:none}
   .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
   @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  @media (max-width:699px){
+    .dk-cap.fixed{left:8px;right:8px;bottom:8px;width:auto;transform:none;max-height:30vh;overflow:auto;padding:8px 10px 7px}
+    .dk-cap .row{flex-wrap:wrap;row-gap:4px}.dk-cap .n{flex:1 1 auto;letter-spacing:.04em}
+    .dk-cap p{font-size:.86rem;margin:4px 0 6px}
+    .dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}
+  }
+  body.dk-capfixed .toasts{bottom:var(--dkcap,170px)}
+  @media (pointer:coarse){.dk-bar .dk-keys,.dk-keys{display:none!important}.dk-bar .btn,.dk-cap .btn,.dk-goal .btn,.dk-card .btn,.dk-more>summary{min-height:44px}.dk-more .dk-menu>*{min-height:44px}}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}
+  @media (pointer:coarse){.lab button:not(.el):not(.pel),.lab select,.lab summary,.lab .seg>*,.dk-scen .btn,.scn-pop .btn,.scn-active .btn{min-height:44px}.lab .stage-toolbar .btn,.lab .stage-toolbar button,.lab .seg>button{min-width:44px}}
+  @media (min-width:761px) and (max-height:820px){.lab .stage:has(>canvas){max-height:calc(100vh - 84px)}}
   .dk-scen{margin:18px 0 6px;scroll-margin-top:calc(var(--hdr,64px) + 10px)}
   .dk-scen h3 .ct{margin-left:auto;font:500 .74rem var(--mono);color:var(--dim)}
   .dk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:8px}
@@ -279,39 +321,77 @@
   .dk-card .ok{color:#34d399;display:none}
   .dk-card.done .ok{display:inline-flex}
   .dk-card .ok svg{width:17px;height:17px}
-  .dk-card .btn{align-self:flex-start}
-  @media (max-width:520px){.dk-bar .dk-keys{display:none}.dk-cap{bottom:8px}.dk-cap p{font-size:.86rem}.dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}}
-  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}`;
+  .dk-card .btn{align-self:flex-start}`;
   const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
   const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
   const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
   const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const phone = () => innerWidth < 700;
+  const hdrH = () => { const h = document.getElementById('slHeader'); const b = h ? h.getBoundingClientRect().bottom : 64; return Math.max(0, Math.min(140, b)) + 8; };
 
-  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  /* while a demo runs (and just after it restores), nothing the page does may count as the student's work */
+  let running = false, quietUntil = 0;
+  const quiet = () => running || performance.now() < quietUntil;
+  const toast0 = SL.toast;
+  const kitToast = (m, t, ms) => toast0.call(SL, m, t, ms);
+  SL.toast = function (msg, type, ms) {
+    if (running) {
+      if (/Challenge complete|Scenario (achieved|complete)/i.test(msg)) return;
+      return toast0.call(SL, /^\s*(<b>)?Demo:/.test(msg) ? msg : '<b>Demo:</b> ' + msg, type, ms);
+    }
+    if (performance.now() < quietUntil) return;
+    return toast0.call(SL, msg, type, ms);
+  };
+
+  /* the lab bar directly above the stage: Watch demo, Scenarios, keyboard hint and a one-line "Start here" */
   function bar(before) {
     let b = document.querySelector('.dk-bar'); if (b) return b;
     b = document.createElement('div'); b.className = 'dk-bar';
-    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
-    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-start" id="dkStart" hidden></span><details class="dk-more" hidden><summary><i data-lucide="sparkles"></i> More<span class="dk-long"> ways to learn</span></summary><div class="dk-menu"></div></details><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b);
+    // fold the hero's tour and Present buttons into "More ways to learn", so the bar is the one place to start
+    const more = b.querySelector('.dk-more'), menu = more.querySelector('.dk-menu');
+    const fold = () => { ['#slTourBtn', '#slPresentBtn'].forEach(q => { const x = document.querySelector(q); if (x && !x.closest('.dk-more')) { x.classList.add('btn', 'sm'); menu.appendChild(x); more.hidden = false; } }); try { SL.refreshIcons(more); } catch (e) {} };
+    fold(); setTimeout(fold, 0); setTimeout(fold, 400);
+    document.addEventListener('click', e => { if (more.open && !more.contains(e.target)) more.open = false; else if (more.open && e.target.closest('.dk-menu button, .dk-menu a')) setTimeout(() => { more.open = false; }, 0); });
+    // the hero animation stops drawing once the lab has the student's attention
+    try { const hero = document.querySelector('.page-hero'); if (hero && 'IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(en => document.body.classList.toggle('dk-nofx', en.intersectionRatio < 0.6)), { threshold: [0, 0.6, 1] }).observe(hero); } catch (e) {}
+    return b;
   }
 
-  const DemoKit = { bar };
+  const DemoKit = { bar, running: () => running, quiet };
   /** add page shortcuts to the hint, e.g. '<kbd>1</kbd>–<kbd>5</kbd> modes' */
   DemoKit.keys = html => { const k = document.querySelector('.dk-keys'); if (k) k.innerHTML = html + ' · ' + k.innerHTML; };
-  /** demo({before, stage, steps:[{cap, run(api), ms, hl}], save(), restore(snap), onStop?}) */
+  /** the one obvious first step, shown under the buttons */
+  DemoKit.hint = DemoKit.startHere = html => { const p = document.querySelector('.dk-bar .dk-start'); if (p) { p.innerHTML = '<b>Start here:</b> ' + html; p.hidden = false; } };
+  /** add an element to the "More ways to learn" menu */
+  DemoKit.more = el => { const d = document.querySelector('.dk-bar .dk-more'); if (!d) return; d.querySelector('.dk-menu').appendChild(el); d.hidden = false; icons(d); return el; };
+  /** demo({before, stage, start, steps:[{cap, run(api), ms, hl, view, live}], save(), restore(snap), onStart, onStop, tryIt}) */
   DemoKit.demo = function (o) {
     const b = bar(o.before), btn = b.querySelector('#dkPlay');
+    if (o.start) DemoKit.hint(o.start);
     const stage = $(o.stage); if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
     const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
-    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
-    (o.capHost ? $(o.capHost) : innerWidth < 700 ? document.body : stage).appendChild(cap); /* phones: the caption is fixed to the viewport */ if (o.capFixed || innerWidth < 700) cap.classList.add('fixed'); icons(cap);
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)" aria-label="Next step"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)" aria-label="Stop the demo"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="dk-end"><button class="btn sm primary" data-a="try"><i data-lucide="hand"></i> Try it yourself</button><button class="btn sm" data-a="again"><i data-lucide="rotate-ccw"></i> Watch again</button></div><div class="pg"><i></i></div>`;
+    const fixedCap = () => o.capFixed || phone();
+    const place = () => { const host = o.capHost ? $(o.capHost) : fixedCap() ? document.body : stage; if (cap.parentNode !== host) host.appendChild(cap); cap.classList.toggle('fixed', fixedCap()); };
+    place(); icons(cap);
     let run = null; // {abort, stepMode, nextRes}
     const D = { running: () => !!run };
-    function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
+    function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? (phone() ? 'Auto' : 'Auto-play') : (phone() ? 'Step' : 'Step through'); }
     function hl(sel) { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); if (sel) { const e = $(sel); if (e) e.classList.add('dk-hl'); } }
-    // phones: bring the highlighted element into view, above the fixed caption
-    function vis(sel) { if (!sel || innerWidth >= 700) return; const e = $(sel); if (!e) return; const r = e.getBoundingClientRect(); if (!r.width && !r.height) return; const top = 84, bot = innerHeight - (cap.classList.contains('show') ? cap.offsetHeight + 16 : 0); if (r.top >= top && r.bottom <= bot) return; const dy = (r.top < top || r.height > bot - top) ? r.top - top : r.bottom - bot; window.scrollBy({ top: dy, behavior: reduce ? 'auto' : 'smooth' }); }
+    /* bring the part being talked about into view, clear of the header and of a caption pinned to the bottom */
+    function vis(sel) {
+      const e = $(sel || stage); if (!e) return false; const r = e.getBoundingClientRect(); if (!r.width && !r.height) return false;
+      const top = hdrH(), bot = innerHeight - (cap.classList.contains('fixed') && cap.classList.contains('show') ? cap.offsetHeight + 16 : 8);
+      if (r.top >= top && r.bottom <= bot) return false;
+      const dy = (r.top < top || r.height > bot - top) ? r.top - top : r.bottom - bot;
+      if (Math.abs(dy) < 4) return false;
+      window.scrollBy({ top: dy, behavior: reduce ? 'auto' : 'smooth' }); return true;
+    }
+    /* with the caption inside the stage, scrolling away from the stage would hide the caption too */
+    const tgt = st => cap.classList.contains('fixed') ? (st.view || st.hl || null) : stage;
     const ABORT = { abort: true };
     function api(r) {
       const chk = () => { if (r.abort) throw ABORT; };
@@ -323,54 +403,90 @@
         async slide(sel, to, ms) { const el = $(sel); if (!el) return; const a = +el.value, n = Math.max(1, Math.round((ms || 1200) / 60)); const stp = +el.step || 0; for (let i = 1; i <= n; i++) { chk(); let v = a + (to - a) * i / n; if (stp) v = Math.round(v / stp) * stp; el.value = v; fire(el, 'input'); await sleep((ms || 1200) / n); } el.value = to; fire(el, 'input'); fire(el, 'change'); },
         click(sel) { chk(); const el = $(sel); if (el) el.click(); },
         async until(fn, ms) { const t0 = performance.now(); while (!fn()) { if (performance.now() - t0 > (ms || 10000)) return false; await sleep(120); } return true; },
-        hl
+        hl, vis
       };
     }
+    function setText(html, wait) { const p = cap.querySelector('p'); p.classList.toggle('wait', !!wait); p.innerHTML = html; try { SL.renderMath && SL.renderMath(p); } catch (e) {} lift(); }
+    /* toasts sit above a caption pinned to the bottom */
+    function lift() { const f = cap.classList.contains('fixed') && cap.classList.contains('show'); document.body.classList.toggle('dk-capfixed', f); if (f) document.body.style.setProperty('--dkcap', (cap.offsetHeight + 16) + 'px'); }
     async function start() {
       if (run) return stop(true);
       if (DemoKit._scen && DemoKit._scen.active()) DemoKit._scen.quit(true);
       let snap = null; try { snap = o.save ? o.save() : null; } catch (e) {}
-      const r = run = { abort: false, stepMode: reduce, snap };
+      const r = run = { abort: false, stepMode: reduce, snap }; running = true;
+      place(); cap.classList.remove('ended');
       btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); setMode();
+      if (cap.classList.contains('fixed')) document.body.style.paddingBottom = Math.round(innerHeight * 0.3 + 24) + 'px';
       if (o.onStart) try { o.onStart(); } catch (e) {}
       const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
-      if (stage.getBoundingClientRect().top < 0 || stage.getBoundingClientRect().bottom > innerHeight) stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' });
       try {
+        if (!phone()) { const sr = stage.getBoundingClientRect(); if (sr.top < hdrH() - 8 || sr.bottom > innerHeight) { stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' }); await A.sleep(reduce ? 0 : 450); } }
         for (let i = 0; i < steps.length; i++) {
           const st = steps[i]; if (r.abort) throw ABORT;
           cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
-          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
-          setTimeout(() => { if (run === r) vis(st.hl); }, 80);
+          pg.style.width = (i / steps.length * 100) + '%';
+          hl(st.hl);
+          if (vis(tgt(st))) { setText('Watch the lab…', true); await A.sleep(reduce ? 0 : 450); }
+          // the caption appears once the state it describes is on screen (live steps narrate a process as it happens)
+          const capOf = () => typeof st.cap === 'function' ? st.cap() : st.cap;
+          if (st.run && !st.live) setText('Watch the lab…', true); else { setText(capOf()); vis(tgt(st)); }
           if (st.run) await st.run(A);
-          if (run === r) vis(st.hl);
           if (r.abort) throw ABORT;
+          if (vis(tgt(st))) await A.sleep(reduce ? 0 : 350);
+          setText(capOf()); vis(tgt(st));
           pg.style.width = ((i + 1) / steps.length * 100) + '%';
-          const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
+          const ms = st.ms == null ? 3200 : Math.max(st.ms, 2600), t0 = performance.now();
           await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
           r.nextRes = null;
         }
-        end(true);
-      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+        end(true, true);
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true, true); } }
     }
-    function end(restore, msg) {
+    /** restore: put the student's set-up back silently; card: show the end card (finished or stopped) */
+    function end(restore, card) {
       const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
-      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      quietUntil = performance.now() + 1500;
       if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
       if (o.onStop) try { o.onStop(); } catch (e) {}
-      SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+      running = false; quietUntil = performance.now() + 1500;
+      if (card) {
+        cap.classList.add('ended'); cap.querySelector('.n').textContent = r.finished === false ? 'Demo stopped' : 'Demo complete';
+        setText(restore ? 'Your own settings are back as they were. Now it is your turn.' : 'The lab is yours.');
+        clearTimeout(cap._t); cap._t = setTimeout(closeCard, 20000);
+        requestAnimationFrame(() => vis(stage));   // back to the lab, where the student's turn starts
+      } else { closeCard(); if (!restore) kitToast('Demo stopped. You have the controls.', 'ok', 2600); }
     }
-    function stop(restore) { end(restore !== false, restore === false ? null : 'Demo stopped. Your settings are back as they were.'); }
+    function closeCard() { clearTimeout(cap._t); if (run) return; cap.classList.remove('show', 'ended'); document.body.style.paddingBottom = ''; lift(); }
+    function stop(restore) { if (run) run.finished = false; end(restore !== false, restore !== false); }
     D.stop = stop; D.start = start;
-    btn.onclick = start;
-    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
-    // the student takes over: any trusted interaction with the lab outside the caption ends the demo where it is
-    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .dk-bar')) end(false); }, true);
+    btn.onclick = () => { if (!run) closeCard(); start(); };
+    cap.addEventListener('click', e => {
+      const a = e.target.closest('[data-a]'); if (!a) return; const k = a.dataset.a;
+      if (k === 'try') { closeCard(); const t = $(o.tryIt || stage); if (t) { vis(t); const f = t.matches('button,input,select') ? t : t.querySelector('button, input, select'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 300); } return; }
+      if (k === 'again') { closeCard(); start(); return; }
+      if (!run) return;
+      if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); }
+    });
+    // the student takes over only by a deliberate tap or click on a control or on the stage, or by changing a control.
+    // A swipe that scrolls the page never stops the demo.
+    const scope = o.takeover || '.lab, .dk-bar';
+    const isCtl = t => t && t.closest && t.closest(scope) && !cap.contains(t) && !btn.contains(t) && (stage.contains(t) || t.closest('button, input, select, textarea, label, a, summary, [role=button], [tabindex], canvas, svg'));
+    let pd = null;
+    document.addEventListener('pointerdown', e => { pd = run && e.isTrusted ? { x: e.clientX, y: e.clientY, t: e.target } : null; }, true);
+    document.addEventListener('pointercancel', () => { pd = null; }, true);
+    document.addEventListener('pointerup', e => { const p = pd; pd = null; if (!run || !p || !e.isTrusted) return; if (Math.hypot(e.clientX - p.x, e.clientY - p.y) >= 10) return; if (isCtl(p.t)) end(false); }, true);
+    ['input', 'change'].forEach(ev => document.addEventListener(ev, e => { if (run && e.isTrusted && isCtl(e.target)) end(false); }, true));
+    // any tap elsewhere in the lab closes the end card
+    document.addEventListener('pointerdown', e => { if (!run && cap.classList.contains('ended') && !cap.contains(e.target) && !btn.contains(e.target) && e.target.closest(scope)) closeCard(); });
     document.addEventListener('keydown', e => {
       if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
       if (run && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); stop(true); }
+      else if (!run && e.key === 'Escape' && cap.classList.contains('ended')) closeCard();
       else if (run && e.key === 'ArrowRight' && run.nextRes) { e.preventDefault(); run.nextRes(); }
-      else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); start(); }
+      else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); closeCard(); start(); }
     }, true);
+    addEventListener('resize', () => { if (!run && !cap.classList.contains('show')) place(); });
     DemoKit._demo = D; return D;
   };
 
@@ -394,7 +510,7 @@
     function tick() {
       if (!act) return; const s = act.s; let st = '';
       try { st = s.status ? s.status() : ''; } catch (e) {}
-      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      if (!act.won && !quiet() && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
       const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
     }
     function startS(id) {
@@ -403,12 +519,12 @@
       if (act && act.s.quit) try { act.s.quit(); } catch (e) {}
       act = { s, won: false, t0: performance.now() }; try { s.setup(); } catch (e) { console.warn(e); }
       clearInterval(timer); timer = setInterval(tick, 300); paint(); banner();
-      const lab = o.scrollTo ? $(o.scrollTo) : b; if (lab) lab.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      const lab = o.scrollTo ? $(o.scrollTo) : b; if (lab) lab.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
     }
     function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
     sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
     goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
-    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
+    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
     document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
     paint();
     const API = { active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
@@ -598,6 +714,11 @@
     if (!S.adia || S.mode === 'boyle' || S.mode === 'eff') {
       const pr = 1 - Math.exp(-1.6 * dt);
       for (const p of S.parts) if (Math.random() < pr) { const v = mbVel(p.m, S.Tb); p.vx = v[0]; p.vy = v[1]; p.vz = v[2]; }
+      // ...plus strong velocity rescaling (exact near the set point, Berendsen with τ = 0.08 s for big changes): random re-thermalising alone lets a few hundred
+      // molecules drift several kelvin from the set point, and piston work heats the gas faster than it can cool.
+      // Rescaling keeps the shape of the speed distribution and holds T within about 1 K of the heater setting.
+      const Tk = Tkin();
+      if (Tk > 0) { const er = S.Tb / Tk - 1, c = Math.abs(er) < 0.03 ? 1 : Math.min(1, dt / 0.08), lam = Math.sqrt(Math.max(0.25, 1 + c * er)); for (const p of S.parts) { p.vx *= lam; p.vy *= lam; p.vz *= lam; } }
     }
     return imp;
   }
@@ -708,8 +829,11 @@
         ctx.fillStyle = S.mode === 'gay' ? '#ef4444' : '#a3e635'; rr(ctx, X0 + bw / 2 - hw / 2, rodTop - hh + 2, hw, hh, big ? 9 : 5); ctx.fill();
         if (S.mode !== 'gay') { ctx.fillStyle = '#132008'; ctx.font = `700 ${big ? 15 : 10}px JetBrains Mono, monospace`; ctx.textAlign = 'center'; ctx.fillText('⇕', X0 + bw / 2, rodTop - hh / 2 + (big ? 7 : 5)); }
         else padlock(ctx, X0 + bw / 2, rodTop - hh / 2 + 2, big ? 9 : 6, '#fff');
-        ctx.fillStyle = '#93a1bd'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'center';
-        ctx.fillText(S.mode === 'gay' ? 'PISTON LOCKED: V CONSTANT' : 'DRAG PISTON', X0 + bw / 2, rodTop - hh - 6);
+        ctx.fillStyle = '#93a1bd'; ctx.font = '600 10px JetBrains Mono, monospace';
+        // the label sits beside the handle when the HUD row would cover the space above it
+        const hudB = (() => { const hb = document.querySelector('#stage .hud'); if (!hb || hb.classList.contains('hud-r')) return 0; return hb.getBoundingClientRect().bottom - cv.getBoundingClientRect().top; })();
+        if (rodTop - hh - 16 < hudB + 4) { ctx.textAlign = 'left'; ctx.fillText(S.mode === 'gay' ? 'LOCKED: V CONST.' : 'DRAG PISTON', X0 + bw / 2 + hw / 2 + 8, rodTop - hh / 2 + 5); }
+        else { ctx.textAlign = 'center'; ctx.fillText(S.mode === 'gay' ? 'PISTON LOCKED: V CONSTANT' : 'DRAG PISTON', X0 + bw / 2, rodTop - hh - 6); }
       }
       // volume scale
       ctx.textAlign = 'left'; ctx.fillStyle = '#5f6d8a'; ctx.font = '9px JetBrains Mono, monospace';
@@ -938,6 +1062,7 @@
     $('#hP').textContent = isEff() ? '—' : Pm.toFixed(1);
     $('#hV').textContent = (Vreal() * 1000).toFixed(1);
     $('#hT').textContent = T.toFixed(0);
+    { const ts = S.adia && S.mode !== 'boyle' && !isEff() ? ' · insulated' : ` · set ${S.Tb}`; const e = $('#hTs'); if (e.textContent !== ts) e.textContent = ts; }
     $('#sPm').innerHTML = (isEff() ? '—' : Pm.toFixed(1)) + '<small>kPa</small>';
     $('#sPi').innerHTML = (isEff() ? '—' : Pi.toFixed(1)) + '<small>kPa</small>';
     $('#sN').innerHTML = nTot().toFixed(3) + '<small>mol</small>';
@@ -987,10 +1112,13 @@
   $('#vecBtn').onclick = () => { showVec = !showVec; hits.length = 0; $('#vecBtn').setAttribute('aria-pressed', showVec); $('#vecBtn').classList.toggle('on', showVec); $('#vecLeg').hidden = !showVec; };
   $('#pauseBtn').onclick = () => { S.paused = !S.paused; $('#pauseBtn').innerHTML = S.paused ? '<i data-lucide="play"></i><span class="tx"> Play</span>' : '<i data-lucide="pause"></i><span class="tx"> Pause</span>'; SL.refreshIcons($('#pauseBtn')); };
   $('#resetBtn').onclick = () => { resetSim(); SL.toast(isEff() ? 'Effusion restarted.' : 'Gas reset: every molecule starts with the same speed. Watch the histogram relax to the Maxwell–Boltzmann shape.'); };
-  $('#recBtn').onclick = () => { const p = { V: Vreal() * 1000, P: Pmeas() / 1000, T: S.TkinS || S.Tb }; S.recs.push(p); lawDirty = true; checkLaws(); SL.toast(`Recorded V = ${p.V.toFixed(1)} L, P = ${p.P.toFixed(1)} kPa, T = ${p.T.toFixed(0)} K` + lawHint()); };
+  $('#recBtn').onclick = () => { const p = { V: Vreal() * 1000, P: Pmeas() / 1000, T: S.TkinS || S.Tb };
+    // Boyle's law needs constant T: a point is accepted only once the gas is back within 1 % of the heater setting
+    if (S.mode === 'boyle' && (Math.abs(p.T - S.Tb) > 0.01 * S.Tb || Math.abs(S.Ht - S.H) > 0.5)) { SL.toast(`Not recorded: the gas is at ${p.T.toFixed(0)} K but the heater is set to ${S.Tb} K${Math.abs(S.Ht - S.H) > 0.5 ? ' and the piston is still moving' : ''}. Boyle's law needs constant T, so wait a moment for it to settle.`, 'warn', 4500); return; }
+    S.recs.push(p); lawDirty = true; checkLaws(); SL.toast(`Recorded V = ${p.V.toFixed(1)} L, P = ${p.P.toFixed(1)} kPa, T = ${p.T.toFixed(0)} K` + (S.demo ? "" : lawHint())); };
   function lawHint() {
     const r = S.recs, n = nTot();
-    if (S.mode === 'boyle' && !S.chk.boyle) { const g = r.filter(p => Math.abs(p.P - n * R * S.Tb / (p.V / 1000) / 1000) / p.P < 0.08), Vs = g.map(p => p.V), span = g.length ? Math.max(...Vs) / Math.min(...Vs) : 0; return `<br><span class="small">Boyle challenge: ${g.length}/4 good points, volume span ×${span.toFixed(1)} of ×3 needed.${r.length > g.length ? ' A point missed nRT/V by more than 8 %: wait for P to settle and record again.' : ''}</span>`; }
+    if (S.mode === 'boyle' && !S.chk.boyle) { const g = r.filter(p => Math.abs(p.T - S.Tb) <= 0.01 * S.Tb && Math.abs(p.P - n * R * S.Tb / (p.V / 1000) / 1000) / p.P < 0.08), Vs = g.map(p => p.V), span = g.length ? Math.max(...Vs) / Math.min(...Vs) : 0; return `<br><span class="small">Boyle challenge: ${g.length}/4 good points, volume span ×${span.toFixed(1)} of ×3 needed.${r.length > g.length ? ' A point missed nRT/V by more than 8 %: wait for P to settle and record again.' : ''}</span>`; }
     if (S.mode === 'charles' && !S.chk.charles) { const Ts = r.map(p => p.T); return `<br><span class="small">Charles challenge: ${r.length}/4 points, temperature span ${r.length ? (Math.max(...Ts) - Math.min(...Ts)).toFixed(0) : 0} of 400 K needed.</span>`; }
     if (S.mode === 'gay' && !S.chk.gay) return `<br><span class="small">Gay-Lussac challenge: you need one point near 300 K and one near 600 K.</span>`;
     return '';
@@ -1000,11 +1128,13 @@
 
   // piston drag
   const ptrH = e => { const p = SL.ptr(e, cv); return SL.clamp((Yf - p.y) / G, HMIN, HMAX); };
+  // a finger grabs the piston only on or near it; anywhere else on the stage the page scrolls
+  const onPiston = (p, touch) => { if (isEff() || !(S.mode === 'free' || S.mode === 'boyle')) return false; const top = Yf - S.H * G; return p.x > X0 - 20 && p.x < X0 + BW * G + 20 && (touch ? Math.abs(p.y - top) < 40 : p.y < top + 18); };
   cv.addEventListener('pointerdown', e => {
-    if (isEff() || !(S.mode === 'free' || S.mode === 'boyle')) return;
-    const p = SL.ptr(e, cv), top = Yf - S.H * G;
-    if (p.x > X0 - 20 && p.x < X0 + BW * G + 20 && p.y < top + 18) { S.dragging = true; cv.setPointerCapture(e.pointerId); S.Ht = ptrH(e); e.preventDefault(); }
+    const p = SL.ptr(e, cv);
+    if (onPiston(p, e.pointerType === 'touch')) { S.dragging = true; cv.setPointerCapture(e.pointerId); S.Ht = ptrH(e); e.preventDefault(); }
   });
+  cv.addEventListener('touchstart', e => { const t = e.touches[0], r = cv.getBoundingClientRect(); if (e.touches.length === 1 && onPiston({ x: t.clientX - r.left, y: t.clientY - r.top }, true)) e.preventDefault(); }, { passive: false });
   cv.addEventListener('pointermove', e => {
     if (S.dragging) { S.Ht = ptrH(e); const L = accV(BW, S.Ht, DEP) * KAPPA * 1000; $('#V').value = L; $('#V').dispatchEvent(new Event('input')); return; }
     const p = SL.ptr(e, cv), top = Yf - S.H * G; cv.style.cursor = (!isEff() && (S.mode === 'free' || S.mode === 'boyle') && p.x > X0 && p.x < X0 + BW * G && p.y < top + 18 && p.y > top - 200) ? 'ns-resize' : 'default';
@@ -1024,12 +1154,12 @@
     { id: 'graham', t: 'Graham’s law', d: 'In Effusion mode with two different gases, let at least 60 particles escape and get within 20 % of √(M_B/M_A).' },
   ];
   function renderChall() { $('#chkList').innerHTML = CHALL.map(c => `<li data-id="${c.id}"><span class="led ${S.chk[c.id] ? 'on' : ''}"></span><div><b>${c.t}</b><span class="small muted">${c.d}</span></div></li>`).join(''); }
-  function complete(id) { if (S.chk[id] || S.demo) return; S.chk[id] = true; const c = CHALL.find(x => x.id === id); SL.toast(`Challenge complete: <b>${c.t}</b>`, 'ok'); const l = document.querySelector(`#chkList li[data-id="${id}"] .led`); if (l) l.classList.add('on'); }
+  function complete(id) { if (S.chk[id] || S.demo || DemoKit.quiet()) return; S.chk[id] = true; const c = CHALL.find(x => x.id === id); SL.toast(`Challenge complete: <b>${c.t}</b>`, 'ok'); const l = document.querySelector(`#chkList li[data-id="${id}"] .led`); if (l) l.classList.add('on'); }
   function checkLaws() {
     const r = S.recs, n = nTot();
     if (S.mode === 'boyle' && r.length >= 4) {
       // a noisy reading does not spoil the set: any four good points spanning a factor of 3 count
-      const good = r.filter(p => Math.abs(p.P - n * R * S.Tb / (p.V / 1000) / 1000) / p.P < 0.08), Vs = good.map(p => p.V);
+      const good = r.filter(p => Math.abs(p.T - S.Tb) <= 0.01 * S.Tb && Math.abs(p.P - n * R * S.Tb / (p.V / 1000) / 1000) / p.P < 0.08), Vs = good.map(p => p.V);
       if (good.length >= 4 && Math.max(...Vs) / Math.min(...Vs) >= 3) complete('boyle');
     }
     if (S.mode === 'charles' && r.length >= 4) { const Ts = r.map(p => p.T), k = r.map(p => p.V / p.T), km = k.reduce((a, b) => a + b, 0) / k.length; if (Math.max(...Ts) - Math.min(...Ts) >= 400 && k.every(x => Math.abs(x - km) / km < 0.1)) complete('charles'); }
@@ -1055,6 +1185,7 @@
   /* ===== loop ===== */
   renderChall(); setMode('free'); boot = false; resetSim();
   let acc = 0, accT = 0, accM = 0;
+  let half = false;
   const L = SL.loop(dt => {
     if (!S.paused) {
       const k = isEff() ? 4 : 1; for (let i = 0; i < k; i++) { physics(dt); S.t += dt; }
@@ -1064,8 +1195,9 @@
       accM += dt; if (accM > 0.1 && !isEff() && S.t > 0.8) { accM = 0; mtrail.push({ V: Vreal() * 1000, P: Pmeas() / 1000, T: S.TkinS || S.Tb }); if (mtrail.length > 240) mtrail.shift(); }
       if (S.adia && S.mode === 'free' && (S.TkinS || 0) - S.Tb > 150) complete('adia');
     }
-    draw();
-    acc += dt; if (acc > 0.12) { acc = 0; readouts(); drawHist(); drawLaw(); }
+    // phones and low-end CPUs: the simulation steps every frame, the stage is redrawn at 30 Hz
+    if (!SLPerf.low || (half = !half) || S.dragging) draw();
+    acc += dt; if (acc > 0.12) { acc = 0; readouts(); if (SLPerf.seen(hc)) drawHist(); if (SLPerf.seen(lc)) drawLaw(); }
   }).start();
   // pause the whole simulation while the lab is scrolled far out of view (reading the theory) or the tab is hidden
   let labVis = true;
@@ -1110,19 +1242,23 @@
       save: () => ({ o: snap(), recs: S.recs.slice(), vec: $('#vecBtn').getAttribute('aria-pressed') === 'true', paused: S.paused }),
       restore: o => { apply(o.o); vec(o.vec); if (S.paused !== o.paused) $('#pauseBtn').click(); S.recs = o.recs; lawDirty = true; },
       onStart: () => { S.demo = true; if (S.paused) $('#pauseBtn').click(); }, onStop: () => { S.demo = false; },
+      start: 'watch the demo, then choose <b>Boyle</b>, drag the piston and <b>Record point</b> at four volumes.',
       steps: [
-        { cap: '<b>A gas is just molecules in motion.</b> Each arrow is a velocity; each ring is a wall impact. Pressure is the momentum these impacts deliver per second per square metre.', hl: '#cv', ms: 4200,
+        { cap: '<b>A gas is just molecules in motion.</b> Each arrow is a velocity; each ring is a wall impact. Pressure is the momentum these impacts deliver per second per square metre.', hl: '#cv', view: '#stage', ms: 4200,
           run: async () => { mode('free'); setV('#spA', 'He'); setV('#spB', 'N2'); setV('#nA', 100); setV('#nB', 100); setV('#T', 300); setV('#V', 25); setV('#adia', false); vec(true); } },
-        { cap: '<b>Boyle\'s law.</b> The heater holds T fixed. Record a point at 25 L, then squeeze the piston to half the volume…', hl: '#recBtn', ms: 1200,
-          run: async A => { vec(false); mode('boyle'); await A.sleep(2200); $('#recBtn').click(); await A.slide('#V', 12.5, 2200); } },
-        { cap: '<b>…and once it settles, the pressure has doubled.</b> Molecules now hit each wall twice as often. Measured P (from the impacts) tracks nRT/V on the law plot.', hl: '#measPanel', ms: 1500,
-          run: async A => { await A.sleep(4800); $('#recBtn').click(); } },
-        { cap: '<b>Charles\'s law.</b> Now a fixed load keeps P constant and the piston floats. Heat from 300 K to 600 K and the volume follows T.', hl: '#cT', ms: 4200,
-          run: async A => { mode('charles'); setV('#T', 300); await A.sleep(1200); await A.slide('#T', 600, 2600); } },
+        { cap: () => `<b>Boyle's law.</b> The heater holds T at 300 K. First point recorded at 25 L: P = ${kPa().toFixed(0)} kPa.`, hl: '#cv', view: '#stage', ms: 3000,
+          run: async A => { vec(false); mode('boyle'); await A.sleep(2200); $('#recBtn').click(); } },
+        { cap: 'Now squeezing the piston to half the volume. Watch the molecules crowd together while the heater pulls T back to 300 K…', hl: '#cv', view: '#stage', ms: 600, live: true,
+          run: async A => { await A.slide('#V', 12.5, 2200); await A.until(() => Math.abs(S.Ht - S.H) < 0.5 && Math.abs((S.TkinS || 0) - S.Tb) < 1, 3000); await A.sleep(3000); } },
+        { cap: () => `<b>Settled at 12.5 L: the pressure has doubled</b> to ${kPa().toFixed(0)} kPa, with T back at ${(S.TkinS || S.Tb).toFixed(0)} K. Molecules hit each wall twice as often, so PV stays constant.`, hl: '#cv', view: '#stage', ms: 4200,
+          run: async A => { await A.until(() => Math.abs((S.TkinS || 0) - S.Tb) < 0.01 * S.Tb && Math.abs(Pmeas() / Pideal() - 1) < 0.025, 6000); $('#recBtn').click(); } },
+        { cap: '<b>Charles\'s law.</b> A fixed load keeps P constant and the piston floats. Heating from 300 K to 600 K…', hl: '#cv', view: '#stage', ms: 600, live: true,
+          run: async A => { mode('charles'); setV('#T', 300); await A.sleep(1200); await A.slide('#T', 600, 2600); await A.sleep(1500); } },
+        { cap: () => `…and the volume has grown with T, to ${L().toFixed(1)} L: V/T stays constant at fixed pressure.`, hl: '#cv', view: '#stage', ms: 3600 },
         { cap: '<b>Hotter means faster.</b> The speed histogram spreads out and shifts right, following the Maxwell–Boltzmann curve. Light helium (cyan) is far faster than nitrogen at the same T.', hl: '#hc', ms: 4200 },
-        { cap: '<b>Graham\'s law.</b> Both gases leak through a pinhole. Helium escapes about 2.6 times faster than nitrogen, as √(28/4) predicts.', hl: '#lc', ms: 6500,
-          run: async () => { setV('#T', 300); mode('eff'); } },
-        { cap: '<b>Your turn.</b> Pick an experiment, or try a scenario below. Your own settings come back now.', hl: '#modeSeg', ms: 3000 },
+        { cap: '<b>Graham\'s law.</b> Both gases leak through a pinhole. Helium escapes about 2.6 times faster than nitrogen, as √(28/4) predicts.', hl: '#cv', view: '#stage', ms: 6500,
+          run: async A => { setV('#T', 300); mode('eff'); await A.sleep(1500); } },
+        { cap: '<b>Your turn.</b> Pick an experiment here, or try a scenario. Your own settings come back now.', hl: '#modeSeg', ms: 3000 },
       ],
     });
 

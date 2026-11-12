@@ -9,9 +9,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=15">
+<link rel="stylesheet" href="assets/css/simlab.css?v=16">
 <style>
-  .stage.osc{height:440px;touch-action:none}
+  .stage.osc{height:440px;touch-action:pan-y}
   @media (max-width:640px){.stage.osc{height:430px;min-height:0}.stage-toolbar .btn.sm{min-height:36px;min-width:40px}.seg button{min-height:38px}.stage .readout{font-size:.7rem;padding:4px 7px}}
   .plots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
   .plots .plot{background:#050913;border:1px solid var(--line);border-radius:12px;padding:8px 8px 4px;min-width:0}
@@ -38,24 +38,9 @@
   .rw p{color:var(--muted);font-size:.92rem;margin:0}
   .modeseg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}   /* keyboard focus */
   /* demo, scenarios, shortcuts */
-  .demo-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px}
-  .demo-bar .demo-sp,.scn-active .demo-sp{flex:1}
-  .demo-bar kbd,.kb{font:600 .66rem var(--mono);padding:0 5px;background:transparent;color:inherit;border:1px solid currentColor;border-radius:5px;opacity:.7;line-height:1.4}
   .kb{font-size:.75rem;opacity:.9;color:var(--accent)}
-  @media (hover:none){.demo-bar kbd,.demo-bar .demo-keys{display:none}}
-  .demo-cap{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);width:min(640px,calc(100% - 16px));background:rgba(5,9,19,.93);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;padding:8px 12px 10px;z-index:9;box-shadow:0 12px 30px rgba(0,0,0,.55)}
-  .demo-cap .dc-top{display:flex;align-items:center;gap:8px;font:600 .68rem var(--mono);color:var(--accent);text-transform:uppercase;letter-spacing:.06em}
-  .demo-cap .dc-ctl{display:flex;gap:5px;margin-left:auto}
-  .demo-cap .dc-ctl .btn{padding:4px 7px;min-height:30px;min-width:32px}
-  .demo-cap .dc-ctl .btn:disabled{opacity:.35;cursor:default}
-  .demo-cap .dc-bar{height:3px;background:var(--line);border-radius:2px;overflow:hidden;margin:6px 0 7px}
-  .demo-cap .dc-bar i{display:block;height:100%;width:0;background:var(--accent)}
-  .demo-cap .dc-txt{font-size:.88rem;line-height:1.45;color:var(--text)}
-  .demo-cap .dc-txt b{color:var(--accent)}
   .stage.demo-on{box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 55%,transparent),var(--shadow)}
   .stage.demo-on .stage-toolbar{visibility:hidden}
-  .demo-cap.below{position:relative;left:auto;bottom:auto;transform:none;width:auto;margin:8px 0 0}
-  @media (max-width:640px){.demo-cap{padding:7px 10px 9px}.demo-cap .dc-txt{font-size:.84rem}}
   .scn-pop{border:1px solid var(--line2);background:var(--panel);border-radius:12px;padding:10px;margin:0 0 10px;box-shadow:var(--shadow)}
   .scn-pop .scn-head{display:flex;align-items:flex-start;gap:10px;margin:0 2px 8px}
   .scn-pop .scn-head>div{flex:1}
@@ -96,8 +81,8 @@
         <canvas id="cv" aria-label="Oscillator stage: drag the mass or bob to set the starting position"></canvas>
         <div class="hud" id="hud"></div>
         <div class="stage-toolbar">
-          <button class="btn sm" id="playBtn" title="Pause or play"><i data-lucide="pause"></i></button>
-          <button class="btn sm" id="resetBtn" title="Reset"><i data-lucide="rotate-ccw"></i></button>
+          <button class="btn sm" id="playBtn" title="Pause or play"><i data-lucide="pause"></i> Pause</button>
+          <button class="btn sm" id="resetBtn" title="Reset"><i data-lucide="rotate-ccw"></i> Reset</button>
         </div>
       </div>
       <p class="small muted" style="margin:8px 2px 0"><b>Start here:</b> drag the mass (or press <b>Pull 0.2 m and release</b>) and watch the graphs below draw its motion. Then change the mass, stiffness or damping and see how the period in Live results changes.</p>
@@ -311,7 +296,17 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=15"></script>
+<script src="assets/js/simlab.js?v=16"></script>
+<script>
+/* performance (page-local): no canvas glow (shadowBlur) on phones and low-end CPUs, and a cheap "is this element on screen?" test so secondary canvases draw only while visible */
+window.SLPerf = window.SLPerf || (() => {
+  const low = matchMedia('(pointer:coarse)').matches || (navigator.hardwareConcurrency || 8) <= 4;
+  if (low) try { Object.defineProperty(CanvasRenderingContext2D.prototype, 'shadowBlur', { get: () => 0, set: () => {}, configurable: true }); } catch (e) {}
+  const V = new WeakMap(), io = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => V.set(e.target, e.isIntersecting)), { rootMargin: '120px' }) : null;
+  const seen = el => { if (!io || !el) return true; if (!V.has(el)) { V.set(el, true); io.observe(el); } return V.get(el); };
+  return { low, seen };
+})();
+</script>
 <script>
 /* Watch-demo, scenarios and shortcuts for this lab (page-local) */
 window.SLDemo = (() => {
@@ -321,6 +316,77 @@ window.SLDemo = (() => {
     get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
+  /* the same lab bar and caption styles as every other lab */
+  const st0 = document.createElement('style'); st0.textContent = `
+  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 8px);display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin:10px 0 10px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
+  .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .dk-bar .dk-start{flex:1 1 260px;min-width:0;margin:0;font-size:.86rem;line-height:1.4;color:var(--muted)}
+  .dk-bar .dk-start b{color:var(--text)}
+  .dk-bar .dk-keys{flex-basis:100%;font-size:.74rem;color:var(--dim);margin:-2px 0 0;background:none;border:0;padding:0;font-family:inherit;text-align:left;cursor:default}
+  .dk-bar button.dk-keys{cursor:pointer}.dk-bar button.dk-keys:hover{color:var(--text)}
+  .dk-bar .dk-keys kbd{font-size:.7rem}
+  .dk-more{position:relative}
+  .dk-more>summary{list-style:none;cursor:pointer;font-size:.82rem;color:var(--muted);padding:6px 10px;border:1px solid var(--line);border-radius:99px;display:inline-flex;align-items:center;gap:6px;min-height:34px}
+  .dk-more>summary::-webkit-details-marker{display:none}
+  .dk-more>summary svg{width:15px;height:15px}
+  .dk-more[open]>summary{color:var(--text);border-color:var(--line2)}
+  .dk-more .dk-menu{position:absolute;z-index:40;right:0;top:calc(100% + 6px);min-width:230px;display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--panel);border:1px solid var(--line2);border-radius:12px;box-shadow:0 12px 34px rgba(0,0,0,.45)}
+  .dk-more:not([open]) .dk-menu{display:none}
+  .dk-more .dk-menu>*{justify-content:flex-start;width:100%;margin:0}
+  .dk-more .dk-menu .chip{display:inline-flex!important}
+  @media (max-width:520px){.dk-more .dk-long{display:none}.dk-bar{gap:8px}.dk-bar .dk-start{flex-basis:100%;order:3;font-size:.84rem}.dk-more{order:2}.dk-goal{flex-wrap:wrap;order:4}.dk-goal .acts{width:100%}.dk-more .dk-menu{left:auto;right:0}}
+  @media (min-width:761px) and (max-height:820px){.page-hero{padding:14px 0 12px}.page-hero .crumbs{display:none}.page-hero .tag{margin-bottom:6px;padding:3px 9px}.page-hero h1{font-size:1.9rem;margin-bottom:.15em}.page-hero .lead{font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.page-hero .meta{display:none}}
+  @media (pointer:coarse),(max-width:760px){.page-hero .hero-fx{display:none}}
+  body.dk-nofx .page-hero .hero-fx{display:none}
+  .dk-goal{flex-basis:100%;display:none;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;padding:10px 12px}
+  .dk-goal.show{display:flex}
+  .dk-goal.won{border-color:#34d399;background:color-mix(in srgb,#34d399 10%,var(--panel))}
+  .dk-goal .ic{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+  .dk-goal.won .ic{color:#34d399;background:color-mix(in srgb,#34d399 18%,transparent)}
+  .dk-goal .tx{flex:1;min-width:0;font-size:.86rem;line-height:1.45}
+  .dk-goal .tx b{display:block;font-size:.92rem}
+  .dk-goal .st{display:block;margin-top:3px;font:500 .78rem var(--mono);color:var(--accent)}
+  .dk-goal.won .st{color:#34d399}
+  .dk-goal .hint{display:none;margin-top:4px;color:var(--muted)}
+  .dk-goal .hint.show{display:block}
+  .dk-goal .acts{display:flex;gap:6px;flex-wrap:wrap;flex:none}
+  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.95);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none}
+  .dk-cap.show{display:block}
+  .dk-cap.fixed{position:fixed;bottom:12px}
+  .dk-cap .row{display:flex;align-items:center;gap:8px}
+  .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
+  .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap p.wait{color:var(--dim);font-style:italic}
+  .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
+  .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
+  .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem;flex:none;width:auto;min-width:0}
+  .dk-cap .btn:disabled{opacity:.4;cursor:default}
+  .dk-cap .dk-end{display:none;gap:8px;flex-wrap:wrap;margin:2px 0 4px}
+  .dk-cap.ended .dk-end{display:flex}
+  .dk-cap.ended .row .btn,.dk-cap.ended .pg{display:none}
+  .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
+  @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  @media (max-width:699px){
+    .dk-cap.fixed{left:8px;right:8px;bottom:8px;width:auto;transform:none;max-height:30vh;overflow:auto;padding:8px 10px 7px}
+    .dk-cap .row{flex-wrap:wrap;row-gap:4px}.dk-cap .n{flex:1 1 auto;letter-spacing:.04em}
+    .dk-cap p{font-size:.86rem;margin:4px 0 6px}
+    .dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}
+  }
+  body.dk-capfixed .toasts{bottom:var(--dkcap,170px)}
+  @media (pointer:coarse){.dk-bar .dk-keys,.dk-keys{display:none!important}.dk-bar .btn,.dk-cap .btn,.dk-goal .btn,.dk-card .btn,.dk-more>summary{min-height:44px}.dk-more .dk-menu>*{min-height:44px}}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}
+  @media (pointer:coarse){.lab button:not(.el):not(.pel),.lab select,.lab summary,.lab .seg>*,.dk-scen .btn,.scn-pop .btn,.scn-active .btn{min-height:44px}.lab .stage-toolbar .btn,.lab .stage-toolbar button,.lab .seg>button{min-width:44px}}
+  @media (min-width:761px) and (max-height:820px){.lab .stage:has(>canvas){max-height:calc(100vh - 84px)}}
+  .scn-card{all:unset;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;padding:10px 11px;border:1px solid var(--line);border-radius:10px;background:var(--bg2)}
+  .scn-card .scn-t{display:flex;gap:10px;align-items:flex-start}
+  .scn-card .btn{align-self:flex-start}
+  .scn-card.done{border-color:color-mix(in srgb,var(--ok) 55%,var(--line))}
+  .scn-active .demo-sp{flex:1}
+  @media (max-width:699px){.dk-cap .bl{display:none}.dk-cap .row .btn{min-width:44px;justify-content:center}}
+  kbd.kb{font:600 .75rem var(--mono);padding:0 5px;background:transparent;border:1px solid currentColor;border-radius:5px;line-height:1.4}`;
+  document.head.appendChild(st0);
   /** Set a control's value and fire its input event, so the page reacts exactly as to a user. */
   function set(sel, v) {
     const el = typeof sel === 'string' ? q(sel) : sel; if (!el) return;
@@ -332,17 +398,41 @@ window.SLDemo = (() => {
   /** A tick function that eases a control from a to b (dp decimals), firing only when the value changes. */
   function ramp(sel, a, b, dp) { let last; const f = p => { const v = +lerp(a, b, p).toFixed(dp || 0); if (v !== last) { last = v; set(sel, v); } }; f.reset = () => { last = undefined; }; return f; }
   const ease = p => p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+  const phone = () => innerWidth < 700;
+  const hdrH = () => { const h = document.getElementById('slHeader'); const b = h ? h.getBoundingClientRect().bottom : 64; return Math.max(0, Math.min(140, b)) + 8; };
+  const words = h => String(h).replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
 
-  let cfg = null, run = null, stage = null, cap = null, scn = null, scnTimer = 0;
+  let cfg = null, run = null, stage = null, cap = null, scn = null, scnTimer = 0, quietUntil = 0, cardT = 0;
   const page = () => document.body.dataset.page || 'lab';
+  const quiet = () => !!run || performance.now() < quietUntil;
 
+  /* while a demo runs (and just after it restores), nothing the page does may count as the student's work */
+  const toast0 = SL.toast, kitToast = (m, t, ms) => toast0.call(SL, m, t, ms);
+  SL.toast = function (msg, type, ms) {
+    if (run) { if (/Challenge complete|Scenario (achieved|complete)/i.test(msg)) return; return toast0.call(SL, /^\s*(<b>)?Demo:/.test(msg) ? msg : '<b>Demo:</b> ' + msg, type, ms); }
+    if (performance.now() < quietUntil) return;
+    return toast0.call(SL, msg, type, ms);
+  };
+
+  let DK = 'D', SK = 'S';
   function mount(c) {
-    cfg = c; stage = q(c.stage || '#stage');
-    const bar = document.createElement('div'); bar.className = 'demo-bar';
-    bar.innerHTML = `<button class="btn sm primary" id="demoBtn" title="Watch a guided demo of this lab (D)">${SL.icon('play-circle')}<span>Watch demo</span><kbd>D</kbd></button>` +
-      (c.scenarios && c.scenarios.length ? `<button class="btn sm" id="scnBtn" aria-expanded="false" aria-controls="scnPop" title="Real-world tasks with a goal (S)">${SL.icon('target')}<span>Scenarios</span><kbd>S</kbd></button>` : '') +
-      `<span class="demo-sp"></span><button class="btn sm ghost demo-keys" id="keysBtn" title="Keyboard shortcuts (?)">${SL.icon('keyboard')}<span>Shortcuts</span></button>`;
-    stage.parentNode.insertBefore(bar, stage);
+    cfg = c; DK = c.demoKey || 'D'; SK = c.scnKey || 'S'; stage = q(c.stage || '#stage');
+    const bar = document.createElement('div'); bar.className = 'dk-bar demo-bar';
+    bar.innerHTML = `<button class="btn sm dk-play" id="demoBtn" title="Watch a guided demo of this lab (${DK})">${SL.icon('play-circle')}<span>Watch demo</span></button>` +
+      (c.scenarios && c.scenarios.length ? `<button class="btn sm" id="scnBtn" aria-expanded="false" aria-controls="scnPop" title="Real-world tasks with a goal (${SK})">${SL.icon('map-pinned')}<span>Scenarios</span></button>` : '') +
+      `<button class="dk-keys" id="keysBtn" title="All keyboard shortcuts (?)"><kbd>${DK}</kbd> demo · <kbd>${SK}</kbd> scenarios · <kbd>Esc</kbd> stop · <kbd>?</kbd> all keys</button>` +
+      (c.start ? `<span class="dk-start"><b>Start here:</b> ${c.start}</span>` : '') + '<details class="dk-more" hidden><summary><i data-lucide="sparkles"></i> More<span class="dk-long"> ways to learn</span></summary><div class="dk-menu"></div></details>';
+    // keyboard hint row goes last
+    stage.parentNode.insertBefore(bar, stage); bar.appendChild(bar.querySelector('.dk-keys'));
+    { const b = bar;
+      // fold the hero's tour and Present buttons into "More ways to learn", so the bar is the one place to start
+      const more = b.querySelector('.dk-more'), menu = more.querySelector('.dk-menu');
+      const fold = () => { ['#slTourBtn', '#slPresentBtn'].forEach(q => { const x = document.querySelector(q); if (x && !x.closest('.dk-more')) { x.classList.add('btn', 'sm'); menu.appendChild(x); more.hidden = false; } }); try { SL.refreshIcons(more); } catch (e) {} };
+      fold(); setTimeout(fold, 0); setTimeout(fold, 400);
+      document.addEventListener('click', e => { if (more.open && !more.contains(e.target)) more.open = false; else if (more.open && e.target.closest('.dk-menu button, .dk-menu a')) setTimeout(() => { more.open = false; }, 0); });
+      // the hero animation stops drawing once the lab has the student's attention
+      try { const hero = document.querySelector('.page-hero'); if (hero && 'IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(en => document.body.classList.toggle('dk-nofx', en.intersectionRatio < 0.6)), { threshold: [0, 0.6, 1] }).observe(hero); } catch (e) {}
+    }
     const pop = document.createElement('div'); pop.className = 'scn-pop'; pop.id = 'scnPop'; pop.hidden = true;
     const act = document.createElement('div'); act.className = 'scn-active'; act.id = 'scnActive'; act.hidden = true; act.setAttribute('aria-live', 'polite');
     stage.parentNode.insertBefore(pop, stage); stage.parentNode.insertBefore(act, stage);
@@ -351,71 +441,118 @@ window.SLDemo = (() => {
     q('#keysBtn').onclick = showKeys;
     if (q('#scnBtn')) { q('#scnBtn').onclick = () => togglePop(); renderPop(); }
     document.addEventListener('keydown', onKey);
-    // a real interaction with the controls or the stage hands the lab over to the student
-    const take = e => { if (!run || !e.isTrusted || (cap && cap.contains(e.target)) || e.target.closest('.demo-bar') || !e.target.closest('button,input,select,canvas,label,a,summary,[data-o],[data-i]')) return; stop(false, true); };
-    const lab = stage.closest('.lab') || document;
-    lab.addEventListener('click', take, true); lab.addEventListener('input', take, true);
+    // the student takes over only by a deliberate tap or click on a control or on the stage, or by changing a control.
+    // A swipe that scrolls the page never stops the demo.
+    const lab = stage.closest('.lab') || document.body;
+    const isCtl = t => t && t.closest && lab.contains(t) && !(cap && cap.contains(t)) && !t.closest('.demo-bar') && (stage.contains(t) || t.closest('button, input, select, textarea, label, a, summary, [role=button], [tabindex], canvas, svg, [data-o], [data-i]'));
+    let pd = null;
+    document.addEventListener('pointerdown', e => { pd = run && e.isTrusted ? { x: e.clientX, y: e.clientY, t: e.target } : null; if (!run && cap && cap.classList.contains('ended') && !cap.contains(e.target) && !e.target.closest('.demo-bar') && lab.contains(e.target)) closeCard(); }, true);
+    document.addEventListener('pointercancel', () => { pd = null; }, true);
+    document.addEventListener('pointerup', e => { const p = pd; pd = null; if (!run || !p || !e.isTrusted) return; if (Math.hypot(e.clientX - p.x, e.clientY - p.y) >= 10) return; if (isCtl(p.t)) stop(false, true); }, true);
+    ['input', 'change'].forEach(ev => document.addEventListener(ev, e => { if (run && e.isTrusted && isCtl(e.target)) stop(false, true); }, true));
   }
 
   /* ---------------- demo ---------------- */
+  function makeCap() {
+    if (cap) cap.remove();
+    cap = document.createElement('div'); cap.className = 'dk-cap show'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm" data-a="prev" title="Previous step (←)" aria-label="Previous step">${SL.icon('skip-back')}<span class="bl"> Back</span></button><button class="btn sm" data-a="pause" title="Pause or play (Space)"></button><button class="btn sm" data-a="next" title="Next step (→)" aria-label="Next step">${SL.icon('skip-forward')}<span class="bl"> Next</span></button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)" aria-label="Stop the demo">${SL.icon('square')}<span class="bl"> Stop</span></button></div><p aria-live="polite"></p><div class="dk-end"><button class="btn sm primary" data-a="try">${SL.icon('hand')} Try it yourself</button><button class="btn sm" data-a="again">${SL.icon('rotate-ccw')} Watch again</button></div><div class="pg"><i></i></div>`;
+    if (phone()) { cap.classList.add('fixed'); document.body.appendChild(cap); } else stage.appendChild(cap);
+    SL.refreshIcons(cap);
+    cap.addEventListener('click', e => {
+      const b = e.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a;
+      if (a === 'try') { closeCard(); vis(stage); const f = (stage.closest('.lab') || document).querySelector('aside button, aside input, .panel button, .panel input'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 300); return; }
+      if (a === 'again') { closeCard(); return start(); }
+      if (a === 'prev') prev(); else if (a === 'next') next(); else if (a === 'pause') togglePause(); else stop();
+    });
+  }
+  function closeCard() { clearTimeout(cardT); if (run || !cap) return; cap.remove(); cap = null; document.body.style.paddingBottom = ''; lift(); }
+  /* toasts sit above a caption pinned to the bottom */
+  function lift() { const f = !!cap && cap.classList.contains('fixed'); document.body.classList.toggle('dk-capfixed', f); if (f) document.body.style.setProperty('--dkcap', (cap.offsetHeight + 16) + 'px'); }
+  /* bring the stage into view, clear of the header and of a caption pinned to the bottom */
+  function vis(el) {
+    if (!el) return; const r = el.getBoundingClientRect(); if (!r.width && !r.height) return;
+    const top = hdrH(), bot = innerHeight - (cap && cap.classList.contains('fixed') ? cap.offsetHeight + 16 : 8);
+    if (r.top >= top && r.bottom <= bot) return;
+    const dy = (r.top < top || r.height > bot - top) ? r.top - top : r.bottom - bot;
+    if (Math.abs(dy) > 3) window.scrollBy({ top: dy, behavior: reduced() ? 'auto' : 'smooth' });
+  }
   function start() {
     if (run || !cfg.steps) return;
-    closePop();
+    closePop(); closeCard();
     run = { i: -1, el: 0, paused: reduced(), snap0: cfg.snapshot(), snaps: [], last: performance.now(), raf: 0, manual: reduced() };
     stage.classList.add('demo-on');
-    cap = document.createElement('div'); cap.className = 'demo-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo captions');
-    cap.innerHTML = `<div class="dc-top"><span class="dc-n"></span><span class="dc-ctl"><button class="btn sm" data-a="prev" title="Previous step (←)" aria-label="Previous step">${SL.icon('skip-back')}</button><button class="btn sm" data-a="pause" title="Pause or play (Space)" aria-label="Pause or play"></button><button class="btn sm" data-a="next" title="Next step (→)" aria-label="Next step">${SL.icon('skip-forward')}</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)" aria-label="Stop demo">${SL.icon('x')}</button></span></div><div class="dc-bar"><i></i></div><div class="dc-txt" aria-live="polite"></div>`;
-    if (matchMedia('(max-width:640px)').matches) { cap.classList.add('below'); stage.after(cap); } else stage.appendChild(cap);
-    cap.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a; if (a === 'prev') prev(); else if (a === 'next') next(); else if (a === 'pause') togglePause(); else stop(); });
-    setBtn();
+    makeCap(); setBtn();
+    if (cap.classList.contains('fixed')) document.body.style.paddingBottom = Math.round(innerHeight * 0.3 + 24) + 'px';
     if (document.activeElement && document.activeElement.id === 'demoBtn') cap.querySelector('[data-a=pause]').focus({ preventScroll: true });
     try { cfg.onStart && cfg.onStart(); } catch (e) { console.warn(e); }
-    const r = stage.getBoundingClientRect(), bottom = cap.classList.contains('below') ? r.bottom + 150 : r.bottom;
-    if (r.top < 70 || bottom > innerHeight) { const top = r.top + scrollY - (cap.classList.contains('below') ? Math.max(72, innerHeight - (bottom - r.top) - 8) : Math.max(72, (innerHeight - r.height) / 2)); scrollTo({ top, behavior: reduced() ? 'auto' : 'smooth' }); }
+    vis(stage);
     go(0);
     const tick = now => {
       if (!run) return;
       const dt = Math.min(0.25, (now - run.last) / 1000); run.last = now;
       const s = cfg.steps[run.i];
       if (!run.paused && !document.hidden) run.el += dt;
-      const dur = s.dur || 5, ramp = s.ramp ? s.ramp : dur * 0.6;
-      if (s.tick && !run.manual) { try { s.tick(ease(Math.min(1, run.el / ramp))); } catch (e) { console.warn(e); } }
-      const tot = cfg.steps.reduce((a, x) => a + (x.dur || 5), 0), doneT = cfg.steps.slice(0, run.i).reduce((a, x) => a + (x.dur || 5), 0);
-      cap.querySelector('.dc-bar i').style.width = (100 * Math.min(tot, doneT + Math.min(run.el, dur)) / tot) + '%';
-      if (!run.paused && run.el >= dur) { if (run.i >= cfg.steps.length - 1) { stop(true); return; } go(run.i + 1); }
+      const act = actT(s), hold = holdT(s), dur = act + hold, rp = s.ramp ? s.ramp : (s.dur || 5) * 0.6;
+      if (s.tick && !run.manual) { try { s.tick(ease(Math.min(1, run.el / rp))); } catch (e) { console.warn(e); } }
+      // the caption appears once the state it describes is on screen (s.ready: e.g. the ball has landed)
+      if (!run.shown) { let ok = run.el >= act; if (s.ready) { try { ok = (ok && !!s.ready()) || run.el >= act + 8; } catch (e) { ok = true; } } if (ok) showCap(s); }
+      const tot = cfg.steps.reduce((a, x) => a + actT(x) + holdT(x), 0), doneT = cfg.steps.slice(0, run.i).reduce((a, x) => a + actT(x) + holdT(x), 0);
+      cap.querySelector('.pg i').style.width = (100 * Math.min(tot, doneT + Math.min(run.el, dur)) / tot) + '%';
+      if (!run.paused && run.shown && run.el - run.shownAt >= hold) { if (run.i >= cfg.steps.length - 1) { stop(true); return; } go(run.i + 1); }
       run.raf = requestAnimationFrame(tick);
     };
     run.raf = requestAnimationFrame(tick);
   }
+  /** seconds of action before the caption shows: the ramp of an animated step, or s.show */
+  const actT = s => s.show != null ? s.show : s.tick ? (s.ramp ? s.ramp : (s.dur || 5) * 0.6) : 0.2;
+  /** seconds the caption stays: long enough to read */
+  const holdT = s => { const c = typeof s.cap === 'function' ? s.capText || '' : s.cap; const n = words(c) || 25; return Math.max((s.dur || 5) - actT(s), Math.min(7, Math.max(3, 0.6 + n * 0.2))); };
+  function showCap(s) {
+    run.shown = true; run.shownAt = run.el;
+    const t = cap.querySelector('p'); t.classList.remove('wait'); t.innerHTML = typeof s.cap === 'function' ? s.cap() : s.cap; SL.renderMath && SL.renderMath(t);
+    if (typeof s.cap === 'function') s.capText = t.textContent;
+    lift(); vis(stage);
+  }
   function go(i) {
-    run.i = i; run.el = 0;
+    run.i = i; run.el = 0; run.shown = false;
     if (!run.snaps[i]) run.snaps[i] = cfg.snapshot();
     const s = cfg.steps[i];
     if (s.tick && s.tick.reset) s.tick.reset();
     try { s.at && s.at(); } catch (e) { console.warn(e); }
     if (s.tick && run.manual) { try { s.tick(1); } catch (e) { console.warn(e); } }
-    cap.querySelector('.dc-n').textContent = `Demo · step ${i + 1} of ${cfg.steps.length}`;
-    const t = cap.querySelector('.dc-txt'); t.innerHTML = typeof s.cap === 'function' ? s.cap() : s.cap; SL.renderMath && SL.renderMath(t);
+    cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${cfg.steps.length}`;
+    const t = cap.querySelector('p'); t.classList.toggle('wait', !s.pre); t.innerHTML = (typeof s.pre === 'function' ? s.pre() : s.pre) || 'Watch the lab…';
+    lift();
+    if (run.manual || (actT(s) <= 0.2 && !s.ready)) requestAnimationFrame(() => { if (run && run.i === i && !run.shown) showCap(s); });
     cap.querySelector('[data-a=prev]').disabled = i === 0;
+    vis(stage);
   }
-  function next() { if (!run) return; const s = cfg.steps[run.i]; if (s.tick) { try { s.tick(1); } catch (e) {} } if (run.i >= cfg.steps.length - 1) return stop(true); go(run.i + 1); }
+  function next() { if (!run) return; const s = cfg.steps[run.i]; if (s.tick) { try { s.tick(1); } catch (e) {} } if (!run.shown) { run.el = actT(s); showCap(s); return; } if (run.i >= cfg.steps.length - 1) return stop(true); go(run.i + 1); }
   function prev() { if (!run || run.i === 0) return; const i = run.i - 1; try { cfg.restore(run.snaps[i]); } catch (e) { console.warn(e); } go(i); }
   function togglePause() { if (!run) return; run.paused = !run.paused; if (!run.paused && run.manual) { run.manual = false; } setBtn(); }
   function setBtn() {
-    const b = cap.querySelector('[data-a=pause]'); b.innerHTML = SL.icon(run.paused ? 'play' : 'pause'); SL.refreshIcons(cap);
-    const d = q('#demoBtn'); d.innerHTML = `${SL.icon('square')}<span>Stop demo</span><kbd>D</kbd>`; d.classList.add('on'); SL.refreshIcons(d);
+    const b = cap.querySelector('[data-a=pause]'); b.innerHTML = SL.icon(run.paused ? 'play' : 'pause') + `<span class="bl">${run.paused ? ' Play' : ' Pause'}</span>`; b.setAttribute('aria-label', run.paused ? 'Play' : 'Pause'); SL.refreshIcons(cap);
+    const d = q('#demoBtn'); d.innerHTML = `${SL.icon('square')}<span>Stop demo</span>`; d.classList.add('on', 'run'); SL.refreshIcons(d);
   }
   /** finished: true at the natural end; takeover: the student grabbed a control, so keep their set-up */
   function stop(finished, takeover) {
     if (!run) return;
     cancelAnimationFrame(run.raf);
-    const r = run; run = null;
+    const r = run;
+    quietUntil = performance.now() + 1500;
     if (!takeover) { try { cfg.restore(r.snap0); } catch (e) { console.warn(e); } }
     try { cfg.onEnd && cfg.onEnd(!!takeover); } catch (e) { console.warn(e); }
-    stage.classList.remove('demo-on'); cap && cap.remove(); cap = null;
-    const d = q('#demoBtn'); d.innerHTML = `${SL.icon('play-circle')}<span>Watch demo</span><kbd>D</kbd>`; d.classList.remove('on'); SL.refreshIcons(d);
-    if (finished) SL.toast(`Demo finished and your set-up is restored.${cfg.scenarios ? ' Now try a <b>Scenario</b>.' : ''}`, 'ok', 5000);
-    else if (takeover) SL.toast('Demo stopped: the lab is yours.', '', 2200);
+    run = null; quietUntil = performance.now() + 1500;
+    stage.classList.remove('demo-on');
+    const d = q('#demoBtn'); d.innerHTML = `${SL.icon('play-circle')}<span>Watch demo</span>`; d.classList.remove('on', 'run'); SL.refreshIcons(d);
+    if (takeover) { closeCard(); kitToast('Demo stopped: the lab is yours.', '', 2200); return; }
+    // restoring is silent; the end card offers the next step
+    cap.classList.add('ended'); cap.querySelector('.n').textContent = finished ? 'Demo complete' : 'Demo stopped';
+    const t = cap.querySelector('p'); t.classList.remove('wait'); t.innerHTML = `Your own set-up is back as it was.${cfg.scenarios && cfg.scenarios.length ? ' Now try it yourself, or pick a <b>Scenario</b>.' : ' Now it is your turn.'}`;
+    lift(); cap.querySelector('[data-a=try]').focus({ preventScroll: true });
+    clearTimeout(cardT); cardT = setTimeout(closeCard, 20000);
+    requestAnimationFrame(() => vis(stage));
   }
 
   /* ---------------- scenarios ---------------- */
@@ -423,31 +560,31 @@ window.SLDemo = (() => {
   function renderPop() {
     const s = solved(), pop = q('#scnPop');
     pop.innerHTML = `<div class="scn-head"><div><b>Scenarios</b><span class="small muted">Real tasks with a clear goal. The lab checks your work live.</span></div><button class="btn sm ghost" data-x aria-label="Close scenarios">${SL.icon('x')}</button></div><div class="scn-list">` +
-      cfg.scenarios.map((x, i) => `<button class="scn-card${s[x.id] ? ' done' : ''}" data-i="${i}"><span class="scn-ic">${SL.icon(s[x.id] ? 'check-circle-2' : (x.icon || 'target'))}</span><span><b>${x.title}</b><span class="small">${x.brief}</span></span></button>`).join('') + '</div>';
+      cfg.scenarios.map((x, i) => `<div class="scn-card${s[x.id] ? ' done' : ''}"><span class="scn-t"><span class="scn-ic">${SL.icon(s[x.id] ? 'check-circle-2' : (x.icon || 'target'))}</span><span><b>${x.title}</b><span class="small">${x.brief}</span></span></span><button class="btn sm primary" data-i="${i}">${SL.icon(s[x.id] ? 'repeat' : 'play')} ${s[x.id] ? 'Play again' : 'Start'}</button></div>`).join('') + '</div>';
     SL.refreshIcons(pop);
-    pop.onclick = e => { if (e.target.closest('[data-x]')) return closePop(); const b = e.target.closest('.scn-card'); if (b) pick(+b.dataset.i); };
+    pop.onclick = e => { if (e.target.closest('[data-x]')) return closePop(); const b = e.target.closest('[data-i]'); if (b) pick(+b.dataset.i); };
   }
   function togglePop() { const p = q('#scnPop'); if (p.hidden) { renderPop(); p.hidden = false; q('#scnBtn').setAttribute('aria-expanded', 'true'); } else closePop(); }
   function closePop() { const p = q('#scnPop'); if (p && !p.hidden) { p.hidden = true; q('#scnBtn').setAttribute('aria-expanded', 'false'); } }
   function pick(i) {
-    if (run) stop();
-    closePop();
+    if (run) stop(false, true);
+    closePop(); closeCard();
     const x = cfg.scenarios[i];
-    scn = { x, i, ok: false };
+    scn = { x, i, ok: false, t0: performance.now() };
     try { x.setup(); } catch (e) { console.warn(e); }
     const a = q('#scnActive'); a.hidden = false; a.classList.remove('ok');
-    a.innerHTML = `<div class="sa-top"><span class="sa-ic">${SL.icon(x.icon || 'target')}</span><b>${x.title}</b><span class="demo-sp"></span><button class="btn sm ghost" data-r title="Set the scenario up again">${SL.icon('rotate-ccw')}<span>Restart</span></button><button class="btn sm ghost" data-x title="Leave the scenario" aria-label="Leave scenario">${SL.icon('x')}</button></div><p class="sa-goal">${x.goal}</p><p class="sa-ok small"><b>Success:</b> ${x.success}</p><div class="sa-now"><span class="led"></span><span class="sa-txt"></span></div>${x.hint ? `<details class="small"><summary>Hint</summary>${x.hint}</details>` : ''}`;
+    a.innerHTML = `<div class="sa-top"><span class="sa-ic">${SL.icon(x.icon || 'target')}</span><b>${x.title}</b><span class="demo-sp"></span><button class="btn sm ghost" data-r title="Set the scenario up again">${SL.icon('rotate-ccw')}<span>Restart</span></button><button class="btn sm ghost" data-x title="Leave the scenario" aria-label="Leave scenario">${SL.icon('x')}<span>Quit</span></button></div><p class="sa-goal">${x.goal}</p><p class="sa-ok small"><b>Success:</b> ${x.success}</p><div class="sa-now"><span class="led"></span><span class="sa-txt"></span></div>${x.hint ? `<details class="small"><summary>Hint</summary>${x.hint}</details>` : ''}`;
     SL.refreshIcons(a); SL.renderMath && SL.renderMath(a);
     a.onclick = e => { if (e.target.closest('[data-x]')) leave(); else if (e.target.closest('[data-r]')) pick(scn.i); };
     clearInterval(scnTimer); scnTimer = setInterval(checkScn, 300); checkScn();
     const r = a.getBoundingClientRect(); if (r.top < 70 || r.top > innerHeight * 0.6) a.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
   }
   function checkScn() {
-    if (!scn || document.hidden || run) return;
+    if (!scn || document.hidden || quiet()) return;
     const a = q('#scnActive'), x = scn.x;
     let now = ''; try { now = x.now ? x.now() : ''; } catch (e) {}
     const t = a.querySelector('.sa-txt'); if (t && t.innerHTML !== now && !scn.ok) t.innerHTML = now;
-    let ok = false; try { ok = !scn.ok && x.check(); } catch (e) {}
+    let ok = false; try { ok = !scn.ok && performance.now() - scn.t0 > 600 && x.check(); } catch (e) {}
     if (ok) {
       scn.ok = true; a.classList.add('ok'); a.querySelector('.led').classList.add('on');
       let m = ''; try { m = x.done ? x.done() : ''; } catch (e) {}
@@ -460,7 +597,7 @@ window.SLDemo = (() => {
 
   /* ---------------- keys ---------------- */
   function showKeys() {
-    const rows = [['D', 'Watch or stop the demo'], ['S', 'Open scenarios'], ['Esc', 'Stop the demo / close'], ['← →', 'Previous / next demo step'], ['Space', 'Pause the demo while it plays']].concat((cfg.keys || []).map(k => [k.label, k.desc]));
+    const rows = [[DK, 'Watch or stop the demo'], [SK, 'Open scenarios'], ['Esc', 'Stop the demo / close'], ['← →', 'Previous / next demo step'], ['Space', 'Pause the demo while it plays']].concat((cfg.keys || []).map(k => [k.label, k.desc]));
     SL.modal(`<h3 style="margin-top:0">Keyboard shortcuts</h3><table class="data"><tbody>${rows.map(r => `<tr><td><kbd class="kb">${r[0]}</kbd></td><td>${r[1]}</td></tr>`).join('')}</tbody></table>`);
   }
   function onKey(e) {
@@ -475,15 +612,16 @@ window.SLDemo = (() => {
       if (k === 'ArrowLeft' && tag !== 'INPUT') { e.preventDefault(); return prev(); }
       if (k === ' ' && tag !== 'BUTTON' && tag !== 'INPUT') { e.preventDefault(); return togglePause(); }
     }
-    if (k === 'Escape') return closePop();
+    if (k === 'Escape') { closeCard(); return closePop(); }
+    if (cfg.skipKey && cfg.skipKey(k, e)) return;
     if (tag === 'INPUT' && /^Arrow|^Page|Home|End/.test(k)) return;
-    if (k === 'd' || k === 'D') { e.preventDefault(); return run ? stop() : start(); }
-    if ((k === 's' || k === 'S') && q('#scnBtn')) { e.preventDefault(); return togglePop(); }
+    if (k.toUpperCase() === DK) { e.preventDefault(); return run ? stop() : start(); }
+    if (k.toUpperCase() === SK && q('#scnBtn')) { e.preventDefault(); return togglePop(); }
     if (k === '?') { e.preventDefault(); return showKeys(); }
     const m = (cfg.keys || []).find(x => x.keys.includes(k));
     if (m && !(k === ' ' && (tag === 'BUTTON' || tag === 'INPUT'))) { e.preventDefault(); m.fn(e); }
   }
-  return { mount, start, stop, set, lerp, ramp, store, get running() { return !!run; }, get scenario() { return scn; }, pick, leave };
+  return { mount, start, stop, set, lerp, ramp, store, get running() { return !!run; }, get quiet() { return quiet(); }, get scenario() { return scn; }, pick, leave };
 })();
 </script>
 <script>
@@ -722,15 +860,18 @@ window.SLDemo = (() => {
 
   /* ---------- pointer ---------- */
   const cv = $('#cv');
-  cv.addEventListener('pointerdown', e => {
-    const p = SL.ptr(e, cv), G = geo(); let hit = null;
+  function hitAt(p) {
+    const G = geo(); let hit = null;
     if (mode === 'spring' && G.kind === 'v') { if (Math.abs(p.x - G.cx) < 60 && Math.abs(p.y - (G.yEq - y[0] * G.sc)) < 50) hit = 'v'; }
     else if (mode === 'spring' || mode === 'driven') { if (Math.abs(p.x - (G.xEq + y[0] * G.sc)) < 55 && Math.abs(p.y - G.yc) < 50) hit = 'h'; }
     else if (mode === 'pendulum') { const bx = G.px + G.Lpx * Math.sin(y[0]), by = G.py + G.Lpx * Math.cos(y[0]); if (Math.hypot(p.x - bx, p.y - by) < 40) hit = 'p'; }
     else if (mode === 'double') { const x1 = G.px + G.l1 * Math.sin(y[0]), y1 = G.py + G.l1 * Math.cos(y[0]), x2 = x1 + G.l2 * Math.sin(y[1]), y2 = y1 + G.l2 * Math.cos(y[1]); if (Math.hypot(p.x - x2, p.y - y2) < 36) hit = 'd2'; else if (Math.hypot(p.x - x1, p.y - y1) < 36) hit = 'd1'; }
     else if (mode === 'coupled') { const x1 = G.e1 + y[0] * G.sc, x2 = G.e2 + y[1] * G.sc; if (Math.abs(p.x - x1) < 40 && Math.abs(p.y - G.yc) < 50) hit = 'c1'; else if (Math.abs(p.x - x2) < 40 && Math.abs(p.y - G.yc) < 50) hit = 'c2'; }
-    if (hit) { drag = hit; cv.setPointerCapture(e.pointerId); moveDrag(p); e.preventDefault(); }
-  });
+    return hit;
+  }
+  cv.addEventListener('pointerdown', e => { const p = SL.ptr(e, cv), hit = hitAt(p); if (hit) { drag = hit; cv.setPointerCapture(e.pointerId); moveDrag(p); e.preventDefault(); } });
+  // touch: the page scrolls unless the finger starts on the mass or bob
+  cv.addEventListener('touchstart', e => { const t = e.touches[0], r = cv.getBoundingClientRect(); if (e.touches.length === 1 && hitAt({ x: t.clientX - r.left, y: t.clientY - r.top })) e.preventDefault(); }, { passive: false });
   function moveDrag(p) {
     const G = geo();
     if (drag === 'v') { y = [SL.clamp((G.yEq - p.y) / G.sc, -0.5, 0.5), 0]; }
@@ -790,6 +931,8 @@ window.SLDemo = (() => {
 
   /* ---------- plots ---------- */
   const ds = (arr, n) => { if (arr.length <= n) return arr; const s = arr.length / n, o = []; for (let i = 0; i < n; i++) o.push(arr[Math.floor(i * s)]); o.push(arr[arr.length - 1]); return o; };
+  // only the plots on screen are redrawn
+  const chartV = (p, ...a) => SLPerf.seen(p.ctx.canvas) && SL.chart(p, ...a);
   function drawPlots() {
     const hh = ds(hist, 500), t1 = simT, t0 = Math.max(0, t1 - 10);
     const [p1, p2, p3, p4, p5] = plots;
@@ -802,7 +945,7 @@ window.SLDemo = (() => {
       if (mode === 'double' || mode === 'coupled') s.push({ data: hh.map(q => [q.t, q.b]), color: C.b, label: mode === 'double' ? 'θ₂' : 'x₂' });
       if (mode === 'driven') { const Fs = sym(hh.map(q => q.a)) / Math.max(1e-9, P.F0); s.push({ data: hh.map(q => [q.t, q.g * Fs]), color: C.c, label: 'F(t), scaled', dash: [4, 4], width: 1.2 }); }
       const m = sym(s.flatMap(q => q.data.map(p => p[1])));
-      SL.chart(p1, s, { xmin: t0, xmax: Math.max(t0 + 10, t1), ymin: -m, ymax: m, pad: [26, 10, 34, 54], xlabel: 't (s)' });
+      chartV(p1, s, { xmin: t0, xmax: Math.max(t0 + 10, t1), ymin: -m, ymax: m, pad: [26, 10, 34, 54], xlabel: 't (s)' });
     }
     // p2: velocity-like
     {
@@ -811,22 +954,24 @@ window.SLDemo = (() => {
       else if (mode === 'coupled') s = [{ data: hh.map(q => [q.t, q.va]), color: C.a, label: 'v₁' }, { data: hh.map(q => [q.t, q.vb]), color: C.b, label: 'v₂' }];
       else s = [{ data: hh.map(q => [q.t, q.b]), color: C.d, label: mode === 'pendulum' ? 'ω (rad/s)' : 'v (m/s)' }];
       const m = sym(s.flatMap(q => q.data.map(p => p[1])));
-      SL.chart(p2, s, { xmin: t0, xmax: Math.max(t0 + 10, t1), ymin: -m, ymax: m, pad: [26, 10, 34, 54], xlabel: 't (s)' });
+      chartV(p2, s, { xmin: t0, xmax: Math.max(t0 + 10, t1), ymin: -m, ymax: m, pad: [26, 10, 34, 54], xlabel: 't (s)' });
     }
     // p3: phase portrait
     {
       const d = hh.map(q => [q.px, q.py]);
       const mx = mode === 'double' ? 180 : sym(d.map(p => p[0])), my = sym(d.map(p => p[1]));
       const segs = [[]]; d.forEach((p, i) => { if (i && mode === 'double' && Math.abs(p[0] - d[i - 1][0]) > 180) segs.push([]); segs[segs.length - 1].push(p); });
-      const r = SL.chart(p3, segs.filter(q => q.length > 1).map(q => ({ data: q, color: mode === 'coupled' ? C.c : C.a, width: 1.6 })), { xmin: -mx, xmax: mx, ymin: -my, ymax: my, pad: [14, 10, 34, 54], xlabel: mode === 'coupled' ? 'x₁ →' : mode === 'double' ? 'θ₂ (°) →' : mode === 'pendulum' ? 'θ (°) →' : 'x (m) →' , niceX: true });
+      const r = chartV(p3, segs.filter(q => q.length > 1).map(q => ({ data: q, color: mode === 'coupled' ? C.c : C.a, width: 1.6 })), { xmin: -mx, xmax: mx, ymin: -my, ymax: my, pad: [14, 10, 34, 54], xlabel: mode === 'coupled' ? 'x₁ →' : mode === 'double' ? 'θ₂ (°) →' : mode === 'pendulum' ? 'θ (°) →' : 'x (m) →' , niceX: true });
+      if (r) {
       const l = d[d.length - 1]; p3.ctx.fillStyle = '#fff'; p3.ctx.beginPath(); p3.ctx.arc(r.X(l[0]), r.Y(l[1]), 3.5, 0, 7); p3.ctx.fill();
       if (mode === 'coupled') { p3.ctx.setLineDash([3, 4]); p3.ctx.strokeStyle = 'rgba(255,255,255,.25)'; p3.ctx.beginPath(); p3.ctx.moveTo(r.X(-mx), r.Y(-mx)); p3.ctx.lineTo(r.X(mx), r.Y(mx)); p3.ctx.moveTo(r.X(-mx), r.Y(mx)); p3.ctx.lineTo(r.X(mx), r.Y(-mx)); p3.ctx.stroke(); p3.ctx.setLineDash([]); }
+      }
     }
     // p4: energy
     {
       const s = [{ data: hh.map(q => [q.t, q.ke]), color: C.ke, label: 'KE' }, { data: hh.map(q => [q.t, q.pe]), color: C.pe, label: 'PE' }, { data: hh.map(q => [q.t, q.ke + q.pe]), color: C.E, label: 'E', width: 1.5 }];
       let mx = 1e-9; s[2].data.forEach(p => mx = Math.max(mx, p[1]));
-      SL.chart(p4, s, { xmin: t0, xmax: Math.max(t0 + 10, t1), ymin: 0, ymax: mx * 1.15, pad: [26, 10, 34, 54], xlabel: 't (s)' });
+      chartV(p4, s, { xmin: t0, xmax: Math.max(t0 + 10, t1), ymin: 0, ymax: mx * 1.15, pad: [26, 10, 34, 54], xlabel: 't (s)' });
     }
     drawP5();
   }
@@ -916,7 +1061,7 @@ window.SLDemo = (() => {
   function win(id, msg) { if (done[id]) return; done[id] = true; $('#ch-' + id + ' .led').classList.add('on'); SL.toast(`<b>Challenge complete:</b> ${CHALS.find(c => c.id === id).t}${msg ? '<br>' + msg : ''}`, 'ok', 6000); }
   let beatPressed = false;
   function checkChallenges() {
-    if (window.SLDemo && SLDemo.running) return;
+    if (window.SLDemo && SLDemo.quiet) return;
     nudges();
     if (mode === 'spring' && P.b === 0) { const T = 2 * Math.PI * Math.sqrt(P.m / P.k); if (Math.abs(T - 1) < 0.005) win('T1', `T = ${SL.fmt(T, 4)} s with m = ${P.m} kg, k = ${P.k} N/m.`); }
     if (mode === 'spring' && Math.abs(zeta() - 1) < 0.02 && simT > 0.5 && Math.abs(y[0]) < 0.02 && hist.length && Math.max(...hist.map(q => Math.abs(q.a))) > 0.05) win('crit', `ζ = ${SL.fmt(zeta(), 3)}, b = ${P.b} kg/s.`);
@@ -973,7 +1118,7 @@ window.SLDemo = (() => {
     SL.toast('Sweeping ω<sub>d</sub> from 0.5ω₀ to 1.5ω₀ at 12× speed. Each point waits for the transient to decay.');
   };
   $('#clearSweep').onclick = () => { sweepPts = []; };
-  function setPlayIcon() { $('#playBtn').innerHTML = `<i data-lucide="${running ? 'pause' : 'play'}"></i>`; SL.refreshIcons($('#playBtn')); }
+  function setPlayIcon() { $('#playBtn').innerHTML = `<i data-lucide="${running ? 'pause' : 'play'}"></i> ${running ? 'Pause' : 'Play'}`; SL.refreshIcons($('#playBtn')); }
   $('#playBtn').onclick = () => { running = !running; setPlayIcon(); };
   $('#resetBtn').onclick = () => { resetState(); running = true; setPlayIcon(); };
 
@@ -1001,10 +1146,12 @@ window.SLDemo = (() => {
 
   /* ---------- loop ---------- */
   let acc = 0, accC = 0;
+  let half = false;
   const loop = SL.loop((dt) => {
     if (running && !drag) step(dt);
     if (mode === 'double' && sepHist.length) { const s = Math.pow(10, sepHist[sepHist.length - 1][1]); if (s > state.maxSep) state.maxSep = s; }
-    drawStage();
+    // phones and low-end CPUs: the simulation steps every frame, the stage is redrawn at 30 Hz
+    if (!SLPerf.low || (half = !half) || drag) drawStage();
     acc += dt; if (acc > 1 / 30) { drawPlots(); acc = 0; }
     accC += dt; if (accC > 0.25) { updateUI(); checkChallenges(); accC = 0; }
   }).start();
@@ -1038,15 +1185,15 @@ window.SLDemo = (() => {
   $('#lab').addEventListener('input', queueSave); $('#lab').addEventListener('click', e => { if (e.target.closest('button')) queueSave(); });
 
   const DEMO = [
-    { dur: 7, at: () => { setSpeed(1); applyParams({ orient: 'h', m: 1, k: 20, b: 0 }); setMode('spring'); }, cap: 'A <b>1 kg</b> mass on a <b>20 N/m</b> spring with no damping. It swings for ever with ω₀ = √(k/m) = 4.47 rad/s, a period of <b>1.40 s</b>. The graphs trace x(t), v(t) and energy passing between KE and PE.' },
-    { dur: 6, ramp: 4, tick: D.ramp('#k', 20, 80, 1), cap: 'Make the spring <b>four times stiffer</b>: the period halves to 0.70 s, because T = 2π√(m/k). Watch the period in Live results.' },
-    { dur: 7, at: () => { setRange('k', 20); $('[data-z="0.1"]').click(); resetState(); running = true; setPlayIcon(); }, cap: 'Back to 20 N/m with <b>light damping</b> (ζ = 0.1). The swings shrink inside an exponential envelope and the total energy line steps down: friction turns it into heat.' },
-    { dur: 5, at: () => { $('[data-z="1"]').click(); resetState(); }, cap: '<b>Critical damping</b>, ζ = 1: the fastest return with no overshoot. Car shock absorbers and door closers are tuned close to this.' },
-    { dur: 6, at: () => { applyParams({ L: 1, th0: 20, pb: 0, g: 9.81, ghost: true }); setMode('pendulum'); }, cap: 'A <b>pendulum</b> released from 20°. The faint ghost follows the small-angle model, T₀ = 2π√(L/g) = 2.01 s, and the two stay together.' },
-    { dur: 7, at: () => { setRange('th0', 90); resetState(); }, cap: 'From <b>90°</b> the real pendulum falls behind its ghost: its period is <b>18% longer</b>, 2.37 s. The simple formula only holds for small swings.' },
-    { dur: 5, at: () => { setSpeed(2); applyParams({ m: 1, k: 20, b: 1, F0: 1, wd: 3 }); setMode('driven'); }, cap: 'A <b>driven</b> oscillator (shown at 2×), pushed at 3 rad/s, well below its natural 4.47 rad/s. It follows the force with a small amplitude, about 9 cm.' },
-    { dur: 10, ramp: 3, tick: D.ramp('#wd', 3, 4.42, 2), cap: 'Tune the drive towards ω₀ and the amplitude builds up to <b>resonance</b>, about 22 cm: the same push, 2.5 times the swing. The peak on the resonance curve is where it sits now.' },
-    { dur: 7, at: () => { setSpeed(1); applyParams({ m1: 1, m2: 1, L1: 1, L2: 1, dt1: 120, dt2: -20, twin: true, trail: true }); setMode('double'); }, cap: 'A <b>double pendulum</b> and its faint twin, started just 0.001 rad apart. Within seconds they disagree completely: this is <b>chaos</b>, deterministic but unpredictable.' },
+    { dur: 7, show: 1.6, pre: 'A mass on a spring, released…', at: () => { setSpeed(1); applyParams({ orient: 'h', m: 1, k: 20, b: 0 }); setMode('spring'); }, cap: 'A <b>1 kg</b> mass on a <b>20 N/m</b> spring with no damping. It swings for ever with ω₀ = √(k/m) = 4.47 rad/s, a period of <b>1.40 s</b>. The graphs trace x(t), v(t) and energy passing between KE and PE.' },
+    { dur: 6, ramp: 4, tick: D.ramp('#k', 20, 80, 1), pre: 'Making the spring <b>four times stiffer</b>…', cap: 'With the spring <b>four times stiffer</b> the period halves to 0.70 s, because T = 2π√(m/k). Watch the period in Live results.' },
+    { dur: 7, at: () => { setRange('k', 20); $('[data-z="0.1"]').click(); resetState(); running = true; setPlayIcon(); }, show: 3, pre: 'Back to 20 N/m, now with <b>light damping</b>…', cap: 'Back to 20 N/m with <b>light damping</b> (ζ = 0.1). The swings shrink inside an exponential envelope and the total energy line steps down: friction turns it into heat.' },
+    { dur: 5, show: 2, pre: 'Now <b>critical damping</b>, ζ = 1…', at: () => { $('[data-z="1"]').click(); resetState(); }, cap: '<b>Critical damping</b>, ζ = 1: the fastest return with no overshoot. Car shock absorbers and door closers are tuned close to this.' },
+    { dur: 6, at: () => { applyParams({ L: 1, th0: 20, pb: 0, g: 9.81, ghost: true }); setMode('pendulum'); }, show: 2.2, pre: 'A <b>pendulum</b> released from 20°, with its small-angle ghost…', cap: 'A <b>pendulum</b> released from 20°. The faint ghost follows the small-angle model, T₀ = 2π√(L/g) = 2.01 s, and the two stay together.' },
+    { dur: 7, show: 4.5, pre: 'Now release it from <b>90°</b> and watch it against the ghost…', at: () => { setRange('th0', 90); resetState(); }, cap: 'From <b>90°</b> the real pendulum falls behind its ghost: its period is <b>18% longer</b>, 2.37 s. The simple formula only holds for small swings.' },
+    { dur: 5, at: () => { setSpeed(2); applyParams({ m: 1, k: 20, b: 1, F0: 1, wd: 3 }); setMode('driven'); }, show: 3, pre: 'A <b>driven</b> oscillator (shown at 2×), pushed at 3 rad/s…', cap: 'A <b>driven</b> oscillator (shown at 2×), pushed at 3 rad/s, well below its natural 4.47 rad/s. It follows the force with a small amplitude, about 9 cm.' },
+    { dur: 10, ramp: 3, show: 7, pre: 'Tuning the drive towards ω₀ = 4.47 rad/s, with the same push…', tick: D.ramp('#wd', 3, 4.42, 2), cap: 'Tuned close to ω₀, the amplitude has built up to <b>resonance</b>, about 22 cm: the same push, 2.5 times the swing. The peak on the resonance curve is where it sits now.' },
+    { dur: 7, at: () => { setSpeed(1); applyParams({ m1: 1, m2: 1, L1: 1, L2: 1, dt1: 120, dt2: -20, twin: true, trail: true }); setMode('double'); }, show: 5, pre: 'A <b>double pendulum</b> and its faint twin, started just 0.001 rad apart…', cap: 'A <b>double pendulum</b> and its faint twin, started just 0.001 rad apart. Within seconds they disagree completely: this is <b>chaos</b>, deterministic but unpredictable.' },
   ];
   const fHz = () => w0() / (2 * Math.PI);
   const SCN = [
@@ -1089,7 +1236,8 @@ window.SLDemo = (() => {
     { keys: ['1', '2', '3', '4', '5'], label: '1 – 5', desc: 'Spring, pendulum, double, coupled, driven', fn: e => setMode(MODES[+e.key - 1]) },
     { keys: ['[', ']'], label: '[ ]', desc: 'Slower / faster simulation', fn: e => { const L = [0.25, 0.5, 1, 2, 5], i = L.indexOf(speed); setSpeed(L[SL.clamp(i + (e.key === ']' ? 1 : -1), 0, 4)]); } },
   ];
-  D.mount({ steps: DEMO, scenarios: SCN, keys: KEYS, snapshot: snap, restore });
+  D.mount({ steps: DEMO, scenarios: SCN, keys: KEYS, snapshot: snap, restore,
+    start: 'watch the demo, then drag the mass on the stage and let go.' });
   setMode('spring');
   { const last = D.store.get('sl-osc-last', null);
     const defStr = JSON.stringify(P);
