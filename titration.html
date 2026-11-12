@@ -79,6 +79,9 @@
   }
   svg.diag text{font-family:var(--mono);font-size:11px;fill:#93a1bd}
   .stat .k{text-transform:none;letter-spacing:.03em}
+  /* demo caption on phones; keep scrolled-to targets clear of the sticky header */
+  @media (max-width:520px){.dk-cap .row{flex-wrap:wrap;row-gap:6px}.dk-cap .row .n{flex:1 0 100%}}
+  .stage,.lab,.dk-bar,.dk-scen{scroll-margin-top:84px}
 </style>
 </head>
 <body data-page="titration">
@@ -310,6 +313,187 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=13"></script>
+<script>
+/* Watch-demo runner and goal-based scenarios (page-local kit) */
+(function () {
+  if (window.DemoKit) return;
+  const css = `
+  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
+  .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .dk-bar .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto}
+  .dk-bar .dk-keys kbd{font-size:.72rem}
+  .dk-goal{flex-basis:100%;display:none;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;padding:10px 12px}
+  .dk-goal.show{display:flex}
+  .dk-goal.won{border-color:#34d399;background:color-mix(in srgb,#34d399 10%,var(--panel))}
+  .dk-goal .ic{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+  .dk-goal.won .ic{color:#34d399;background:color-mix(in srgb,#34d399 18%,transparent)}
+  .dk-goal .tx{flex:1;min-width:0;font-size:.86rem;line-height:1.45}
+  .dk-goal .tx b{display:block;font-size:.92rem}
+  .dk-goal .st{display:block;margin-top:3px;font:500 .78rem var(--mono);color:var(--accent)}
+  .dk-goal.won .st{color:#34d399}
+  .dk-goal .hint{display:none;margin-top:4px;color:var(--muted)}
+  .dk-goal .hint.show{display:block}
+  .dk-goal .acts{display:flex;gap:6px;flex-wrap:wrap;flex:none}
+  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.93);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap.show{display:block}
+  .dk-cap.fixed{position:fixed;bottom:12px}
+  .dk-cap .row{display:flex;align-items:center;gap:8px}
+  .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
+  .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
+  .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
+  .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem;flex:none;width:auto;min-width:0}
+  .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
+  @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  .dk-scen{margin:18px 0 6px;scroll-margin-top:calc(var(--hdr,64px) + 10px)}
+  .dk-scen h3 .ct{margin-left:auto;font:500 .74rem var(--mono);color:var(--dim)}
+  .dk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:8px}
+  .dk-card{display:flex;flex-direction:column;gap:6px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+  .dk-card.on{border-color:var(--accent)}
+  .dk-card.done{border-color:color-mix(in srgb,#34d399 55%,var(--line))}
+  .dk-card .top{display:flex;align-items:center;gap:8px}
+  .dk-card .top b{flex:1;font-size:.93rem;line-height:1.3}
+  .dk-card .where{font:500 .7rem var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  .dk-card p{margin:0;font-size:.84rem;color:var(--muted);line-height:1.45;flex:1}
+  .dk-card .ok{color:#34d399;display:none}
+  .dk-card.done .ok{display:inline-flex}
+  .dk-card .ok svg{width:17px;height:17px}
+  .dk-card .btn{align-self:flex-start}
+  @media (max-width:520px){.dk-bar .dk-keys{display:none}.dk-cap{bottom:8px}.dk-cap p{font-size:.86rem}.dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}`;
+  const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+  const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+  const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
+
+  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  function bar(before) {
+    let b = document.querySelector('.dk-bar'); if (b) return b;
+    b = document.createElement('div'); b.className = 'dk-bar';
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
+  }
+
+  const DemoKit = { bar };
+  /** add page shortcuts to the hint, e.g. '<kbd>1</kbd>–<kbd>5</kbd> modes' */
+  DemoKit.keys = html => { const k = document.querySelector('.dk-keys'); if (k) k.innerHTML = html + ' · ' + k.innerHTML; };
+  /** demo({before, stage, steps:[{cap, run(api), ms, hl}], save(), restore(snap), onStop?}) */
+  DemoKit.demo = function (o) {
+    const b = bar(o.before), btn = b.querySelector('#dkPlay');
+    const stage = $(o.stage); if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
+    const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
+    (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let run = null; // {abort, stepMode, nextRes}
+    const D = { running: () => !!run };
+    function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
+    function hl(sel) { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); if (sel) { const e = $(sel); if (e) e.classList.add('dk-hl'); } }
+    const ABORT = { abort: true };
+    function api(r) {
+      const chk = () => { if (r.abort) throw ABORT; };
+      const sleep = ms => new Promise((res, rej) => { const t0 = performance.now(); const tick = () => { if (r.abort) return rej(ABORT); if (performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tick); }; tick(); });
+      const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+      return {
+        sleep, chk,
+        set(sel, v) { chk(); const el = $(sel); if (!el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; fire(el, 'input'); fire(el, 'change'); },
+        async slide(sel, to, ms) { const el = $(sel); if (!el) return; const a = +el.value, n = Math.max(1, Math.round((ms || 1200) / 60)); const stp = +el.step || 0; for (let i = 1; i <= n; i++) { chk(); let v = a + (to - a) * i / n; if (stp) v = Math.round(v / stp) * stp; el.value = v; fire(el, 'input'); await sleep((ms || 1200) / n); } el.value = to; fire(el, 'input'); fire(el, 'change'); },
+        click(sel) { chk(); const el = $(sel); if (el) el.click(); },
+        async until(fn, ms) { const t0 = performance.now(); while (!fn()) { if (performance.now() - t0 > (ms || 10000)) return false; await sleep(120); } return true; },
+        hl
+      };
+    }
+    async function start() {
+      if (run) return stop(true);
+      if (DemoKit._scen && DemoKit._scen.active()) DemoKit._scen.quit(true);
+      let snap = null; try { snap = o.save ? o.save() : null; } catch (e) {}
+      const r = run = { abort: false, stepMode: reduce, snap };
+      btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); setMode();
+      if (o.onStart) try { o.onStart(); } catch (e) {}
+      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
+      if (stage.getBoundingClientRect().top < 0 || stage.getBoundingClientRect().bottom > innerHeight) stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' });
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const st = steps[i]; if (r.abort) throw ABORT;
+          cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          if (st.run) await st.run(A);
+          if (r.abort) throw ABORT;
+          pg.style.width = ((i + 1) / steps.length * 100) + '%';
+          const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
+          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+          r.nextRes = null;
+        }
+        end(true);
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+    }
+    function end(restore, msg) {
+      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
+      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
+      if (o.onStop) try { o.onStop(); } catch (e) {}
+      SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+    }
+    function stop(restore) { end(restore !== false, restore === false ? null : 'Demo stopped. Your settings are back as they were.'); }
+    D.stop = stop; D.start = start;
+    btn.onclick = start;
+    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
+    // the student takes over: any trusted interaction with the lab outside the caption ends the demo where it is
+    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .dk-bar')) end(false); }, true);
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (run && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); stop(true); }
+      else if (run && e.key === 'ArrowRight' && run.nextRes) { e.preventDefault(); run.nextRes(); }
+      else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); start(); }
+    }, true);
+    DemoKit._demo = D; return D;
+  };
+
+  /** scenarios({before, mount, key, list:[{id, title, where, goal, success, hint, setup(), check()->bool, status()->html}], onQuit}) */
+  DemoKit.scenarios = function (o) {
+    const b = bar(o.before), goal = b.querySelector('#dkGoal');
+    const sec = document.createElement('section'); sec.className = 'panel dk-scen'; sec.id = 'dkScen';
+    let done = {}; try { done = JSON.parse(localStorage.getItem(o.key) || '{}') || {}; } catch (e) { done = {}; }
+    const save = () => { try { localStorage.setItem(o.key, JSON.stringify(done)); } catch (e) {} };
+    const ct = () => `${o.list.filter(s => done[s.id]).length}/${o.list.length} achieved`;
+    sec.innerHTML = `<h3><i data-lucide="map-pinned"></i> Scenarios: real-world goals <span class="ct"></span></h3><p class="small muted" style="margin:0">Each scenario sets up the lab, states the goal and checks it live. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
+    const m = $(o.mount); if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
+    let act = null, timer = 0;
+    function paint() { sec.querySelector('.ct').textContent = ct(); sec.querySelectorAll('.dk-card').forEach(c => { c.classList.toggle('done', !!done[c.dataset.id]); c.classList.toggle('on', !!act && act.s.id === c.dataset.id); const bt = c.querySelector('[data-go]'); bt.innerHTML = act && act.s.id === c.dataset.id ? '<i data-lucide="rotate-ccw"></i> Restart' : done[c.dataset.id] ? '<i data-lucide="repeat"></i> Play again' : '<i data-lucide="play"></i> Start'; }); icons(sec); }
+    function banner() {
+      if (!act) { goal.classList.remove('show', 'won'); goal.innerHTML = ''; return; }
+      const s = act.s; goal.classList.add('show'); goal.classList.toggle('won', act.won);
+      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the scenario up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
+      icons(goal); tick();
+    }
+    function tick() {
+      if (!act) return; const s = act.s; let st = '';
+      try { st = s.status ? s.status() : ''; } catch (e) {}
+      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
+    }
+    function startS(id) {
+      const s = o.list.find(x => x.id === id); if (!s) return;
+      if (DemoKit._demo && DemoKit._demo.running()) DemoKit._demo.stop(false);
+      if (act && act.s.quit) try { act.s.quit(); } catch (e) {}
+      act = { s, won: false, t0: performance.now() }; try { s.setup(); } catch (e) { console.warn(e); }
+      clearInterval(timer); timer = setInterval(tick, 300); paint(); banner();
+      const lab = o.scrollTo ? $(o.scrollTo) : b; if (lab) lab.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }
+    function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
+    sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
+    goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
+    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
+    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
+    paint();
+    const API = { active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
+    DemoKit._scen = API; return API;
+  };
+  window.DemoKit = DemoKit;
+})();
+</script>
 <script>
 (() => {
   'use strict';
@@ -931,7 +1115,7 @@
     renderNb();
     // challenge: end point precision
     const { eq } = eqInfo();
-    if (S.pair === 'sa-sb' && S.ind === 'phph' && !S.mystery && !S.chk.sasb) { const d = S.Vadd - eq[0].V; if (Math.abs(d) <= 0.1) complete('sasb'); else setTimeout(() => SL.toast(`End point challenge: you stopped ${Math.abs(d).toFixed(2)} mL ${d > 0 ? 'after' : 'before'} the equivalence volume (${eq[0].V.toFixed(2)} mL). ${d > 0 ? 'Go dropwise for the last 1 mL and stop at the first pink that stays.' : 'Keep adding: the pink must persist after swirling.'} Take a new flask and try again.`, 'warn', 6500), 1200); }
+    if (S.pair === 'sa-sb' && S.ind === 'phph' && !S.mystery && !S.chk.sasb && !S.demo) { const d = S.Vadd - eq[0].V; if (Math.abs(d) <= 0.1) complete('sasb'); else setTimeout(() => SL.toast(`End point challenge: you stopped ${Math.abs(d).toFixed(2)} mL ${d > 0 ? 'after' : 'before'} the equivalence volume (${eq[0].V.toFixed(2)} mL). ${d > 0 ? 'Go dropwise for the last 1 mL and stop at the first pink that stays.' : 'Keep adding: the pink must persist after swirling.'} Take a new flask and try again.`, 'warn', 6500), 1200); }
     SL.toast(`Recorded titre ${titre.toFixed(2)} mL. Take a new flask for the next run.`, 'ok');
   }
   function check() {
@@ -960,7 +1144,7 @@
     $('#chkList').innerHTML = CHALL.map(c => `<li data-id="${c.id}"><span class="led ${S.chk[c.id] ? 'on' : ''}"></span><div style="flex:1"><b>${c.t}</b><span class="small muted">${c.d}</span>${c.quiz ? `<div class="btn-row" style="margin-top:8px">${c.quiz.opts.map((o, i) => `<button class="btn sm" data-q="${c.id}" data-i="${i}">${o}</button>`).join('')}</div>` : ''}${c.input ? `<div class="field" style="max-width:300px"><input type="number" step="0.01" id="pkaIn" placeholder="pKa"><button class="btn sm" id="pkaBtn">Check</button></div>` : ''}</div></li>`).join('');
   }
   function complete(id) {
-    if (S.chk[id]) return; S.chk[id] = true;
+    if (S.chk[id] || S.demo) return; S.chk[id] = true;
     const c = CHALL.find(x => x.id === id);
     SL.toast(`Challenge complete: <b>${c.t}</b>`, 'ok');
     const li = document.querySelector(`#chkList li[data-id="${id}"] .led`); if (li) li.classList.add('on');
@@ -1102,6 +1286,7 @@
   if ('IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(e => { labVis = e.isIntersecting; if (labVis && !document.hidden) L.start(); else L.stop(); }), { rootMargin: '300px' }).observe(document.querySelector('.lab'));
   const startTour = () => SL.tour([
     { el: '#stage', title: 'The apparatus', text: 'Burette, conical flask on a stirrer and a pH meter. The magnifier shows the meniscus: always read the bottom of the curve at eye level. You can also press and hold the stopcock in the picture.' },
+    { el: '#dkPlay', title: 'Watch demo', text: 'See a full titration done for you in under a minute: reading the burette, running in fast, switching to dropwise and stopping on the first permanent pink. Press D any time, Esc to stop. Scenarios sets real lab tasks.' },
     { el: '#initCard', title: 'Read the burette first', text: 'The burette never starts at exactly 0.00 mL. Record the initial reading: your titre is the final reading minus this.' },
     { el: '#holdBtn', title: 'Add titrant', text: 'Hold to run titrant in. Fast mode adds about 0.9 mL/s; near the end point switch to Dropwise or tap 1 drop (0.05 mL). Watch the indicator colour and the pH meter.' },
     { el: '#pair', title: 'Choose the chemistry', text: 'Pick the acid–base pair, which one is in the flask, the concentrations, the aliquot and the indicator.' },
@@ -1111,6 +1296,107 @@
     { el: '.tabs .tablist button:nth-child(4)', title: 'Challenges', text: 'Open Experiments & challenges for mystery samples, indicator choice and polyprotic titrations.' },
   ]);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTour); else startTour();
+  /* ===== Watch demo, scenarios & shortcuts (begin) ===== */
+  (() => {
+    const LSK = 'sl-titration-settings';
+    const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+    const setSel = (sel, v) => { const el = $(sel); if (el && el.value !== String(v)) { el.value = v; fire(el, 'input'); fire(el, 'change'); } };
+    const setMode = m => { const b = document.querySelector(`#modeSeg button[data-v="${m}"]`); if (b && S.mode !== m) b.click(); };
+    const setFlask = f => { const b = document.querySelector(`#flaskSeg button[data-v="${f}"]`); if (b && S.flask !== f && !P().poly) b.click(); };
+    const setup = o => { // o: {pair, flask, ca, ct, va, ind, mode, mystery}
+      if (o.mystery != null && $('#mystery').checked !== !!o.mystery) { $('#mystery').checked = !!o.mystery; fire($('#mystery'), 'change'); }
+      if (o.pair && S.pair !== o.pair) { $('#pair').value = o.pair; fire($('#pair'), 'change'); }
+      if (o.flask) setFlask(o.flask);
+      if (o.ca != null) setSel('#ca', o.ca); if (o.ct != null) setSel('#ct', o.ct); if (o.va != null) setSel('#va', o.va); if (o.ind) setSel('#ind', o.ind);
+      if (o.mode) setMode(o.mode);
+    };
+    const prefs = () => ({ pair: S.pair, flask: S.flask, ca: S.Ca, ct: S.Ct, va: S.Va, ind: S.ind, mode: S.mode });
+    // remember the last set-up (not the mystery sample)
+    try { const o = JSON.parse(localStorage.getItem(LSK) || 'null'); if (o && PAIRS[o.pair]) { setup(o); resetAll(); } } catch (e) {}
+    const save = () => { if (S.demo) return; try { localStorage.setItem(LSK, JSON.stringify(prefs())); } catch (e) {} };
+    ['#pair', '#ca', '#ct', '#va', '#ind'].forEach(s => $(s).addEventListener('change', save));
+    ['#flaskSeg', '#modeSeg'].forEach(s => $(s).addEventListener('click', () => setTimeout(save)));
+
+    // tag each recorded run with the indicator in use (for the scenarios)
+    const rec0 = $('#record').onclick;
+    $('#record').onclick = () => { const n = S.runs.length; rec0(); if (S.runs.length > n) Object.assign(S.runs[S.runs.length - 1], { ind: S.ind, pair: S.pair, eqV: eqInfo().eq[0].V }); };
+
+    /* ---- Watch demo ---- */
+    const clone = o => JSON.parse(JSON.stringify(o));
+    const KEEP = ['Vadd', 'bur', 'runStart', 'runVol', 'refilledMidRun', 'pending', 'pHtrue', 'pHshow', 'pts', 'runs', 'roughDone', 'initRec', 'nudged', 'meanTitre', 'revealed', 'emptyWarned'];
+    const holdUntil = async (A, v, ms) => { S.holdAcc = 0.3; S.holding = true; $('#holdBtn').classList.add('active'); try { await A.until(() => S.Vadd >= v - 1e-9, ms); } finally { S.holding = false; $('#holdBtn').classList.remove('active'); } };
+    const eqV = () => eqInfo().eq[0].V;
+    DemoKit.demo({
+      before: '.lab', stage: '#stage', scrollBlock: 'start', capFixed: true,
+      save: () => ({ p: Object.assign(prefs(), { mystery: S.mystery }), s: clone(Object.fromEntries(KEEP.map(k => [k, S[k]]))), trueCa: S.trueCa, nb: $('#ans').value }),
+      restore: o => {
+        S.holding = false; $('#holdBtn').classList.remove('active'); $('#tap').value = 0; fire($('#tap'), 'input');
+        setup(o.p); Object.assign(S, clone(o.s)); S.trueCa = o.trueCa; S.drops = []; S.plumes = []; S.ripples = [];
+        if (S.mystery) { $('#caOut').textContent = S.revealed ? S.trueCa.toFixed(4) + ' M' : '?'; }
+        $('#ans').value = o.nb; renderNb(); renderInit(); chartDirty = true;
+      },
+      onStart: () => { S.demo = true; }, onStop: () => { S.demo = false; S.holding = false; $('#holdBtn').classList.remove('active'); },
+      steps: [
+        { cap: '<b>The set-up.</b> 25.00 mL of 0.100 M HCl is pipetted into the flask with phenolphthalein; the burette holds 0.100 M NaOH. Equivalence will be at exactly 25.00 mL.', hl: '#pair', ms: 3600,
+          run: async A => { setup({ mystery: false, pair: 'sa-sb', flask: 'acid', ca: 0.1, ct: 0.1, va: 25, ind: 'phph', mode: 'fast' }); S.runs = []; S.roughDone = false; renderNb(); resetAll();
+            if (innerWidth < 700) { await A.sleep(450); const r = $('#stage').getBoundingClientRect(); window.scrollTo({ top: scrollY + r.bottom - (innerHeight - 175), behavior: 'auto' }); } } }, // phones: keep the flask above the caption
+        { cap: '<b>Step 1: read the burette.</b> It never starts at exactly 0.00 mL, so note the initial reading. The titre is final − initial.', hl: '#initCard', ms: 3200, run: async () => recInit(false) },
+        { cap: '<b>Run in the first 20 mL quickly.</b> The pH barely moves while excess acid remains, and each pink plume vanishes as the stirrer mixes it.', hl: '#hV', ms: 1500,
+          run: async A => { for (let i = 0; i < 20; i++) { A.click('#add1'); await A.sleep(260); } } },
+        { cap: '<b>Hold to add, in Fast mode.</b> Watch the lab warn you when you are within 2.5 mL of the end point: that is the cue to slow down.', hl: '#holdBtn', ms: 2600,
+          run: A => holdUntil(A, eqV() - 1.0, 9000) },
+        { cap: '<b>Dropwise.</b> Now each press of the hold adds one 0.05 mL drop. Pink flashes linger longer as you approach equivalence.', hl: '#modeSeg', ms: 1200,
+          run: async A => { setMode('drop'); await holdUntil(A, eqV() - 0.25, 7000); } },
+        { cap: '<b>One drop at a time</b> until the first faint pink stays after swirling: that is the end point. The pH jumps steeply right here.', hl: '#oneDrop', ms: 2400,
+          run: async A => { while (S.Vadd < eqV() - 1e-6) { A.click('#oneDrop'); await A.sleep(650); } } },
+        { cap: '<b>Record the end point.</b> The notebook stores the final reading and the titre. A good titre is within 0.10 mL (two drops) of the true equivalence volume.', hl: '#record', ms: 3600, run: async () => $('#record').click() },
+        { cap: '<b>The titration curve.</b> Flat buffer-free start, a near-vertical jump at 25 mL, and the shaded phenolphthalein range sitting inside the jump: the indicator is a good choice.', hl: '#cc', ms: 4200,
+          run: async () => { document.querySelector('#curvePanel').scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); } },
+        { cap: '<b>Your turn.</b> Repeat until two titres agree, then calculate the concentration. The Scenarios below set real lab tasks. Your own set-up is restored now.', hl: '#record', ms: 3600 },
+      ],
+    });
+
+    /* ---- Scenarios ---- */
+    let n0 = 0;
+    const newRuns = () => S.runs.slice(n0).filter(r => !r.rough);
+    DemoKit.scenarios({
+      before: '.lab', mount: '#row2', key: 'sl-titration-scen',
+      intro: 'Your notebook and answer box work as usual.',
+      list: [
+        { id: 'effluent', where: 'County water lab', title: 'Acidic effluent before the river', goal: 'A factory outfall is acidic (treat it as HCl). Before it may enter the Nairobi River it must be neutralised, so the lab needs its exact acid concentration.',
+          success: 'calculate the unknown HCl concentration to within 1.5 % and press Check.', hint: 'Do a rough titre, then two careful ones that agree within 0.10 mL. c(HCl) = c(NaOH) × mean titre ÷ 25.00 mL (1 : 1 ratio).',
+          setup: () => { setup({ mystery: false, pair: 'sa-sb', flask: 'acid', ct: 0.1, va: 25, ind: 'phph', mode: 'fast' }); $('#mystery').checked = true; fire($('#mystery'), 'change'); S.revealed = false; },
+          check: () => S.mystery && S.revealed && S.pair === 'sa-sb',
+          status: () => `${newRuns().length} accurate titre(s) recorded${S.meanTitre ? ` · concordant mean ${S.meanTitre.toFixed(2)} mL` : ''} · then enter c and press Check`,
+          wonText: 'Correct. A strongly acidic outfall like this has a pH near 1, far outside the 6.5 to 8.5 band allowed for discharge, so it must be neutralised first. Your concentration tells the plant how much alkali to dose per litre.' },
+        { id: 'ammonia', where: 'Fertiliser store', title: 'Check an ammonia solution', goal: 'Aqueous ammonia sold as fertiliser is checked by titrating it with standard HCl. Phenolphthalein is loaded, but is it the right indicator?',
+          success: 'record an end point within ±0.10 mL of equivalence using an indicator that suits a weak base.', hint: 'At equivalence the flask holds NH₄⁺, so the pH there is about 5.3. Pick an indicator whose range sits around that pH (methyl red, or methyl orange).',
+          setup: () => { setup({ mystery: false, pair: 'sa-wb', flask: 'base', ca: 0.1, ct: 0.1, va: 25, ind: 'phph', mode: 'fast' }); resetAll(); n0 = S.runs.length; },
+          check: () => S.runs.slice(n0).some(r => r.pair === 'sa-wb' && (r.ind === 'mr' || r.ind === 'mo') && Math.abs(r.V - r.eqV) <= 0.1),
+          status: () => { const r = S.runs.slice(n0).filter(x => x.pair === 'sa-wb').pop(); return r ? `Last end point ${r.V.toFixed(2)} mL with ${r.ind === 'phph' ? 'phenolphthalein (too early)' : r.ind} · equivalence ${r.eqV.toFixed(2)} mL` : `Indicator now: ${$('#ind').selectedOptions[0].text}`; },
+          wonText: 'Methyl red changes between pH 4.4 and 6.2, right on the steep part of a strong acid – weak base curve. Phenolphthalein would have turned colourless far too early.' },
+        { id: 'vinegar', where: 'Quality control', title: 'Is the vinegar up to standard?', goal: 'A Kenyan vinegar is labelled 4 % ethanoic acid. The sample was diluted 10× before titration. Get reliable data for the check.',
+          success: 'two accurate titres within 0.10 mL of each other (concordant).', hint: 'One quick rough run, then New flask and go Dropwise for the last 2 mL each time. Concordant titres get a ✓ in the notebook.',
+          setup: () => { setup({ mystery: false, pair: 'wa-sb', flask: 'acid', ca: 0.07, ct: 0.1, va: 25, ind: 'phph', mode: 'fast' }); S.runs = []; S.roughDone = false; renderNb(); resetAll(); n0 = 0; },
+          check: () => S.pair === 'wa-sb' && S.meanTitre != null && newRuns().length >= 2,
+          status: () => `${newRuns().length} accurate titre(s)${S.meanTitre ? ` · concordant mean ${S.meanTitre.toFixed(2)} mL` : ''}`,
+          get wonText() { const c = 0.1 * (S.meanTitre || 17.5) / 25, pct = c * 10 * 60.05 / 10; return `Diluted sample ${c.toFixed(4)} M, so the vinegar is ${(c * 10).toFixed(3)} M, about ${pct.toFixed(1)} g of ethanoic acid per 100 mL: ${pct >= 3.8 ? 'it meets' : 'it falls short of'} the 4 % label.`; } },
+      ],
+    });
+
+    /* ---- Shortcuts ---- */
+    const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+    const keys = document.querySelector('.dk-bar .dk-keys'); if (keys) keys.innerHTML += ' · hold <kbd>Space</kbd> add · <kbd>1</kbd> drop · <kbd>F</kbd> fast/dropwise · <kbd>E</kbd> record · <kbd>N</kbd> new flask';
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey || e.repeat || document.querySelector('.sl-tour, .modal.show')) return;
+      const k = e.key.toLowerCase();
+      if (k === '1') $('#oneDrop').click();
+      else if (k === 'f') setMode(S.mode === 'fast' ? 'drop' : 'fast');
+      else if (k === 'e') $('#record').click();
+      else if (k === 'n') $('#newFlask').click();
+    });
+  })();
+  /* ===== Watch demo, scenarios & shortcuts (end) ===== */
 })();
 </script>
 </body>

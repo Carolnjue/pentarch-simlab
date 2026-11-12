@@ -67,6 +67,9 @@
   .stats.key{grid-template-columns:repeat(3,minmax(0,1fr))}
   .stats.key .stat .v{font-size:1.35rem}
   .shiftcap{margin:10px 0 0;padding:9px 12px;border-radius:10px;background:color-mix(in srgb,var(--accent) 9%,transparent);border:1px solid color-mix(in srgb,var(--accent) 28%,transparent);font-size:.88rem;line-height:1.5}
+  /* demo caption on phones; keep scrolled-to targets clear of the sticky header */
+  @media (max-width:520px){.dk-cap .row{flex-wrap:wrap;row-gap:6px}.dk-cap .row .n{flex:1 0 100%}}
+  .stage,.lab,.dk-bar,.dk-scen{scroll-margin-top:84px}
 </style>
 </head>
 <body data-page="market">
@@ -425,6 +428,187 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=13"></script>
+<script>
+/* Watch-demo runner and goal-based scenarios (page-local kit) */
+(function () {
+  if (window.DemoKit) return;
+  const css = `
+  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
+  .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .dk-bar .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto}
+  .dk-bar .dk-keys kbd{font-size:.72rem}
+  .dk-goal{flex-basis:100%;display:none;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;padding:10px 12px}
+  .dk-goal.show{display:flex}
+  .dk-goal.won{border-color:#34d399;background:color-mix(in srgb,#34d399 10%,var(--panel))}
+  .dk-goal .ic{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+  .dk-goal.won .ic{color:#34d399;background:color-mix(in srgb,#34d399 18%,transparent)}
+  .dk-goal .tx{flex:1;min-width:0;font-size:.86rem;line-height:1.45}
+  .dk-goal .tx b{display:block;font-size:.92rem}
+  .dk-goal .st{display:block;margin-top:3px;font:500 .78rem var(--mono);color:var(--accent)}
+  .dk-goal.won .st{color:#34d399}
+  .dk-goal .hint{display:none;margin-top:4px;color:var(--muted)}
+  .dk-goal .hint.show{display:block}
+  .dk-goal .acts{display:flex;gap:6px;flex-wrap:wrap;flex:none}
+  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.93);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap.show{display:block}
+  .dk-cap.fixed{position:fixed;bottom:12px}
+  .dk-cap .row{display:flex;align-items:center;gap:8px}
+  .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
+  .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
+  .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
+  .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem;flex:none;width:auto;min-width:0}
+  .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
+  @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  .dk-scen{margin:18px 0 6px;scroll-margin-top:calc(var(--hdr,64px) + 10px)}
+  .dk-scen h3 .ct{margin-left:auto;font:500 .74rem var(--mono);color:var(--dim)}
+  .dk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:8px}
+  .dk-card{display:flex;flex-direction:column;gap:6px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+  .dk-card.on{border-color:var(--accent)}
+  .dk-card.done{border-color:color-mix(in srgb,#34d399 55%,var(--line))}
+  .dk-card .top{display:flex;align-items:center;gap:8px}
+  .dk-card .top b{flex:1;font-size:.93rem;line-height:1.3}
+  .dk-card .where{font:500 .7rem var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  .dk-card p{margin:0;font-size:.84rem;color:var(--muted);line-height:1.45;flex:1}
+  .dk-card .ok{color:#34d399;display:none}
+  .dk-card.done .ok{display:inline-flex}
+  .dk-card .ok svg{width:17px;height:17px}
+  .dk-card .btn{align-self:flex-start}
+  @media (max-width:520px){.dk-bar .dk-keys{display:none}.dk-cap{bottom:8px}.dk-cap p{font-size:.86rem}.dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}`;
+  const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+  const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+  const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
+
+  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  function bar(before) {
+    let b = document.querySelector('.dk-bar'); if (b) return b;
+    b = document.createElement('div'); b.className = 'dk-bar';
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
+  }
+
+  const DemoKit = { bar };
+  /** add page shortcuts to the hint, e.g. '<kbd>1</kbd>–<kbd>5</kbd> modes' */
+  DemoKit.keys = html => { const k = document.querySelector('.dk-keys'); if (k) k.innerHTML = html + ' · ' + k.innerHTML; };
+  /** demo({before, stage, steps:[{cap, run(api), ms, hl}], save(), restore(snap), onStop?}) */
+  DemoKit.demo = function (o) {
+    const b = bar(o.before), btn = b.querySelector('#dkPlay');
+    const stage = $(o.stage); if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
+    const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
+    (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let run = null; // {abort, stepMode, nextRes}
+    const D = { running: () => !!run };
+    function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
+    function hl(sel) { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); if (sel) { const e = $(sel); if (e) e.classList.add('dk-hl'); } }
+    const ABORT = { abort: true };
+    function api(r) {
+      const chk = () => { if (r.abort) throw ABORT; };
+      const sleep = ms => new Promise((res, rej) => { const t0 = performance.now(); const tick = () => { if (r.abort) return rej(ABORT); if (performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tick); }; tick(); });
+      const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+      return {
+        sleep, chk,
+        set(sel, v) { chk(); const el = $(sel); if (!el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; fire(el, 'input'); fire(el, 'change'); },
+        async slide(sel, to, ms) { const el = $(sel); if (!el) return; const a = +el.value, n = Math.max(1, Math.round((ms || 1200) / 60)); const stp = +el.step || 0; for (let i = 1; i <= n; i++) { chk(); let v = a + (to - a) * i / n; if (stp) v = Math.round(v / stp) * stp; el.value = v; fire(el, 'input'); await sleep((ms || 1200) / n); } el.value = to; fire(el, 'input'); fire(el, 'change'); },
+        click(sel) { chk(); const el = $(sel); if (el) el.click(); },
+        async until(fn, ms) { const t0 = performance.now(); while (!fn()) { if (performance.now() - t0 > (ms || 10000)) return false; await sleep(120); } return true; },
+        hl
+      };
+    }
+    async function start() {
+      if (run) return stop(true);
+      if (DemoKit._scen && DemoKit._scen.active()) DemoKit._scen.quit(true);
+      let snap = null; try { snap = o.save ? o.save() : null; } catch (e) {}
+      const r = run = { abort: false, stepMode: reduce, snap };
+      btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); setMode();
+      if (o.onStart) try { o.onStart(); } catch (e) {}
+      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
+      if (stage.getBoundingClientRect().top < 0 || stage.getBoundingClientRect().bottom > innerHeight) stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' });
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const st = steps[i]; if (r.abort) throw ABORT;
+          cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          if (st.run) await st.run(A);
+          if (r.abort) throw ABORT;
+          pg.style.width = ((i + 1) / steps.length * 100) + '%';
+          const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
+          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+          r.nextRes = null;
+        }
+        end(true);
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+    }
+    function end(restore, msg) {
+      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
+      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
+      if (o.onStop) try { o.onStop(); } catch (e) {}
+      SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+    }
+    function stop(restore) { end(restore !== false, restore === false ? null : 'Demo stopped. Your settings are back as they were.'); }
+    D.stop = stop; D.start = start;
+    btn.onclick = start;
+    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
+    // the student takes over: any trusted interaction with the lab outside the caption ends the demo where it is
+    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .dk-bar')) end(false); }, true);
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (run && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); stop(true); }
+      else if (run && e.key === 'ArrowRight' && run.nextRes) { e.preventDefault(); run.nextRes(); }
+      else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); start(); }
+    }, true);
+    DemoKit._demo = D; return D;
+  };
+
+  /** scenarios({before, mount, key, list:[{id, title, where, goal, success, hint, setup(), check()->bool, status()->html}], onQuit}) */
+  DemoKit.scenarios = function (o) {
+    const b = bar(o.before), goal = b.querySelector('#dkGoal');
+    const sec = document.createElement('section'); sec.className = 'panel dk-scen'; sec.id = 'dkScen';
+    let done = {}; try { done = JSON.parse(localStorage.getItem(o.key) || '{}') || {}; } catch (e) { done = {}; }
+    const save = () => { try { localStorage.setItem(o.key, JSON.stringify(done)); } catch (e) {} };
+    const ct = () => `${o.list.filter(s => done[s.id]).length}/${o.list.length} achieved`;
+    sec.innerHTML = `<h3><i data-lucide="map-pinned"></i> Scenarios: real-world goals <span class="ct"></span></h3><p class="small muted" style="margin:0">Each scenario sets up the lab, states the goal and checks it live. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
+    const m = $(o.mount); if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
+    let act = null, timer = 0;
+    function paint() { sec.querySelector('.ct').textContent = ct(); sec.querySelectorAll('.dk-card').forEach(c => { c.classList.toggle('done', !!done[c.dataset.id]); c.classList.toggle('on', !!act && act.s.id === c.dataset.id); const bt = c.querySelector('[data-go]'); bt.innerHTML = act && act.s.id === c.dataset.id ? '<i data-lucide="rotate-ccw"></i> Restart' : done[c.dataset.id] ? '<i data-lucide="repeat"></i> Play again' : '<i data-lucide="play"></i> Start'; }); icons(sec); }
+    function banner() {
+      if (!act) { goal.classList.remove('show', 'won'); goal.innerHTML = ''; return; }
+      const s = act.s; goal.classList.add('show'); goal.classList.toggle('won', act.won);
+      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the scenario up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
+      icons(goal); tick();
+    }
+    function tick() {
+      if (!act) return; const s = act.s; let st = '';
+      try { st = s.status ? s.status() : ''; } catch (e) {}
+      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
+    }
+    function startS(id) {
+      const s = o.list.find(x => x.id === id); if (!s) return;
+      if (DemoKit._demo && DemoKit._demo.running()) DemoKit._demo.stop(false);
+      if (act && act.s.quit) try { act.s.quit(); } catch (e) {}
+      act = { s, won: false, t0: performance.now() }; try { s.setup(); } catch (e) { console.warn(e); }
+      clearInterval(timer); timer = setInterval(tick, 300); paint(); banner();
+      const lab = o.scrollTo ? $(o.scrollTo) : b; if (lab) lab.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }
+    function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
+    sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
+    goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
+    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
+    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
+    paint();
+    const API = { list: o.list, active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
+    DemoKit._scen = API; return API;
+  };
+  window.DemoKit = DemoKit;
+})();
+</script>
 <script>
 (() => {
   'use strict';
@@ -962,7 +1146,7 @@
     $('#challList').innerHTML = CH.map(c => `<li class="${done.has(c.id) ? 'done' : ''}" data-id="${c.id}"><span class="led ${done.has(c.id) ? 'on' : ''}"></span><div><b>${c.t}</b><span class="muted small">${c.d}</span></div></li>`).join('');
   }
   function complete(id, msg) {
-    if (done.has(id)) return; done.add(id); renderChall();
+    if (done.has(id) || G.demo) return; done.add(id); renderChall();
     const c = CH.find(x => x.id === id); SL.toast(`<b>Challenge complete: ${c.t}</b><br>${msg}`, 'ok', 5200);
   }
   function checkCurveChallenges() { if (!userTouched || !M) return; CH.forEach(c => { if (c.ok && !done.has(c.id)) { try { if (c.ok()) complete(c.id, c.msg()); } catch (e) {} } }); }
@@ -1402,16 +1586,116 @@
   const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
   tourGo([
     { el: '#stageC', before: () => setMode('curves'), title: 'Supply and demand', text: 'A Nairobi tomato market. Drag either curve to shift it, or drag the round handles to rotate it. The shaded areas are consumer surplus (blue) and producer surplus (green).' },
+    { el: '#dkPlay', title: 'Watch demo', text: 'A one-minute run-through drives the lab for you: a drought, festive demand, a tax, a price ceiling and the live market game. Press D any time, Esc to stop. Scenarios sets real goals, from maize shortages to running a stall.' },
     { el: '#shiftPanel h3', title: 'What shifts a curve', text: 'Income, tastes, the number of buyers, input costs, technology and expectations each shift one curve. A note under the graph explains every shift you make.' },
     { el: '#polSeg', title: 'Add a policy', text: 'Try a tax, subsidy, price ceiling, price floor or quota. Watch the purple revenue and the red deadweight-loss triangle appear.' },
     { el: '#statsC', title: 'Count the welfare', text: 'Consumer surplus, producer surplus and deadweight loss in KES thousand per day. Open More for government revenue, total surplus, who really pays a tax, and the elasticities.' },
-    { el: '#scenPanel', title: 'Scenarios', text: 'One click sets up a drought, a fuel price rise, festive demand or a policy, so you can predict the result first and then check.' },
+    { el: '#scenPanel', title: 'Presets', text: 'One click sets up a drought, a fuel price rise, festive demand or a policy, so you can predict the result first and then check. Goal-based scenarios (maize shortages, a subsidy, a price floor, running a stall) are just above the lab.' },
     { el: '#modeSeg', title: 'Live market game', text: 'Switch to the live game: buyers and sellers haggle crate by crate, and prices discover the equilibrium on their own.' },
     { el: '#tabChal', title: 'Challenges', text: 'Auto-checked tasks on shifts, elasticity and policy. Each lights up when you meet it.' },
   ]);
 
   // expose for automated tests
   window.__market = { compute: S => compute(Object.assign({}, DEF, S)), T, D, G, get M() { return M; }, applyPreset, setMode, event, stepSim, startDay, endDay, computeEq };
+  /* ===== Watch demo, scenarios & shortcuts (begin) ===== */
+  (() => {
+    const RID = { tax: 'vTax', sub: 'vSub', ceil: 'vCeil', floor: 'vFloor', quota: 'vQuota' }; // model key -> range id
+    const RNG = ['aD', 'bD', 'aS', 'bS', 'eD', 'eS', 'inc', 'pref', 'buyers', 'expct', 'cost', 'tech', 'sellers', 'tax', 'sub', 'ceil', 'floor', 'quota'];
+    const rid = k => RID[k] || k;
+    const set = o => Object.entries(o).forEach(([k, v]) => setRange(rid(k), v));
+    const tog = (id, v) => { const el = $('#' + id); if (el.checked !== !!v) { el.checked = !!v; el.dispatchEvent(new Event('change', { bubbles: true })); } };
+    const shifts0 = { inc: 0, pref: 0, buyers: 0, expct: 0, cost: 0, tech: 0, sellers: 0 };
+    function market(o) { // quiet set-up: curves, shifts and policy without toasts
+      if (T.mode !== 'lin') setForm('lin');
+      set(Object.assign({ aD: 180, bD: 1.6, aS: 40, bS: 1.2 }, shifts0, o.curves || {}));
+      if ($('#good').value !== 'normal') { $('#good').value = 'normal'; $('#good').dispatchEvent(new Event('change')); }
+      set(Object.assign({ tax: 28, sub: 20, ceil: 88, floor: 116, quota: 40 }, o.pol || {}));
+      setPol(o.p || 'none'); T.elP = D.elP = null; tog('tSur', true); dirty = true;
+    }
+    const MAIZE = { aD: 150, bD: 2.4, aS: 10, bS: 0.8 }; // a county maize market, KES/kg and t/day
+    const snap = () => ({ T: JSON.parse(JSON.stringify(T)), mode, sur: $('#tSur').checked, el: $('#tEl').checked, base: $('#tBase').checked, good: $('#good').value });
+    function restore(o) {
+      setMode(o.mode);
+      if (T.mode !== o.T.mode) setForm(o.T.mode);
+      RNG.forEach(k => setRange(rid(k), o.T[k]));
+      $('#good').value = o.good; $('#good').dispatchEvent(new Event('change'));
+      setPol(o.T.pol); T.taxOn = D.taxOn = o.T.taxOn; segPick('#taxOnSeg', 't', o.T.taxOn);
+      tog('tSur', o.sur); tog('tEl', o.el); tog('tBase', o.base); T.elP = D.elP = o.T.elP; dirty = true;
+    }
+    const cap = html => { const p = document.querySelector('.dk-cap p'); if (p) p.innerHTML = html; };
+    const after = A => A.sleep(900); // let the curves glide into place before reading the new equilibrium
+
+    /* ---- Watch demo ---- */
+    DemoKit.demo({
+      before: '.modebar', stage: '#stageC', capHost: 'body', capFixed: true, scrollBlock: 'start', takeover: '.lab, .modebar, .dk-bar',
+      save: snap, restore,
+      onStart: () => { G.demo = true; }, onStop: () => { G.demo = false; },
+      steps: [
+        { cap: '<b>A Nairobi tomato market.</b> Demand (blue) slopes down, supply (orange) slopes up, and they cross at the equilibrium: KES 100/kg and 50 t/day. Blue and green areas are consumer and producer surplus.', hl: '#stageC', ms: 4600,
+          run: async () => { setMode('curves'); market({}); } },
+        { cap: '<b>A drought.</b> Farmers harvest less at every price, so supply shifts left: the price rises and less is sold.', hl: '#tech', ms: 3200,
+          run: async A => { await A.slide('#tech', -4, 1400); await after(A); cap(`<b>A drought.</b> Farmers harvest less at every price, so supply shifts left: the price rises to <b>KES ${F(M.Peq)}/kg</b> and only ${F(M.Qeq, 1)} t/day are sold.`); } },
+        { cap: '<b>The festive season.</b> The harvest recovers, but more buyers want more tomatoes: demand shifts right, raising both price and quantity.', hl: '#pref', ms: 3400,
+          run: async A => { await A.slide('#tech', 0, 700); set({ buyers: 15 }); await A.slide('#pref', 3, 1200); await after(A); cap(`<b>The festive season.</b> More buyers want more tomatoes: demand shifts right, so price <i>and</i> quantity rise, to KES ${F(M.Peq)}/kg and ${F(M.Qeq, 1)} t/day.`); } },
+        { cap: '<b>A KES 28/kg tax.</b> Buyers now pay KES 116, sellers keep KES 88. Purple is the tax revenue; the red triangle is the deadweight loss: trades that no longer happen.', hl: '#stageC', ms: 4600,
+          run: async A => { set(shifts0); await A.sleep(1300); setPol('tax'); } },
+        { cap: '<b>A price ceiling of KES 88.</b> Below the equilibrium, buyers want more than farmers will sell: a shortage.', hl: '#stageC', ms: 3800,
+          run: async A => { setPol('ceil'); await after(A); cap(`<b>A price ceiling of KES 88.</b> Below the equilibrium, buyers want ${F(M.Q + M.short, 1)} t/day but farmers sell only ${F(M.Q, 1)}: a shortage of <b>${F(M.short, 1)} t/day</b>.`); } },
+        { cap: '<b>The live market game.</b> Forty traders who never see the curves bid and ask for crates. Watch the trade prices home in on the predicted equilibrium band.', hl: '#stageG', ms: 7000,
+          run: async () => { setPol('none'); setMode('game'); } },
+        { cap: '<b>Your turn.</b> Drag the curves, try a policy, or take on a goal-based scenario below. Your own settings come back now.', hl: '#modeSeg', ms: 3000, run: async () => setMode('curves') },
+      ],
+    });
+
+    /* ---- Goal-based scenarios (the one-click presets stay in the Presets panel) ---- */
+    let sc = {};
+    const KK = v => `KES ${F(v)}`;
+    DemoKit.scenarios({
+      before: '.modebar', mount: '#labGame', mountAfter: true, key: 'sl-market-scen', scrollTo: '.dk-bar',
+      intro: 'In the maize scenarios the curves are recalibrated to a county maize market (KES per kg, tonnes per day).',
+      list: [
+        { id: 'maize', where: 'Rift Valley · maize', title: 'Failed long rains: cool the maize price', goal: 'The long rains failed: harvests are down and transport costs are up, and wholesale maize jumped from about KES 45 to KES 62 a kg. The ministry wants it back down without price controls, by letting in duty-free imports (more sellers).',
+          success: 'equilibrium price ≤ KES 52/kg with no policy, while the drought (technology ≤ −4, input costs ≥ +10) stays in place.', hint: 'Imports add sellers: raise Number of sellers under Shifters. Leave technology and input costs where the drought put them.',
+          setup: () => { setMode('curves'); market({ curves: Object.assign({}, MAIZE, { tech: -5, cost: 10 }) }); },
+          check: () => M && T.pol === 'none' && D.tech <= -4 && D.cost >= 10 && M.Peq <= 52 && Math.abs(T.aD - 150) < 1 && Math.abs(T.bD - 2.4) < .06,
+          status: () => M ? `Maize price ${KK(M.Peq)}/kg · traded ${F(M.Qeq, 1)} t/day · sellers ${T.sellers > 0 ? '+' : ''}${T.sellers} %` : '',
+          get wonText() { return `Imports equal to ${T.sellers} % more sellers bring maize back to about ${KK(M.Peq)}/kg. Because demand for a staple is inelastic, a small supply shortfall moves the price a lot, and so does a small top-up.`; } },
+        { id: 'unga', where: 'Nairobi · maize flour', title: 'The cheapest maize subsidy', goal: 'In the same drought, the government instead pays millers a subsidy per kg (as Kenya did for maize flour in 2017). The Treasury wants buyers to pay no more than KES 50/kg, at the lowest possible cost.',
+          success: 'buyers pay ≤ KES 50/kg and the subsidy costs ≤ KES 720,000 a day (720 in the stats).', hint: 'Choose Subsidy under Government policy and lower the per-unit amount step by step until buyers would pay just under KES 50. The cost is subsidy × quantity.',
+          setup: () => { setMode('curves'); market({ curves: Object.assign({}, MAIZE, { tech: -5, cost: 10 }), pol: { sub: 30 }, p: 'sub' }); },
+          check: () => M && T.pol === 'sub' && D.tech <= -4 && D.cost >= 10 && Math.abs(T.aD - 150) < 1 && M.Pb <= 50.05 && -M.gov <= 720,
+          status: () => M ? (T.pol === 'sub' ? `Subsidy ${KK(D.sub)}/kg · buyers pay ${KK(M.Pb)}/kg · cost KES ${Math.round(-M.gov * 1000).toLocaleString('en')} a day` : 'Choose Subsidy under Government policy.') : '',
+          get wonText() { return `A ${KK(D.sub)}/kg subsidy holds the buyers' price at ${KK(M.Pb)} for about KES ${Math.round(-M.gov * 1000).toLocaleString('en')} a day. Part of every shilling goes to sellers as a higher price received (${KK(M.Prec)}), not to buyers.`; } },
+        { id: 'glut', where: 'Wakulima market', title: 'Tomato glut and a price floor', goal: 'A bumper harvest pushes tomato prices down to about KES 89/kg. Farmer groups ask the county for a minimum price of KES 100. What would it do?',
+          success: 'set a price floor of KES 100 (±1) on the glut market and look at the unsold surplus.', hint: 'Choose Floor under Government policy and set the minimum price to 100.',
+          setup: () => { setMode('curves'); market({ curves: { tech: 5 } }); },
+          check: () => M && T.pol === 'floor' && Math.abs(D.floor - 100) <= 1 && D.tech >= 4 && M.surp > 0,
+          status: () => M ? `Market price ${KK(M.Peq)}/kg${T.pol === 'floor' ? ` · floor ${KK(D.floor)} · unsold ${F(M.surp, 1)} t/day` : ''}` : '',
+          get wonText() { return `At KES 100 farmers want to sell ${F(M.Q + M.surp, 1)} t/day but buyers take only ${F(M.Q, 1)}: ${F(M.surp, 1)} t/day go unsold or must be bought up by the county. Producer surplus rises, but total surplus falls by the deadweight loss.`; } },
+        { id: 'stall', where: 'Marikiti · live game', title: 'Run a stall for a day', goal: 'Take over a tomato stall in the live market. You have 3 crates a day that cost KES 3,500 each. Price them well.',
+          success: 'earn at least KES 4,000 profit in a single trading day.', hint: 'Too high and nobody buys; too low and you leave money on the table. Watch the trade prices and ask just above where most deals happen, especially when demand is strong.',
+          setup: () => { setMode('game'); const b = document.querySelector('#roleSeg [data-r="seller"]'); if (b) b.click(); sc = { best: 0 }; },
+          check: () => { if (G.role === 'seller') sc.best = Math.max(sc.best || 0, G.profitT || 0); return mode === 'game' && G.role === 'seller' && sc.best >= 4000; },
+          status: () => `Day ${G.day} · profit today ${KK(G.profitT || 0)} · best day ${KK(sc.best || 0)}`,
+          wonText: 'A good trader prices to the market: high enough to earn a margin, low enough that buyers still accept before the day closes.' },
+      ],
+    });
+    // the presets panel is renamed so "Scenarios" means one thing on this page
+    const ph = document.querySelector('#scenPanel h3'); if (ph) ph.innerHTML = '<i data-lucide="sparkles"></i> Presets';
+    const pp = document.querySelector('#scenPanel .presets'); if (pp && !document.querySelector('#scenGoalLink')) { const b = document.createElement('button'); b.className = 'btn sm ghost'; b.id = 'scenGoalLink'; b.style.marginTop = '8px'; b.innerHTML = '<i data-lucide="target"></i> Goal-based scenarios'; b.onclick = () => $('#dkScenBtn').click(); pp.after(b); }
+    SL.refreshIcons($('#scenPanel'));
+
+    /* ---- Shortcuts ---- */
+    const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+    const keys = document.querySelector('.dk-bar .dk-keys'); if (keys) keys.innerHTML += ' · <kbd>G</kbd> curves/game · <kbd>0</kbd> default market';
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey || e.repeat || document.querySelector('.sl-tour, .modal.show')) return;
+      const k = e.key.toLowerCase();
+      if (k === 'g') setMode(mode === 'curves' ? 'game' : 'curves');
+      else if (k === '0' && mode === 'curves') applyPreset('reset');
+    });
+  })();
+  /* ===== Watch demo, scenarios & shortcuts (end) ===== */
 })();
 </script>
 </body>

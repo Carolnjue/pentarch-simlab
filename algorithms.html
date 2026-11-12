@@ -62,6 +62,9 @@
   @media (max-width:600px){.racebar{padding:10px}.racebar .rb{flex:1 1 calc(50% - 8px);padding:7px 9px}.racebar .rb b{font-size:.78rem}.racebar .rb i{font-size:.62rem}.racebar .rb.off{margin-left:0}}
   .legend .readout .sym{font:700 .8rem var(--mono);margin-left:-2px}
   @media (max-width:420px){.two{grid-template-columns:1fr}}
+  /* demo caption on phones; keep scrolled-to targets clear of the sticky header */
+  @media (max-width:520px){.dk-cap .row{flex-wrap:wrap;row-gap:6px}.dk-cap .row .n{flex:1 0 100%}}
+  .stage,.lab,.dk-bar,.dk-scen{scroll-margin-top:84px}
 </style>
 </head>
 <body data-page="algorithms">
@@ -428,6 +431,187 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=13"></script>
+<script>
+/* Watch-demo runner and goal-based scenarios (page-local kit) */
+(function () {
+  if (window.DemoKit) return;
+  const css = `
+  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
+  .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .dk-bar .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto}
+  .dk-bar .dk-keys kbd{font-size:.72rem}
+  .dk-goal{flex-basis:100%;display:none;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;padding:10px 12px}
+  .dk-goal.show{display:flex}
+  .dk-goal.won{border-color:#34d399;background:color-mix(in srgb,#34d399 10%,var(--panel))}
+  .dk-goal .ic{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+  .dk-goal.won .ic{color:#34d399;background:color-mix(in srgb,#34d399 18%,transparent)}
+  .dk-goal .tx{flex:1;min-width:0;font-size:.86rem;line-height:1.45}
+  .dk-goal .tx b{display:block;font-size:.92rem}
+  .dk-goal .st{display:block;margin-top:3px;font:500 .78rem var(--mono);color:var(--accent)}
+  .dk-goal.won .st{color:#34d399}
+  .dk-goal .hint{display:none;margin-top:4px;color:var(--muted)}
+  .dk-goal .hint.show{display:block}
+  .dk-goal .acts{display:flex;gap:6px;flex-wrap:wrap;flex:none}
+  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.93);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap.show{display:block}
+  .dk-cap.fixed{position:fixed;bottom:12px}
+  .dk-cap .row{display:flex;align-items:center;gap:8px}
+  .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
+  .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
+  .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
+  .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem;flex:none;width:auto;min-width:0}
+  .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
+  @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  .dk-scen{margin:18px 0 6px;scroll-margin-top:calc(var(--hdr,64px) + 10px)}
+  .dk-scen h3 .ct{margin-left:auto;font:500 .74rem var(--mono);color:var(--dim)}
+  .dk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:8px}
+  .dk-card{display:flex;flex-direction:column;gap:6px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+  .dk-card.on{border-color:var(--accent)}
+  .dk-card.done{border-color:color-mix(in srgb,#34d399 55%,var(--line))}
+  .dk-card .top{display:flex;align-items:center;gap:8px}
+  .dk-card .top b{flex:1;font-size:.93rem;line-height:1.3}
+  .dk-card .where{font:500 .7rem var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  .dk-card p{margin:0;font-size:.84rem;color:var(--muted);line-height:1.45;flex:1}
+  .dk-card .ok{color:#34d399;display:none}
+  .dk-card.done .ok{display:inline-flex}
+  .dk-card .ok svg{width:17px;height:17px}
+  .dk-card .btn{align-self:flex-start}
+  @media (max-width:520px){.dk-bar .dk-keys{display:none}.dk-cap{bottom:8px}.dk-cap p{font-size:.86rem}.dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}`;
+  const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+  const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+  const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
+
+  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  function bar(before) {
+    let b = document.querySelector('.dk-bar'); if (b) return b;
+    b = document.createElement('div'); b.className = 'dk-bar';
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
+  }
+
+  const DemoKit = { bar };
+  /** add page shortcuts to the hint, e.g. '<kbd>1</kbd>–<kbd>5</kbd> modes' */
+  DemoKit.keys = html => { const k = document.querySelector('.dk-keys'); if (k) k.innerHTML = html + ' · ' + k.innerHTML; };
+  /** demo({before, stage, steps:[{cap, run(api), ms, hl}], save(), restore(snap), onStop?}) */
+  DemoKit.demo = function (o) {
+    const b = bar(o.before), btn = b.querySelector('#dkPlay');
+    const stage = $(o.stage); if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
+    const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
+    (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let run = null; // {abort, stepMode, nextRes}
+    const D = { running: () => !!run };
+    function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
+    function hl(sel) { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); if (sel) { const e = $(sel); if (e) e.classList.add('dk-hl'); } }
+    const ABORT = { abort: true };
+    function api(r) {
+      const chk = () => { if (r.abort) throw ABORT; };
+      const sleep = ms => new Promise((res, rej) => { const t0 = performance.now(); const tick = () => { if (r.abort) return rej(ABORT); if (performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tick); }; tick(); });
+      const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+      return {
+        sleep, chk,
+        set(sel, v) { chk(); const el = $(sel); if (!el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; fire(el, 'input'); fire(el, 'change'); },
+        async slide(sel, to, ms) { const el = $(sel); if (!el) return; const a = +el.value, n = Math.max(1, Math.round((ms || 1200) / 60)); const stp = +el.step || 0; for (let i = 1; i <= n; i++) { chk(); let v = a + (to - a) * i / n; if (stp) v = Math.round(v / stp) * stp; el.value = v; fire(el, 'input'); await sleep((ms || 1200) / n); } el.value = to; fire(el, 'input'); fire(el, 'change'); },
+        click(sel) { chk(); const el = $(sel); if (el) el.click(); },
+        async until(fn, ms) { const t0 = performance.now(); while (!fn()) { if (performance.now() - t0 > (ms || 10000)) return false; await sleep(120); } return true; },
+        hl
+      };
+    }
+    async function start() {
+      if (run) return stop(true);
+      if (DemoKit._scen && DemoKit._scen.active()) DemoKit._scen.quit(true);
+      let snap = null; try { snap = o.save ? o.save() : null; } catch (e) {}
+      const r = run = { abort: false, stepMode: reduce, snap };
+      btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); setMode();
+      if (o.onStart) try { o.onStart(); } catch (e) {}
+      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
+      if (stage.getBoundingClientRect().top < 0 || stage.getBoundingClientRect().bottom > innerHeight) stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' });
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const st = steps[i]; if (r.abort) throw ABORT;
+          cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          if (st.run) await st.run(A);
+          if (r.abort) throw ABORT;
+          pg.style.width = ((i + 1) / steps.length * 100) + '%';
+          const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
+          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+          r.nextRes = null;
+        }
+        end(true);
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+    }
+    function end(restore, msg) {
+      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
+      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
+      if (o.onStop) try { o.onStop(); } catch (e) {}
+      SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+    }
+    function stop(restore) { end(restore !== false, restore === false ? null : 'Demo stopped. Your settings are back as they were.'); }
+    D.stop = stop; D.start = start;
+    btn.onclick = start;
+    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
+    // the student takes over: any trusted interaction with the lab outside the caption ends the demo where it is
+    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .dk-bar')) end(false); }, true);
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (run && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); stop(true); }
+      else if (run && e.key === 'ArrowRight' && run.nextRes) { e.preventDefault(); run.nextRes(); }
+      else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); start(); }
+    }, true);
+    DemoKit._demo = D; return D;
+  };
+
+  /** scenarios({before, mount, key, list:[{id, title, where, goal, success, hint, setup(), check()->bool, status()->html}], onQuit}) */
+  DemoKit.scenarios = function (o) {
+    const b = bar(o.before), goal = b.querySelector('#dkGoal');
+    const sec = document.createElement('section'); sec.className = 'panel dk-scen'; sec.id = 'dkScen';
+    let done = {}; try { done = JSON.parse(localStorage.getItem(o.key) || '{}') || {}; } catch (e) { done = {}; }
+    const save = () => { try { localStorage.setItem(o.key, JSON.stringify(done)); } catch (e) {} };
+    const ct = () => `${o.list.filter(s => done[s.id]).length}/${o.list.length} achieved`;
+    sec.innerHTML = `<h3><i data-lucide="map-pinned"></i> Scenarios: real-world goals <span class="ct"></span></h3><p class="small muted" style="margin:0">Each scenario sets up the lab, states the goal and checks it live. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
+    const m = $(o.mount); if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
+    let act = null, timer = 0;
+    function paint() { sec.querySelector('.ct').textContent = ct(); sec.querySelectorAll('.dk-card').forEach(c => { c.classList.toggle('done', !!done[c.dataset.id]); c.classList.toggle('on', !!act && act.s.id === c.dataset.id); const bt = c.querySelector('[data-go]'); bt.innerHTML = act && act.s.id === c.dataset.id ? '<i data-lucide="rotate-ccw"></i> Restart' : done[c.dataset.id] ? '<i data-lucide="repeat"></i> Play again' : '<i data-lucide="play"></i> Start'; }); icons(sec); }
+    function banner() {
+      if (!act) { goal.classList.remove('show', 'won'); goal.innerHTML = ''; return; }
+      const s = act.s; goal.classList.add('show'); goal.classList.toggle('won', act.won);
+      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the scenario up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
+      icons(goal); tick();
+    }
+    function tick() {
+      if (!act) return; const s = act.s; let st = '';
+      try { st = s.status ? s.status() : ''; } catch (e) {}
+      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
+    }
+    function startS(id) {
+      const s = o.list.find(x => x.id === id); if (!s) return;
+      if (DemoKit._demo && DemoKit._demo.running()) DemoKit._demo.stop(false);
+      if (act && act.s.quit) try { act.s.quit(); } catch (e) {}
+      act = { s, won: false, t0: performance.now() }; try { s.setup(); } catch (e) { console.warn(e); }
+      clearInterval(timer); timer = setInterval(tick, 300); paint(); banner();
+      const lab = o.scrollTo ? $(o.scrollTo) : b; if (lab) lab.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }
+    function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
+    sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
+    goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
+    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
+    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
+    paint();
+    const API = { list: o.list, active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
+    DemoKit._scen = API; return API;
+  };
+  window.DemoKit = DemoKit;
+})();
+</script>
 <script>
 (() => {
   'use strict';
@@ -1347,12 +1531,12 @@
   const done = new Set();
   $('#chal').innerHTML = CH.map(([k, t, d]) => `<li data-k="${k}"><span class="led"></span><div><b>${t}</b><span class="small">${d}</span></div></li>`).join('');
   function check(k, ok) {
-    if (!ok || done.has(k)) return; done.add(k);
+    if (!ok || done.has(k) || S.demo) return; done.add(k);
     const li = document.querySelector(`#chal li[data-k="${k}"]`); if (li) li.querySelector('.led').classList.add('on');
     const c = CH.find(x => x[0] === k); SL.toast(`<b>Challenge complete:</b> ${c[1]} (${done.size}/${CH.length})`, 'ok');
   }
   const nudged = new Set();
-  function nudge(k, msg) { if (nudged.has(k)) return; nudged.add(k); SL.toast(msg, 'warn'); }
+  function nudge(k, msg) { if (nudged.has(k) || S.demo) return; nudged.add(k); SL.toast(msg, 'warn'); }
 
   /* =====================================================================
      QUIZ
@@ -1373,6 +1557,7 @@
   const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
   tourGo([
     { el: '#sortStage', before: () => $('#modes .tablist button').click(), title: 'The array', text: 'Each bar is one value. Colours show what the algorithm is doing right now: yellow with a ? bracket compares, red with a ⇄ arc swaps, violet writes, green is in its final place.' },
+    { el: '#dkPlay', title: 'Watch demo', text: 'A one-minute run-through: bubble sort, a quicksort race, binary search, A* against Dijkstra and Big-O. Press D any time, Esc to stop. Scenarios sets real goals, such as routing an ambulance around a flood.' },
     { el: '#algA', title: 'Pick an algorithm', text: 'Choose bubble, insertion, merge, quick, heap, counting or radix sort. The pseudo-code panel follows along line by line.' },
     { el: '#order', title: 'Shape the input', text: 'Try <b>Nearly sorted</b> with insertion sort, then <b>Reversed</b> with quicksort. Same n, very different work.' },
     { el: '#sortBtns', title: 'Run it', text: 'Play animates the sort; the step buttons move one primitive operation at a time so you can follow each comparison.' },
@@ -1383,6 +1568,125 @@
 
   // expose for automated checks
   window.__algo = { record, ALGOS, search, P, Q, makeArray };
+  /* ===== Watch demo, scenarios & shortcuts (begin) ===== */
+  (() => {
+    const LSK = 'sl-algo-settings';
+    const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+    const modeBtns = () => [...document.querySelectorAll('#modes > .tablist button')];
+    const modeIdx = () => modeBtns().findIndex(b => b.classList.contains('on') || b.getAttribute('aria-selected') === 'true');
+    const mode = i => { const b = modeBtns()[i]; if (b && modeIdx() !== i) b.click(); };
+    const segSet = (sel, v) => document.querySelectorAll(sel + ' button').forEach(x => x.classList.toggle('on', x.dataset.v === v));
+    const setR = (sel, v) => { const el = $(sel); if (+el.value !== +v) { el.value = v; fire(el, 'input'); } };
+    function sortSetup(o) { // {a, b, race, n, order, speed}
+      if (o.speed != null) setR('#speed', o.speed);
+      algA.value = o.a; if (o.b) algB.value = o.b;
+      S.race = !!o.race; $('#race').checked = S.race; $('#algBWrap').hidden = !S.race; S.racePreset = o.racePreset || null;
+      S.order = o.order || S.order; segSet('#order', S.order);
+      const sz = $('#size'); sz.value = o.n; S.n = +o.n; fire(sz, 'input');
+      rebuild(true); setRaceUI();
+    }
+    const sortSnap = () => ({ a: algA.value, b: algB.value, race: S.race, n: S.n, order: S.order, speed: +$('#speed').value, racePreset: S.racePreset });
+    // remember the sorting set-up and the lab tab
+    try { const o = JSON.parse(localStorage.getItem(LSK) || 'null'); if (o && ALGOS[o.a]) { sortSetup(o); if (o.tab > 0) setTimeout(() => mode(o.tab), 0); } } catch (e) {}
+    const save = () => { if (S.demo) return; setTimeout(() => { try { localStorage.setItem(LSK, JSON.stringify(Object.assign(sortSnap(), { tab: Math.max(0, modeIdx()) }))); } catch (e) {} }); };
+    ['#algA', '#algB', '#race', '#size', '#speed'].forEach(s => $(s).addEventListener('change', save));
+    ['#order', '#raceBar', '#modes > .tablist'].forEach(s => $(s).addEventListener('click', save));
+
+    /* ---- Watch demo ---- */
+    const cap = html => { const p = document.querySelector('.dk-cap p'); if (p) p.innerHTML = html; };
+    const nm = k => ALGOS[k].name;
+    const pathRun = async (A, algo, ms) => { $('#palg').value = algo; $('#palg').onchange({ target: $('#palg') }); P.hw = 1; setR('#hw', 1); startRun(false); await A.until(() => P.run && P.run.done, ms); };
+    DemoKit.demo({
+      before: '#modes', stage: '#modes', capHost: 'body', capFixed: true, scrollBlock: 'start',
+      save: () => ({ tab: Math.max(0, modeIdx()), sort: sortSnap(), A: S.A, B: S.B, base: S.base, q: Object.assign({}, Q, { arr: Q.arr.slice(), log: Q.log.slice(), lin: Object.assign({}, Q.lin), bin: Object.assign({}, Q.bin) }), qv: [$('#sn').value, $('#target').value, $('#sspeed').value],
+        p: { g: P.g ? P.g.slice() : null, start: P.start, end: P.end, algo: P.algo, heur: P.heur, hw: P.hw, run: P.run, pspeed: $('#pspeed').value }, bigLog: $('#bigLog').checked, bigN: $('#bigN').value }),
+      restore: o => {
+        S.playing = false; sortSetup(o.sort); S.A = o.A; S.B = o.B; S.base = o.base; setPlayBtn(); renderPseudo(true); updCounters();
+        Q.playing = false; Object.assign(Q, o.q); $('#sn').value = o.qv[0]; $('#target').value = o.qv[1]; setR('#sspeed', o.qv[2]); setQBtn(); renderLog(); updQ();
+        if (o.p.g) { P.g = o.p.g; P.start = o.p.start; P.end = o.p.end; } P.heur = o.p.heur; segSet('#heur', P.heur); setR('#hw', o.p.hw); setR('#pspeed', o.p.pspeed);
+        $('#palg').value = o.p.algo; P.algo = o.p.algo; $('#heurWrap').style.display = (P.algo === 'astar' || P.algo === 'greedy') ? '' : 'none'; $('#hwCtl').style.display = P.algo === 'astar' ? '' : 'none';
+        P.run = o.p.run; if (P.run) P.run.playing = false; setPBtn(); updP(); if (!P.run) clearRun();
+        if ($('#bigLog').checked !== o.bigLog) $('#bigLog').click(); setR('#bigN', o.bigN);
+        mode(o.tab);
+      },
+      onStart: () => { S.demo = true; }, onStop: () => { S.demo = false; },
+      steps: [
+        { cap: '<b>Bubble sort.</b> Each bar is a value. Yellow brackets compare two neighbours; a red arc swaps them. Big values bubble to the right, one pass at a time.', hl: '#sortStage', ms: 5200,
+          run: async () => { mode(0); sortSetup({ a: 'bubble', race: false, n: 24, order: 'random', speed: 55 }); S.playing = true; setPlayBtn(); } },
+        { cap: '<b>Race mode:</b> quicksort against bubble sort on the same 60 values. Count the operations, not just the seconds.', hl: '#raceBar', ms: 1500,
+          run: async A => { S.playing = false; document.querySelector('#raceBar .rb[data-race="quickL,bubble,random,60"]').click(); await A.until(() => S.A.done && S.B.done, 11000);
+            if (S.A.done) cap(`<b>Race mode:</b> quicksort finished in <b>${S.A.ops.toLocaleString('en')}</b> operations; bubble sort needs ${S.B.ops.toLocaleString('en')}. That is O(n log n) against O(n²).`); } },
+        { cap: '<b>Searching a sorted list.</b> Linear search checks every cell in turn; binary search probes the middle and throws away half the list each time.', hl: '.s-search', ms: 2200,
+          run: async A => { mode(1); await A.sleep(400); Q.target = Q.arr[Math.floor(Q.n * 0.82)]; $('#target').value = Q.target; resetSearch(); setR('#sspeed', 6); Q.playing = true; Q.acc = 1; setQBtn(); await A.until(() => Q.bin.done && Q.lin.done, 9000);
+            cap(`<b>Searching a sorted list.</b> Binary search found it in <b>${Q.bin.cmp}</b> probes; linear search needed ${Q.lin.cmp}. At most ⌊log₂ n⌋ + 1 = ${Math.floor(Math.log2(Q.n)) + 1} probes, however long the list.`); } },
+        { cap: '<b>Pathfinding with A*.</b> A maze is carved, then A* searches from S to E, guided by the straight-line distance still to go.', hl: '.s-path', ms: 2400,
+          run: async A => { mode(2); await A.sleep(500); setR('#pspeed', 72); $('#pMaze').click(); await A.until(() => !P.maze, 6000); await pathRun(A, 'astar', 8000); } },
+        { cap: '<b>Dijkstra</b> finds the same cheapest path but explores evenly in every direction, so it visits more cells (purple).', hl: '#rV', ms: 3000,
+          run: async A => { const a = P.run && P.run.visited; await pathRun(A, 'dijkstra', 8000); if (a && P.run) cap(`<b>Dijkstra</b> finds the same cheapest path but explores evenly in every direction: <b>${P.run.visited}</b> cells visited against ${a} for A*.`); } },
+        { cap: '<b>Big-O.</b> Growth rates decide everything at scale: at n = 100, n² is 10,000 steps while n log₂ n is about 660.', hl: '.s-big', ms: 4200,
+          run: async A => { mode(3); await A.sleep(300); setR('#bigN', 100); } },
+        { cap: '<b>Your turn.</b> Try the race presets or a scenario below. Your own settings come back now.', hl: '#modes > .tablist', ms: 2800, run: async () => mode(0) },
+      ],
+    });
+
+    /* ---- Scenarios ---- */
+    let sc = {};
+    const pathCheck = f => { const R = P.run; if (!R || !R.done || !R.found) return false; if (sc.r !== R) { sc.r = R; sc.bfs = search('bfs', 'manhattan', 1); } return f(R, sc.bfs); };
+    const whenGrid = f => { mode(2); const t0 = performance.now(); const go = () => { if (P.g) f(); else if (performance.now() - t0 < 2500) setTimeout(go, 60); }; go(); };
+    const flood = () => { // a flooded street (mud, cost 5) between S and E, with a dry crossing a few rows up
+      P.g.fill(0); clearRun();
+      const ry = P.rows >> 1, mx = P.cols >> 1;
+      P.start = id(Math.max(1, Math.floor(P.cols * 0.15)), ry); P.end = id(Math.min(P.cols - 2, Math.ceil(P.cols * 0.85)), ry);
+      for (let y = 0; y < P.rows; y++) if (y !== ry - 4) for (let x = mx - 2; x <= mx + 2; x++) P.g[id(x, y)] = 2;
+      $('#palg').value = 'bfs'; $('#palg').onchange({ target: $('#palg') }); updP();
+    };
+    DemoKit.scenarios({
+      before: '#modes', mount: '#modes', mountAfter: true, key: 'sl-algo-scen',
+      list: [
+        { id: 'grades', where: 'County exams office', title: 'Rank 120 exam results fast', goal: 'An exams office must sort 120 candidates\' results, but there are only four grade bands, so many values repeat. Pick the algorithm that exploits that.',
+          success: 'a single (non-race) sort of the 120 few-unique values that finishes in at most 600 operations.', hint: 'Comparison sorts need about n log n ≈ 1,600 operations here. One algorithm on the list never compares two values at all.',
+          setup: () => { mode(0); sortSetup({ a: 'quickL', race: false, n: 120, order: 'few' }); },
+          check: () => !S.B && S.A.done && S.order === 'few' && S.n >= 100 && S.A.ops <= 600,
+          status: () => `${nm(algA.value)} on n = ${S.n} (${S.order === 'few' ? 'few unique' : S.order}) needs ${S.A.ops.toLocaleString('en')} operations${S.A.done ? ' · finished' : S.playing ? ' · sorting…' : ' · press Play'}`,
+          wonText: 'Counting sort tallies how many results fall in each band and writes them back in order: O(n + k) with no comparisons at all.' },
+        { id: 'mpesa', where: 'Mobile money', title: 'Find a payment in a sorted statement', goal: 'A shop\'s mobile-money statement has 64 payments sorted by amount. Show your manager why sorted data is worth having.',
+          success: 'search for an amount that is in the list and make binary search at least 5 times faster (in comparisons) than linear search.', hint: 'Click a cell near the right-hand end of the list (a large amount), then press Search. Linear search has to walk all the way there.',
+          setup: () => { mode(1); setR('#sn', 64); Q.target = Q.arr[3]; $('#target').value = Q.target; resetSearch(); setR('#sspeed', 6); },
+          check: () => Q.bin.done && Q.lin.done && Q.bin.found >= 0 && Q.lin.cmp >= 5 * Q.bin.cmp,
+          status: () => Q.bin.done && Q.lin.done ? `Linear ${Q.lin.cmp} comparisons · binary ${Q.bin.cmp} (×${(Q.lin.cmp / Math.max(1, Q.bin.cmp)).toFixed(1)})` : `Target ${Q.target} · press Search`,
+          wonText: 'Binary search needs at most 7 probes for 64 items, and only 20 for a million: that is why databases keep sorted indexes.' },
+        { id: 'flood', where: 'Nairobi · emergency', title: 'Ambulance route around a flooded road', goal: 'After heavy rain a street between the hospital (S) and the patient (E) is flooded (brown mud costs 5 per cell). Find the quickest route, not the shortest-looking one.',
+          success: 'a path with the lowest possible cost that takes more moves than the fewest-moves route, i.e. it goes around the flood.', hint: 'BFS counts moves and wades through the water. Choose an algorithm that adds up costs (Dijkstra, or A* with w = 1) and run it.',
+          setup: () => whenGrid(flood),
+          check: () => pathCheck((R, bfs) => Math.abs(R.cost - R.ref.cost) < 1e-9 && R.moves > bfs.moves),
+          status: () => P.run && P.run.done ? (P.run.found ? `${$('#palg').selectedOptions[0].text}: ${P.run.moves} moves, cost ${P.run.cost} (cheapest possible ${P.run.ref.cost})` : 'No path found') : 'Press Run',
+          wonText: 'Dijkstra and A* minimise total cost, so they take the dry detour: more moves, but quicker than wading through the flood.' },
+        { id: 'boda', where: 'Delivery app', title: 'Plan a delivery route quickly', goal: 'A delivery app must plan thousands of routes a minute through a crowded grid of streets. Find the cheapest route while checking as few cells as possible.',
+          success: 'an optimal path from A* (w = 1) that visits at most half as many cells as Dijkstra (Dijkstra visiting at least 40).', hint: 'Choose A* search with weight 1 and run it. A good heuristic points the search at E. If walls block it badly, press Random walls for a new city.',
+          setup: () => whenGrid(() => { P.g.fill(0); clearRun(); $('#pWalls').click(); $('#palg').value = 'dijkstra'; $('#palg').onchange({ target: $('#palg') }); }),
+          check: () => pathCheck(R => P.algo === 'astar' && P.hw === 1 && Math.abs(R.cost - R.ref.cost) < 1e-9 && R.ref.visited >= 40 && R.visited <= 0.5 * R.ref.visited),
+          status: () => P.run && P.run.done && P.run.found ? `${$('#palg').selectedOptions[0].text}: ${P.run.visited} cells visited · Dijkstra visits ${P.run.ref.visited}` : 'Press Run',
+          wonText: 'The heuristic (distance still to go) never overestimates, so A* stays optimal while skipping cells that lead away from the customer.' },
+      ],
+    });
+
+    /* ---- Shortcuts ---- */
+    const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+    const keys = document.querySelector('.dk-bar .dk-keys'); if (keys) keys.innerHTML += ' · <kbd>1</kbd>–<kbd>4</kbd> lab · <kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> step · <kbd>N</kbd> new';
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('.sl-tour, .modal.show')) return;
+      if (DemoKit._demo && DemoKit._demo.running()) return;
+      const k = e.key.toLowerCase(), m = modeIdx(), btn = e.target && e.target.tagName === 'BUTTON', rng = e.target && e.target.type === 'range';
+      if (rng && /^Arrow/.test(e.key)) return;
+      if (!e.repeat && k >= '1' && k <= '4') { mode(+k - 1); save(); }
+      else if (e.code === 'Space' && !btn) { e.preventDefault(); if (m === 0) $('#sPlay').click(); else if (m === 1) $('#qPlay').click(); else if (m === 2) $('#pRun').click(); }
+      else if (m === 0 && e.key === 'ArrowRight') { e.preventDefault(); $('#sStep').click(); }
+      else if (m === 0 && e.key === 'ArrowLeft') { e.preventDefault(); $('#sBack').click(); }
+      else if (m === 1 && e.key === 'ArrowRight') { e.preventDefault(); $('#qStep').click(); }
+      else if (!e.repeat && k === 'n') { if (m === 0) $('#sNew').click(); else if (m === 1) $('#qNew').click(); }
+    });
+  })();
+  /* ===== Watch demo, scenarios & shortcuts (end) ===== */
 })();
 </script>
 </body>

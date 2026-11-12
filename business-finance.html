@@ -120,6 +120,9 @@
     .bench>.tablist button,.tabs>.tablist button{padding:8px 12px;border:1px solid var(--line2);border-radius:99px;font-size:.82rem;min-height:0;background:var(--bg2)}
     .bench>.tablist button.on,.tabs>.tablist button.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,var(--bg2))}
   }
+  /* demo caption on phones; keep scrolled-to targets clear of the sticky header */
+  @media (max-width:520px){.dk-cap .row{flex-wrap:wrap;row-gap:6px}.dk-cap .row .n{flex:1 0 100%}}
+  .stage,.lab,.dk-bar,.dk-scen{scroll-margin-top:84px}
 </style>
 </head>
 <body data-page="business-finance">
@@ -229,6 +232,7 @@
           <button data-t="salon"><i data-lucide="scissors"></i>Salon</button>
           <button data-t="tailor"><i data-lucide="shirt"></i>Tailoring shop</button>
           <button data-t="app"><i data-lucide="smartphone"></i>Mobile app</button>
+          <button data-t="mboga"><i data-lucide="carrot"></i>Mama mboga</button>
         </div>
         <p class="note" id="tplNote" style="margin:0 0 6px"></p>
         <div class="panel-title">Revenue</div>
@@ -399,6 +403,187 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=13"></script>
 <script>
+/* Watch-demo runner and goal-based scenarios (page-local kit) */
+(function () {
+  if (window.DemoKit) return;
+  const css = `
+  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
+  .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .dk-bar .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto}
+  .dk-bar .dk-keys kbd{font-size:.72rem}
+  .dk-goal{flex-basis:100%;display:none;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;padding:10px 12px}
+  .dk-goal.show{display:flex}
+  .dk-goal.won{border-color:#34d399;background:color-mix(in srgb,#34d399 10%,var(--panel))}
+  .dk-goal .ic{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+  .dk-goal.won .ic{color:#34d399;background:color-mix(in srgb,#34d399 18%,transparent)}
+  .dk-goal .tx{flex:1;min-width:0;font-size:.86rem;line-height:1.45}
+  .dk-goal .tx b{display:block;font-size:.92rem}
+  .dk-goal .st{display:block;margin-top:3px;font:500 .78rem var(--mono);color:var(--accent)}
+  .dk-goal.won .st{color:#34d399}
+  .dk-goal .hint{display:none;margin-top:4px;color:var(--muted)}
+  .dk-goal .hint.show{display:block}
+  .dk-goal .acts{display:flex;gap:6px;flex-wrap:wrap;flex:none}
+  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.93);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap.show{display:block}
+  .dk-cap.fixed{position:fixed;bottom:12px}
+  .dk-cap .row{display:flex;align-items:center;gap:8px}
+  .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
+  .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
+  .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
+  .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem;flex:none;width:auto;min-width:0}
+  .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
+  @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  .dk-scen{margin:18px 0 6px;scroll-margin-top:calc(var(--hdr,64px) + 10px)}
+  .dk-scen h3 .ct{margin-left:auto;font:500 .74rem var(--mono);color:var(--dim)}
+  .dk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:8px}
+  .dk-card{display:flex;flex-direction:column;gap:6px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+  .dk-card.on{border-color:var(--accent)}
+  .dk-card.done{border-color:color-mix(in srgb,#34d399 55%,var(--line))}
+  .dk-card .top{display:flex;align-items:center;gap:8px}
+  .dk-card .top b{flex:1;font-size:.93rem;line-height:1.3}
+  .dk-card .where{font:500 .7rem var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  .dk-card p{margin:0;font-size:.84rem;color:var(--muted);line-height:1.45;flex:1}
+  .dk-card .ok{color:#34d399;display:none}
+  .dk-card.done .ok{display:inline-flex}
+  .dk-card .ok svg{width:17px;height:17px}
+  .dk-card .btn{align-self:flex-start}
+  @media (max-width:520px){.dk-bar .dk-keys{display:none}.dk-cap{bottom:8px}.dk-cap p{font-size:.86rem}.dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}`;
+  const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+  const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+  const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
+
+  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  function bar(before) {
+    let b = document.querySelector('.dk-bar'); if (b) return b;
+    b = document.createElement('div'); b.className = 'dk-bar';
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
+  }
+
+  const DemoKit = { bar };
+  /** add page shortcuts to the hint, e.g. '<kbd>1</kbd>–<kbd>5</kbd> modes' */
+  DemoKit.keys = html => { const k = document.querySelector('.dk-keys'); if (k) k.innerHTML = html + ' · ' + k.innerHTML; };
+  /** demo({before, stage, steps:[{cap, run(api), ms, hl}], save(), restore(snap), onStop?}) */
+  DemoKit.demo = function (o) {
+    const b = bar(o.before), btn = b.querySelector('#dkPlay');
+    const stage = $(o.stage); if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
+    const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
+    (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let run = null; // {abort, stepMode, nextRes}
+    const D = { running: () => !!run };
+    function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
+    function hl(sel) { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); if (sel) { const e = $(sel); if (e) e.classList.add('dk-hl'); } }
+    const ABORT = { abort: true };
+    function api(r) {
+      const chk = () => { if (r.abort) throw ABORT; };
+      const sleep = ms => new Promise((res, rej) => { const t0 = performance.now(); const tick = () => { if (r.abort) return rej(ABORT); if (performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tick); }; tick(); });
+      const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+      return {
+        sleep, chk,
+        set(sel, v) { chk(); const el = $(sel); if (!el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; fire(el, 'input'); fire(el, 'change'); },
+        async slide(sel, to, ms) { const el = $(sel); if (!el) return; const a = +el.value, n = Math.max(1, Math.round((ms || 1200) / 60)); const stp = +el.step || 0; for (let i = 1; i <= n; i++) { chk(); let v = a + (to - a) * i / n; if (stp) v = Math.round(v / stp) * stp; el.value = v; fire(el, 'input'); await sleep((ms || 1200) / n); } el.value = to; fire(el, 'input'); fire(el, 'change'); },
+        click(sel) { chk(); const el = $(sel); if (el) el.click(); },
+        async until(fn, ms) { const t0 = performance.now(); while (!fn()) { if (performance.now() - t0 > (ms || 10000)) return false; await sleep(120); } return true; },
+        hl
+      };
+    }
+    async function start() {
+      if (run) return stop(true);
+      if (DemoKit._scen && DemoKit._scen.active()) DemoKit._scen.quit(true);
+      let snap = null; try { snap = o.save ? o.save() : null; } catch (e) {}
+      const r = run = { abort: false, stepMode: reduce, snap };
+      btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); setMode();
+      if (o.onStart) try { o.onStart(); } catch (e) {}
+      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
+      if (stage.getBoundingClientRect().top < 0 || stage.getBoundingClientRect().bottom > innerHeight) stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' });
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const st = steps[i]; if (r.abort) throw ABORT;
+          cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          if (st.run) await st.run(A);
+          if (r.abort) throw ABORT;
+          pg.style.width = ((i + 1) / steps.length * 100) + '%';
+          const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
+          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+          r.nextRes = null;
+        }
+        end(true);
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+    }
+    function end(restore, msg) {
+      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
+      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
+      if (o.onStop) try { o.onStop(); } catch (e) {}
+      SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+    }
+    function stop(restore) { end(restore !== false, restore === false ? null : 'Demo stopped. Your settings are back as they were.'); }
+    D.stop = stop; D.start = start;
+    btn.onclick = start;
+    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
+    // the student takes over: any trusted interaction with the lab outside the caption ends the demo where it is
+    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .dk-bar')) end(false); }, true);
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (run && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); stop(true); }
+      else if (run && e.key === 'ArrowRight' && run.nextRes) { e.preventDefault(); run.nextRes(); }
+      else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); start(); }
+    }, true);
+    DemoKit._demo = D; return D;
+  };
+
+  /** scenarios({before, mount, key, list:[{id, title, where, goal, success, hint, setup(), check()->bool, status()->html}], onQuit}) */
+  DemoKit.scenarios = function (o) {
+    const b = bar(o.before), goal = b.querySelector('#dkGoal');
+    const sec = document.createElement('section'); sec.className = 'panel dk-scen'; sec.id = 'dkScen';
+    let done = {}; try { done = JSON.parse(localStorage.getItem(o.key) || '{}') || {}; } catch (e) { done = {}; }
+    const save = () => { try { localStorage.setItem(o.key, JSON.stringify(done)); } catch (e) {} };
+    const ct = () => `${o.list.filter(s => done[s.id]).length}/${o.list.length} achieved`;
+    sec.innerHTML = `<h3><i data-lucide="map-pinned"></i> Scenarios: real-world goals <span class="ct"></span></h3><p class="small muted" style="margin:0">Each scenario sets up the lab, states the goal and checks it live. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
+    const m = $(o.mount); if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
+    let act = null, timer = 0;
+    function paint() { sec.querySelector('.ct').textContent = ct(); sec.querySelectorAll('.dk-card').forEach(c => { c.classList.toggle('done', !!done[c.dataset.id]); c.classList.toggle('on', !!act && act.s.id === c.dataset.id); const bt = c.querySelector('[data-go]'); bt.innerHTML = act && act.s.id === c.dataset.id ? '<i data-lucide="rotate-ccw"></i> Restart' : done[c.dataset.id] ? '<i data-lucide="repeat"></i> Play again' : '<i data-lucide="play"></i> Start'; }); icons(sec); }
+    function banner() {
+      if (!act) { goal.classList.remove('show', 'won'); goal.innerHTML = ''; return; }
+      const s = act.s; goal.classList.add('show'); goal.classList.toggle('won', act.won);
+      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the scenario up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
+      icons(goal); tick();
+    }
+    function tick() {
+      if (!act) return; const s = act.s; let st = '';
+      try { st = s.status ? s.status() : ''; } catch (e) {}
+      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
+    }
+    function startS(id) {
+      const s = o.list.find(x => x.id === id); if (!s) return;
+      if (DemoKit._demo && DemoKit._demo.running()) DemoKit._demo.stop(false);
+      if (act && act.s.quit) try { act.s.quit(); } catch (e) {}
+      act = { s, won: false, t0: performance.now() }; try { s.setup(); } catch (e) { console.warn(e); }
+      clearInterval(timer); timer = setInterval(tick, 300); paint(); banner();
+      const lab = o.scrollTo ? $(o.scrollTo) : b; if (lab) lab.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }
+    function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
+    sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
+    goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
+    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
+    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
+    paint();
+    const API = { active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
+    DemoKit._scen = API; return API;
+  };
+  window.DemoKit = DemoKit;
+})();
+</script>
+<script>
 (() => {
   'use strict';
   const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
@@ -419,6 +604,8 @@
       seas: [0.8, 0.9, 0.95, 1.05, 0.9, 0.9, 0.95, 1.05, 0.95, 1, 1.1, 1.45], note: 'A hair and beauty salon with three stylists. Products are variable costs; rent and stylists\' base pay are fixed.' },
     tailor: { name: 'Tailoring shop', unit: 'garments', p: 2500, v: 1150, F: 85000, u1: 60, g: 4, s: 100, cap: 160, cr: 30, capex: 220000, eq: 150000, lP: 150000, lR: 14, lN: 12, lM: 'reducing',
       seas: [1.35, 0.9, 0.85, 0.95, 0.9, 0.9, 0.95, 1, 0.95, 0.95, 1.05, 1.25], note: 'Uniforms and custom wear. Schools pay a month after delivery, so part of sales is on credit.' },
+    mboga: { name: 'Mama mboga stall', unit: 'customer baskets', p: 250, v: 180, F: 20000, u1: 900, g: 2, s: 100, cap: 2500, cr: 15, capex: 40000, eq: 30000, lP: 30000, lR: 20, lN: 6, lM: 'flat',
+      seas: [0.85, 0.95, 1, 1, 1, 0.95, 0.95, 1, 1, 1, 1, 1.2], note: 'A roadside vegetable stall: produce bought each morning at the wholesale market is the variable cost; the county stall fee, cess and transport are fixed. Most customers pay by M-Pesa; regulars buy on credit and settle next month.' },
     app: { name: 'Mobile app startup', unit: 'subscriber-months', p: 300, v: 45, F: 450000, u1: 300, g: 20, s: 0, cap: 20000, cr: 0, capex: 1200000, eq: 800000, lP: 1000000, lR: 17, lN: 36, lM: 'reducing',
       seas: [0.95, 1, 1, 1, 1, 1, 0.95, 1, 1, 1, 1, 1.05], note: 'A subscription app paid by mobile money. Developer salaries are fixed; hosting and payment fees are variable per subscriber.' },
   };
@@ -802,7 +989,7 @@
     return ({ 'NPV': 'Net present value: all future cash flows converted to today\'s money, minus the cost. Above 0 means the project beats the discount rate.', 'IRR': 'Internal rate of return: the discount rate that makes NPV exactly zero, i.e. the project\'s own yearly return.', 'Payback': 'Years until the cash coming in has repaid the outlay (ignores the time value of money).', 'Discounted payback': 'Payback counted in today\'s money, using the discount rate.', 'Profitability index': 'Value created per shilling invested. Above 1 means NPV is positive.', 'Flat rate true APR': 'The reducing-balance rate that would cost the same as this flat-rate loan: its true yearly cost.', 'Reducing APR': 'Annual percentage rate: the monthly rate × 12.', 'Current ratio': 'Short-term assets ÷ short-term debts. Below 1 means bills due within a year exceed the cash and receivables to pay them.', 'Gearing': 'How much of the business is funded by borrowing compared with the owner\'s own money.', 'Gross margin': 'Share of each shilling of sales left after paying for what was sold.', 'Net margin': 'Share of each shilling of sales left as profit after all costs, interest and tax.' })[k] || '';
   }
   const CH = [
-    { id: 'c1', t: 'Break-even by month 6, never broke', d: 'Any template: make the business profitable (after interest and depreciation) in or before June without the cash balance ever going negative. Open <b>Key numbers</b> under the verdict at the top and watch <b>First profitable month</b> and <b>Lowest cash</b>; try raising the price, cutting fixed costs or adding owner\'s capital.', ok: () => R.beMonth >= 0 && R.beMonth <= 5 && R.low >= 0, msg: () => `Profitable from ${MON[R.beMonth]}, lowest cash ${KES(R.low)}.` },
+    { id: 'c1', t: 'Break-even by month 6, never broke', d: 'Any template except the mama mboga stall (it starts there already): make the business profitable (after interest and depreciation) in or before June without the cash balance ever going negative. Open <b>Key numbers</b> under the verdict at the top and watch <b>First profitable month</b> and <b>Lowest cash</b>; try raising the price, cutting fixed costs or adding owner\'s capital.', ok: () => S.tpl !== 'mboga' && R.beMonth >= 0 && R.beMonth <= 5 && R.low >= 0, msg: () => `Profitable from ${MON[R.beMonth]}, lowest cash ${KES(R.low)}.` },
     { id: 'c2', t: 'Keep the app alive', d: 'Mobile app template: get through 12 months without negative cash (the verdict at the top must not ask for more money), borrowing no more than KES 1,500,000 (set in the Loan tab).', ok: () => S.tpl === 'app' && R.low >= 0 && I.lP <= 1500000, msg: () => `The startup survives the year with ${KES(R.m[11].close)} in the bank.` },
     { id: 'c3', t: 'Unmask the flat rate', d: 'In the Loan tab choose "Flat rate" and find the flat rate whose true APR is 18 % (within 0.25 points).', ok: () => I.lM === 'flat' && Math.abs(R.flatAPR - 18) <= 0.25 && I.lP > 0, msg: () => `A ${F(I.lR, 1)} % flat rate is really ${F(R.flatAPR, 2)} % APR.` },
     { id: 'c4', t: 'Find the IRR by hand', d: 'In the Investment tab, move the discount rate until NPV is within 0.25 points of zero, i.e. k ≈ IRR.', ok: () => R.irr != null && Math.abs(S.iR - R.irr * 100) <= 0.25, msg: () => `At k = ${F(S.iR, 2)} % the NPV is ${KES(R.npv)}: the IRR is ${F(R.irr * 100, 2)} %.` },
@@ -820,6 +1007,12 @@
     { id: 's3', t: 'Win the school uniform contract', d: 'A school orders on credit: 70 % of sales are now paid a month late. Fund the gap with a loan of at most KES 400,000 and stay profitable.', tpl: 'tailor', set: { cr: 70, eq: 100000 },
       hint: 'Credit sales delay cash, not profit. Set the loan in the Loan tab; a longer term spreads the repayments.',
       goals: [['Credit sales ≥ 70 %', () => I.cr >= 70], ['Cash never below 0', () => R.low >= 0], ['Loan ≤ KES 400,000', () => I.lP <= 400000], ["Owner's capital ≤ KES 100,000", () => I.eq <= 100000], ['Year-1 net profit ≥ 0', () => R.is.np >= 0]] },
+    { id: 's4', t: 'Mama mboga after a tomato price spike', d: 'Wholesale prices for tomatoes and sukuma jump, so the produce in an average basket now costs KES 205 instead of KES 180. Keep earning at least KES 300,000 a year without pricing out customers who can walk to the next stall.', tpl: 'mboga', set: { v: 205 },
+      hint: 'Customers notice anything above about KES 265 a basket. Combine a small price rise with lower fixed costs (share transport from the market, for example).',
+      goals: [['Produce cost still ≥ KES 205', () => I.v >= 205], ['Basket price ≤ KES 265', () => I.p <= 265], ['Year-1 net profit ≥ KES 300,000', () => R.is.np >= 300000], ['Cash never below 0', () => R.low >= 0]] },
+    { id: 's5', t: 'Boda-boda fleet through a fuel price shock', d: 'Pump prices rise and fuel plus maintenance now cost KES 95 a trip instead of KES 70. Keep the fleet solvent without pushing fares above KES 220.', tpl: 'boda', set: { v: 95 },
+      hint: 'Small fare rises, trimmed fixed costs and a longer loan term all help. The owner can add a little capital, but not more than KES 300,000.',
+      goals: [['Fuel & maintenance ≥ KES 95/trip', () => I.v >= 95], ['Fare ≤ KES 220', () => I.p <= 220], ['Cash never below 0', () => R.low >= 0], ['Year-1 net profit ≥ 0', () => R.is.np >= 0], ["Owner's capital ≤ KES 300,000", () => I.eq <= 300000]] },
   ];
   let mission = null;
   function startScenario(id) {
@@ -844,7 +1037,7 @@
   SCN.forEach(sc => CH.push({ id: sc.id, t: 'Scenario: ' + sc.t, d: sc.d + ' Start it from Guided scenarios above.', ok: () => mission === sc && sc.goals.every(g => g[1]()), msg: () => 'Every goal is met.', scn: true }));
   const done = new Set();
   function renderChall() { $('#challList').innerHTML = CH.map(c => `<li class="${done.has(c.id) ? 'done' : ''}"><span class="led ${done.has(c.id) ? 'on' : ''}"></span><div><b>${c.t}</b><span class="muted small">${c.d}</span></div></li>`).join(''); }
-  function checkChallenges() { if (!userTouched) return; CH.forEach(c => { if (!done.has(c.id) && c.ok()) { done.add(c.id); renderChall(); renderScen(); renderMission(); SL.toast(`<b>${c.scn ? 'Scenario' : 'Challenge'} complete: ${c.scn ? c.t.slice(10) : c.t}</b><br>${c.msg()}`, 'ok', 5200); } }); }
+  function checkChallenges() { if (!userTouched || S.demo) return; CH.forEach(c => { if (!done.has(c.id) && c.ok()) { done.add(c.id); renderChall(); renderScen(); renderMission(); SL.toast(`<b>${c.scn ? 'Scenario' : 'Challenge'} complete: ${c.scn ? c.t.slice(10) : c.t}</b><br>${c.msg()}`, 'ok', 5200); } }); }
   renderChall(); renderScen();
 
   /* ---------------- main loop ---------------- */
@@ -885,7 +1078,8 @@
   const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
   tourGo([
     { el: '#stBE', before: () => document.querySelector('#bench > .tablist button').click(), title: 'Break-even chart', text: 'Where the yellow revenue line crosses the red total-cost line, the business breaks even. Drag the white sales marker to read profit at any monthly volume.' },
-    { el: '#tpl', title: 'Pick a business', text: 'Start from a café, a boda-boda fleet, a salon, a tailoring shop or a mobile app, each with realistic Kenyan prices and costs.' },
+    { el: '#dkPlay', title: 'Watch demo', text: 'A one-minute run-through drives the lab for you: break-even, cash flow, a flat-rate loan, NPV and IRR, and the statements. Press D any time, Esc to stop. Scenarios takes you to the guided business rescues.' },
+    { el: '#tpl', title: 'Pick a business', text: 'Start from a café, a boda-boda fleet, a salon, a tailoring shop, a mobile app or a mama mboga stall, each with realistic Kenyan prices and costs.' },
     { el: '#p', title: 'Set price and costs', text: 'Move the price, sales, growth, costs and start-up funding. Every chart, table and statement updates instantly.' },
     { el: '#vcard', title: 'The verdict', text: 'One answer: is the business viable, and how much more money does it need? Open Key numbers for break-even, the first profitable month, the lowest cash balance and a summary linking profit and cash.' },
     { el: '#bench > .tablist', title: 'Five tools', text: 'Forecast cash month by month, compare loan offers (flat versus reducing rate), value an investment with NPV and IRR, and read the full financial statements.' },
@@ -893,6 +1087,77 @@
   ]);
 
   window.__fin = { model, loanSchedule, annuityRate, npv, irr, payback, TPL, I, S, get R() { return R; }, loadTpl, setR };
+  /* ===== Watch demo, scenarios & shortcuts (begin) ===== */
+  (() => {
+    const LSK = 'sl-fin-plan';
+    const IDS = ['p', 'v', 'F', 'u1', 'g', 's', 'cap', 'cr', 'capex', 'eq', 'lP', 'lR', 'lN', 'tax', 'life', 'iR'];
+    const benchBtns = () => $$('#bench > .tablist button');
+    const tabIdx = () => benchBtns().findIndex(b => b.classList.contains('on') || b.getAttribute('aria-selected') === 'true');
+    const tab = i => { const b = benchBtns()[i]; if (b) b.click(); };
+    const clone = o => JSON.parse(JSON.stringify(o));
+    const snap = () => ({ tpl: S.tpl, vals: Object.fromEntries(IDS.map(id => [id, +$('#' + id).value])), lM: I.lM, ov: clone(S.ov), proj: S.proj, cfs: S.cfs.slice() });
+    function apply(o) {
+      loadTpl(o.tpl);
+      IDS.forEach(id => { if (o.vals[id] != null) setR(id, o.vals[id]); });
+      I.lM = o.lM; $$('#lM button').forEach(x => x.classList.toggle('on', x.dataset.m === o.lM));
+      S.ov = clone(o.ov || { units: {}, oRec: {}, oPay: {} }); S.proj = o.proj || S.proj; if (o.cfs) { S.cfs = o.cfs.slice(); renderCFin(); }
+      schedule();
+    }
+    // remember the student's plan between visits
+    let saveT = 0;
+    const save = () => { if (S.demo) return; clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(LSK, JSON.stringify(snap())); } catch (e) {} }, 400); };
+    try {
+      const o = JSON.parse(localStorage.getItem(LSK) || 'null');
+      if (o && TPL[o.tpl] && o.vals) { apply(o); userTouched = false; setTimeout(() => SL.toast(`Welcome back: your last plan (<b>${TPL[o.tpl].name}</b>) is loaded. Pick a template above the sliders to start fresh.`, 'ok', 5200), 900); }
+    } catch (e) {}
+    $('.lab').addEventListener('input', save); $('.lab').addEventListener('change', save); $('.lab').addEventListener('click', e => { if (e.target.closest('#tpl, #lM, [data-proj]')) save(); });
+
+    /* ---- Watch demo ---- */
+    const cap = html => { const p = document.querySelector('.dk-cap p'); if (p) p.innerHTML = html; };
+        const fresh = A => A.sleep(120); // let the model recalculate on the next frame
+    const show = sel => { if (innerWidth < 980) { const el = $(sel); if (el) el.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); } }; // phones: bring the chart above the caption
+    DemoKit.demo({
+      before: '.lab', stage: '.leftcol', capFixed: true, scrollBlock: 'start',
+      save: () => Object.assign(snap(), { tab: tabIdx(), ut: userTouched }),
+      restore: o => { apply(o); tab(Math.max(0, o.tab)); userTouched = o.ut; },
+      onStart: () => { S.demo = true; }, onStop: () => { S.demo = false; },
+      steps: [
+        { cap: '<b>A campus café.</b> A cup or meal sells for KES 350 and costs KES 140 to make, so each sale contributes KES 210 towards KES 205,000 of monthly fixed costs. Where the yellow revenue line crosses the red cost line, it breaks even.', hl: '#stBE', ms: 4600,
+          run: async () => { loadTpl('cafe'); tab(0); show('#stBE'); } },
+        { cap: '<b>Raise the price to KES 420.</b> Contribution per sale jumps to KES 280, so the break-even volume falls from about 977 to 733 a month.', hl: '#hBE', ms: 3000,
+          run: async A => { await A.slide('#p', 420, 1800); } },
+        { cap: '<b>Profit is not cash.</b> Back at KES 350, open the cash-flow forecast. Equipment is paid for in January, so the bank balance dips before profits catch up.', hl: '#hLow', ms: 3800,
+          run: async A => { await A.slide('#p', 350, 900); tab(1); show('#stCF'); await fresh(A); cap(`<b>Profit is not cash.</b> Equipment is paid for in January, so the bank balance falls to <b>${KES(R.low)}</b> in ${MON[R.lowM]} even though the café is profitable.`); } },
+        { cap: '<b>Spend KES 300,000 less on the fit-out.</b> Every month\'s balance rises by the same amount, and the lowest point moves above zero.', hl: '#capex', ms: 3200,
+          run: async A => { await A.slide('#capex', 600000, 1800); await fresh(A); cap(`<b>Spend KES 300,000 less on the fit-out.</b> Every month's balance rises by the same amount: the lowest point is now <b>${KES(R.low)}</b>.`); } },
+        { cap: '<b>Compare loan offers.</b> A "16 % flat" quote charges interest on the full loan for the whole term.', hl: '#loanStats', ms: 4000,
+          run: async A => { tab(2); show('#stLoan'); await A.sleep(700); const b = document.querySelector('#lM button[data-m="flat"]'); if (b) b.click(); await fresh(A); if (R.flatAPR) cap(`<b>Compare loan offers.</b> A "16 % flat" quote charges interest on the full loan for the whole term: its true APR is about <b>${R.flatAPR.toFixed(1)} %</b>, far more than 16 % reducing balance.`); } },
+        { cap: '<b>Value an investment.</b> Raise the discount rate and the NPV shrinks; it crosses zero at the internal rate of return.', hl: '#stNPV', ms: 3600,
+          run: async A => { tab(3); show('#stNPV'); await A.sleep(600); if (R.irr != null) { await A.slide('#iR', Math.round(R.irr * 400) / 4, 2400); await fresh(A); cap(`<b>Value an investment.</b> As the discount rate rises the NPV shrinks, reaching zero at the IRR of <b>${(R.irr * 100).toFixed(1)} %</b>. Any cost of capital below that makes the project worth doing.`); } } },
+        { cap: '<b>The statements.</b> Every slider feeds the income statement and the balance sheet, which always balances: assets = liabilities + equity.', hl: '#isTable', ms: 3400, run: async () => { tab(4); show('#stWF'); } },
+        { cap: '<b>One verdict.</b> The card at the top answers the real question: is this business viable, and how much money does it need? Now try a guided scenario. Your own plan comes back now.', hl: '#vcard', ms: 3600,
+          run: async () => { tab(0); $('#vcard').scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); } },
+      ],
+    });
+
+    /* ---- Scenarios: the guided scenarios above the charts are this page's scenario picker ---- */
+    const goal = $('#dkGoal'); if (goal) goal.remove();
+    const scenBtn = $('#dkScenBtn');
+    const toScen = () => { if (mission) { mission = null; renderMission(); } const m = $('#mission'); m.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); m.classList.remove('dk-hl'); void m.offsetWidth; m.classList.add('dk-hl'); setTimeout(() => m.classList.remove('dk-hl'), 2600); const f = m.querySelector('[data-scn]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
+    if (scenBtn) { scenBtn.title = 'Guided scenarios with live goals (S)'; scenBtn.onclick = toScen; }
+
+    /* ---- Shortcuts ---- */
+    const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+    const keys = document.querySelector('.dk-bar .dk-keys'); if (keys) keys.innerHTML += ' · <kbd>1</kbd>–<kbd>5</kbd> tools · <kbd>K</kbd> key numbers';
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey || e.repeat || document.querySelector('.sl-tour, .modal.show')) return;
+      const k = e.key.toLowerCase();
+      if (k === 's') { e.preventDefault(); toScen(); }
+      else if (k >= '1' && k <= '5') tab(+k - 1);
+      else if (k === 'k') $('#vMore').click();
+    });
+  })();
+  /* ===== Watch demo, scenarios & shortcuts (end) ===== */
 })();
 </script>
 </body>
