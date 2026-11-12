@@ -251,6 +251,187 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=13"></script>
 <script>
+/* Watch-demo runner and goal-based scenarios (page-local kit) */
+(function () {
+  if (window.DemoKit) return;
+  const css = `
+  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
+  .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .dk-bar .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto}
+  .dk-bar .dk-keys kbd{font-size:.72rem}
+  .dk-goal{flex-basis:100%;display:none;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;padding:10px 12px}
+  .dk-goal.show{display:flex}
+  .dk-goal.won{border-color:#34d399;background:color-mix(in srgb,#34d399 10%,var(--panel))}
+  .dk-goal .ic{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+  .dk-goal.won .ic{color:#34d399;background:color-mix(in srgb,#34d399 18%,transparent)}
+  .dk-goal .tx{flex:1;min-width:0;font-size:.86rem;line-height:1.45}
+  .dk-goal .tx b{display:block;font-size:.92rem}
+  .dk-goal .st{display:block;margin-top:3px;font:500 .78rem var(--mono);color:var(--accent)}
+  .dk-goal.won .st{color:#34d399}
+  .dk-goal .hint{display:none;margin-top:4px;color:var(--muted)}
+  .dk-goal .hint.show{display:block}
+  .dk-goal .acts{display:flex;gap:6px;flex-wrap:wrap;flex:none}
+  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.93);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap.show{display:block}
+  .dk-cap.fixed{position:fixed;bottom:12px}
+  .dk-cap .row{display:flex;align-items:center;gap:8px}
+  .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
+  .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
+  .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
+  .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem;flex:none;width:auto;min-width:0}
+  .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
+  @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  .dk-scen{margin:18px 0 6px;scroll-margin-top:calc(var(--hdr,64px) + 10px)}
+  .dk-scen h3 .ct{margin-left:auto;font:500 .74rem var(--mono);color:var(--dim)}
+  .dk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:8px}
+  .dk-card{display:flex;flex-direction:column;gap:6px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+  .dk-card.on{border-color:var(--accent)}
+  .dk-card.done{border-color:color-mix(in srgb,#34d399 55%,var(--line))}
+  .dk-card .top{display:flex;align-items:center;gap:8px}
+  .dk-card .top b{flex:1;font-size:.93rem;line-height:1.3}
+  .dk-card .where{font:500 .7rem var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  .dk-card p{margin:0;font-size:.84rem;color:var(--muted);line-height:1.45;flex:1}
+  .dk-card .ok{color:#34d399;display:none}
+  .dk-card.done .ok{display:inline-flex}
+  .dk-card .ok svg{width:17px;height:17px}
+  .dk-card .btn{align-self:flex-start}
+  @media (max-width:520px){.dk-bar .dk-keys{display:none}.dk-cap{bottom:8px}.dk-cap .row{flex-wrap:wrap;row-gap:4px}.dk-cap .n{flex-basis:100%}.dk-cap p{font-size:.86rem}.dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}`;
+  const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+  const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+  const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
+
+  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  function bar(before) {
+    let b = document.querySelector('.dk-bar'); if (b) return b;
+    b = document.createElement('div'); b.className = 'dk-bar';
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
+  }
+
+  const DemoKit = { bar };
+  /** add page shortcuts to the hint, e.g. '<kbd>1</kbd>–<kbd>5</kbd> modes' */
+  DemoKit.keys = html => { const k = document.querySelector('.dk-keys'); if (k) k.innerHTML = html + ' · ' + k.innerHTML; };
+  /** demo({before, stage, steps:[{cap, run(api), ms, hl}], save(), restore(snap), onStop?}) */
+  DemoKit.demo = function (o) {
+    const b = bar(o.before), btn = b.querySelector('#dkPlay');
+    const stage = $(o.stage); if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
+    const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
+    (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let run = null; // {abort, stepMode, nextRes}
+    const D = { running: () => !!run };
+    function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
+    function hl(sel) { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); if (sel) { const e = $(sel); if (e) e.classList.add('dk-hl'); } }
+    const ABORT = { abort: true };
+    function api(r) {
+      const chk = () => { if (r.abort) throw ABORT; };
+      const sleep = ms => new Promise((res, rej) => { const t0 = performance.now(); const tick = () => { if (r.abort) return rej(ABORT); if (performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tick); }; tick(); });
+      const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+      return {
+        sleep, chk,
+        set(sel, v) { chk(); const el = $(sel); if (!el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; fire(el, 'input'); fire(el, 'change'); },
+        async slide(sel, to, ms) { const el = $(sel); if (!el) return; const a = +el.value, n = Math.max(1, Math.round((ms || 1200) / 60)); const stp = +el.step || 0; for (let i = 1; i <= n; i++) { chk(); let v = a + (to - a) * i / n; if (stp) v = Math.round(v / stp) * stp; el.value = v; fire(el, 'input'); await sleep((ms || 1200) / n); } el.value = to; fire(el, 'input'); fire(el, 'change'); },
+        click(sel) { chk(); const el = $(sel); if (el) el.click(); },
+        async until(fn, ms) { const t0 = performance.now(); while (!fn()) { if (performance.now() - t0 > (ms || 10000)) return false; await sleep(120); } return true; },
+        hl
+      };
+    }
+    async function start() {
+      if (run) return stop(true);
+      if (DemoKit._scen && DemoKit._scen.active()) DemoKit._scen.quit(true);
+      let snap = null; try { snap = o.save ? o.save() : null; } catch (e) {}
+      const r = run = { abort: false, stepMode: reduce, snap };
+      btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); setMode();
+      if (o.onStart) try { o.onStart(); } catch (e) {}
+      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
+      if (stage.getBoundingClientRect().top < 0 || stage.getBoundingClientRect().bottom > innerHeight) stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' });
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const st = steps[i]; if (r.abort) throw ABORT;
+          cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          if (st.run) await st.run(A);
+          if (r.abort) throw ABORT;
+          pg.style.width = ((i + 1) / steps.length * 100) + '%';
+          const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
+          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+          r.nextRes = null;
+        }
+        end(true);
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+    }
+    function end(restore, msg) {
+      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
+      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
+      if (o.onStop) try { o.onStop(); } catch (e) {}
+      SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+    }
+    function stop(restore) { end(restore !== false, restore === false ? null : 'Demo stopped. Your settings are back as they were.'); }
+    D.stop = stop; D.start = start;
+    btn.onclick = start;
+    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
+    // the student takes over: any trusted interaction with the lab outside the caption ends the demo where it is
+    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .dk-bar')) end(false); }, true);
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (run && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); stop(true); }
+      else if (run && e.key === 'ArrowRight' && run.nextRes) { e.preventDefault(); run.nextRes(); }
+      else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); start(); }
+    }, true);
+    DemoKit._demo = D; return D;
+  };
+
+  /** scenarios({before, mount, key, list:[{id, title, where, goal, success, hint, setup(), check()->bool, status()->html}], onQuit}) */
+  DemoKit.scenarios = function (o) {
+    const b = bar(o.before), goal = b.querySelector('#dkGoal');
+    const sec = document.createElement('section'); sec.className = 'panel dk-scen'; sec.id = 'dkScen';
+    let done = {}; try { done = JSON.parse(localStorage.getItem(o.key) || '{}') || {}; } catch (e) { done = {}; }
+    const save = () => { try { localStorage.setItem(o.key, JSON.stringify(done)); } catch (e) {} };
+    const ct = () => `${o.list.filter(s => done[s.id]).length}/${o.list.length} achieved`;
+    sec.innerHTML = `<h3><i data-lucide="map-pinned"></i> Scenarios: real-world goals <span class="ct"></span></h3><p class="small muted" style="margin:0">Each scenario sets up the lab, states the goal and checks it live. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
+    const m = $(o.mount); if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
+    let act = null, timer = 0;
+    function paint() { sec.querySelector('.ct').textContent = ct(); sec.querySelectorAll('.dk-card').forEach(c => { c.classList.toggle('done', !!done[c.dataset.id]); c.classList.toggle('on', !!act && act.s.id === c.dataset.id); const bt = c.querySelector('[data-go]'); bt.innerHTML = act && act.s.id === c.dataset.id ? '<i data-lucide="rotate-ccw"></i> Restart' : done[c.dataset.id] ? '<i data-lucide="repeat"></i> Play again' : '<i data-lucide="play"></i> Start'; }); icons(sec); }
+    function banner() {
+      if (!act) { goal.classList.remove('show', 'won'); goal.innerHTML = ''; return; }
+      const s = act.s; goal.classList.add('show'); goal.classList.toggle('won', act.won);
+      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the scenario up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
+      icons(goal); tick();
+    }
+    function tick() {
+      if (!act) return; const s = act.s; let st = '';
+      try { st = s.status ? s.status() : ''; } catch (e) {}
+      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
+    }
+    function startS(id) {
+      const s = o.list.find(x => x.id === id); if (!s) return;
+      if (DemoKit._demo && DemoKit._demo.running()) DemoKit._demo.stop(false);
+      if (act && act.s.quit) try { act.s.quit(); } catch (e) {}
+      act = { s, won: false, t0: performance.now() }; try { s.setup(); } catch (e) { console.warn(e); }
+      clearInterval(timer); timer = setInterval(tick, 300); paint(); banner();
+      const lab = o.scrollTo ? $(o.scrollTo) : b; if (lab) lab.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }
+    function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
+    sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
+    goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
+    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
+    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
+    paint();
+    const API = { active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
+    DemoKit._scen = API; return API;
+  };
+  window.DemoKit = DemoKit;
+})();
+</script>
+<script>
 (() => {
   /* ===================== ELEMENT DATA ===================== */
   // mass (IUPAC), Pauling EN, covalent radius (Å, Cordero 2008), valence electrons, allowed valences, colour
@@ -989,11 +1170,100 @@
   window.MB = { get atoms() { return atoms; }, get bonds() { return bonds; }, loadPreset, formula, vseprOf, dipole, angle, sub, neighbours: a => neighbours(a), relax, analyse: () => info, clickAtom, setTool, setPal: e => { palEl = e; }, setOrder: o => { order = o; }, update };
   hintSet();
   loadPreset('aspirin', true); hist.length = 0;
+/* ==DEMOPASS== */
+  /* ===================== WATCH DEMO + SCENARIOS ===================== */
+  const chk = (id, v) => { const el = document.getElementById(id); if (el.checked !== v) { el.checked = v; el.dispatchEvent(new Event('change', { bubbles: true })); } };
+  const segOn = (id, attr, v) => { const b = document.querySelector(`#${id} [data-${attr}="${v}"]`); if (b) b.click(); };
+  // build a molecule step by step with the real editing tools: steps = [[el], [el, parentIndex, order], ...]
+  async function build(steps, A) {
+    segOn('toolSeg', 't', 'add'); chk('autoH', true);
+    snapshot(); atoms = []; bonds = []; selected = null; edited(); const made = [];
+    for (const [el, par, o] of steps) {
+      const pb = document.querySelector(`#pal [data-e="${el}"]`); if (pb) pb.click(); else palEl = el; segOn('ordSeg', 'o', o || 1); order = o || 1;
+      const before = new Set(atoms);
+      if (par === undefined) clickEmpty(); else clickAtom(made[par]);
+      made.push(atoms.find(a => !before.has(a) && !a.auto) || atoms.find(a => a.el === el && !before.has(a)));
+      if (A) await A.sleep(650);
+    }
+    segOn('ordSeg', 'o', 1); order = 1; fitView(true); return made;
+  }
+  const pickAtom = a => { if (a) { selected = a; update(); } };
+  const firstEl = el => atoms.find(a => a.el === el);
+  const mSave = () => { const idx = new Map(atoms.map((a, i) => [a, i])); return { a: atoms.map(a => ({ el: a.el, p: a.p.slice(), auto: a.auto })), b: bonds.map(b => [idx.get(b.a), idx.get(b.b), b.o]), sel: selected ? idx.get(selected) : -1, pn: presetName, hl: hist.length, tg: ['autoH', 'showLP', 'showDip', 'showGeo', 'showLab', 'spin'].map(id => document.getElementById(id).checked), tool, order, palEl }; };
+  function mLoad(s) {
+    atoms = s.a.map(x => newAtom(x.el, x.p, x.auto)); bonds = s.b.map(([i, j, o]) => ({ a: atoms[i], b: atoms[j], o }));
+    ['autoH', 'showLP', 'showDip', 'showGeo', 'showLab', 'spin'].forEach((id, i) => chk(id, s.tg[i]));
+    computeTopology(); analyse(); selected = s.sel >= 0 ? atoms[s.sel] : centralAtom(); presetName = s.pn; hist.length = Math.min(hist.length, s.hl);
+    segOn('toolSeg', 't', s.tool); segOn('ordSeg', 'o', s.order); order = s.order; palEl = s.palEl; document.querySelectorAll('#pal .pel').forEach(b => b.classList.toggle('on', b.dataset.e === palEl));
+    fitView(true); update();
+  }
+  DemoKit.demo({
+    before: '.lab', stage: '#stage', save: mSave, restore: mLoad,
+    steps: [
+      { cap: '<b>Water.</b> Oxygen has two bonds and two lone pairs (purple): four electron domains, so a tetrahedral arrangement, but the shape of the atoms is <b>bent</b>. With the geometry view on, the measured angle is close to 104.5°.', hl: '#vsepr',
+        run: async () => { chk('showGeo', true); chk('showDip', false); loadPreset('H2O', true); }, ms: 6000 },
+      { cap: '<b>Methane</b>, CH₄: four bonds and no lone pairs give a perfect <b>tetrahedron</b>, 109.5° between every pair of bonds.', hl: '#stage',
+        run: async () => { loadPreset('CH4', true); chk('spin', true); }, ms: 4800 },
+      { cap: 'Now build <b>ethanol</b>, the alcohol in beer and chang\'aa, atom by atom: carbon, carbon, then oxygen. The hydrogens fill every spare valence automatically.', hl: '#pal',
+        run: async A => { chk('spin', false); await build([['C'], ['C', 0], ['O', 1]], A); pickAtom(firstEl('O')); }, ms: 3800 },
+      { cap: 'Take one carbon away and you have <b>methanol</b>, CH₃OH. It looks almost the same, but the body turns it into formaldehyde and formic acid: the poison behind illicit-brew blindness and deaths.', hl: '#formula',
+        run: async A => { await build([['C'], ['O', 0]], A); pickAtom(firstEl('O')); }, ms: 5600 },
+      { cap: '<b>Polarity.</b> Each C=O bond in CO₂ is polar (arrows), but the molecule is linear, so the two dipoles cancel: net dipole zero, a non-polar molecule.', hl: '#sPol',
+        run: async () => { chk('showDip', true); loadPreset('CO2', true); }, ms: 5200 },
+      { cap: 'Water\'s dipoles do not cancel because the molecule is bent. That large net dipole is why water dissolves fertiliser salts so well.', hl: '#sMu',
+        run: async () => { loadPreset('H2O', true); }, ms: 4600 },
+      { cap: '<b>Urea</b>, CO(NH₂)₂, the most widely used nitrogen fertiliser. The carbon has a C=O double bond and three domains, so it is <b>trigonal planar</b> (sp²).', hl: '#vsepr',
+        run: async () => { chk('showDip', false); loadPreset('urea', true); }, ms: 5200 },
+    ]
+  });
+
+  const fNow = () => formula();
+  const madeByHand = () => !presetName && atoms.length > 0;
+  const noBad = () => !info.warn.some(w => w.t === 'bad' || /radical|free valence|incomplete/.test(w.m));
+  DemoKit.scenarios({
+    before: '.lab', mount: '.tabs[data-tabs]', key: 'sl-mol-scen',
+    list: [
+      { id: 'meoh', where: 'Public health · illicit brew', title: 'Methanol or ethanol? Know the difference',
+        goal: 'Illicit spirits are sometimes "strengthened" with industrial methanol, which causes blindness and death. Build methanol yourself and compare its formula and molar mass with ethanol (46.07 g/mol), which is loaded for you.',
+        success: 'methanol, CH₃OH (CH₄O), built by hand with no valence warnings.',
+        hint: 'Empty the stage with the bin button, pick C and tap the empty stage, then pick O and tap the carbon. Hydrogens are added automatically. Methanol is 32.04 g/mol.',
+        setup: () => { chk('autoH', true); loadPreset('ethanol', true); },
+        status: () => `Formula ${fNow().htm || '–'} · ${SL.fmt(fNow().M, 2)} g/mol${presetName ? ' (preset)' : ''}`,
+        check: () => madeByHand() && noBad() && fNow().txt === 'CH4O' },
+      { id: 'urea', where: 'Fertiliser · the N in NPK', title: 'Build urea and find its nitrogen content',
+        goal: 'Urea is sold to Kenyan farmers as a 46 % nitrogen fertiliser. Build urea, CO(NH₂)₂, by hand: a carbon with a double bond to oxygen and single bonds to two nitrogens.',
+        success: 'urea (CH₄N₂O) built by hand, with a C=O double bond and a trigonal planar carbon.',
+        hint: 'Start with C on an empty stage. Choose Double, pick O and tap the carbon. Switch back to Single, pick N and tap the carbon twice. Then check: 2 × 14.007 / 60.06 = 46.6 % N.',
+        setup: () => { chk('autoH', true); segOn('toolSeg', 't', 'add'); snapshot(); atoms = []; bonds = []; selected = null; edited(); },
+        status: () => `Formula ${fNow().htm || '–'} · ${SL.fmt(fNow().M, 2)} g/mol${fNow().cnt.N ? ` · N ${SL.fmt(fNow().cnt.N * 14.007 / fNow().M * 100, 1)} %` : ''}`,
+        check: () => { if (!madeByHand() || !noBad() || fNow().txt !== 'CH4N2O') return false; const C = firstEl('C'); const v = C && vseprOf(C); return bonds.some(b => b.o === 2 && [b.a.el, b.b.el].sort().join() === 'C,O') && v && v.key === '3-0'; } },
+      { id: 'po4', where: 'Fertiliser · the P in NPK', title: 'Phosphoric acid, source of phosphate',
+        goal: 'DAP and other phosphate fertilisers are made from phosphoric acid, H₃PO₄. Build it by hand and read the shape around phosphorus.',
+        success: 'H₃PO₄ built by hand: one P=O and three P–OH bonds, tetrahedral at P.',
+        hint: 'Start with P. Choose Double, pick O and tap the P. Switch to Single, pick O and tap the P three more times; hydrogens complete each –OH. P uses five bonds here (an expanded octet).',
+        setup: () => { chk('autoH', true); segOn('toolSeg', 't', 'add'); snapshot(); atoms = []; bonds = []; selected = null; edited(); },
+        status: () => { const P = firstEl('P'), v = P && vseprOf(P); return `Formula ${fNow().htm || '–'}${v ? ' · shape at P: ' + v.shape : ''}`; },
+        check: () => { const P = firstEl('P'); if (!madeByHand() || !noBad() || !P || fNow().cnt.P !== 1 || fNow().cnt.O !== 4 || fNow().cnt.H !== 3 || atoms.length !== 8) return false; const v = vseprOf(P); return v && v.key === '4-0'; } },
+    ]
+  });
+  document.addEventListener('keydown', e => {
+    const t = e.target; if (e.ctrlKey && (e.key === 'z' || e.key === 'Z') || e.metaKey && (e.key === 'z' || e.key === 'Z')) { if (!/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) { e.preventDefault(); undo(); } return; }
+    if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && t.type !== 'range' && t.type !== 'checkbox' || document.querySelector('.sl-tour')) return;
+    const k = e.key.toLowerCase();
+    if (k === 'g') { e.preventDefault(); const c = document.getElementById('showGeo'); c.checked = !c.checked; c.dispatchEvent(new Event('change', { bubbles: true })); }
+    else if (k === 'a' || k === 'b' || k === 'x') { e.preventDefault(); segOn('toolSeg', 't', { a: 'add', b: 'bond', x: 'del' }[k]); }
+    else if ('123'.includes(k) && k.length === 1) { e.preventDefault(); segOn('ordSeg', 'o', k); }
+  });
+  DemoKit.keys('<kbd>A</kbd>/<kbd>B</kbd>/<kbd>X</kbd> add, bond, delete · <kbd>1</kbd>–<kbd>3</kbd> bond order · <kbd>G</kbd> geometry · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo');
+  ['showGeo', 'showDip', 'showLP', 'showLab'].forEach(id => { const el = document.getElementById(id); try { const v = localStorage.getItem('sl-mol-' + id); if (v !== null) el.checked = v === '1'; } catch (e) {} el.addEventListener('change', () => { if (DemoKit._demo && DemoKit._demo.running()) return; try { localStorage.setItem('sl-mol-' + id, el.checked ? '1' : '0'); } catch (e) {} }); });
+  window.MB.build = build;
+/* ==/DEMOPASS== */
   /* ---- guided tour ---- */
   {
     // jump (not smooth-scroll) to each target so the tip is placed against its final position
     const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
     const startTour = () => SL.tour(jump([
+      { el: '#dkPlay', title: 'Watch a demo first', text: 'A one-minute run-through: water and methane shapes, ethanol versus methanol built atom by atom, polarity and urea. Press Esc to stop it.' },
       { el: '#stage', title: 'Build a molecule in 3D', text: 'Drag to rotate and pinch or scroll to zoom. Tap an atom to bond a new atom to it; hydrogens fill the spare valences automatically.' },
       { el: '#pal', title: 'Pick an element', text: 'Choose the element to add. The small numbers are its common valences, the number of bonds it usually forms.' },
       { el: '#toolSeg', title: 'Add, bond or delete', text: 'Use <b>Bond</b> to close rings or change a bond to double or triple, and <b>Delete</b> to remove atoms.' },

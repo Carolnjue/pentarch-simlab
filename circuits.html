@@ -67,7 +67,7 @@
     #labMain{display:flex;flex-direction:column}
     #labMain>.cstrip{order:0} #labMain>#stage{order:1} #labMain>.scope{order:2;margin-top:10px} #labMain>.cnote{order:3} #labMain>.ebal{order:4}
     .cstrip{display:block;position:sticky;top:var(--hdr);z-index:30;margin:0 -2px 8px;padding:6px;border:1px solid var(--line);border-radius:12px;background:rgba(10,15,28,.94);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 6px 18px rgba(0,0,0,.35)}
-    .cs-tools{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
+    .cs-tools{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
     .csb{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-height:44px;border-radius:9px;border:1px solid var(--line2);background:var(--bg2);font-size:.66rem;color:var(--muted);text-align:center}
     .csb svg{width:28px;height:15px}
     .csb.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 20%,var(--bg2));color:#fff}
@@ -145,7 +145,7 @@
         <select id="preset" aria-label="Circuit preset">
           <option value="series">Series resistors</option><option value="parallel">Parallel resistors</option><option value="divider">Voltage divider</option>
           <option value="rc">RC charging</option><option value="lowpass" selected>RC low-pass filter</option><option value="rlc">RLC series resonance</option>
-          <option value="ring">RLC step response (ringing)</option><option value="rl">RL time constant</option><option value="wheat">Wheatstone bridge</option><option value="led">LED with series resistor</option><option value="blank">Empty breadboard</option>
+          <option value="ring">RLC step response (ringing)</option><option value="rl">RL time constant</option><option value="wheat">Wheatstone bridge</option><option value="led">LED with series resistor</option><option value="solar">Solar home system (12 V)</option><option value="blank">Empty breadboard</option>
         </select>
         <div class="ctl" style="margin-top:6px"><label for="speed">Animation speed</label><output>×1</output><input type="range" id="speed" min="-2" max="2" step="1" value="0"></div>
         <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:center"><label class="small muted" for="method">Integration</label><select id="method"><option value="trap">Trapezoidal</option><option value="be">Backward Euler</option></select></div>
@@ -300,6 +300,187 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=13"></script>
+<script>
+/* Watch-demo runner and goal-based scenarios (page-local kit) */
+(function () {
+  if (window.DemoKit) return;
+  const css = `
+  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
+  .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .dk-bar .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto}
+  .dk-bar .dk-keys kbd{font-size:.72rem}
+  .dk-goal{flex-basis:100%;display:none;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;padding:10px 12px}
+  .dk-goal.show{display:flex}
+  .dk-goal.won{border-color:#34d399;background:color-mix(in srgb,#34d399 10%,var(--panel))}
+  .dk-goal .ic{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+  .dk-goal.won .ic{color:#34d399;background:color-mix(in srgb,#34d399 18%,transparent)}
+  .dk-goal .tx{flex:1;min-width:0;font-size:.86rem;line-height:1.45}
+  .dk-goal .tx b{display:block;font-size:.92rem}
+  .dk-goal .st{display:block;margin-top:3px;font:500 .78rem var(--mono);color:var(--accent)}
+  .dk-goal.won .st{color:#34d399}
+  .dk-goal .hint{display:none;margin-top:4px;color:var(--muted)}
+  .dk-goal .hint.show{display:block}
+  .dk-goal .acts{display:flex;gap:6px;flex-wrap:wrap;flex:none}
+  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.93);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap.show{display:block}
+  .dk-cap.fixed{position:fixed;bottom:12px}
+  .dk-cap .row{display:flex;align-items:center;gap:8px}
+  .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
+  .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
+  .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
+  .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem;flex:none;width:auto;min-width:0}
+  .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
+  @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  .dk-scen{margin:18px 0 6px;scroll-margin-top:calc(var(--hdr,64px) + 10px)}
+  .dk-scen h3 .ct{margin-left:auto;font:500 .74rem var(--mono);color:var(--dim)}
+  .dk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:8px}
+  .dk-card{display:flex;flex-direction:column;gap:6px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+  .dk-card.on{border-color:var(--accent)}
+  .dk-card.done{border-color:color-mix(in srgb,#34d399 55%,var(--line))}
+  .dk-card .top{display:flex;align-items:center;gap:8px}
+  .dk-card .top b{flex:1;font-size:.93rem;line-height:1.3}
+  .dk-card .where{font:500 .7rem var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  .dk-card p{margin:0;font-size:.84rem;color:var(--muted);line-height:1.45;flex:1}
+  .dk-card .ok{color:#34d399;display:none}
+  .dk-card.done .ok{display:inline-flex}
+  .dk-card .ok svg{width:17px;height:17px}
+  .dk-card .btn{align-self:flex-start}
+  @media (max-width:520px){.dk-bar .dk-keys{display:none}.dk-cap{bottom:8px}.dk-cap .row{flex-wrap:wrap;row-gap:4px}.dk-cap .n{flex-basis:100%}.dk-cap p{font-size:.86rem}.dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}`;
+  const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+  const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+  const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
+
+  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  function bar(before) {
+    let b = document.querySelector('.dk-bar'); if (b) return b;
+    b = document.createElement('div'); b.className = 'dk-bar';
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
+  }
+
+  const DemoKit = { bar };
+  /** add page shortcuts to the hint, e.g. '<kbd>1</kbd>–<kbd>5</kbd> modes' */
+  DemoKit.keys = html => { const k = document.querySelector('.dk-keys'); if (k) k.innerHTML = html + ' · ' + k.innerHTML; };
+  /** demo({before, stage, steps:[{cap, run(api), ms, hl}], save(), restore(snap), onStop?}) */
+  DemoKit.demo = function (o) {
+    const b = bar(o.before), btn = b.querySelector('#dkPlay');
+    const stage = $(o.stage); if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
+    const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
+    (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let run = null; // {abort, stepMode, nextRes}
+    const D = { running: () => !!run };
+    function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
+    function hl(sel) { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); if (sel) { const e = $(sel); if (e) e.classList.add('dk-hl'); } }
+    const ABORT = { abort: true };
+    function api(r) {
+      const chk = () => { if (r.abort) throw ABORT; };
+      const sleep = ms => new Promise((res, rej) => { const t0 = performance.now(); const tick = () => { if (r.abort) return rej(ABORT); if (performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tick); }; tick(); });
+      const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+      return {
+        sleep, chk,
+        set(sel, v) { chk(); const el = $(sel); if (!el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; fire(el, 'input'); fire(el, 'change'); },
+        async slide(sel, to, ms) { const el = $(sel); if (!el) return; const a = +el.value, n = Math.max(1, Math.round((ms || 1200) / 60)); const stp = +el.step || 0; for (let i = 1; i <= n; i++) { chk(); let v = a + (to - a) * i / n; if (stp) v = Math.round(v / stp) * stp; el.value = v; fire(el, 'input'); await sleep((ms || 1200) / n); } el.value = to; fire(el, 'input'); fire(el, 'change'); },
+        click(sel) { chk(); const el = $(sel); if (el) el.click(); },
+        async until(fn, ms) { const t0 = performance.now(); while (!fn()) { if (performance.now() - t0 > (ms || 10000)) return false; await sleep(120); } return true; },
+        hl
+      };
+    }
+    async function start() {
+      if (run) return stop(true);
+      if (DemoKit._scen && DemoKit._scen.active()) DemoKit._scen.quit(true);
+      let snap = null; try { snap = o.save ? o.save() : null; } catch (e) {}
+      const r = run = { abort: false, stepMode: reduce, snap };
+      btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); setMode();
+      if (o.onStart) try { o.onStart(); } catch (e) {}
+      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
+      if (stage.getBoundingClientRect().top < 0 || stage.getBoundingClientRect().bottom > innerHeight) stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' });
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const st = steps[i]; if (r.abort) throw ABORT;
+          cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          if (st.run) await st.run(A);
+          if (r.abort) throw ABORT;
+          pg.style.width = ((i + 1) / steps.length * 100) + '%';
+          const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
+          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+          r.nextRes = null;
+        }
+        end(true);
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+    }
+    function end(restore, msg) {
+      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
+      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
+      if (o.onStop) try { o.onStop(); } catch (e) {}
+      SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+    }
+    function stop(restore) { end(restore !== false, restore === false ? null : 'Demo stopped. Your settings are back as they were.'); }
+    D.stop = stop; D.start = start;
+    btn.onclick = start;
+    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
+    // the student takes over: any trusted interaction with the lab outside the caption ends the demo where it is
+    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .dk-bar')) end(false); }, true);
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (run && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); stop(true); }
+      else if (run && e.key === 'ArrowRight' && run.nextRes) { e.preventDefault(); run.nextRes(); }
+      else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); start(); }
+    }, true);
+    DemoKit._demo = D; return D;
+  };
+
+  /** scenarios({before, mount, key, list:[{id, title, where, goal, success, hint, setup(), check()->bool, status()->html}], onQuit}) */
+  DemoKit.scenarios = function (o) {
+    const b = bar(o.before), goal = b.querySelector('#dkGoal');
+    const sec = document.createElement('section'); sec.className = 'panel dk-scen'; sec.id = 'dkScen';
+    let done = {}; try { done = JSON.parse(localStorage.getItem(o.key) || '{}') || {}; } catch (e) { done = {}; }
+    const save = () => { try { localStorage.setItem(o.key, JSON.stringify(done)); } catch (e) {} };
+    const ct = () => `${o.list.filter(s => done[s.id]).length}/${o.list.length} achieved`;
+    sec.innerHTML = `<h3><i data-lucide="map-pinned"></i> Scenarios: real-world goals <span class="ct"></span></h3><p class="small muted" style="margin:0">Each scenario sets up the lab, states the goal and checks it live. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
+    const m = $(o.mount); if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
+    let act = null, timer = 0;
+    function paint() { sec.querySelector('.ct').textContent = ct(); sec.querySelectorAll('.dk-card').forEach(c => { c.classList.toggle('done', !!done[c.dataset.id]); c.classList.toggle('on', !!act && act.s.id === c.dataset.id); const bt = c.querySelector('[data-go]'); bt.innerHTML = act && act.s.id === c.dataset.id ? '<i data-lucide="rotate-ccw"></i> Restart' : done[c.dataset.id] ? '<i data-lucide="repeat"></i> Play again' : '<i data-lucide="play"></i> Start'; }); icons(sec); }
+    function banner() {
+      if (!act) { goal.classList.remove('show', 'won'); goal.innerHTML = ''; return; }
+      const s = act.s; goal.classList.add('show'); goal.classList.toggle('won', act.won);
+      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the scenario up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
+      icons(goal); tick();
+    }
+    function tick() {
+      if (!act) return; const s = act.s; let st = '';
+      try { st = s.status ? s.status() : ''; } catch (e) {}
+      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
+    }
+    function startS(id) {
+      const s = o.list.find(x => x.id === id); if (!s) return;
+      if (DemoKit._demo && DemoKit._demo.running()) DemoKit._demo.stop(false);
+      if (act && act.s.quit) try { act.s.quit(); } catch (e) {}
+      act = { s, won: false, t0: performance.now() }; try { s.setup(); } catch (e) { console.warn(e); }
+      clearInterval(timer); timer = setInterval(tick, 300); paint(); banner();
+      const lab = o.scrollTo ? $(o.scrollTo) : b; if (lab) lab.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }
+    function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
+    sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
+    goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
+    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
+    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
+    paint();
+    const API = { active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
+    DemoKit._scen = API; return API;
+  };
+  window.DemoKit = DemoKit;
+})();
+</script>
 <script>
 (() => {
   'use strict';
@@ -511,6 +692,7 @@
     rl: () => [P('dc', 2, 3, 2, 8, { V: 12 }), P('wire', 2, 3, 4, 3), P('sw', 4, 3, 6, 3), P('wire', 6, 3, 7, 3), P('res', 7, 3, 10, 3, { R: 10 }), P('wire', 10, 3, 14, 3), P('ind', 14, 3, 14, 8, { L: 0.5 }), P('wire', 14, 8, 10, 8), P('amm', 10, 8, 7, 8), P('wire', 7, 8, 2, 8), P('gnd', 2, 8, 2, 9)],
     wheat: () => [P('dc', 2, 2, 2, 10, { V: 10 }), P('wire', 2, 2, 6, 2), P('wire', 6, 2, 12, 2), P('res', 6, 2, 6, 6, { R: 1000 }), P('res', 12, 2, 12, 6, { R: 2000 }), P('res', 6, 6, 6, 10, { R: 1500 }), P('res', 12, 6, 12, 10, { R: 3000 }), P('wire', 2, 10, 6, 10), P('wire', 6, 10, 12, 10), P('wire', 6, 6, 8, 6), P('volt', 8, 6, 10, 6), P('wire', 10, 6, 12, 6), P('gnd', 2, 10, 2, 11)],
     led: () => [P('dc', 2, 3, 2, 8, { V: 9 }), P('wire', 2, 3, 5, 3), P('res', 5, 3, 9, 3, { R: 390 }), P('wire', 9, 3, 12, 3), P('led', 12, 3, 12, 6, { color: 'red' }), P('amm', 12, 6, 12, 8), P('wire', 12, 8, 2, 8), P('gnd', 2, 8, 2, 9)],
+    solar: () => [P('dc', 2, 3, 2, 8, { V: 12, rint: 0.05 }), P('sw', 2, 3, 4, 3, { closed: true }), P('res', 4, 3, 7, 3, { R: 1.5 }), P('wire', 7, 3, 15, 3), P('lamp', 9, 3, 9, 8, { R: 28.8, Pr: 5 }), P('lamp', 12, 3, 12, 8, { R: 28.8, Pr: 5 }), P('lamp', 15, 3, 15, 8, { R: 28.8, Pr: 5 }), P('wire', 15, 8, 7, 8), P('amm', 7, 8, 4, 8), P('wire', 4, 8, 2, 8), P('gnd', 2, 8, 2, 9)],
     blank: () => [],
   };
   const PSCOPE = {
@@ -524,6 +706,7 @@
     rl: { ch1: ['I', 'L1'], ch2: ['V', 'L1'], vd1: 0.2, vd2: 5, tdiv: 0.02, po1: -2, po2: -2, trig: 2, lev: 1 },
     wheat: { ch1: ['V', 'R3'], ch2: ['V', 'M1'], vd1: 2, vd2: 0.1, tdiv: 1e-3 },
     led: { ch1: ['V', 'D1'], ch2: ['I', 'A1'], vd1: 1, vd2: 0.01, tdiv: 1e-3 },
+    solar: { ch1: ['V', 'X1'], ch2: ['I', 'A1'], vd1: 2, vd2: 0.5, tdiv: 1e-3, po1: -3, po2: -3 },
     blank: { ch1: null, ch2: null, vd1: 1, vd2: 1, tdiv: 1e-3 },
   };
   function loadPreset(name, quiet) {
@@ -1112,9 +1295,105 @@
     { q: 'A 230 V RMS mains supply has a peak voltage of about…', options: ['163 V', '230 V', '325 V', '460 V'], answer: 2, why: '$V_p = \\sqrt2 \\times 230 \\approx 325$ V.' },
   ]);
 
+/* ==DEMOPASS== */
+  /* ===================== WATCH DEMO + SCENARIOS + UNDO ===================== */
+  const METER = matchMedia('(max-width:760px)').matches ? '#csMeter' : '#props';
+  const byLab = l => els.find(e => e.label === l);
+  function setVal(l, k, v) { const e = byLab(l); if (!e) return; e[k] = v; paramChanged(e); if (k === 'closed' || k === 'rint') changed(); if (sel === e) renderProps(); }
+  function pick(l) { sel = byLab(l) || null; renderProps(); }
+  const SCK = ['ch1', 'ch2', 'vd1', 'vd2', 'po1', 'po2', 'tdiv', 'trig', 'lev'];
+  function snapCirc() { return { els: JSON.parse(JSON.stringify(els)), sel: sel ? sel.label : null, pre: $('#preset').value, sc: SCK.map(k => SC[k]) }; }
+  function loadSnap(s) {
+    els = JSON.parse(JSON.stringify(s.els)); uid = Math.max(0, ...els.map(e => e.id)) + 1; sel = s.sel ? els.find(e => e.label === s.sel) || null : null;
+    resetSim(); retopo(); SCK.forEach((k, i) => SC[k] = s.sc[i]); refreshScopeSignals(); SCK.forEach((k, i) => SC[k] = s.sc[i]); syncScopeUI(); renderProps(); $('#preset').value = s.pre; armScope();
+  }
+  const lampP = () => els.filter(e => e.type === 'lamp').map(e => e.v * e.i);
+  DemoKit.demo({
+    before: '.lab', stage: '#stage', capFixed: matchMedia('(max-width:520px)').matches, save: () => ({ c: snapCirc(), paused: SIM.paused, fit: fitOn }),
+    restore: s => { loadSnap(s.c); if (SIM.paused !== s.paused) $('#pause').click(); if (fitOn !== s.fit) $('#fitBtn').click(); undoBase(); },
+    onStart: () => { if (SIM.paused) $('#pause').click(); if (!fitOn) $('#fitBtn').click(); },
+    steps: [
+      { cap: 'A <b>solar home system</b>: a 12 V battery feeds three 5 W bulbs in parallel through a long, thin cable (R1 = 1.5 Ω, the cable\'s round-trip resistance). Moving dots show the current; wire colour shows voltage.', hl: '#stage',
+        run: async () => { loadPreset('solar', true); pick('X1'); }, ms: 5200 },
+      { cap: 'The meter on bulb X1 reads only about 10.3 V and 3.7 W. The cable wastes about 1.7 W as heat: look at the energy bar, where the resistor share is the cable.', hl: '#ebal', ms: 5200 },
+      { cap: 'Fit a thicker cable: R1 falls from 1.5 Ω to 0.2 Ω. The bulb voltage climbs towards 12 V and each bulb gets close to its rated 5 W.', hl: METER,
+        run: async A => { for (const r of [1.2, 0.9, 0.7, 0.5, 0.35, 0.2]) { setVal('R1', 'R', r); await A.sleep(450); } }, ms: 3000 },
+      { cap: 'Open the switch S1: the current is zero everywhere at the same instant. In a series loop one break stops the whole circuit.', hl: '#stage',
+        run: async A => { setVal('S1', 'closed', false); }, ms: 3800 },
+      { cap: 'An LED needs a series resistor. With only 47 Ω from 9 V the current would be about 150 mA, far beyond the 20 mA rating. Watch it burn out.', hl: '#stage',
+        run: async A => { loadPreset('led', true); setVal('R1', 'R', 47); pick('D1'); await A.until(() => byLab('D1') && byLab('D1').burnt, 4000); }, ms: 2600 },
+      { cap: 'Replace it and use 390 Ω instead: I = (9 − 1.9)/390 ≈ 18 mA, a bright but safe glow.', hl: METER,
+        run: async () => { setVal('R1', 'R', 390); const d = byLab('D1'); if (d) { d.burnt = false; d.hot = 0; d.vd = 0.6; changed(); } pick('D1'); }, ms: 4200 },
+      { cap: 'RC charging. When the switch closes, the capacitor voltage (yellow trace) rises as 1 − e<sup>−t/τ</sup> with τ = RC = 1 kΩ × 100 µF = 0.1 s: 63 % after two grid squares.', hl: '.scope',
+        run: async A => { loadPreset('rc', true); await A.sleep(700); setVal('S1', 'closed', true); }, ms: 6000 },
+      { cap: 'A low-pass filter at its cut-off f<sub>c</sub> = 1/(2πRC) = 1.59 kHz: the output (cyan) is 0.707 of the input and lags it by 45°.', hl: '.scope',
+        run: async () => { loadPreset('lowpass', true); }, ms: 4800 },
+      { cap: 'Raise the frequency to 8 kHz: the capacitor now shunts most of the signal to ground and the output shrinks to about 0.2 of the input. That is how a filter removes hiss.', hl: '.scope',
+        run: async A => { const v = byLab('V1'); for (const f of [2500, 4000, 6000, 8000]) { if (v) { v.f = f; paramChanged(v); } await A.sleep(500); } }, ms: 3600 },
+    ]
+  });
+
+  const lab = l => byLab(l) || {};
+  DemoKit.scenarios({
+    before: '.lab', mount: '#tabs', key: 'sl-circuits-scen',
+    list: [
+      { id: 'solar', where: 'Kitui · solar home system', title: 'Size the cable for a solar home system',
+        goal: 'Three 12 V, 5 W bulbs hang at the far end of a long, thin cable (R1 = 1.5 Ω round trip). They glow dimly. Choose the cable resistance so every bulb gets at least 90 % of its rating.',
+        success: 'the 12 V battery and all three bulbs connected, each bulb ≥ 4.5 W.',
+        hint: 'Each bulb needs at least √(4.5 × 28.8) ≈ 11.4 V. The three bulbs in parallel are 9.6 Ω, so the cable (plus the battery\'s 0.05 Ω) may drop at most 0.6 V: R1 below about 0.45 Ω. Select R1 and type 0.4.',
+        setup: () => { loadPreset('solar', true); pick('R1'); },
+        status: () => `Bulbs ${lampP().map(p => eng(p, 'W', 3)).join(' · ') || 'none'} · cable R1 ${eng(lab('R1').R || 0, 'Ω', 3)}`,
+        check: () => { const b = els.filter(e => e.type === 'dc'), L = els.filter(e => e.type === 'lamp'); return b.length === 1 && Math.abs(b[0].V - 12) < 1e-9 && L.length === 3 && L.every(e => Math.abs(e.R - 28.8) < 1e-6) && lampP().every(p => p >= 4.5) && SIM.t > 0.002; } },
+      { id: 'ind', where: 'Solar charge controller', title: 'Add a charge indicator LED',
+        goal: 'A green LED shows that the 12 V solar battery is connected. The 100 Ω resistor fitted at the factory is far too small. Pick a resistor so the LED runs at 8 to 12 mA.',
+        success: 'green LED, 12 V battery, LED current 8–12 mA and not burnt out.',
+        hint: 'R = (12 − 2.1)/0.010 ≈ 990 Ω. A standard 1 kΩ resistor gives about 9.9 mA. If the LED burns out, select it and press Replace LED.',
+        setup: () => { loadPreset('led', true); setVal('V1', 'V', 12); const d = byLab('D1'); if (d) { d.color = 'green'; paramChanged(d); } setVal('R1', 'R', 100); pick('R1'); },
+        status: () => { const d = els.find(e => e.type === 'led'); return d ? `${d.label}: ${d.burnt ? 'burnt out' : eng(d.i, 'A', 3)} · R1 ${eng(lab('R1').R || 0, 'Ω', 3)}` : 'No LED on the board'; },
+        check: () => els.some(e => e.type === 'dc' && Math.abs(e.V - 12) < 1e-9) && els.some(e => e.type === 'led' && e.color === 'green' && !e.burnt && e.i >= 0.008 && e.i <= 0.012) },
+      { id: 'mon', where: 'Solar kiosk · battery monitor', title: 'Let a 3.3 V microcontroller read a 12 V battery',
+        goal: 'A kiosk\'s microcontroller can only measure up to 3.3 V, but its battery is 12 V. Build a divider that gives 3.00 V at the voltmeter while drawing at most 0.1 mA, so the monitor does not drain the battery overnight.',
+        success: '12 V battery, voltmeter 3.00 ± 0.05 V, battery current ≤ 0.1 mA.',
+        hint: 'You need R2/(R1 + R2) = 3/12 = 0.25 and R1 + R2 ≥ 12 V / 0.1 mA = 120 kΩ. Try R1 = 90k and R2 = 30k.',
+        setup: () => { loadPreset('divider', true); setVal('V1', 'V', 12); pick('R1'); },
+        status: () => { const b = els.find(e => e.type === 'dc'), vm = els.find(e => e.type === 'volt'); return `Voltmeter ${vm ? eng(vm.v, 'V', 4) : '—'} · battery current ${b ? eng(Math.abs(b.i), 'A', 3) : '—'}`; },
+        check: () => { const b = els.filter(e => e.type === 'dc' && Math.abs(e.V - 12) < 1e-9 && !(e.rint > 0)); return b.length === 1 && els.some(e => e.type === 'volt' && Math.abs(e.v - 3) <= 0.05) && Math.abs(b[0].i) <= 1.005e-4 && SIM.t > 0.002; } },
+      { id: 'sub', where: 'Matatu sound system', title: 'Crossover for the subwoofer',
+        goal: 'The subwoofer amplifier should only receive bass. Set R1 and C1 of the RC low-pass filter so its cut-off frequency is 150 Hz.',
+        success: 'f<sub>c</sub> = 1/(2πR1C1) within 5 % of 150 Hz.',
+        hint: 'C = 1/(2π × 150 × R). With R1 = 1 kΩ that is about 1.06 µF; type 1.06u for C1. Then set the source to 150 Hz and check the output is 0.707 of the input.',
+        setup: () => { loadPreset('lowpass', true); pick('C1'); },
+        status: () => { const r = els.find(e => e.type === 'res'), c = els.find(e => e.type === 'cap'); return r && c ? `f<sub>c</sub> = ${eng(1 / (2 * Math.PI * r.R * c.C), 'Hz', 4)} (R1 ${eng(r.R, 'Ω')}, C1 ${eng(c.C, 'F')})` : 'Needs a resistor and a capacitor'; },
+        check: () => { const r = els.find(e => e.type === 'res'), c = els.find(e => e.type === 'cap'); if (!r || !c || !els.some(e => e.type === 'ac')) return false; return Math.abs(1 / (2 * Math.PI * r.R * c.C) - 150) <= 7.5; } },
+    ]
+  });
+
+  /* undo (Ctrl+Z), remembered preset, shortcuts */
+  const csig = () => JSON.stringify(els.map(e => [e.type, e.a, e.b, e.R, e.C, e.L, e.V, e.Vp, e.f, e.closed, e.color, e.rint, e.Pr, e.label, e.locked]));
+  const undoStack = []; let base = null, baseSig = '';
+  function undoBase() { base = snapCirc(); baseSig = csig(); }
+  setInterval(() => { if (DemoKit._demo && DemoKit._demo.running()) return; const s = csig(); if (s !== baseSig) { if (base) { undoStack.push(base); if (undoStack.length > 40) undoStack.shift(); } undoBase(); } }, 400);
+  function undo() { if (!undoStack.length) { SL.toast('Nothing to undo.', '', 1500); return; } const s = undoStack.pop(); loadSnap(s); undoBase(); SL.toast('Undone.', '', 1200); }
+  $('#preset').addEventListener('change', e => { try { localStorage.setItem('sl-circuits-preset', e.target.value); } catch (er) {} });
+  document.addEventListener('keydown', e => {
+    const t = e.target; if (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && t.type !== 'range' && t.type !== 'checkbox' || document.querySelector('.sl-tour')) return;
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); return; }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'f' || e.key === 'F') { e.preventDefault(); $('#fitBtn').click(); }
+    else if (e.key === ' ' && t.tagName !== 'BUTTON') { e.preventDefault(); $('#pause').click(); }
+  });
+  DemoKit.keys('<kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>F</kbd> fit · <kbd>Space</kbd> pause');
+  { // undo button in the phone strip and the palette
+    const u = document.createElement('button'); u.className = 'csb'; u.id = 'qUndo'; u.setAttribute('aria-label', 'Undo last change'); u.innerHTML = '<svg viewBox="0 0 34 18"><path d="M12 5 L7 9 L12 13 M7 9 H22 A5 5 0 0 1 22 19" stroke="currentColor" stroke-width="1.8" fill="none"/></svg>Undo'; u.onclick = undo; $('#qMore').before(u);
+    const p = document.createElement('button'); p.className = 'pbtn'; p.id = 'undoBtn'; p.title = 'Undo the last change (Ctrl+Z)'; p.innerHTML = '<svg class="sym" viewBox="0 0 34 18"><path d="M12 4 L7 8 L12 12 M7 8 H21 A5 4 0 0 1 21 16 H15" stroke="currentColor" stroke-width="1.8" fill="none"/></svg>Undo'; p.onclick = undo; $('#clrBtn').before(p);
+  }
+/* ==/DEMOPASS== */
   /* ---------------- init ---------------- */
-  setTool('select'); syncScopeUI(); loadPreset('lowpass', true);
+  setTool('select'); syncScopeUI();
+  { let pre = 'lowpass'; try { const v = localStorage.getItem('sl-circuits-preset'); if (v && PRESETS[v] && v !== 'blank') pre = v; } catch (e) {} loadPreset(pre, true); }
+  undoBase();
   const tour = () => SL.tour([
+    { el: '#dkPlay', title: 'Watch a demo first', text: 'A one-minute guided run: a solar home system, an LED that burns out, RC charging and a filter. Stop it any time with Esc.' },
     { el: '#stage', title: 'The breadboard', text: 'A live circuit simulator. Dots show current flowing; wire colour shows voltage. Tap a part to select it, drag to move it.' },
     { el: '#palette', title: 'Add parts', text: 'Pick a component, then drag across the board to place it. Wires join any two holes.' },
     { el: '#props', title: 'Properties and meter', text: 'Select a part to change its value and read its voltage, current and power.' },

@@ -316,6 +316,187 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=13"></script>
 <script>
+/* Watch-demo runner and goal-based scenarios (page-local kit) */
+(function () {
+  if (window.DemoKit) return;
+  const css = `
+  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
+  .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .dk-bar .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto}
+  .dk-bar .dk-keys kbd{font-size:.72rem}
+  .dk-goal{flex-basis:100%;display:none;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;padding:10px 12px}
+  .dk-goal.show{display:flex}
+  .dk-goal.won{border-color:#34d399;background:color-mix(in srgb,#34d399 10%,var(--panel))}
+  .dk-goal .ic{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+  .dk-goal.won .ic{color:#34d399;background:color-mix(in srgb,#34d399 18%,transparent)}
+  .dk-goal .tx{flex:1;min-width:0;font-size:.86rem;line-height:1.45}
+  .dk-goal .tx b{display:block;font-size:.92rem}
+  .dk-goal .st{display:block;margin-top:3px;font:500 .78rem var(--mono);color:var(--accent)}
+  .dk-goal.won .st{color:#34d399}
+  .dk-goal .hint{display:none;margin-top:4px;color:var(--muted)}
+  .dk-goal .hint.show{display:block}
+  .dk-goal .acts{display:flex;gap:6px;flex-wrap:wrap;flex:none}
+  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.93);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap.show{display:block}
+  .dk-cap.fixed{position:fixed;bottom:12px}
+  .dk-cap .row{display:flex;align-items:center;gap:8px}
+  .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
+  .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
+  .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
+  .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem;flex:none;width:auto;min-width:0}
+  .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
+  @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  .dk-scen{margin:18px 0 6px;scroll-margin-top:calc(var(--hdr,64px) + 10px)}
+  .dk-scen h3 .ct{margin-left:auto;font:500 .74rem var(--mono);color:var(--dim)}
+  .dk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:8px}
+  .dk-card{display:flex;flex-direction:column;gap:6px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+  .dk-card.on{border-color:var(--accent)}
+  .dk-card.done{border-color:color-mix(in srgb,#34d399 55%,var(--line))}
+  .dk-card .top{display:flex;align-items:center;gap:8px}
+  .dk-card .top b{flex:1;font-size:.93rem;line-height:1.3}
+  .dk-card .where{font:500 .7rem var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  .dk-card p{margin:0;font-size:.84rem;color:var(--muted);line-height:1.45;flex:1}
+  .dk-card .ok{color:#34d399;display:none}
+  .dk-card.done .ok{display:inline-flex}
+  .dk-card .ok svg{width:17px;height:17px}
+  .dk-card .btn{align-self:flex-start}
+  @media (max-width:520px){.dk-bar .dk-keys{display:none}.dk-cap{bottom:8px}.dk-cap .row{flex-wrap:wrap;row-gap:4px}.dk-cap .n{flex-basis:100%}.dk-cap p{font-size:.86rem}.dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}`;
+  const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+  const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+  const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
+
+  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  function bar(before) {
+    let b = document.querySelector('.dk-bar'); if (b) return b;
+    b = document.createElement('div'); b.className = 'dk-bar';
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
+  }
+
+  const DemoKit = { bar };
+  /** add page shortcuts to the hint, e.g. '<kbd>1</kbd>–<kbd>5</kbd> modes' */
+  DemoKit.keys = html => { const k = document.querySelector('.dk-keys'); if (k) k.innerHTML = html + ' · ' + k.innerHTML; };
+  /** demo({before, stage, steps:[{cap, run(api), ms, hl}], save(), restore(snap), onStop?}) */
+  DemoKit.demo = function (o) {
+    const b = bar(o.before), btn = b.querySelector('#dkPlay');
+    const stage = $(o.stage); if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
+    const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
+    (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let run = null; // {abort, stepMode, nextRes}
+    const D = { running: () => !!run };
+    function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
+    function hl(sel) { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); if (sel) { const e = $(sel); if (e) e.classList.add('dk-hl'); } }
+    const ABORT = { abort: true };
+    function api(r) {
+      const chk = () => { if (r.abort) throw ABORT; };
+      const sleep = ms => new Promise((res, rej) => { const t0 = performance.now(); const tick = () => { if (r.abort) return rej(ABORT); if (performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tick); }; tick(); });
+      const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+      return {
+        sleep, chk,
+        set(sel, v) { chk(); const el = $(sel); if (!el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; fire(el, 'input'); fire(el, 'change'); },
+        async slide(sel, to, ms) { const el = $(sel); if (!el) return; const a = +el.value, n = Math.max(1, Math.round((ms || 1200) / 60)); const stp = +el.step || 0; for (let i = 1; i <= n; i++) { chk(); let v = a + (to - a) * i / n; if (stp) v = Math.round(v / stp) * stp; el.value = v; fire(el, 'input'); await sleep((ms || 1200) / n); } el.value = to; fire(el, 'input'); fire(el, 'change'); },
+        click(sel) { chk(); const el = $(sel); if (el) el.click(); },
+        async until(fn, ms) { const t0 = performance.now(); while (!fn()) { if (performance.now() - t0 > (ms || 10000)) return false; await sleep(120); } return true; },
+        hl
+      };
+    }
+    async function start() {
+      if (run) return stop(true);
+      if (DemoKit._scen && DemoKit._scen.active()) DemoKit._scen.quit(true);
+      let snap = null; try { snap = o.save ? o.save() : null; } catch (e) {}
+      const r = run = { abort: false, stepMode: reduce, snap };
+      btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); setMode();
+      if (o.onStart) try { o.onStart(); } catch (e) {}
+      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
+      if (stage.getBoundingClientRect().top < 0 || stage.getBoundingClientRect().bottom > innerHeight) stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' });
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const st = steps[i]; if (r.abort) throw ABORT;
+          cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          if (st.run) await st.run(A);
+          if (r.abort) throw ABORT;
+          pg.style.width = ((i + 1) / steps.length * 100) + '%';
+          const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
+          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+          r.nextRes = null;
+        }
+        end(true);
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+    }
+    function end(restore, msg) {
+      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
+      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
+      if (o.onStop) try { o.onStop(); } catch (e) {}
+      SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+    }
+    function stop(restore) { end(restore !== false, restore === false ? null : 'Demo stopped. Your settings are back as they were.'); }
+    D.stop = stop; D.start = start;
+    btn.onclick = start;
+    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
+    // the student takes over: any trusted interaction with the lab outside the caption ends the demo where it is
+    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .dk-bar')) end(false); }, true);
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (run && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); stop(true); }
+      else if (run && e.key === 'ArrowRight' && run.nextRes) { e.preventDefault(); run.nextRes(); }
+      else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); start(); }
+    }, true);
+    DemoKit._demo = D; return D;
+  };
+
+  /** scenarios({before, mount, key, list:[{id, title, where, goal, success, hint, setup(), check()->bool, status()->html}], onQuit}) */
+  DemoKit.scenarios = function (o) {
+    const b = bar(o.before), goal = b.querySelector('#dkGoal');
+    const sec = document.createElement('section'); sec.className = 'panel dk-scen'; sec.id = 'dkScen';
+    let done = {}; try { done = JSON.parse(localStorage.getItem(o.key) || '{}') || {}; } catch (e) { done = {}; }
+    const save = () => { try { localStorage.setItem(o.key, JSON.stringify(done)); } catch (e) {} };
+    const ct = () => `${o.list.filter(s => done[s.id]).length}/${o.list.length} achieved`;
+    sec.innerHTML = `<h3><i data-lucide="map-pinned"></i> Scenarios: real-world goals <span class="ct"></span></h3><p class="small muted" style="margin:0">Each scenario sets up the lab, states the goal and checks it live. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
+    const m = $(o.mount); if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
+    let act = null, timer = 0;
+    function paint() { sec.querySelector('.ct').textContent = ct(); sec.querySelectorAll('.dk-card').forEach(c => { c.classList.toggle('done', !!done[c.dataset.id]); c.classList.toggle('on', !!act && act.s.id === c.dataset.id); const bt = c.querySelector('[data-go]'); bt.innerHTML = act && act.s.id === c.dataset.id ? '<i data-lucide="rotate-ccw"></i> Restart' : done[c.dataset.id] ? '<i data-lucide="repeat"></i> Play again' : '<i data-lucide="play"></i> Start'; }); icons(sec); }
+    function banner() {
+      if (!act) { goal.classList.remove('show', 'won'); goal.innerHTML = ''; return; }
+      const s = act.s; goal.classList.add('show'); goal.classList.toggle('won', act.won);
+      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the scenario up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
+      icons(goal); tick();
+    }
+    function tick() {
+      if (!act) return; const s = act.s; let st = '';
+      try { st = s.status ? s.status() : ''; } catch (e) {}
+      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
+    }
+    function startS(id) {
+      const s = o.list.find(x => x.id === id); if (!s) return;
+      if (DemoKit._demo && DemoKit._demo.running()) DemoKit._demo.stop(false);
+      if (act && act.s.quit) try { act.s.quit(); } catch (e) {}
+      act = { s, won: false, t0: performance.now() }; try { s.setup(); } catch (e) { console.warn(e); }
+      clearInterval(timer); timer = setInterval(tick, 300); paint(); banner();
+      const lab = o.scrollTo ? $(o.scrollTo) : b; if (lab) lab.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }
+    function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
+    sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
+    goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
+    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
+    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
+    paint();
+    const API = { active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
+    DemoKit._scen = API; return API;
+  };
+  window.DemoKit = DemoKit;
+})();
+</script>
+<script>
 (() => {
   /* ===================== DATA =====================
    [symbol, name, atomic weight, category, Pauling EN, covalent radius pm, IE1 kJ/mol, density g/cm3, mp K, bp K, year (0 = ancient)] */
@@ -974,11 +1155,90 @@
   /* ===================== INIT ===================== */
   newTarget(); baUpdate(); paint(); detail();
   document.addEventListener('visibilitychange', () => { trDirty = true; });
+/* ==DEMOPASS== */
+  /* ===================== WATCH DEMO + SCENARIOS ===================== */
+  const btn = sel => document.querySelector(sel);
+  const modeTo = m => { const b = btn(`#modeSeg [data-m="${m}"]`); if (b) b.click(); };
+  const viewTo = v => { const b = btn(`#viewSeg [data-v="${v}"]`); if (b) b.click(); };
+  const tempTo = T => { tIn.value = T; tIn.dispatchEvent(new Event('input')); };
+  const heatTo = p => { const s = btn('#heatProp'); s.value = p; s.dispatchEvent(new Event('change', { bubbles: true })); s.dispatchEvent(new Event('input', { bubbles: true })); };
+  const tabs = () => [...document.querySelectorAll('#mainTabs > .tablist > button')];
+  const BA_TAB = () => tabs().find(b => /Build an atom/.test(b.textContent));
+  const showCell = z => { const c = cellOf(z); if (c) c.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' }); };
+  const narrow = () => innerWidth <= 760;
+  const pick = (z, card) => { select(z); if (card && narrow()) document.getElementById('detail').scrollIntoView({ block: 'start', behavior: 'smooth' }); else showCell(z); };
+  const setBA = (p, n, e) => { ba.p = p; ba.n = n; ba.e = e; ba.fly = []; baUpdate(); };
+  async function pressBA(k, times, A) { for (let i = 0; i < times; i++) { btn(`[data-pm="${k},1"]`).click(); await A.sleep(70); } }
+  const pSave = () => ({ m: state.mode, prop: state.prop, T: state.T, sel: state.sel, v: (btn('#viewSeg .on') || {}).dataset?.v || 'bohr', list: grid.classList.contains('list'), ba: [ba.p, ba.n, ba.e], tab: tabs().findIndex(b => b.classList.contains('on')), y: scrollY });
+  function pLoad(o) { heatTo(o.prop); modeTo(o.m); tempTo(o.T); viewTo(o.v); ptView(o.list ? 'list' : 'table'); setBA(...o.ba); if (o.tab >= 0) tabs()[o.tab].click(); select(o.sel); }
+  DemoKit.demo({
+    before: '.lab', stage: '.pt-stage', capFixed: true, save: pSave, restore: pLoad,
+    steps: [
+      { cap: 'Every element in order of <b>atomic number Z</b>, the number of protons. Each row is a period (a new electron shell); each column is a group of elements with similar chemistry.', hl: '#grid',
+        run: async () => { modeTo('cat'); viewTo('bohr'); pick(1); if (narrow()) document.querySelector('.pt-stage').scrollIntoView({ block: 'start', behavior: 'smooth' }); }, ms: 5200 },
+      { cap: 'The fertiliser elements, starting with <b>nitrogen</b> (the N in NPK): Z = 7, shells 2, 5. Five outer electrons, so it forms three bonds, as in ammonia and urea.', hl: '#detail',
+        run: async () => { pick(7, true); }, ms: 4800 },
+      { cap: '<b>Phosphorus</b> (P) sits directly below nitrogen in group 15: shells 2, 8, 5. The same five outer electrons give it similar chemistry, such as the phosphate ion PO₄³⁻.', hl: '#detail',
+        run: async () => { pick(15, true); }, ms: 4600 },
+      { cap: '<b>Potassium</b> (K), group 1: shells 2, 8, 8, 1. That single outer electron is easily lost, so plants take potassium up as the K⁺ ion.', hl: '#detail',
+        run: async () => { pick(19, true); }, ms: 4600 },
+      { cap: 'Orbital boxes for nitrogen: 1s² 2s² 2p³. Hund\'s rule puts the three 2p electrons in separate boxes with parallel spins, so nitrogen has three unpaired electrons.', hl: '#viewSeg',
+        run: async () => { pick(7, true); viewTo('box'); }, ms: 5000 },
+      { cap: '<b>Electronegativity heatmap.</b> It rises across each period and falls down each group. Fluorine, top right, pulls hardest on shared electrons.', hl: '#modeSeg',
+        run: async () => { viewTo('bohr'); heatTo('en'); modeTo('heat'); pick(9); if (narrow()) document.querySelector('.pt-stage').scrollIntoView({ block: 'start', behavior: 'smooth' }); }, ms: 5200 },
+      { cap: '<b>State of matter</b> with the temperature slider. At 1,000 K aluminium has melted (933 K) while copper and iron are still solid: the idea behind melting scrap sufurias in a jua kali forge.', hl: '#tempRow',
+        run: async A => { modeTo('phase'); tempTo(298); if (narrow()) document.querySelector('.pt-stage').scrollIntoView({ block: 'start', behavior: 'smooth' }); await A.sleep(700); await A.slide('#temp', 1000, 2400); pick(13); }, ms: 2800 },
+      { cap: '<b>Build an atom</b>: 19 protons make potassium. Add 20 neutrons (potassium-39) and only 18 electrons, and you have the K⁺ ion that plant roots absorb.', hl: '.ba-wrap',
+        run: async A => { modeTo('cat'); tempTo(298); BA_TAB().click(); btn('.ba-wrap').scrollIntoView({ block: 'center', behavior: 'smooth' }); setBA(0, 0, 0); await A.sleep(600); await pressBA('p', 19, A); await pressBA('n', 20, A); await pressBA('e', 18, A); }, ms: 4200 },
+    ]
+  });
+
+  const seen = new Set();
+  const _select = select; select = z => { seen.add(z); _select(z); };
+  const S_NPK = [7, 15, 19];
+  DemoKit.scenarios({
+    before: '.lab', mount: '#mainTabs', key: 'sl-periodic-scen',
+    list: [
+      { id: 'npk', where: 'Agrovet · fertiliser bag', title: 'Find the N, P and K on the table',
+        goal: 'A bag of NPK 17:17:17 fertiliser names three nutrient elements. Find nitrogen, phosphorus and potassium on the table and open each one to read its shells.',
+        success: 'N, P and K each selected at least once.',
+        hint: 'Type the symbol in the search box and press Enter, or look in group 15 (N above P) and group 1 (K in period 4).',
+        setup: () => { seen.clear(); modeTo('cat'); pick(1); seen.clear(); },
+        status: () => S_NPK.map(z => `${E[z - 1].sym} ${seen.has(z) ? '✓' : '…'}`).join(' · '),
+        check: () => S_NPK.every(z => seen.has(z)) },
+      { id: 'kion', where: 'Soil science · plant nutrition', title: 'Build the potassium ion that roots absorb',
+        goal: 'Plants take up potassium as K⁺. In the Build an atom tab, build a potassium-39 ion: choose the right number of protons, neutrons and electrons.',
+        success: '19 protons, 20 neutrons, 18 electrons.',
+        hint: 'Protons decide the element (Z = 19). Mass number A = protons + neutrons = 39, so 20 neutrons. A charge of +1 means one electron fewer than protons.',
+        setup: () => { BA_TAB().click(); setBA(0, 0, 0); setTimeout(() => btn('.ba-wrap').scrollIntoView({ block: 'center', behavior: 'smooth' }), 400); },
+        status: () => `p ${ba.p} · n ${ba.n} · e ${ba.e} · charge ${ba.p - ba.e > 0 ? '+' : ''}${ba.p - ba.e}`,
+        check: () => ba.p === 19 && ba.n === 20 && ba.e === 18 },
+      { id: 'forge', where: 'Jua kali workshop · Kamukunji', title: 'Melt scrap aluminium, not the copper',
+        goal: 'A smith recycles old aluminium sufurias into new pots. Some scrap has copper wire in it, which must stay solid so it can be raked out. Choose a furnace temperature that does this, and select aluminium.',
+        success: 'Phase mode, aluminium liquid, copper still solid, aluminium selected.',
+        hint: 'Click aluminium and copper to read their melting points in the card (933 K and 1,358 K), then set the temperature between them in Phase mode.',
+        setup: () => { modeTo('phase'); tempTo(298); pick(29); },
+        status: () => `T = ${state.T} K · Al ${phase(E[12], state.T)} · Cu ${phase(E[28], state.T)}`,
+        check: () => state.mode === 'phase' && state.sel === 13 && phase(E[12], state.T) === 'liquid' && phase(E[28], state.T) === 'solid' },
+    ]
+  });
+  document.addEventListener('keydown', e => {
+    const t = e.target; if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && t.type !== 'range' && t.type !== 'checkbox' || document.querySelector('.sl-tour')) return;
+    const i = '1234'.indexOf(e.key); if (i >= 0 && e.key.length === 1) { e.preventDefault(); document.querySelectorAll('#modeSeg button')[i].click(); return; }
+    const k = e.key; if (state.sel && t.type !== 'range' && (k === 'ArrowRight' || k === 'ArrowLeft')) { e.preventDefault(); select(SL.clamp(state.sel + (k === 'ArrowRight' ? 1 : -1), 1, 118)); showCell(state.sel); }
+  });
+  DemoKit.keys('<kbd>1</kbd>–<kbd>4</kbd> colour modes · <kbd>←</kbd><kbd>→</kbd> previous/next element');
+  { // remember colour mode, heatmap property and the selected element
+    try { const v = JSON.parse(localStorage.getItem('sl-periodic-last') || 'null'); if (v) { if (v.prop) heatTo(v.prop); if (v.m) modeTo(v.m); if (v.sel >= 1 && v.sel <= 118) select(v.sel); } } catch (e) {}
+    setInterval(() => { if (DemoKit._demo.running()) return; try { localStorage.setItem('sl-periodic-last', JSON.stringify({ m: state.mode, prop: state.prop, sel: state.sel })); } catch (e) {} }, 1500);
+  }
+/* ==/DEMOPASS== */
   /* ---- guided tour ---- */
   {
     // jump (not smooth-scroll) to each target so the tip is placed against its final position
     const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
     const startTour = () => SL.tour(jump([
+      { el: '#dkPlay', title: 'Watch a demo first', text: 'A one-minute run-through: the NPK fertiliser elements, orbital boxes, an electronegativity heatmap, melting metals and building a K⁺ ion. Press Esc to stop it.' },
       { el: '#ptMainA', title: 'The periodic table', text: 'Tap any element for its configuration, atom model and properties. The f-block (La–Yb, Ac–No) sits in the two rows underneath.', before: () => { const a = document.getElementById('ptMainA'), g = grid.getBoundingClientRect(), last = cellOf(grid.classList.contains('list') ? 18 : 88).getBoundingClientRect(); a.style.height = Math.max(40, last.bottom - g.top + 2) + 'px'; } },
       { el: '#modeSeg', title: 'Colour by property', text: 'Colour the table by category, block or state of matter, or switch to a heatmap of a numeric property.' },
       { el: '#search', title: 'Find an element', text: 'Type a name, symbol or atomic number to highlight it.' },

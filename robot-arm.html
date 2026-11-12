@@ -61,13 +61,8 @@
   .grab{font:600 .82rem var(--mono)}
   @media (max-width:980px){#stage{height:520px}}
   .ctl[hidden],.toggle[hidden],[hidden]{display:none!important}
-  #stDemo{position:absolute;right:12px;top:52px;display:none;z-index:2;box-shadow:0 0 0 0 rgba(245,165,36,.6);animation:demoPulse 2s infinite}
-  #stDemo.show{display:inline-flex}
-  @keyframes demoPulse{0%{box-shadow:0 0 0 0 rgba(245,165,36,.55)}70%{box-shadow:0 0 0 12px rgba(245,165,36,0)}100%{box-shadow:0 0 0 0 rgba(245,165,36,0)}}
-  @media (prefers-reduced-motion:reduce){#stDemo{animation:none}}
   @media (max-width:520px){#stage{height:460px}.legend3d{display:none}
     .tbar{gap:5px}.tbar .btn.sm{padding:5px 8px;font-size:.72rem;min-height:34px;gap:4px}.tbar .btn svg{width:14px;height:14px}
-    #stDemo{top:56px;right:10px;font-size:.74rem}
     /* DH table: one card per joint */
     table.dh, table.dh tbody{display:block}
     table.dh tr:first-child{display:none}
@@ -103,7 +98,6 @@
           <button class="btn sm" id="bWork" title="Workspace"><i data-lucide="scatter-chart"></i><span>Workspace</span></button>
           <button class="btn sm on" id="bTrail" title="Tool trail"><i data-lucide="spline"></i><span>Trail</span></button>
         </div>
-        <button class="btn sm primary" id="stDemo"><i data-lucide="play"></i> Watch the robot do it</button>
       </div>
       <p class="small muted" style="margin:8px 2px 0" id="hint"><b>Start here:</b> in <b>Joints</b> mode move the joint sliders and watch where the tool ends up (forward kinematics). Then switch to <b>IK target</b> (inverse kinematics: you place the tool, the solver finds the joint angles) and drag the glowing target. Drag empty space to orbit the camera; scroll or pinch to zoom.</p>
       <div class="fkcap" id="fkCap" aria-live="polite"></div>
@@ -383,6 +377,187 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=13"></script>
+<script>
+/* Watch-demo runner and goal-based scenarios (page-local kit) */
+(function () {
+  if (window.DemoKit) return;
+  const css = `
+  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
+  .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .dk-bar .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto}
+  .dk-bar .dk-keys kbd{font-size:.72rem}
+  .dk-goal{flex-basis:100%;display:none;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;padding:10px 12px}
+  .dk-goal.show{display:flex}
+  .dk-goal.won{border-color:#34d399;background:color-mix(in srgb,#34d399 10%,var(--panel))}
+  .dk-goal .ic{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+  .dk-goal.won .ic{color:#34d399;background:color-mix(in srgb,#34d399 18%,transparent)}
+  .dk-goal .tx{flex:1;min-width:0;font-size:.86rem;line-height:1.45}
+  .dk-goal .tx b{display:block;font-size:.92rem}
+  .dk-goal .st{display:block;margin-top:3px;font:500 .78rem var(--mono);color:var(--accent)}
+  .dk-goal.won .st{color:#34d399}
+  .dk-goal .hint{display:none;margin-top:4px;color:var(--muted)}
+  .dk-goal .hint.show{display:block}
+  .dk-goal .acts{display:flex;gap:6px;flex-wrap:wrap;flex:none}
+  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.93);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap.show{display:block}
+  .dk-cap.fixed{position:fixed;bottom:12px}
+  .dk-cap .row{display:flex;align-items:center;gap:8px}
+  .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
+  .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
+  .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
+  .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem;flex:none;width:auto;min-width:0}
+  .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
+  @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  .dk-scen{margin:18px 0 6px;scroll-margin-top:calc(var(--hdr,64px) + 10px)}
+  .dk-scen h3 .ct{margin-left:auto;font:500 .74rem var(--mono);color:var(--dim)}
+  .dk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:8px}
+  .dk-card{display:flex;flex-direction:column;gap:6px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+  .dk-card.on{border-color:var(--accent)}
+  .dk-card.done{border-color:color-mix(in srgb,#34d399 55%,var(--line))}
+  .dk-card .top{display:flex;align-items:center;gap:8px}
+  .dk-card .top b{flex:1;font-size:.93rem;line-height:1.3}
+  .dk-card .where{font:500 .7rem var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  .dk-card p{margin:0;font-size:.84rem;color:var(--muted);line-height:1.45;flex:1}
+  .dk-card .ok{color:#34d399;display:none}
+  .dk-card.done .ok{display:inline-flex}
+  .dk-card .ok svg{width:17px;height:17px}
+  .dk-card .btn{align-self:flex-start}
+  @media (max-width:520px){.dk-bar .dk-keys{display:none}.dk-cap{bottom:8px}.dk-cap .row{flex-wrap:wrap;row-gap:4px}.dk-cap .n{flex-basis:100%}.dk-cap p{font-size:.86rem}.dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}`;
+  const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+  const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+  const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
+
+  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  function bar(before) {
+    let b = document.querySelector('.dk-bar'); if (b) return b;
+    b = document.createElement('div'); b.className = 'dk-bar';
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
+  }
+
+  const DemoKit = { bar };
+  /** add page shortcuts to the hint, e.g. '<kbd>1</kbd>–<kbd>5</kbd> modes' */
+  DemoKit.keys = html => { const k = document.querySelector('.dk-keys'); if (k) k.innerHTML = html + ' · ' + k.innerHTML; };
+  /** demo({before, stage, steps:[{cap, run(api), ms, hl}], save(), restore(snap), onStop?}) */
+  DemoKit.demo = function (o) {
+    const b = bar(o.before), btn = b.querySelector('#dkPlay');
+    const stage = $(o.stage); if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
+    const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
+    (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let run = null; // {abort, stepMode, nextRes}
+    const D = { running: () => !!run };
+    function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
+    function hl(sel) { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); if (sel) { const e = $(sel); if (e) e.classList.add('dk-hl'); } }
+    const ABORT = { abort: true };
+    function api(r) {
+      const chk = () => { if (r.abort) throw ABORT; };
+      const sleep = ms => new Promise((res, rej) => { const t0 = performance.now(); const tick = () => { if (r.abort) return rej(ABORT); if (performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tick); }; tick(); });
+      const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+      return {
+        sleep, chk,
+        set(sel, v) { chk(); const el = $(sel); if (!el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; fire(el, 'input'); fire(el, 'change'); },
+        async slide(sel, to, ms) { const el = $(sel); if (!el) return; const a = +el.value, n = Math.max(1, Math.round((ms || 1200) / 60)); const stp = +el.step || 0; for (let i = 1; i <= n; i++) { chk(); let v = a + (to - a) * i / n; if (stp) v = Math.round(v / stp) * stp; el.value = v; fire(el, 'input'); await sleep((ms || 1200) / n); } el.value = to; fire(el, 'input'); fire(el, 'change'); },
+        click(sel) { chk(); const el = $(sel); if (el) el.click(); },
+        async until(fn, ms) { const t0 = performance.now(); while (!fn()) { if (performance.now() - t0 > (ms || 10000)) return false; await sleep(120); } return true; },
+        hl
+      };
+    }
+    async function start() {
+      if (run) return stop(true);
+      if (DemoKit._scen && DemoKit._scen.active()) DemoKit._scen.quit(true);
+      let snap = null; try { snap = o.save ? o.save() : null; } catch (e) {}
+      const r = run = { abort: false, stepMode: reduce, snap };
+      btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); setMode();
+      if (o.onStart) try { o.onStart(); } catch (e) {}
+      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
+      if (stage.getBoundingClientRect().top < 0 || stage.getBoundingClientRect().bottom > innerHeight) stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' });
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const st = steps[i]; if (r.abort) throw ABORT;
+          cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          if (st.run) await st.run(A);
+          if (r.abort) throw ABORT;
+          pg.style.width = ((i + 1) / steps.length * 100) + '%';
+          const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
+          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+          r.nextRes = null;
+        }
+        end(true);
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+    }
+    function end(restore, msg) {
+      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
+      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
+      if (o.onStop) try { o.onStop(); } catch (e) {}
+      SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+    }
+    function stop(restore) { end(restore !== false, restore === false ? null : 'Demo stopped. Your settings are back as they were.'); }
+    D.stop = stop; D.start = start;
+    btn.onclick = start;
+    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
+    // the student takes over: any trusted interaction with the lab outside the caption ends the demo where it is
+    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .dk-bar')) end(false); }, true);
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (run && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); stop(true); }
+      else if (run && e.key === 'ArrowRight' && run.nextRes) { e.preventDefault(); run.nextRes(); }
+      else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); start(); }
+    }, true);
+    DemoKit._demo = D; return D;
+  };
+
+  /** scenarios({before, mount, key, list:[{id, title, where, goal, success, hint, setup(), check()->bool, status()->html}], onQuit}) */
+  DemoKit.scenarios = function (o) {
+    const b = bar(o.before), goal = b.querySelector('#dkGoal');
+    const sec = document.createElement('section'); sec.className = 'panel dk-scen'; sec.id = 'dkScen';
+    let done = {}; try { done = JSON.parse(localStorage.getItem(o.key) || '{}') || {}; } catch (e) { done = {}; }
+    const save = () => { try { localStorage.setItem(o.key, JSON.stringify(done)); } catch (e) {} };
+    const ct = () => `${o.list.filter(s => done[s.id]).length}/${o.list.length} achieved`;
+    sec.innerHTML = `<h3><i data-lucide="map-pinned"></i> Scenarios: real-world goals <span class="ct"></span></h3><p class="small muted" style="margin:0">Each scenario sets up the lab, states the goal and checks it live. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
+    const m = $(o.mount); if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
+    let act = null, timer = 0;
+    function paint() { sec.querySelector('.ct').textContent = ct(); sec.querySelectorAll('.dk-card').forEach(c => { c.classList.toggle('done', !!done[c.dataset.id]); c.classList.toggle('on', !!act && act.s.id === c.dataset.id); const bt = c.querySelector('[data-go]'); bt.innerHTML = act && act.s.id === c.dataset.id ? '<i data-lucide="rotate-ccw"></i> Restart' : done[c.dataset.id] ? '<i data-lucide="repeat"></i> Play again' : '<i data-lucide="play"></i> Start'; }); icons(sec); }
+    function banner() {
+      if (!act) { goal.classList.remove('show', 'won'); goal.innerHTML = ''; return; }
+      const s = act.s; goal.classList.add('show'); goal.classList.toggle('won', act.won);
+      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the scenario up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
+      icons(goal); tick();
+    }
+    function tick() {
+      if (!act) return; const s = act.s; let st = '';
+      try { st = s.status ? s.status() : ''; } catch (e) {}
+      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
+    }
+    function startS(id) {
+      const s = o.list.find(x => x.id === id); if (!s) return;
+      if (DemoKit._demo && DemoKit._demo.running()) DemoKit._demo.stop(false);
+      if (act && act.s.quit) try { act.s.quit(); } catch (e) {}
+      act = { s, won: false, t0: performance.now() }; try { s.setup(); } catch (e) { console.warn(e); }
+      clearInterval(timer); timer = setInterval(tick, 300); paint(); banner();
+      const lab = o.scrollTo ? $(o.scrollTo) : b; if (lab) lab.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }
+    function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
+    sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
+    goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
+    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
+    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
+    paint();
+    const API = { active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
+    DemoKit._scen = API; return API;
+  };
+  window.DemoKit = DemoKit;
+})();
+</script>
 <script>
 (() => {
   const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
@@ -967,7 +1142,6 @@
       : 'Drag to orbit the camera, scroll or pinch to zoom. Move the joint sliders or type into the DH table.';
     if (m === 'traj') planTraj();
     cv.classList.toggle('tgt', m === 'ik');
-    $('#stDemo').classList.toggle('show', m === 'pick');
   }
   $('#robSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setRobot(b.dataset.r); });
   $('#modeSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; stopMotion(); S.mode = b.dataset.m; if (S.mode === 'ik' || S.mode === 'pick') { S.target = [...K.tip]; syncTaskSliders(); } if (S.mode === 'pick') newLayout(); updateModeUI(); refresh(true); });
@@ -1114,7 +1288,6 @@
   $('#bNew').onclick = () => { S.autoUsed = false; newLayout(); };
   document.addEventListener('keydown', e => { if ((e.key === 'g' || e.key === 'G') && !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) toggleGrip(); });
   SL.bind('#pickIK', v => { S.pickIK = v; if (!ready) return; if (v && K) { S.target = [...K.tip]; syncTaskSliders(); } updateModeUI(); });
-  $('#stDemo').onclick = () => $('#bAuto').click();
   $('#bAuto').onclick = () => {
     stopMotion(); S.autoUsed = true;
     for (let attempt = 0; attempt < 8; attempt++) {
@@ -1303,13 +1476,92 @@
   /* ================================== init ==================================== */
   function init() {
     ready = true;
-    setRobot('rr');
+    { let k = 'rr'; try { const v = localStorage.getItem('sl-robot-key'); if (v && ROBOTS[v]) k = v; } catch (e) {} setRobot(k); }
     SL.quiz('#quiz', QUIZ); renderChal(); chalReady = true;
     const lp = SL.loop(frame).start();
     let onScreen = true; const sync = () => (document.hidden || !onScreen) ? lp.stop() : lp.start();
     document.addEventListener('visibilitychange', sync);
     if ('IntersectionObserver' in window) (() => { const vis = new Set(), io = new IntersectionObserver(es => { es.forEach(e => e.isIntersecting ? vis.add(e.target) : vis.delete(e.target)); onScreen = vis.size > 0; sync(); }, { rootMargin: '300px' }); document.querySelectorAll('.lab, main canvas').forEach(el => { if (!el.closest('.tabs')) io.observe(el); }); })();
+/* ==DEMOPASS== */
+    /* ===================== WATCH DEMO + SCENARIOS ===================== */
+    const mode = m => { const b = $(`#modeSeg [data-m="${m}"]`); if (b && S.mode !== m) b.click(); };
+    const robot = k => { if (S.key !== k) setRobot(k); };
+    const elbow = e => { const b = $(`#elbowSeg [data-e="${e}"]`); if (b) b.click(); };
+    const setTgt = (x, y) => { S.target = [x, y, S.target[2]]; S.dirty = true; };
+    const relW = () => K ? K.w / S.wMax : 0;
+    const rSave = () => ({ key: S.key, q: [...S.q], mode: S.mode, elbow: S.elbow, ik: S.ikMethod, pickIK: S.pickIK, work: S.work, frames: S.frames, trail: S.trail, interp: S.interp, scaling: S.scaling });
+    function rLoad(o) {
+      stopMotion(); robot(o.key); mode(o.mode); elbow(o.elbow);
+      if (S.work !== o.work) $('#bWork').click(); if (S.frames !== o.frames) $('#bFrames').click(); if (S.trail !== o.trail) $('#bTrail').click();
+      S.q = [...o.q]; afterQ(true);
+    }
+    // the pick-and-place routine is the last part of the full demo; in Pick & place mode it remains a one-click helper
+    $('#bAuto').innerHTML = '<i data-lucide="wand-sparkles"></i> Let the robot do it'; SL.refreshIcons($('#bAuto'));
+    $('#bAuto').title = 'The robot plans IK waypoints and runs joint-space quintic moves to deliver the block';
+    DemoKit.demo({
+      before: '.lab', stage: '#stage', save: rSave, restore: rLoad,
+      steps: [
+        { cap: 'A <b>2R arm</b>, the simplest robot on a car assembly line. In Joints mode you set the angles and the arm works out where the tool goes: <b>forward kinematics</b>.', hl: '#joints',
+          run: async A => { robot('rr'); mode('fk'); S.q = [30, 45]; afterQ(true); await A.sleep(600); for (let i = 0; i <= 24; i++) { S.q[0] = 30 + 60 * i / 24; S.q[1] = 45 - 30 * i / 24; afterQ(true); await A.sleep(70); } }, ms: 3400 },
+        { cap: 'The coloured cloud is its <b>workspace</b>: a ring between |a₁ − a₂| = 0.1 m and a₁ + a₂ = 0.7 m. Warm colours are where the arm is most nimble.', hl: '#bWork',
+          run: async () => { if (!S.work) $('#bWork').click(); }, ms: 4600 },
+        { cap: 'Now <b>inverse kinematics</b>: we choose where the tool must go (the glowing target), and the solver finds the joint angles. Here the welding tip traces a seam.', hl: '#stage',
+          run: async A => { if (S.work) $('#bWork').click(); mode('ik'); elbow('down'); for (let i = 0; i <= 40; i++) { const a = i / 40 * Math.PI * 2; setTgt(0.42 + 0.12 * Math.cos(a), 0.18 + 0.12 * Math.sin(a)); await A.sleep(70); } }, ms: 1800 },
+        { cap: 'Every reachable point has two solutions: elbow down and elbow up. Same tool position, different joint angles. Robots pick the one that avoids the car body.', hl: '#elbowSeg',
+          run: async A => { setTgt(0.45, 0.25); await A.sleep(900); elbow('up'); await A.sleep(1600); elbow('down'); }, ms: 2600 },
+        { cap: 'Stretch the target to the edge of the workspace. The arm straightens, θ₂ → 0 and <b>manipulability</b> falls towards zero: a <b>singularity</b>, where the tool cannot move outwards at all.', hl: '#hW',
+          run: async A => { for (let i = 0; i <= 20; i++) { const r = 0.5 + 0.199 * i / 20; setTgt(r * Math.cos(0.5), r * Math.sin(0.5)); await A.sleep(90); } }, ms: 3600 },
+        { cap: 'On the line a <b>6-axis robot</b> moves parts between stations. The planner solves IK at each waypoint (approach, grip, lift, carry, release) and joins them with smooth quintic moves.', hl: '#pPick',
+          run: async A => { robot('puma'); if (!S.pickIK) $('#pickIK').click(); mode('pick'); await A.sleep(700); $('#bAuto').click(); await A.until(() => S.pickDone || !S.seq, 12000); }, ms: 2600 },
+      ]
+    });
+
+    let trajRan = false, wasPlaying = false, scenT = 0;
+    setInterval(() => { if (S.playing) wasPlaying = true; else if (wasPlaying) { wasPlaying = false; trajRan = { interp: S.interp, scaling: S.scaling, key: S.key }; } }, 100);
+    const tip = () => K ? K.tip : [0, 0, 0];
+    DemoKit.scenarios({
+      before: '.lab', mount: '.tabs[data-tabs]', key: 'sl-robot-scen',
+      list: [
+        { id: 'weld', where: 'Thika · car assembly line', title: 'Reach the spot weld from below',
+          goal: 'A 2R welding arm must touch a weld point at x = 0.50 m, y = 0.30 m on a door frame. The frame hangs above the arm, so the elbow must stay down (θ₂ > 0) to keep clear of it.',
+          success: 'tool within 5 mm of (0.50, 0.30) m with the 2R arm, elbow down.',
+          hint: 'Use IK target mode: drag the target until the readouts show x = 0.50 and y = 0.30, or click the table there. Keep the Elbow down button selected.',
+          setup: () => { stopMotion(); robot('rr'); mode('ik'); elbow('up'); setTgt(0.25, -0.2); },
+          status: () => `Tool at (${SL.fmt(tip()[0], 3)}, ${SL.fmt(tip()[1], 3)}) m · θ₂ = ${SL.fmt(S.q[1] || 0, 1)}° · ${S.q[1] > 0 ? 'elbow down' : 'elbow up'}`,
+          check: () => S.key === 'rr' && Math.hypot(tip()[0] - 0.5, tip()[1] - 0.3) <= 0.005 && S.q[1] > 0 },
+        { id: 'nimble', where: 'Torque-wrench station', title: 'Find the most nimble pose',
+          goal: 'A nut-runner on the 2R arm must be able to move equally well in every direction when the next car arrives. Put the arm in the pose of greatest manipulability.',
+          success: 'manipulability ≥ 99 % of the maximum.',
+          hint: 'For a 2R arm, w = a₁a₂|sin θ₂|, which is largest when the elbow is at a right angle. Set θ₂ = ±90° in Joints mode; θ₁ does not matter.',
+          setup: () => { stopMotion(); robot('rr'); mode('fk'); S.q = [20, 15]; afterQ(true); },
+          status: () => `Manipulability ${SL.fmt(relW() * 100, 1)} % · θ₂ = ${SL.fmt(S.q[1] || 0, 1)}°`,
+          check: () => S.key === 'rr' && relW() >= 0.99 },
+        { id: 'glue', where: 'Windscreen glue station', title: 'Lay a straight, smooth glue bead',
+          goal: 'Glue must be laid along a straight edge of the windscreen, and the nozzle must not jerk at the start or end or the bead smears. Plan and run a move that does both.',
+          success: 'a trajectory run with a Cartesian straight line and quintic time scaling.',
+          hint: 'In Trajectory mode choose Cartesian line (straight path for the tool) and Quintic (zero velocity and acceleration at both ends), then press Run A → B.',
+          setup: () => { stopMotion(); robot('rrr'); mode('traj'); $('#interpSeg [data-i="joint"]').click(); $('#scaleSeg [data-s="cubic"]').click(); trajRan = false; },
+          status: () => `${S.interp === 'cart' ? 'Cartesian line' : 'joint space'} · ${S.scaling} · ${S.playing ? 'running…' : trajRan ? 'last run: ' + trajRan.interp + ', ' + trajRan.scaling : 'not run yet'}`,
+          check: () => trajRan && trajRan.interp === 'cart' && trajRan.scaling === 'quintic' },
+        { id: 'scara', where: 'Electronics line · Nairobi', title: 'Move a part with the SCARA by hand',
+          goal: 'A SCARA robot loads small parts onto a circuit board. Drive it yourself: grip the block and drop it in the bin.',
+          success: 'block delivered with the SCARA, by you (not by the automatic planner).',
+          hint: 'With Drive with IK target on, drag the target over the block, lower it with the Target height slider until the block glows green, press Grip (G), lift, carry it over the bin and Release.',
+          setup: () => { stopMotion(); robot('scara'); if (!S.pickIK) $('#pickIK').click(); mode('pick'); scenT = performance.now(); S.lastPick = null; },
+          status: () => S.pickDone ? 'Delivered' : S.held ? 'Holding the block: carry it to the bin' : 'Reach the block and grip',
+          check: () => S.key === 'scara' && S.lastPick && !S.lastPick.auto && S.lastPick.key === 'scara' },
+      ]
+    });
+    document.addEventListener('keydown', e => {
+      const t = e.target; if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && t.type !== 'range' && t.type !== 'checkbox' || document.querySelector('.sl-tour')) return;
+      const i = '1234'.indexOf(e.key); if (i >= 0 && e.key.length === 1) { e.preventDefault(); $$('#modeSeg button')[i].click(); }
+      else if (e.key === 'h' || e.key === 'H') { e.preventDefault(); $('#bHome').click(); }
+    });
+    DemoKit.keys('<kbd>1</kbd>–<kbd>4</kbd> modes · <kbd>H</kbd> home · <kbd>G</kbd> grip');
+    $('#robSeg').addEventListener('click', () => { try { localStorage.setItem('sl-robot-key', S.key); } catch (e) {} });
+/* ==/DEMOPASS== */
     SL.tour([
+      { el: '#dkPlay', title: 'Watch a demo first', text: 'A one-minute run-through: forward and inverse kinematics, the workspace, a singularity and a 6-axis pick-and-place. Press Esc to stop it.' },
       { el: '#stage', title: 'The robot', text: 'A live 3D serial arm. Drag empty space to orbit and pinch or scroll to zoom. The coloured axes are each joint\'s DH frame.' },
       { el: '#robSeg', title: 'Choose a robot', text: 'Switch between a 2R and 3R planar arm, a SCARA and a 6-DOF elbow arm. Each has its own DH table and workspace.' },
       { el: '#joints', title: 'Forward kinematics', text: 'Move a joint slider and watch the tool and its coordinates follow. Joint angles in, tool position out.', before: () => $('#modeSeg [data-m=fk]').click() },
