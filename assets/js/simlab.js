@@ -136,7 +136,7 @@
       <div class="cols">
         <div><a class="sl-logo" href="index.html" style="padding:0"><span class="mark">${LOGO}</span><span><b class="pw">PENTARCH</b> SimLab<small>Learn by doing</small></span></a>
           <p class="muted small" style="margin-top:14px;max-width:330px">Interactive simulations for university and college students. Experiment, build, break things and understand why. A learning platform by Pentarch Communications.</p>
-          <a href="${PARENT}" style="display:inline-flex;align-items:center;gap:6px">${icon('arrow-up-left')} pentarchcommunications.com</a></div>
+          <a href="${PARENT}" style="display:inline-flex;align-items:center;gap:6px">${icon('arrow-up-left')} pentarchcommunications.com</a><button class="btn sm" id="slOffline" hidden style="margin-top:14px">${icon('download')} Save all labs for offline use</button><div class="small muted" id="slOfflineMsg" style="margin-top:6px"></div></div>
         ${cols.map(([t, k]) => `<div><h5>${t}</h5>${MODULES.filter(m => groups[k].includes(m.dept)).slice(0, 9).map(m => `<a href="${m.id}.html">${m.title}</a>`).join('')}</div>`).join('')}
       </div>
       <div class="base"><span>© ${new Date().getFullYear()} Pentarch Communications · Pentarch SimLab</span><span>Simulations are simplified models for learning. Always follow your institution’s lab and safety procedures.</span></div>
@@ -328,6 +328,29 @@
     show();
   }
 
+  /* ---------------- Offline support (service worker) ---------------- */
+  function offline() {
+    if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+    const b = document.getElementById('slOffline'), msg = document.getElementById('slOfflineMsg'); if (!b) return;
+    b.hidden = false;
+    let saved = false; try { saved = !!localStorage.getItem('sl-offline-saved'); } catch (e) {}
+    if (saved) msg.textContent = 'All labs are saved on this device. They work without internet.';
+    else msg.textContent = 'About 6 MB, once. Labs you open are also kept for offline use automatically.';
+    b.onclick = async () => {
+      const reg = await navigator.serviceWorker.ready; if (!reg.active) return;
+      const urls = ['index.html', ...MODULES.map(m => m.id + '.html'), ...MODULES.map(m => 'assets/thumbs/' + m.id + '.webp')];
+      b.disabled = true; msg.textContent = 'Saving… 0%';
+      navigator.serviceWorker.addEventListener('message', e => {
+        if (e.data && e.data.type === 'save-progress') {
+          msg.textContent = `Saving… ${Math.round(e.data.done / e.data.total * 100)}%`;
+          if (e.data.done === e.data.total) { msg.textContent = 'Done. All labs now work without internet on this device.'; b.disabled = false; try { localStorage.setItem('sl-offline-saved', '1'); } catch (er) {} toast('All labs saved for offline use.', 'ok'); }
+        }
+      });
+      reg.active.postMessage({ type: 'save-all', urls });
+    };
+  }
+
   /* ---------------- Mount ---------------- */
   function mount() {
     const page = document.body.dataset.page;
@@ -374,6 +397,7 @@
     renderMath();
     setTimeout(decorateProgress, 60);
     setTimeout(stickyStages, 900);
+    offline();
     document.dispatchEvent(new CustomEvent('sl:ready'));
   }
 
