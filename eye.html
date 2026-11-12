@@ -150,6 +150,28 @@
   .ck-flag{display:inline-block;padding:3px 9px;border-radius:99px;font-size:.78rem;font-weight:600;margin:0 4px 4px 0}
   .ck-flag.g{background:rgba(34,197,94,.16);color:#86efac} .ck-flag.y{background:rgba(245,158,11,.16);color:#fcd34d} .ck-flag.r{background:rgba(239,68,68,.16);color:#fca5a5}
   @media (max-width:560px){.ck-cases,.ck-osce,.ck-drill,.ck-calc{padding:11px}.ck-fields{grid-template-columns:1fr 1fr}.ck-dans input{width:110px}}
+  /* ---- demo kit: Watch demo bar, captions, Cases & OSCE links, shortcut hints ---- */
+  .dk-bar{scroll-margin-top:calc(var(--hdr,68px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;font-weight:700;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
+  .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .dk-bar .dk-len{font:500 .72rem var(--mono);color:var(--dim)}
+  .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto;line-height:1.9}
+  .dk-keys kbd{font-size:.72rem}
+  .sec-head .dk-cases{flex:none;align-self:flex-end}
+  .dk-cap{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:360;width:min(660px,calc(100% - 20px));background:rgba(5,9,19,.95);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap.show{display:block}
+  .dk-cap .row{display:flex;align-items:center;gap:8px}
+  .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
+  .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
+  .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
+  .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem}
+  .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
+  @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  body.dk-running{padding-bottom:150px}
+  @media (max-width:560px){.dk-cap .row{flex-wrap:wrap;row-gap:4px}.dk-cap .n{flex-basis:100%}.dk-keys{display:none}.dk-cap{bottom:8px;padding:8px 10px 7px}.dk-cap p{font-size:.85rem;margin:4px 0 6px}.sec-head .dk-cases{align-self:flex-start}}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}
 
   #eyeAtlas{--ar:1.5625}
   .opt-stage{height:520px}
@@ -863,6 +885,126 @@ window.CK = (() => {
   return { cases, osce, drill, calc, shuffle };
 })();
 
+/* ---- Demo kit: "Watch demo" runner, Cases & OSCE links, keyboard shortcuts, remembered settings ---- */
+window.DK = (() => {
+  const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
+  const icons = el => { try { SL.refreshIcons(el); } catch (e) {} };
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+  const blocked = () => !!document.querySelector('.sl-tour, .modal.show');
+  const reduce = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
+  const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+  const K = {}; let bar = null, D = null, casesSel = '#tabClin';
+  const hint = [];
+
+  /* jump to the Clinical tab (cases and OSCE stations) */
+  function goCases() {
+    const t = $(casesSel); if (!t) return; t.click();
+    const tabs = t.closest('.tabs') || t, hdr = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hdr')) || 68) + 10;
+    const go = sm => scrollTo({ top: tabs.getBoundingClientRect().top + scrollY - hdr, behavior: sm && !reduce() ? 'smooth' : 'auto' });
+    go(true); setTimeout(() => { try { t.focus({ preventScroll: true }); } catch (e) {} if (Math.abs(tabs.getBoundingClientRect().top - hdr) > 24) go(true); }, 900);
+  }
+  /** init({before, cases, len}): bar with Watch demo + Cases & OSCE above the first stage, plus a Cases & OSCE link beside every lab heading */
+  function init(o) {
+    casesSel = o.cases || casesSel;
+    bar = document.createElement('div'); bar.className = 'dk-bar';
+    bar.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch a captioned run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><span class="dk-len">${o.len || '≈ 45 s'}</span><button class="btn sm" id="dkCases" title="Clinical cases and timed OSCE stations (C)"><i data-lucide="stethoscope"></i> Cases &amp; OSCE</button><span class="dk-keys"></span>`;
+    const ref = $(o.before); ref.parentNode.insertBefore(bar, ref);
+    bar.querySelector('#dkCases').onclick = goCases;
+    document.querySelectorAll('.sec-head').forEach((h, i) => { if (!i || h.querySelector('.dk-cases')) return; const b = document.createElement('button'); b.className = 'btn sm ghost dk-cases'; b.title = 'Jump to the clinical cases and OSCE stations (C)'; b.innerHTML = '<i data-lucide="stethoscope"></i> Cases &amp; OSCE'; b.onclick = goCases; h.appendChild(b); });
+    icons(document); key('c', 'Cases &amp; OSCE', goCases, true); key('d', 'demo', () => D && D.start(), true);
+    return bar;
+  }
+  /** key(k, label, fn, front): register a single-key shortcut and list it in the hint */
+  function key(k, label, fn, front) { K[k] = fn; if (label) hint[front ? 'unshift' : 'push']([k, label]); paintKeys(); }
+  function paintKeys() { const el = bar && bar.querySelector('.dk-keys'); if (!el) return; el.innerHTML = hint.map(([k, l]) => `<kbd>${k === ' ' ? 'Space' : k.toUpperCase()}</kbd> ${l}`).join(' · ') + ' · <kbd>Esc</kbd> stop'; }
+  document.addEventListener('keydown', e => {
+    if (typing(e) || e.ctrlKey || e.metaKey || e.altKey || blocked()) return;
+    if (D && D.running()) { if (e.key === 'Escape') { e.preventDefault(); D.stop(true); return; } if (e.key === 'ArrowRight') { e.preventDefault(); D.next(); return; } }
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, f = K[k]; if (!f) return;
+    if (k === ' ' && e.target.closest && e.target.closest('button, a, summary, [role=button]')) return;
+    e.preventDefault(); f(e);
+  });
+  /** atlasKeys(atlas, {labels, test, back}): L labels, T test yourself, Z zoom out */
+  function atlasKeys(o) {
+    if (o.labels) key('l', 'labels', () => { const c = $(o.labels); if (c) c.click(); });
+    if (o.test) key('t', 'test yourself', () => { const b = $(o.test); if (b) { b.click(); b.scrollIntoView({ block: 'nearest' }); } });
+    if (o.back) key('z', 'zoom out', () => { const b = $(o.back); if (b) b.click(); });
+  }
+  /** remember(page, [selectors]): keep these controls' last values in this browser */
+  function remember(page, sels) {
+    const k = 'sl-anat-' + page; let s = {}; try { s = JSON.parse(localStorage.getItem(k) || '{}') || {}; } catch (e) { s = {}; }
+    sels.forEach(sel => { const el = $(sel); if (!el) return;
+      if (sel in s) { if (el.type === 'checkbox') { if (el.checked !== !!s[sel]) { el.checked = !!s[sel]; fire(el, 'change'); } } else if (String(el.value) !== String(s[sel])) { el.value = s[sel]; fire(el, 'input'); fire(el, 'change'); } }
+      el.addEventListener('change', () => { if (D && D.running()) return; s[sel] = el.type === 'checkbox' ? el.checked : el.value; try { localStorage.setItem(k, JSON.stringify(s)); } catch (e) {} }); });
+  }
+
+  /** demo({steps:[{stage, cap, run(A), ms, hl}], save(), restore(snap), onStop(), takeover}) */
+  function demo(o) {
+    const btn = bar.querySelector('#dkPlay');
+    const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
+    document.body.appendChild(cap); icons(cap);
+    let run = null; const ABORT = { abort: true };
+    const setMode = () => { cap.querySelector('[data-a=mode]').textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; };
+    const hl = sel => { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); [].concat(sel || []).forEach(s => { const e = $(s); if (e) e.classList.add('dk-hl'); }); };
+    // scroll so the element sits in the space between the sticky header and the caption
+    const show = (sel, block) => { const e = $(typeof sel === 'function' ? sel() : sel); if (!e) return; const r = e.getBoundingClientRect(); if (!r.height) return; const hdr = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hdr')) || 68) + 6, bot = innerHeight - (cap.offsetHeight || 120) - 16, avail = bot - hdr;
+      if (r.top >= hdr - 2 && r.bottom <= bot + 2) return;
+      const dy = r.height <= avail ? r.top - hdr - (avail - r.height) / 2 : block === 'end' ? r.bottom - bot : r.top - hdr;
+      scrollTo({ top: scrollY + dy, behavior: reduce() ? 'auto' : 'smooth' }); };
+    function api(r) {
+      const chk = () => { if (r.abort) throw ABORT; };
+      const sleep = ms => new Promise((res, rej) => { const t0 = performance.now(); const tk = () => { if (r.abort) return rej(ABORT); if (performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+      return { sleep, chk, hl, show,
+        set(sel, v) { chk(); const el = $(sel); if (!el) return; if (el.type === 'checkbox') { if (el.checked === !!v) return; el.checked = !!v; } else el.value = v; fire(el, 'input'); fire(el, 'change'); },
+        async slide(sel, to, ms) { const el = $(sel); if (!el) return; ms = reduce() ? 0 : (ms || 1200); const a = +el.value, stp = +el.step || 0, t0 = performance.now();
+          while (ms) { chk(); const f = Math.min(1, (performance.now() - t0) / ms); let v = a + (to - a) * f; if (stp) v = Math.round(v / stp) * stp; if (+el.value !== v) { el.value = v; fire(el, 'input'); } if (f >= 1) break; await sleep(40); }
+          chk(); el.value = to; fire(el, 'input'); fire(el, 'change'); },
+        click(sel) { chk(); const el = $(sel); if (el) el.click(); },
+        async until(fn, ms) { const t0 = performance.now(); while (!fn()) { chk(); if (performance.now() - t0 > (ms || 10000)) return false; await sleep(40); } return true; } };
+    }
+    async function start() {
+      if (run) return stop(true);
+      document.querySelectorAll('.sl-tour').forEach(x => x.remove());
+      let snap = null; try { snap = o.save ? o.save() : null; } catch (e) { console.warn(e); }
+      const r = run = { abort: false, stepMode: reduce(), snap };
+      btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); document.body.classList.add('dk-running'); setMode();
+      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const st = steps[i]; if (r.abort) throw ABORT;
+          cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
+          cap.querySelector('p').innerHTML = st.cap; pg.style.width = (i / steps.length * 100) + '%';
+          if (st.stage) show(st.stage, st.block);
+          hl(st.hl);
+          if (st.run) { await st.run(A); if (r.abort) throw ABORT; if (st.stage) show(st.stage, st.block); }
+          if (st.after) cap.querySelector('p').innerHTML = st.after;
+          pg.style.width = ((i + 1) / steps.length * 100) + '%';
+          const ms = st.ms == null ? 3500 : st.ms, t0 = performance.now();
+          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+          r.nextRes = null;
+        }
+        end(true, 'Demo finished. Your settings are back as they were.');
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+    }
+    function end(restore, msg) {
+      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
+      cap.classList.remove('show'); document.body.classList.remove('dk-running'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
+      if (o.onStop) try { o.onStop(restore); } catch (e) {}
+      SL.toast(msg || (restore ? 'Demo stopped. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+    }
+    const stop = restore => end(restore !== false);
+    btn.onclick = start;
+    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') D.next(); else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
+    // the student takes over: a real tap on a lab (outside the caption) ends the demo where it is
+    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .atl-stage, .jgrid, .tabs')) end(false); }, true);
+    D = { running: () => !!run, start, stop, next: () => { if (run && run.nextRes) run.nextRes(); } };
+    return D;
+  }
+  return { init, key, atlasKeys, remember, demo, goCases, get running() { return !!(D && D.running()); } };
+})();
+
 </script>
 <script>
 (() => {
@@ -882,7 +1024,7 @@ window.CK = (() => {
   ];
   const doneSet = new Set();
   $('#chalList').innerHTML = CH.map(([k, t]) => `<div class="chal" data-k="${k}"><span class="led"></span><div><b>${t}</b></div></div>`).join('');
-  function done(k) { if (doneSet.has(k)) return; doneSet.add(k); const el = document.querySelector(`.chal[data-k="${k}"] .led`); el && el.classList.add('on'); SL.toast('<b>Challenge complete</b><br>' + CH.find(x => x[0] === k)[1], 'ok'); }
+  function done(k) { if (doneSet.has(k) || (window.DK && DK.running)) return; doneSet.add(k); const el = document.querySelector(`.chal[data-k="${k}"] .led`); el && el.classList.add('on'); SL.toast('<b>Challenge complete</b><br>' + CH.find(x => x[0] === k)[1], 'ok'); }
 
   /* ================== build the eye cross-section ================== */
   const C = [522, 320];
@@ -1618,11 +1760,45 @@ window.CK = (() => {
     { name: 'Vitamin A (teaching)', gen: () => { const ages = [['4 months', 0], ['8 months', 1], ['10 months', 1], ['18 months', 2], ['3 years', 2], ['4 years', 2]]; const [ag, k] = ages[ri(0, ages.length - 1)]; const o = ['50,000 IU', '100,000 IU', '200,000 IU', '500,000 IU']; return { q: `Teaching example (WHO): a child aged <b>${ag}</b> has xerophthalmia. What is each treatment dose?`, o, a: k, steps: ['Under 6 months 50,000 IU; 6–11 months 100,000 IU; 12 months and over 200,000 IU.', 'Given on day 1, day 2 and again at least 2 weeks later.'] }; } },
   ], { onScore: st => { if (st >= 5) done('drill'); } });
 
+  /* ================== Watch demo, shortcuts and remembered settings ================== */
+  DK.init({ before: $('#eyeAtlas').closest('section'), len: '≈ 45 s' });
+  DK.atlasKeys({ labels: '#tLabels', test: '#btnTest', back: '#atlBack' });
+  DK.key('s', 'spectacles', () => $('#tSpec').click());
+  DK.remember('eye', ['#tLabels', '#tFocus']);
+  const RNG = ['#ageSl', '#axSl', '#asSl', '#luxSl', '#accSl', '#spSl', '#cySl', '#dSl'], CHK = ['#tAuto', '#tSpec', '#tCmp'];
+  const optMain = () => innerWidth > 980 ? '.opt-main' : '.opt-stage';
+  const preB = k => { const b = $(`#optPre [data-p="${k}"]`); if (b) b.click(); };
+  DK.demo({
+    save() {
+      const s = { r: RNG.map(id => $(id).value), c: CHK.map(id => $(id).checked), preset, mys, rxTxt: $('#rxTxt').innerHTML };
+      if (mys) { mys = null; lockMys(false); }
+      return s;
+    },
+    restore(s) {
+      CHK.forEach((id, i) => { const el = $(id); if (el.checked !== s.c[i]) { el.checked = s.c[i]; el.dispatchEvent(new Event('change')); } });
+      RNG.forEach((id, i) => setCtl(id, s.r[i]));
+      preset = s.preset; $('#optPre').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.p === s.preset));
+      if (s.mys) { mys = s.mys; ST.L = mys.L; $('#axSl').value = mys.L; lockMys(true); updOpt(); }
+      $('#rxTxt').innerHTML = s.rxTxt;
+    },
+    steps: [
+      { stage: '.opt-stage', hl: '.stat:has(#sAcc)', ms: 5000, cap: '<b>A normal 25-year-old eye looking far away.</b> Parallel rays from a distant object are bent by the cornea and lens to a sharp focus exactly on the retina. The ciliary muscle is relaxed: 0 D of accommodation.',
+        run: async () => { const a = $('#tAuto'); if (!a.checked) a.click(); const c = $('#tCmp'); if (c.checked) c.click(); preB('normal'); } },
+      { stage: '.opt-stage', hl: '.stat:has(#sAcc)', ms: 3500, cap: '<b>Now bring the object in to 25 cm.</b> The rays arrive diverging, so the lens must get rounder and stronger (accommodation, about 4 D) to keep the image on the retina.', run: A => A.slide('#dSl', slFromD(0.25), 3000) },
+      { stage: optMain, block: 'end', hl: '#seeCv', ms: 5500, cap: '<b>Myopia (short sight).</b> This eye is too long (25.6 mm instead of 24.2 mm). Rays from a distant object now focus <i>in front of</i> the retina, so the far chart is blurred.', run: async () => preB('myopia') },
+      { stage: optMain, block: 'end', hl: '.stat:has(#sFar)', ms: 4500, cap: '<b>Near is still clear.</b> At 25 cm the image falls on the retina with almost no effort: a short-sighted child reads a book easily but cannot see the blackboard.', run: A => A.slide('#dSl', slFromD(0.25), 2200) },
+      { stage: optMain, block: 'end', hl: '#seeCv', ms: 5500, cap: '<b>Correct it with a lens.</b> Back to the distant chart, then a diverging (minus) spectacle lens spreads the rays a little so the eye focuses them further back, onto the retina. The chart is sharp again.',
+        run: async A => { await A.slide('#dSl', 1000, 1500); const sp = $('#tSpec'); if (!sp.checked) sp.click(); await A.slide('#spSl', Math.round(R.farNo[0] * 4) / 4, 2500); } },
+      { stage: '#rxPanel', hl: ['#rxPanel', '#dkCases'], ms: 4500, cap: '<b>Your turn.</b> Press <b>New patient</b> to prescribe for a hidden refractive error, then try the eye cases in <b>Cases &amp; OSCE</b>: trachoma, cataract and a schoolchild who cannot see the board.' },
+    ],
+  });
+
   /* ================== guided tour ================== */
   // jump (not smooth-scroll) to each target so the tip is placed against its final position
   const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
   const startTour = () => SL.tour(jump([
     { el: '#eyeAtlas', title: 'Explore the eye', text: 'Tap any structure to read what it does. The dashed <b>+</b> rings zoom into the front of the eye, the back of the eye and the retina\'s cell layers.', before: () => { if (atlas.quizzing) atlas.stopQuiz(); atlas.go('whole'); } },
+    { el: '#dkPlay', title: 'Watch the demo first', text: 'A 45-second captioned run-through: focusing for far and near, then myopia corrected with a spectacle lens. Stop it at any time with Esc; your settings come back. <b>Cases &amp; OSCE</b> jumps to the clinical tab. Keyboard: <kbd>D</kbd> demo, <kbd>C</kbd> cases, <kbd>S</kbd> spectacles, <kbd>L</kbd> labels, <kbd>T</kbd> test.' },
     { el: '#atlViews', title: 'Jump between levels', text: 'Fly straight to any level of detail. The breadcrumb in the figure takes you back out.' },
     { el: '#atlInfo', title: 'Read the structure card', text: 'Each card gives the function and a clinical note. This is the crystalline lens, which changes shape to focus near objects.', before: () => atlas.select('lens') },
     { el: '#btnTest', title: 'Test yourself', text: 'The labels hide and you are asked to find structures in the current view.' },

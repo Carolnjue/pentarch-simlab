@@ -150,6 +150,28 @@
   .ck-flag{display:inline-block;padding:3px 9px;border-radius:99px;font-size:.78rem;font-weight:600;margin:0 4px 4px 0}
   .ck-flag.g{background:rgba(34,197,94,.16);color:#86efac} .ck-flag.y{background:rgba(245,158,11,.16);color:#fcd34d} .ck-flag.r{background:rgba(239,68,68,.16);color:#fca5a5}
   @media (max-width:560px){.ck-cases,.ck-osce,.ck-drill,.ck-calc{padding:11px}.ck-fields{grid-template-columns:1fr 1fr}.ck-dans input{width:110px}}
+  /* ---- demo kit: Watch demo bar, captions, Cases & OSCE links, shortcut hints ---- */
+  .dk-bar{scroll-margin-top:calc(var(--hdr,68px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;font-weight:700;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
+  .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .dk-bar .dk-len{font:500 .72rem var(--mono);color:var(--dim)}
+  .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto;line-height:1.9}
+  .dk-keys kbd{font-size:.72rem}
+  .sec-head .dk-cases{flex:none;align-self:flex-end}
+  .dk-cap{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:360;width:min(660px,calc(100% - 20px));background:rgba(5,9,19,.95);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap.show{display:block}
+  .dk-cap .row{display:flex;align-items:center;gap:8px}
+  .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
+  .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
+  .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
+  .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem}
+  .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
+  @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  body.dk-running{padding-bottom:150px}
+  @media (max-width:560px){.dk-cap .row{flex-wrap:wrap;row-gap:4px}.dk-cap .n{flex-basis:100%}.dk-keys{display:none}.dk-cap{bottom:8px;padding:8px 10px 7px}.dk-cap p{font-size:.85rem;margin:4px 0 6px}.sec-head .dk-cases{align-self:flex-start}}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}
 
   #heartAtlas{height:660px;--ar:1.4286}
   .wig-stage{height:560px}
@@ -286,8 +308,10 @@
         </select>
         <div class="ctl" style="margin-top:6px"><label for="hrSl" id="hrLab">Sinus rate (beats/min)</label><output>72</output><input type="range" id="hrSl" min="30" max="200" step="1" value="72"></div>
         <div class="ctl"><label for="ctSl" title="How forcefully the ventricle squeezes (its peak stiffness, Emax); raised by adrenaline">Contractility (squeeze strength, Emax)</label><output>100%</output><input type="range" id="ctSl" min="40" max="160" step="5" value="100"></div>
+        <label class="toggle" title="Rheumatic mitral stenosis: a narrowed mitral valve. Left atrial pressure rises, an opening snap follows S2 and a low rumbling murmur fills diastole">Mitral stenosis (rheumatic) <input type="checkbox" id="tMS"></label>
         <div class="panel-title">Speed</div>
         <div class="seg" id="spSeg"><button data-v="1" class="on">Real time</button><button data-v="0.5">½</button><button data-v="0.2">⅕ slow motion</button></div>
+        <div class="btn-row" style="margin-top:8px"><button class="btn sm" id="bReset" title="Back to normal sinus rhythm at 72 beats/min, normal contractility, real time"><i data-lucide="rotate-ccw"></i> Reset heart</button></div>
         <div class="edu"><i data-lucide="triangle-alert"></i><span>Educational model only. Rhythms are simplified illustrations, not for diagnosis.</span></div>
       </div>
       <div class="panel">
@@ -875,6 +899,126 @@ window.CK = (() => {
   return { cases, osce, drill, calc, shuffle };
 })();
 
+/* ---- Demo kit: "Watch demo" runner, Cases & OSCE links, keyboard shortcuts, remembered settings ---- */
+window.DK = (() => {
+  const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
+  const icons = el => { try { SL.refreshIcons(el); } catch (e) {} };
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+  const blocked = () => !!document.querySelector('.sl-tour, .modal.show');
+  const reduce = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
+  const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+  const K = {}; let bar = null, D = null, casesSel = '#tabClin';
+  const hint = [];
+
+  /* jump to the Clinical tab (cases and OSCE stations) */
+  function goCases() {
+    const t = $(casesSel); if (!t) return; t.click();
+    const tabs = t.closest('.tabs') || t, hdr = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hdr')) || 68) + 10;
+    const go = sm => scrollTo({ top: tabs.getBoundingClientRect().top + scrollY - hdr, behavior: sm && !reduce() ? 'smooth' : 'auto' });
+    go(true); setTimeout(() => { try { t.focus({ preventScroll: true }); } catch (e) {} if (Math.abs(tabs.getBoundingClientRect().top - hdr) > 24) go(true); }, 900);
+  }
+  /** init({before, cases, len}): bar with Watch demo + Cases & OSCE above the first stage, plus a Cases & OSCE link beside every lab heading */
+  function init(o) {
+    casesSel = o.cases || casesSel;
+    bar = document.createElement('div'); bar.className = 'dk-bar';
+    bar.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch a captioned run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><span class="dk-len">${o.len || '≈ 45 s'}</span><button class="btn sm" id="dkCases" title="Clinical cases and timed OSCE stations (C)"><i data-lucide="stethoscope"></i> Cases &amp; OSCE</button><span class="dk-keys"></span>`;
+    const ref = $(o.before); ref.parentNode.insertBefore(bar, ref);
+    bar.querySelector('#dkCases').onclick = goCases;
+    document.querySelectorAll('.sec-head').forEach((h, i) => { if (!i || h.querySelector('.dk-cases')) return; const b = document.createElement('button'); b.className = 'btn sm ghost dk-cases'; b.title = 'Jump to the clinical cases and OSCE stations (C)'; b.innerHTML = '<i data-lucide="stethoscope"></i> Cases &amp; OSCE'; b.onclick = goCases; h.appendChild(b); });
+    icons(document); key('c', 'Cases &amp; OSCE', goCases, true); key('d', 'demo', () => D && D.start(), true);
+    return bar;
+  }
+  /** key(k, label, fn, front): register a single-key shortcut and list it in the hint */
+  function key(k, label, fn, front) { K[k] = fn; if (label) hint[front ? 'unshift' : 'push']([k, label]); paintKeys(); }
+  function paintKeys() { const el = bar && bar.querySelector('.dk-keys'); if (!el) return; el.innerHTML = hint.map(([k, l]) => `<kbd>${k === ' ' ? 'Space' : k.toUpperCase()}</kbd> ${l}`).join(' · ') + ' · <kbd>Esc</kbd> stop'; }
+  document.addEventListener('keydown', e => {
+    if (typing(e) || e.ctrlKey || e.metaKey || e.altKey || blocked()) return;
+    if (D && D.running()) { if (e.key === 'Escape') { e.preventDefault(); D.stop(true); return; } if (e.key === 'ArrowRight') { e.preventDefault(); D.next(); return; } }
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, f = K[k]; if (!f) return;
+    if (k === ' ' && e.target.closest && e.target.closest('button, a, summary, [role=button]')) return;
+    e.preventDefault(); f(e);
+  });
+  /** atlasKeys(atlas, {labels, test, back}): L labels, T test yourself, Z zoom out */
+  function atlasKeys(o) {
+    if (o.labels) key('l', 'labels', () => { const c = $(o.labels); if (c) c.click(); });
+    if (o.test) key('t', 'test yourself', () => { const b = $(o.test); if (b) { b.click(); b.scrollIntoView({ block: 'nearest' }); } });
+    if (o.back) key('z', 'zoom out', () => { const b = $(o.back); if (b) b.click(); });
+  }
+  /** remember(page, [selectors]): keep these controls' last values in this browser */
+  function remember(page, sels) {
+    const k = 'sl-anat-' + page; let s = {}; try { s = JSON.parse(localStorage.getItem(k) || '{}') || {}; } catch (e) { s = {}; }
+    sels.forEach(sel => { const el = $(sel); if (!el) return;
+      if (sel in s) { if (el.type === 'checkbox') { if (el.checked !== !!s[sel]) { el.checked = !!s[sel]; fire(el, 'change'); } } else if (String(el.value) !== String(s[sel])) { el.value = s[sel]; fire(el, 'input'); fire(el, 'change'); } }
+      el.addEventListener('change', () => { if (D && D.running()) return; s[sel] = el.type === 'checkbox' ? el.checked : el.value; try { localStorage.setItem(k, JSON.stringify(s)); } catch (e) {} }); });
+  }
+
+  /** demo({steps:[{stage, cap, run(A), ms, hl}], save(), restore(snap), onStop(), takeover}) */
+  function demo(o) {
+    const btn = bar.querySelector('#dkPlay');
+    const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
+    document.body.appendChild(cap); icons(cap);
+    let run = null; const ABORT = { abort: true };
+    const setMode = () => { cap.querySelector('[data-a=mode]').textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; };
+    const hl = sel => { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); [].concat(sel || []).forEach(s => { const e = $(s); if (e) e.classList.add('dk-hl'); }); };
+    // scroll so the element sits in the space between the sticky header and the caption
+    const show = (sel, block) => { const e = $(typeof sel === 'function' ? sel() : sel); if (!e) return; const r = e.getBoundingClientRect(); if (!r.height) return; const hdr = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hdr')) || 68) + 6, bot = innerHeight - (cap.offsetHeight || 120) - 16, avail = bot - hdr;
+      if (r.top >= hdr - 2 && r.bottom <= bot + 2) return;
+      const dy = r.height <= avail ? r.top - hdr - (avail - r.height) / 2 : block === 'end' ? r.bottom - bot : r.top - hdr;
+      scrollTo({ top: scrollY + dy, behavior: reduce() ? 'auto' : 'smooth' }); };
+    function api(r) {
+      const chk = () => { if (r.abort) throw ABORT; };
+      const sleep = ms => new Promise((res, rej) => { const t0 = performance.now(); const tk = () => { if (r.abort) return rej(ABORT); if (performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+      return { sleep, chk, hl, show,
+        set(sel, v) { chk(); const el = $(sel); if (!el) return; if (el.type === 'checkbox') { if (el.checked === !!v) return; el.checked = !!v; } else el.value = v; fire(el, 'input'); fire(el, 'change'); },
+        async slide(sel, to, ms) { const el = $(sel); if (!el) return; ms = reduce() ? 0 : (ms || 1200); const a = +el.value, stp = +el.step || 0, t0 = performance.now();
+          while (ms) { chk(); const f = Math.min(1, (performance.now() - t0) / ms); let v = a + (to - a) * f; if (stp) v = Math.round(v / stp) * stp; if (+el.value !== v) { el.value = v; fire(el, 'input'); } if (f >= 1) break; await sleep(40); }
+          chk(); el.value = to; fire(el, 'input'); fire(el, 'change'); },
+        click(sel) { chk(); const el = $(sel); if (el) el.click(); },
+        async until(fn, ms) { const t0 = performance.now(); while (!fn()) { chk(); if (performance.now() - t0 > (ms || 10000)) return false; await sleep(40); } return true; } };
+    }
+    async function start() {
+      if (run) return stop(true);
+      document.querySelectorAll('.sl-tour').forEach(x => x.remove());
+      let snap = null; try { snap = o.save ? o.save() : null; } catch (e) { console.warn(e); }
+      const r = run = { abort: false, stepMode: reduce(), snap };
+      btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); document.body.classList.add('dk-running'); setMode();
+      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const st = steps[i]; if (r.abort) throw ABORT;
+          cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
+          cap.querySelector('p').innerHTML = st.cap; pg.style.width = (i / steps.length * 100) + '%';
+          if (st.stage) show(st.stage, st.block);
+          hl(st.hl);
+          if (st.run) { await st.run(A); if (r.abort) throw ABORT; if (st.stage) show(st.stage, st.block); }
+          if (st.after) cap.querySelector('p').innerHTML = st.after;
+          pg.style.width = ((i + 1) / steps.length * 100) + '%';
+          const ms = st.ms == null ? 3500 : st.ms, t0 = performance.now();
+          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+          r.nextRes = null;
+        }
+        end(true, 'Demo finished. Your settings are back as they were.');
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+    }
+    function end(restore, msg) {
+      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
+      cap.classList.remove('show'); document.body.classList.remove('dk-running'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
+      if (o.onStop) try { o.onStop(restore); } catch (e) {}
+      SL.toast(msg || (restore ? 'Demo stopped. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+    }
+    const stop = restore => end(restore !== false);
+    btn.onclick = start;
+    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') D.next(); else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
+    // the student takes over: a real tap on a lab (outside the caption) ends the demo where it is
+    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .atl-stage, .jgrid, .tabs')) end(false); }, true);
+    D = { running: () => !!run, start, stop, next: () => { if (run && run.nextRes) run.nextRes(); } };
+    return D;
+  }
+  return { init, key, atlasKeys, remember, demo, goCases, get running() { return !!(D && D.running()); } };
+})();
+
 </script>
 <script>
 (() => {
@@ -895,7 +1039,7 @@ window.CK = (() => {
   ];
   const doneSet = new Set();
   $('#chalList').innerHTML = CH.map(([k, t]) => `<div class="chal" data-k="${k}"><span class="led"></span><div><b>${t}</b></div></div>`).join('');
-  function done(k) { if (doneSet.has(k)) return; doneSet.add(k); const el = document.querySelector(`.chal[data-k="${k}"] .led`); el && el.classList.add('on'); SL.toast('<b>Challenge complete</b><br>' + CH.find(x => x[0] === k)[1], 'ok'); }
+  function done(k) { if (doneSet.has(k) || (window.DK && DK.running)) return; doneSet.add(k); const el = document.querySelector(`.chal[data-k="${k}"] .led`); el && el.classList.add('on'); SL.toast('<b>Challenge complete</b><br>' + CH.find(x => x[0] === k)[1], 'ok'); }
 
   /* ================= valves ================= */
   const VALVES = {
@@ -992,7 +1136,7 @@ window.CK = (() => {
   const st = { Vlv: 125, Vla: 50, Pc: 85, t: 0, tv: 5, ta: 5, Ts: 0.76, Qav: 0, Qmv: 0, Qpv: 0, Plv: 0, Pla: 0, Pao: 85 };
   const hill = (t, Ts) => { if (t < 0) return 0; const t1 = 0.269 * Ts, t2 = 0.452 * Ts, a = Math.pow(t / t1, 1.32); return a / (1 + a) * (1 / (1 + Math.pow(t / t2, 27.4))); };
   const kCache = {}; const kfor = Ts => { const key = Ts.toFixed(3); if (kCache[key]) return kCache[key]; let m = 0; for (let t = 0; t < 2 * Ts; t += 0.002) m = Math.max(m, hill(t, Ts)); return kCache[key] = 1 / m; };
-  let rhythm = 'nsr', HRset = 72, contr = 1, speed = 1, paused = false;
+  let rhythm = 'nsr', HRset = 72, contr = 1, speed = 1, paused = false, msOn = false;
   const RH = {
     nsr: { n: 'Normal sinus rhythm', hr: 72, lab: 'Sinus rate', t: 'Regular P–QRS–T at 60–100 bpm, PR 0.16 s, narrow QRS.' },
     tachy: { n: 'Sinus tachycardia', hr: 130, lab: 'Sinus rate', t: 'Sinus rhythm above 100 bpm (exercise, fever, pain, blood loss, anxiety). Diastole shortens more than systole, reducing filling.' },
@@ -1071,14 +1215,26 @@ window.CK = (() => {
   function beatSound(k) {
     if (!sndOn || document.hidden) return;
     const ac = SL.audio(); if (!ac || ac.state !== 'running') return;
-    const t0 = ac.currentTime + 0.005, dur = k === 1 ? 0.14 : 0.1;
+    const t0 = ac.currentTime + 0.005, dur = k === 1 ? 0.14 : k === 3 ? 0.05 : 0.1;
     const o = ac.createOscillator(), g = ac.createGain(), lp = ac.createBiquadFilter();
-    o.type = 'sine'; o.frequency.setValueAtTime(k === 1 ? 58 : 82, t0); o.frequency.exponentialRampToValueAtTime(k === 1 ? 38 : 55, t0 + dur);
-    lp.type = 'lowpass'; lp.frequency.value = 180;
-    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(k === 1 ? 0.9 : 0.7, t0 + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.type = 'sine'; o.frequency.setValueAtTime(k === 1 ? 58 : k === 3 ? 140 : 82, t0); o.frequency.exponentialRampToValueAtTime(k === 1 ? 38 : k === 3 ? 95 : 55, t0 + dur);
+    lp.type = 'lowpass'; lp.frequency.value = k === 3 ? 400 : 180;
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(k === 1 ? (msOn ? 1 : 0.9) : k === 3 ? 0.55 : 0.7, t0 + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
     o.connect(lp); lp.connect(g); g.connect(ac.destination); o.start(t0); o.stop(t0 + dur + 0.02);
   }
   document.getElementById('tSnd').addEventListener('change', e => { sndOn = e.target.checked; if (sndOn) { const ac = SL.audio(); ac && ac.resume && ac.resume(); SL.toast('Heart sounds on: <b>lub</b> is S1 (AV valves closing), <b>dub</b> is S2 (semilunar valves closing). Headphones help with the low pitch.', 'ok'); } });
+  // mitral stenosis: low rumble (filtered noise) whose loudness follows the flow across the narrowed valve
+  let rumble = null;
+  function rumbleTick() {
+    const want = sndOn && msOn && !paused && !document.hidden;
+    if (!want && !rumble) return;
+    const ac = SL.audio(); if (!ac || ac.state !== 'running') return;
+    if (!rumble) { const n = ac.createBufferSource(), b = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate), d = b.getChannelData(0); let last = 0; for (let i = 0; i < d.length; i++) { last = 0.97 * last + 0.03 * (Math.random() * 2 - 1); d[i] = last * 6; }
+      n.buffer = b; n.loop = true; const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 110; const g = ac.createGain(); g.gain.value = 0; n.connect(lp); lp.connect(g); g.connect(ac.destination); n.start(); rumble = { n, g }; }
+    rumble.g.gain.setTargetAtTime(want ? Math.min(0.5, st.Qmv / 450) * 0.9 : 0, ac.currentTime, 0.03);
+  }
+  $('#tMS').addEventListener('change', e => { msOn = e.target.checked; if (msOn) SL.toast('<b>Mitral stenosis.</b> The narrowed valve needs a high left atrial pressure to fill the ventricle: watch LA (blue) stay above LV through diastole, the opening snap (OS) after S2 and the rumble on the heart-sounds trace. Turn on Heart sounds to hear it.', 'ok', 6000); });
+  $('#bReset').addEventListener('click', () => { if (rq) { $('#rqOpts').innerHTML = ''; rqReveal(); } setRhythm('nsr'); const c = $('#ctSl'); c.value = 100; c.dispatchEvent(new Event('input')); if ($('#tMS').checked) { $('#tMS').checked = false; msOn = false; } $('#spSeg [data-v="1"]').click(); if (paused) $('#bPause').click(); });
   let mvOpen = false, avOpen = false, phase = 3, lastAvC = -9;
   let mvS = true, avS = false, pendV = '', selV = null, rq = null; const vq = [];
   function vEvt(k) { pendV = k; vq.push(k); if (vq.length > 8) vq.shift(); }
@@ -1101,12 +1257,12 @@ window.CK = (() => {
     const aa = rhythm !== 'af' && st.ta > 0.04 && st.ta < 0.2 ? Math.sin(Math.PI * (st.ta - 0.04) / 0.16) ** 2 : 0; aKick = aa;
     const Ela = PM.Ela0 + (PM.Ela1 - PM.Ela0) * aa;
     const Plv = E * (st.Vlv - PM.V0), Pla = Ela * (st.Vla - PM.Vla0);
-    const Qpv = (PM.Ppv - Pla) / PM.Rpv, Qmv = Math.max(0, (Pla - Plv) / PM.Rmv), Qav = ARR.has(rhythm) && st.tv > 1 ? 0 : Math.max(0, (Plv - st.Pc) / (PM.Rav + PM.Zc));
+    const Qpv = ((msOn ? 20 : PM.Ppv) - Pla) / PM.Rpv, Qmv = Math.max(0, (Pla - Plv) / (msOn ? PM.Rmv * 22 : PM.Rmv)), Qav = ARR.has(rhythm) && st.tv > 1 ? 0 : Math.max(0, (Plv - st.Pc) / (PM.Rav + PM.Zc));
     st.Vla += (Qpv - Qmv) * dt; st.Vlv += (Qmv - Qav) * dt; st.Pc += (Qav - st.Pc / PM.Rs) / PM.C * dt;
     Object.assign(st, { Plv, Pla, Qav, Qmv, Qpv, Pao: st.Pc + Qav * PM.Zc, E: ev_ });
     const mo = Qmv > 0.5, ao = Qav > 0.5;
     // valve open/closed state from the pressures (with hysteresis), for the linked event markers
-    if (mvS && Plv > Pla + 0.3) { mvS = false; vEvt('MC'); } else if (!mvS && Pla > Plv + 0.1 && Qmv > 0.5) { mvS = true; vEvt('MO'); }
+    if (mvS && Plv > Pla + 0.3) { mvS = false; vEvt('MC'); } else if (!mvS && Pla > Plv + 0.1 && Qmv > 0.5) { mvS = true; vEvt('MO'); if (msOn) { sndUntil = t + 0.035; sndKind = 3; beatSound(3); } }
     if (!avS && ao) { avS = true; vEvt('AO'); } else if (avS && Qav <= 0) { avS = false; vEvt('AC'); }
     if (mvOpen && !mo && Plv > Pla) { sndUntil = t + 0.05; sndKind = 1; beatSound(1); }
     if (avOpen && !ao) { sndUntil = t + 0.04; sndKind = 2; lastAvC = t; beatSound(2); }
@@ -1118,7 +1274,7 @@ window.CK = (() => {
   function sample() {
     const t = st.t;
     buf.ecg[bufI] = ecgAt(t); buf.pao[bufI] = st.Pao; buf.plv[bufI] = st.Plv; buf.pla[bufI] = st.Pla; buf.vlv[bufI] = st.Vlv;
-    buf.snd[bufI] = t < sndUntil ? (sndKind === 1 ? 1 : 0.8) * Math.sin(2 * Math.PI * (sndKind === 1 ? 45 : 70) * t) * Math.exp(-((sndUntil - t) < 0 ? 0 : 0)) * (0.4 + 0.6 * Math.random()) : 0;
+    buf.snd[bufI] = t < sndUntil ? (sndKind === 1 ? (msOn ? 1.15 : 1) : sndKind === 3 ? 0.7 : 0.8) * Math.sin(2 * Math.PI * (sndKind === 1 ? 45 : sndKind === 3 ? 110 : 70) * t) * (0.4 + 0.6 * Math.random()) : msOn && st.Qmv > 15 ? Math.min(0.45, st.Qmv / 500) * (Math.random() * 2 - 1) : 0;
     buf.vm[bufI] = pendV; pendV = ''; buf.vs[bufI] = (mvS ? 1 : 0) | (avS ? 2 : 0);
     buf.ph[bufI] = phase; buf.sk[bufI] = t < sndUntil ? sndKind : 0; buf.mark[bufI] = markNext; markNext = '';
     bufI = (bufI + 1) % NBUF;
@@ -1183,7 +1339,7 @@ window.CK = (() => {
     setScale('LA', SL.clamp(sLA, 0.82, 1.1)); setScale('RA', SL.clamp(sLA, 0.82, 1.1));
     if (rhythm === 'vf' && !paused) { const q = 1 + 0.012 * Math.sin(tReal * 47) + 0.009 * Math.sin(tReal * 29 + 1); setScale('LV', SL.clamp(sLV, 0.7, 1.08) * q); setScale('RV', SL.clamp(sLV, 0.7, 1.08) * (2 - q)); }
     // valves
-    const tgt = { mit: st.Qmv > 0.5 ? 1 : 0, tri: st.Qmv > 0.5 ? 1 : 0, aov: st.Qav > 0.5 ? 1 : 0, pul: st.Qav > 0.5 ? 1 : 0 };
+    const tgt = { mit: st.Qmv > 0.5 ? (msOn ? 0.4 : 1) : 0, tri: st.Qmv > 0.5 ? 1 : 0, aov: st.Qav > 0.5 ? 1 : 0, pul: st.Qav > 0.5 ? 1 : 0 };
     for (const k in tgt) VALVES[k].o += (tgt[k] - VALVES[k].o) * Math.min(1, 0.35 * speed + 0.1);
     drawValves();
     // particle visibility & jiggle
@@ -1249,7 +1405,7 @@ window.CK = (() => {
       if (m === 'QRS') { ctx.fillStyle = '#a7f3d0'; ctx.fillText('QRS', X((i + 11) % NBUF), eg.y + 12); const tt = Math.round(0.4 * Math.sqrt(60 / Math.max(30, curRate())) * 0.78 * FS); ctx.fillText('T', X((i + tt) % NBUF), eg.Y(0.55)); }
     }
     // heart sound labels
-    for (let i = 1; i < NBUF; i++) { if (buf.sk[i] && !buf.sk[i - 1]) { ctx.fillStyle = '#d8b4fe'; ctx.fillText(buf.sk[i] === 2 ? 'S2' : 'S1', X(i) + 10, geo[4].y + 12); } }
+    for (let i = 1; i < NBUF; i++) { if (buf.sk[i] && !buf.sk[i - 1]) { ctx.fillStyle = '#d8b4fe'; ctx.fillText(buf.sk[i] === 2 ? 'S2' : buf.sk[i] === 3 ? 'OS' : 'S1', X(i) + 10, geo[4].y + (buf.sk[i] === 3 ? 24 : 12)); } }
     // legend
     const lg = [['Aortic', '#f87171'], ['LV', '#f8fafc'], ['LA', '#60a5fa']]; let lx = L + 90;
     lg.forEach(([n, c]) => { ctx.fillStyle = c; ctx.fillRect(lx, pp.y + 6, 14, 3); ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'left'; ctx.fillText(n, lx + 18, pp.y + 11); lx += 70; });
@@ -1258,6 +1414,7 @@ window.CK = (() => {
     // sweep cursor
     ctx.strokeStyle = '#34d399'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(X(bufI), 6); ctx.lineTo(X(bufI), h - 20); ctx.stroke();
     ctx.fillStyle = '#7d8aa6'; ctx.textAlign = 'right'; ctx.font = '10px JetBrains Mono, monospace'; ctx.fillText('0.2 s grid · window ' + WIN + ' s', R, h - 6);
+    if (msOn) { ctx.fillStyle = '#d8b4fe'; ctx.textAlign = 'left'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.fillText(w > 600 ? 'Mitral stenosis: loud S1 · opening snap (OS) · mid-diastolic rumble' : 'MS: OS + rumble', L, h - 6); }
   }
   const curRate = () => { if (ARR.has(rhythm) && st.t - lastQRS > 1.5) return 1; const r = beats.slice(-4).map(b => b.RR).filter(x => x > 0); return r.length ? 60 / (r.reduce((a, b) => a + b, 0) / r.length) : HRset; };
   let uiT = 0;
@@ -1362,21 +1519,21 @@ window.CK = (() => {
   const heartEls = ['#heartAtlas', '.wig-stage', '#circSvg'].map(s => document.querySelector(s)).filter(Boolean);
   SL.loop(dt => {
     // pause the model and drawing when the tab is hidden or every heart view is scrolled out of sight
-    if (document.hidden || !heartEls.some(inView)) return;
+    if (document.hidden || !heartEls.some(inView)) { if (rumble) rumble.g.gain.value = 0; return; }
     tReal += dt;
     if (!paused) {
       const simDt = dt * speed, n = Math.max(1, Math.ceil(simDt / 0.0005)), h = simDt / n;
       for (let i = 0; i < n; i++) { step(h); sampAcc += h; if (sampAcc >= 1 / FS) { sampAcc -= 1 / FS; sample(); } }
       if (ev.length < 6) schedule(st.t);
     }
-    animateConduction(); animateHeart(tReal); animFlows(paused ? 0 : dt * speed, $('#tFlow').checked); drawWig();
+    animateConduction(); animateHeart(tReal); animFlows(paused ? 0 : dt * speed, $('#tFlow').checked); drawWig(); rumbleTick();
     uiT += dt; if (uiT > 0.4) { uiT = 0; updUI(); document.querySelectorAll('#circSvg .flow').forEach(p => p.style.setProperty('--dur', (60 / curRate() * 1.2 / Math.max(.2, speed)).toFixed(2) + 's')); }
   }).start();
 
   /* ================= clinical cases, OSCE, calculator and drill ================= */
   const toMonitor = r => { if (rq) { $('#rqOpts').innerHTML = ''; rqReveal(); } setRhythm(r); paused && $('#bPause').click(); $('.wig-stage').scrollIntoView({ block: 'center', behavior: 'smooth' }); };
   CK.cases('#ckCases', [
-    { t: 'Breathless teenager, Kisumu', tag: 'Rheumatic heart disease', stem: 'Akinyi, 16, has had increasing breathlessness on walking to school for six months and now cannot lie flat. As a child she had frequent sore throats and painful, swollen knees. Her pulse is irregularly irregular. At the apex you feel a tapping apex beat and hear a loud S1, an opening snap and a low-pitched rumbling murmur after S2.', vit: ['Pulse 118, irregular', 'BP 104/70', 'RR 26', 'SpO₂ 93 %'], lab: { label: 'Show her rhythm on the monitor', icon: 'activity', fn: () => toMonitor('af') },
+    { t: 'Breathless teenager, Kisumu', tag: 'Rheumatic heart disease', stem: 'Akinyi, 16, has had increasing breathlessness on walking to school for six months and now cannot lie flat. As a child she had frequent sore throats and painful, swollen knees. Her pulse is irregularly irregular. At the apex you feel a tapping apex beat and hear a loud S1, an opening snap and a low-pitched rumbling murmur after S2.', vit: ['Pulse 118, irregular', 'BP 104/70', 'RR 26', 'SpO₂ 93 %'], lab: { label: 'Show her heart on the monitor', icon: 'activity', fn: () => { if (!$('#tMS').checked) $('#tMS').click(); toMonitor('af'); } },
       qs: [
         { q: 'Which valve lesion fits these findings best?', o: ['Aortic stenosis', 'Mitral stenosis', 'Mitral regurgitation', 'Ventricular septal defect'], a: 1, why: 'A mid-diastolic rumble at the apex with an opening snap and loud S1 is mitral stenosis. Blood crosses the mitral valve in diastole, so a narrowed valve gives a diastolic murmur.' },
         { q: 'What is the most likely underlying cause?', o: ['Congenital heart disease', 'Rheumatic heart disease after rheumatic fever', 'Hypertension', 'Infective endocarditis on a normal valve'], a: 1, why: 'Recurrent sore throats (group A streptococcus) and migrating joint pains suggest rheumatic fever; in Kenya rheumatic heart disease is the usual cause of mitral stenosis in young people.' },
@@ -1457,11 +1614,54 @@ window.CK = (() => {
     { name: 'Adrenaline (teaching)', gen: () => { const kg = ri(4, 30); return { q: `Teaching example: paediatric arrest, adrenaline <b>10 micrograms/kg</b> using 1 : 10,000 (100 micrograms/ml). Child weighs <b>${kg} kg</b>. Volume to draw up?`, ans: kg / 10, tol: 0.05, unit: 'ml', dp: 1, steps: [`Dose = 10 × ${kg} = ${kg * 10} micrograms`, `Volume = D/H × V = ${kg * 10} / 100 × 1 ml = ${SL.fmt(kg / 10, 1)} ml (0.1 ml/kg)`] }; } },
   ], { onScore: st => { if (st >= 5) done('drill'); } });
 
+
+  /* ================= Watch demo, shortcuts and remembered settings ================= */
+  DK.init({ before: $('#heartAtlas').closest('section'), len: '≈ 55 s' });
+  DK.atlasKeys({ labels: '#tLabels', test: '#btnTest', back: '#atlBack' });
+  DK.key(' ', 'pause', () => $('#bPause').click());
+  DK.key('m', 'mitral stenosis', () => $('#tMS').click());
+  DK.remember('heart', ['#tLabels', '#tFlow']);
+  const setSpeed = v => { const b = $(`#spSeg [data-v="${v}"]`); if (b) b.click(); };
+  const setPaused = on => { if (paused !== on) $('#bPause').click(); };
+  const setRange = (id, v) => { const el = $(id); el.value = v; el.dispatchEvent(new Event('input')); };
+  // run until the cycle enters phase k, then hold there (fresh: hold now if already in it)
+  const holdAt = async (A, k, fresh) => { if (!(fresh && phase === k)) { setPaused(false); await A.until(() => phase !== k, 6000); await A.until(() => phase === k, 9000); } setPaused(true); };
+  DK.demo({
+    save() {
+      const ac = SL.audio(); try { ac && ac.resume && ac.resume(); } catch (e) {}
+      const s = { r: rhythm, hr: +$('#hrSl').value, ct: +$('#ctSl').value, sp: speed, paused, ms: msOn, snd: sndOn, view: atlas.view, rq };
+      if (rq) { rq = null; lockRq(false); } if (atlas.quizzing) atlas.stopQuiz();
+      return s;
+    },
+    restore(s) {
+      setRhythm(s.r); setRange('#hrSl', s.hr); setRange('#ctSl', s.ct); setSpeed(s.sp); setPaused(s.paused);
+      $('#tMS').checked = msOn = s.ms; $('#tSnd').checked = sndOn = s.snd;
+      const back = () => { if (atlas.view !== s.view) atlas.go(s.view); }; back(); setTimeout(back, 1000);
+      if (s.rq) { rq = s.rq; $('#rhSel').value = ''; $('#rhName').textContent = 'Unknown rhythm'; $('#rhTxt').textContent = 'Diagnose the strip: is there a P wave before every QRS? Is the PR constant? Is the QRS narrow or wide? Regular or irregular?'; $('#hrLab').textContent = 'Rate (beats/min)'; lockRq(true); }
+    },
+    onStop() { setPaused(false); },
+    steps: [
+      { stage: '#heartAtlas', hl: '#spSeg', ms: 4200, cap: '<b>One heartbeat in slow motion.</b> Normal sinus rhythm at 60 beats/min, played at ⅕ speed. Blue blood returns to the right heart and red blood to the left; the label at the top left names each phase.',
+        run: async () => { atlas.go('whole'); setRhythm('nsr'); setRange('#hrSl', 60); setRange('#ctSl', 100); $('#tMS').checked = msOn = false; setSpeed(0.2); setPaused(false); } },
+      { stage: '#heartAtlas', ms: 4800, cap: 'Waiting for the QRS…', after: '<b>S1: the mitral and tricuspid valves close.</b> The ventricles have started to contract, so their pressure now exceeds atrial pressure and the AV valves snap shut. All four valves are closed: <i>isovolumetric contraction</i>.', run: A => holdAt(A, 0) },
+      { stage: '#heartAtlas', ms: 4500, cap: 'Pressure is rising…', after: '<b>Ejection.</b> Left ventricular pressure passes aortic pressure (about 80 mmHg), so the aortic and pulmonary valves open and blood leaves the heart.', run: A => holdAt(A, 1) },
+      { stage: '#heartAtlas', ms: 4500, cap: 'The ventricles are emptying…', after: '<b>S2: the aortic and pulmonary valves close.</b> The ventricles relax; once aortic pressure is higher than ventricular pressure the semilunar valves shut. All valves closed again: <i>isovolumetric relaxation</i>.', run: A => holdAt(A, 2) },
+      { stage: '#heartAtlas', ms: 4500, cap: 'Ventricular pressure is falling…', after: '<b>Filling.</b> Ventricular pressure drops below atrial pressure, the mitral and tricuspid valves open and blood pours in. The atrial contraction (after the P wave) tops the ventricles up at the end of diastole.', run: A => holdAt(A, 3) },
+      { stage: '.wig-stage', hl: '.wig-stage', ms: 8000, cap: '<b>The same beat on the Wiggers diagram.</b> The ECG comes first (electrical), then the pressures. The markers MC, AO, AC and MO sit exactly where the pressure lines cross: S1 at mitral closure, S2 at aortic closure. The coloured bands are the four phases you just saw.',
+        run: async () => { setSpeed(0.5); setPaused(false); } },
+      { stage: '.wig-stage', hl: '.stat:has(#sCO)', ms: 5500, cap: '<b>Real time.</b> LV volume (yellow) falls during ejection and refills in diastole. Stroke volume is about 70 ml, so cardiac output = heart rate × stroke volume ≈ 4–5 L/min.', run: async () => setSpeed(1) },
+      { stage: '.wig-stage', block: 'end', ms: 9500, cap: '<b>Now a narrowed mitral valve: rheumatic mitral stenosis.</b> The left atrial pressure (blue) must stay far above LV pressure through diastole to push blood across. Listen and look at the bottom trace: a loud S1, an opening snap (OS) just after S2, then a low rumbling mid-diastolic murmur.',
+        run: async () => { $('#tMS').checked = msOn = true; $('#tSnd').checked = sndOn = true; const ac = SL.audio(); try { ac && ac.resume && ac.resume(); } catch (e) {} } },
+      { stage: '#heartAtlas', hl: '#dkCases', ms: 6500, cap: '<b>On the heart</b> the mitral leaflets now open only part of the way and the left atrium is under high pressure, which backs up into the lungs (breathlessness). Rheumatic heart disease after untreated strep throat is the commonest cause in Kenya. Try Akinyi\'s case in <b>Cases &amp; OSCE</b>.' },
+    ],
+  });
+
   /* ================= guided tour ================= */
   // jump (not smooth-scroll) to each target so the tip is placed against its final position
   const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
   const startTour = () => SL.tour(jump([
     { el: '#heartAtlas', title: 'A beating heart', text: 'Blue is deoxygenated blood, red is oxygenated. Watch the valves snap open and shut, and tap any structure to read what it does.', before: () => { if (atlas.quizzing) atlas.stopQuiz(); atlas.go('whole'); } },
+    { el: '#dkPlay', title: 'Watch the demo first', text: 'A 55-second captioned run-through: one cardiac cycle with the valves opening and closing, the same beat on the Wiggers diagram and ECG, then the murmur of mitral stenosis. Stop it at any time with Esc; your settings come back. <b>Cases &amp; OSCE</b> jumps to the clinical tab. Keyboard: <kbd>D</kbd> demo, <kbd>C</kbd> cases, <kbd>Space</kbd> pause, <kbd>L</kbd> labels, <kbd>T</kbd> test.' },
     { el: '#atlViews', title: 'Switch the view', text: 'Conduction shows the electrical wiring from the SA node to the Purkinje fibres; Valves zooms in on all four valves.', before: () => atlas.go('cond') },
     { el: '#rhSel', title: 'Choose a rhythm', text: 'Try atrial fibrillation or heart block and watch the ECG and the beating pattern change.' },
     { el: '.ctl:has(#hrSl)', title: 'Set the heart rate', text: 'Drag the rate up: diastole shortens far more than systole, so at very high rates the ventricles do not fill and stroke volume falls.' },

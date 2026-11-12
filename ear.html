@@ -150,6 +150,28 @@
   .ck-flag{display:inline-block;padding:3px 9px;border-radius:99px;font-size:.78rem;font-weight:600;margin:0 4px 4px 0}
   .ck-flag.g{background:rgba(34,197,94,.16);color:#86efac} .ck-flag.y{background:rgba(245,158,11,.16);color:#fcd34d} .ck-flag.r{background:rgba(239,68,68,.16);color:#fca5a5}
   @media (max-width:560px){.ck-cases,.ck-osce,.ck-drill,.ck-calc{padding:11px}.ck-fields{grid-template-columns:1fr 1fr}.ck-dans input{width:110px}}
+  /* ---- demo kit: Watch demo bar, captions, Cases & OSCE links, shortcut hints ---- */
+  .dk-bar{scroll-margin-top:calc(var(--hdr,68px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;font-weight:700;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
+  .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .dk-bar .dk-len{font:500 .72rem var(--mono);color:var(--dim)}
+  .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto;line-height:1.9}
+  .dk-keys kbd{font-size:.72rem}
+  .sec-head .dk-cases{flex:none;align-self:flex-end}
+  .dk-cap{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:360;width:min(660px,calc(100% - 20px));background:rgba(5,9,19,.95);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap.show{display:block}
+  .dk-cap .row{display:flex;align-items:center;gap:8px}
+  .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
+  .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
+  .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
+  .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem}
+  .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
+  @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  body.dk-running{padding-bottom:150px}
+  @media (max-width:560px){.dk-cap .row{flex-wrap:wrap;row-gap:4px}.dk-cap .n{flex-basis:100%}.dk-keys{display:none}.dk-cap{bottom:8px;padding:8px 10px 7px}.dk-cap p{font-size:.85rem;margin:4px 0 6px}.sec-head .dk-cases{align-self:flex-start}}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}
 
   #earAtlas{--ar:1.5625}
   .snd-stage{height:600px}
@@ -1024,6 +1046,126 @@ window.CK = (() => {
   return { cases, osce, drill, calc, shuffle };
 })();
 
+/* ---- Demo kit: "Watch demo" runner, Cases & OSCE links, keyboard shortcuts, remembered settings ---- */
+window.DK = (() => {
+  const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
+  const icons = el => { try { SL.refreshIcons(el); } catch (e) {} };
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+  const blocked = () => !!document.querySelector('.sl-tour, .modal.show');
+  const reduce = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
+  const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+  const K = {}; let bar = null, D = null, casesSel = '#tabClin';
+  const hint = [];
+
+  /* jump to the Clinical tab (cases and OSCE stations) */
+  function goCases() {
+    const t = $(casesSel); if (!t) return; t.click();
+    const tabs = t.closest('.tabs') || t, hdr = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hdr')) || 68) + 10;
+    const go = sm => scrollTo({ top: tabs.getBoundingClientRect().top + scrollY - hdr, behavior: sm && !reduce() ? 'smooth' : 'auto' });
+    go(true); setTimeout(() => { try { t.focus({ preventScroll: true }); } catch (e) {} if (Math.abs(tabs.getBoundingClientRect().top - hdr) > 24) go(true); }, 900);
+  }
+  /** init({before, cases, len}): bar with Watch demo + Cases & OSCE above the first stage, plus a Cases & OSCE link beside every lab heading */
+  function init(o) {
+    casesSel = o.cases || casesSel;
+    bar = document.createElement('div'); bar.className = 'dk-bar';
+    bar.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch a captioned run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><span class="dk-len">${o.len || '≈ 45 s'}</span><button class="btn sm" id="dkCases" title="Clinical cases and timed OSCE stations (C)"><i data-lucide="stethoscope"></i> Cases &amp; OSCE</button><span class="dk-keys"></span>`;
+    const ref = $(o.before); ref.parentNode.insertBefore(bar, ref);
+    bar.querySelector('#dkCases').onclick = goCases;
+    document.querySelectorAll('.sec-head').forEach((h, i) => { if (!i || h.querySelector('.dk-cases')) return; const b = document.createElement('button'); b.className = 'btn sm ghost dk-cases'; b.title = 'Jump to the clinical cases and OSCE stations (C)'; b.innerHTML = '<i data-lucide="stethoscope"></i> Cases &amp; OSCE'; b.onclick = goCases; h.appendChild(b); });
+    icons(document); key('c', 'Cases &amp; OSCE', goCases, true); key('d', 'demo', () => D && D.start(), true);
+    return bar;
+  }
+  /** key(k, label, fn, front): register a single-key shortcut and list it in the hint */
+  function key(k, label, fn, front) { K[k] = fn; if (label) hint[front ? 'unshift' : 'push']([k, label]); paintKeys(); }
+  function paintKeys() { const el = bar && bar.querySelector('.dk-keys'); if (!el) return; el.innerHTML = hint.map(([k, l]) => `<kbd>${k === ' ' ? 'Space' : k.toUpperCase()}</kbd> ${l}`).join(' · ') + ' · <kbd>Esc</kbd> stop'; }
+  document.addEventListener('keydown', e => {
+    if (typing(e) || e.ctrlKey || e.metaKey || e.altKey || blocked()) return;
+    if (D && D.running()) { if (e.key === 'Escape') { e.preventDefault(); D.stop(true); return; } if (e.key === 'ArrowRight') { e.preventDefault(); D.next(); return; } }
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, f = K[k]; if (!f) return;
+    if (k === ' ' && e.target.closest && e.target.closest('button, a, summary, [role=button]')) return;
+    e.preventDefault(); f(e);
+  });
+  /** atlasKeys(atlas, {labels, test, back}): L labels, T test yourself, Z zoom out */
+  function atlasKeys(o) {
+    if (o.labels) key('l', 'labels', () => { const c = $(o.labels); if (c) c.click(); });
+    if (o.test) key('t', 'test yourself', () => { const b = $(o.test); if (b) { b.click(); b.scrollIntoView({ block: 'nearest' }); } });
+    if (o.back) key('z', 'zoom out', () => { const b = $(o.back); if (b) b.click(); });
+  }
+  /** remember(page, [selectors]): keep these controls' last values in this browser */
+  function remember(page, sels) {
+    const k = 'sl-anat-' + page; let s = {}; try { s = JSON.parse(localStorage.getItem(k) || '{}') || {}; } catch (e) { s = {}; }
+    sels.forEach(sel => { const el = $(sel); if (!el) return;
+      if (sel in s) { if (el.type === 'checkbox') { if (el.checked !== !!s[sel]) { el.checked = !!s[sel]; fire(el, 'change'); } } else if (String(el.value) !== String(s[sel])) { el.value = s[sel]; fire(el, 'input'); fire(el, 'change'); } }
+      el.addEventListener('change', () => { if (D && D.running()) return; s[sel] = el.type === 'checkbox' ? el.checked : el.value; try { localStorage.setItem(k, JSON.stringify(s)); } catch (e) {} }); });
+  }
+
+  /** demo({steps:[{stage, cap, run(A), ms, hl}], save(), restore(snap), onStop(), takeover}) */
+  function demo(o) {
+    const btn = bar.querySelector('#dkPlay');
+    const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
+    document.body.appendChild(cap); icons(cap);
+    let run = null; const ABORT = { abort: true };
+    const setMode = () => { cap.querySelector('[data-a=mode]').textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; };
+    const hl = sel => { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); [].concat(sel || []).forEach(s => { const e = $(s); if (e) e.classList.add('dk-hl'); }); };
+    // scroll so the element sits in the space between the sticky header and the caption
+    const show = (sel, block) => { const e = $(typeof sel === 'function' ? sel() : sel); if (!e) return; const r = e.getBoundingClientRect(); if (!r.height) return; const hdr = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hdr')) || 68) + 6, bot = innerHeight - (cap.offsetHeight || 120) - 16, avail = bot - hdr;
+      if (r.top >= hdr - 2 && r.bottom <= bot + 2) return;
+      const dy = r.height <= avail ? r.top - hdr - (avail - r.height) / 2 : block === 'end' ? r.bottom - bot : r.top - hdr;
+      scrollTo({ top: scrollY + dy, behavior: reduce() ? 'auto' : 'smooth' }); };
+    function api(r) {
+      const chk = () => { if (r.abort) throw ABORT; };
+      const sleep = ms => new Promise((res, rej) => { const t0 = performance.now(); const tk = () => { if (r.abort) return rej(ABORT); if (performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+      return { sleep, chk, hl, show,
+        set(sel, v) { chk(); const el = $(sel); if (!el) return; if (el.type === 'checkbox') { if (el.checked === !!v) return; el.checked = !!v; } else el.value = v; fire(el, 'input'); fire(el, 'change'); },
+        async slide(sel, to, ms) { const el = $(sel); if (!el) return; ms = reduce() ? 0 : (ms || 1200); const a = +el.value, stp = +el.step || 0, t0 = performance.now();
+          while (ms) { chk(); const f = Math.min(1, (performance.now() - t0) / ms); let v = a + (to - a) * f; if (stp) v = Math.round(v / stp) * stp; if (+el.value !== v) { el.value = v; fire(el, 'input'); } if (f >= 1) break; await sleep(40); }
+          chk(); el.value = to; fire(el, 'input'); fire(el, 'change'); },
+        click(sel) { chk(); const el = $(sel); if (el) el.click(); },
+        async until(fn, ms) { const t0 = performance.now(); while (!fn()) { chk(); if (performance.now() - t0 > (ms || 10000)) return false; await sleep(40); } return true; } };
+    }
+    async function start() {
+      if (run) return stop(true);
+      document.querySelectorAll('.sl-tour').forEach(x => x.remove());
+      let snap = null; try { snap = o.save ? o.save() : null; } catch (e) { console.warn(e); }
+      const r = run = { abort: false, stepMode: reduce(), snap };
+      btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); document.body.classList.add('dk-running'); setMode();
+      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const st = steps[i]; if (r.abort) throw ABORT;
+          cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
+          cap.querySelector('p').innerHTML = st.cap; pg.style.width = (i / steps.length * 100) + '%';
+          if (st.stage) show(st.stage, st.block);
+          hl(st.hl);
+          if (st.run) { await st.run(A); if (r.abort) throw ABORT; if (st.stage) show(st.stage, st.block); }
+          if (st.after) cap.querySelector('p').innerHTML = st.after;
+          pg.style.width = ((i + 1) / steps.length * 100) + '%';
+          const ms = st.ms == null ? 3500 : st.ms, t0 = performance.now();
+          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+          r.nextRes = null;
+        }
+        end(true, 'Demo finished. Your settings are back as they were.');
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+    }
+    function end(restore, msg) {
+      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
+      cap.classList.remove('show'); document.body.classList.remove('dk-running'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
+      if (o.onStop) try { o.onStop(restore); } catch (e) {}
+      SL.toast(msg || (restore ? 'Demo stopped. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+    }
+    const stop = restore => end(restore !== false);
+    btn.onclick = start;
+    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') D.next(); else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
+    // the student takes over: a real tap on a lab (outside the caption) ends the demo where it is
+    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .atl-stage, .jgrid, .tabs')) end(false); }, true);
+    D = { running: () => !!run, start, stop, next: () => { if (run && run.nextRes) run.nextRes(); } };
+    return D;
+  }
+  return { init, key, atlasKeys, remember, demo, goCases, get running() { return !!(D && D.running()); } };
+})();
+
 </script>
 <script>
 (() => {
@@ -1530,7 +1672,7 @@ window.CK = (() => {
 
   /* =================== Challenges =================== */
   $('#chalList').innerHTML = CH.map(([k, t, l]) => `<div class="chal" data-k="${k}"><span class="led"></span><div><b>${t}</b><span class="small muted">${l}</span></div></div>`).join('');
-  function done(k) { if (doneSet.has(k)) return; doneSet.add(k); const el = document.querySelector(`.chal[data-k="${k}"] .led`); el && el.classList.add('on'); const c = CH.find(x => x[0] === k); SL.toast('<b>Challenge complete</b><br>' + c[1], 'ok'); }
+  function done(k) { if (doneSet.has(k) || (window.DK && DK.running)) return; doneSet.add(k); const el = document.querySelector(`.chal[data-k="${k}"] .led`); el && el.classList.add('on'); const c = CH.find(x => x[0] === k); SL.toast('<b>Challenge complete</b><br>' + c[1], 'ok'); }
   function checkSound() {
     const place = (1 - gwX(F)) * LEN, SLv = Ldb - thr(F);
     if (Math.abs(place - 10) <= 0.3) done('place10');
@@ -1645,12 +1787,40 @@ window.CK = (() => {
   document.addEventListener('visibilitychange', () => document.hidden ? loop.stop() : loop.start());
   setTimeout(drawAud, 100);
 
+  /* =================== Watch demo, shortcuts and remembered settings =================== */
+  DK.init({ before: $('#earAtlas').closest('section'), len: '≈ 50 s' });
+  DK.atlasKeys({ labels: '#tLabels', test: '#btnTest', back: '#atlBack' });
+  DK.key('p', 'play tone', () => $('#btnPlay').click());
+  DK.remember('ear', ['#tLabels', '#tFocus', '#lSl', '#spSl']);
+  const preF = f => { const b = $(`#fPresets [data-f="${f}"]`); if (b) b.click(); };
+  const setR = (id, v) => { const el = $(id); el.value = v; el.dispatchEvent(new Event('input')); };
+  const goSel = async (v, id) => { if (atlas.quizzing) atlas.stopQuiz(); await atlas.go(v); atlas.select(id); };
+  DK.demo({
+    save() { const s = { view: atlas.view, sel: atlas.selected, info: $('#atlInfo').innerHTML, f: fSl.value, l: $('#lSl').value, sp: $('#spSl').value }; if (atlas.quizzing) atlas.stopQuiz(); return s; },
+    restore(s) {
+      sweeping = false; setR('#fSl', s.f); setR('#lSl', s.l); setR('#spSl', s.sp);
+      const back = async () => { if (atlas.view !== s.view) await atlas.go(s.view); atlas.select(s.sel || null); if (!s.sel) $('#atlInfo').innerHTML = s.info; }; back(); setTimeout(back, 1200);
+    },
+    steps: [
+      { stage: '#earAtlas', ms: 4800, cap: '<b>Sound arrives at the eardrum.</b> Pressure waves travel down the ear canal and make the tympanic membrane vibrate, like the skin of a drum.', run: () => goSel('middle', 'drum') },
+      { stage: '#earAtlas', ms: 4800, cap: '<b>The ossicles: malleus → incus → stapes.</b> They act as a lever (about 1.3 : 1), and the eardrum is about 17 times the area of the oval window, so the pressure on the inner-ear fluid rises about 22-fold. This impedance matching stops most of the sound bouncing off the fluid.', run: async () => { atlas.select('malleus'); await new Promise(r => setTimeout(r, 1400)); atlas.select('stapes'); } },
+      { stage: '#earAtlas', ms: 4000, cap: '<b>Into the cochlea.</b> The stapes footplate rocks the oval window and sets the cochlear fluids moving; the round window bulges out to let them move.', run: () => goSel('inner', 'cochlea') },
+      { stage: '.snd-stage', hl: '.stat:has(#sPlace)', ms: 6500, cap: '<b>The whole journey, end to end: a 1 kHz tone at 60 dB.</b> Green bands are compressions in the air; the drum and ossicles rock; the travelling wave on the uncoiled basilar membrane peaks about 21 mm from the base.', run: async () => { sweeping = false; setR('#spSl', 1); setR('#lSl', 60); preF(1000); } },
+      { stage: '.snd-stage', hl: '.stat:has(#sPlace)', ms: 4500, cap: '<b>Low pitch, 100 Hz.</b> The wave runs almost to the end: it peaks near the wide, floppy <i>apex</i>, about 32 mm from the base.', run: async () => preF(100) },
+      { stage: '.snd-stage', hl: '.stat:has(#sPlace)', ms: 5000, cap: '<b>High pitch, 4 kHz.</b> The peak moves towards the narrow, stiff <i>base</i>, about 12 mm in. Noise damage starts here: the classic "4 kHz notch" on an audiogram.', run: async () => preF(4000) },
+      { stage: '.snd-stage', ms: 2500, cap: '<b>Sweep 20 Hz → 20 kHz.</b> Each frequency has its own place along the cochlea: the peak marches from apex to base. This frequency-to-place map (the Greenwood map) is how the ear sorts pitch.', run: async A => { A.hl('.ctl:has(#fSl)'); await A.slide('#fSl', 0, 500); await A.slide('#fSl', 1000, 7000); } },
+      { stage: '.snd-stage', hl: '.stat:has(#sSL)', ms: 5000, cap: '<b>Loudness and threshold.</b> Back to 1 kHz and turn the level down to 0 dB SPL: the tone falls below threshold and the nerve fibre fires only spontaneously (about 10 spikes/s).', run: async A => { preF(1000); await A.slide('#lSl', 0, 1800); } },
+      { stage: '.snd-stage', hl: '#dkCases', ms: 4500, cap: '<b>Your turn.</b> Play the tone, sweep it yourself, then apply it in <b>Cases &amp; OSCE</b>: chronic otitis media, ototoxicity and a timed Rinne and Weber station.' },
+    ],
+  });
+
   /* =================== Guided tour =================== */
   const atlReset = () => { if (atlas.quizzing) atlas.stopQuiz(); };
   // jump (not smooth-scroll) to each target so the tip is placed against its final position
   const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
   const startTour = () => SL.tour(jump([
     { el: '#earAtlas', title: 'Explore the ear', text: 'Tap any structure to read what it does. The dashed rings with a <b>+</b> zoom you deeper, from the whole ear down to a single row of hair cells.', before: () => { atlReset(); atlas.go('whole'); } },
+    { el: '#dkPlay', title: 'Watch the demo first', text: 'A 50-second captioned run-through: the sound journey from eardrum to cochlea, then each frequency mapped to its own place along the cochlea. Stop it at any time with Esc; your settings come back. <b>Cases &amp; OSCE</b> jumps to the clinical tab. Keyboard: <kbd>D</kbd> demo, <kbd>C</kbd> cases, <kbd>P</kbd> play tone, <kbd>L</kbd> labels, <kbd>T</kbd> test.' },
     { el: '#atlViews', title: 'Jump between levels', text: 'Each button flies to a level of detail: middle ear, inner ear, cochlear duct and organ of Corti. The breadcrumb at the top-left of the figure takes you back out.' },
     { el: '#atlInfo', title: 'Read the structure card', text: 'Every structure has a function, extra detail and a clinical note. This is the cochlea; its zoom button takes you inside it.', before: () => atlas.select('cochlea') },
     { el: '#btnTest', title: 'Test yourself', text: 'The labels hide and you are asked to find structures in the current view. Two wrong taps reveal the answer.' },
