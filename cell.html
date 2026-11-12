@@ -23,7 +23,7 @@
   #cellSvg.zoomed .org.dim{opacity:.35}
   #cellSvg .lbl text{font:600 13px Inter,sans-serif;fill:#e2e8f0;paint-order:stroke;stroke:#050913;stroke-width:4px}
   #cellSvg .lbl line{stroke:rgba(226,232,240,.55);stroke-width:1}
-  #trStage{height:470px} #osStage{height:460px} #secStage{height:440px} #bStage{height:520px}
+  #trStage{height:500px} #osStage{height:460px} #secStage{height:440px} #bStage{height:520px}
   .org-chips{display:flex;flex-wrap:wrap;gap:5px}
   .org-chips button{all:unset;cursor:pointer;font:600 .72rem var(--mono);padding:4px 8px;border-radius:7px;border:1px solid var(--line2);color:var(--muted)}
   .org-chips button:hover{border-color:var(--accent);color:var(--text)}
@@ -58,7 +58,16 @@
   .explore-bar{flex:0 0 90px;height:6px;border-radius:9px;background:var(--line2);overflow:hidden}
   .explore-bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s}
   @media (max-width:560px){ .org-chips button{padding:9px 10px} .phase-chips button{min-width:22px;text-align:center;padding:10px 8px} }
-  @media (max-width:520px){ #cellStage{height:270px;min-height:0} #trStage{height:480px} #osStage{height:440px} #secStage{height:430px} #bStage{height:600px} }
+  #cellSvg .lbl .num circle{fill:var(--accent);stroke:#050913;stroke-width:5}
+  #cellSvg .lbl .num text{font:700 34px JetBrains Mono,monospace;fill:#06101f;stroke:none}
+  .cell-key{display:none}
+  @media (max-width:520px){ #cellStage{height:auto;min-height:360px} #cellSvg{height:auto;aspect-ratio:1000/680;margin-top:46px}
+    #cellStage .stage-toolbar{top:10px;bottom:auto}
+    .cell-key{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:6px 10px 12px}
+    .cell-key button{all:unset;cursor:pointer;display:flex;gap:7px;align-items:center;font:600 .76rem Inter,sans-serif;color:var(--muted);padding:6px 7px;border-radius:8px;border:1px solid var(--line2);min-height:30px}
+    .cell-key button:hover,.cell-key button:focus-visible{color:var(--text);border-color:var(--accent)}
+    .cell-key b{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#06101f;font:700 .72rem JetBrains Mono,monospace;flex:none} }
+  @media (max-width:520px){ #cellStage{min-height:360px} #trStage{height:640px} #trStage .hud{display:none} #osStage{height:440px} #secStage{height:430px} #bStage{height:600px} }
   /* keyboard focus always visible */
   main :is(button,a,[tabindex],summary,select,input):focus-visible{outline:2px solid var(--accent)!important;outline-offset:2px}
   .kadd{display:flex;gap:6px;margin-top:12px;align-items:center}.kadd select{flex:1;min-width:0}
@@ -74,6 +83,7 @@
     <div class="stage" id="cellStage">
       <svg id="cellSvg" viewBox="0 0 1000 680" preserveAspectRatio="xMidYMid meet" aria-label="Interactive cell diagram"></svg>
       <div class="hud"><span class="readout" id="cellHud">Animal cell · click an organelle</span></div>
+      <div class="cell-key" id="cellKey" aria-label="Key to numbered labels"></div>
       <div class="stage-toolbar"><button class="btn sm" id="zoomOut" hidden><i data-lucide="zoom-out"></i> Whole cell</button></div>
     </div>
     <aside>
@@ -563,14 +573,35 @@
     if (!plant) for (let i = 1; i < memPts.length; i += 4) { const p = memPts[i], dx = p[0] - 500, dy = p[1] - 340, L = Math.hypot(dx, dy); const ox = p[0] + dx / L * 7, oy = p[1] + dy / L * 7; s += `<path d="M${ox.toFixed(1)},${oy.toFixed(1)} l${(dx / L * 7).toFixed(1)},${(dy / L * 7).toFixed(1)} m${(-dx / L * 3).toFixed(1)},${(-dy / L * 3).toFixed(1)} l3,-3" stroke="#bef264" stroke-width="1" opacity=".55" fill="none"/>`; }
     s += `</g>`;
     // labels
-    s += `<g class="lbl" id="lblLayer" pointer-events="none">${labelsFor(plant, nuc, golgiAt, cent).map(([t, ax, ay, lx, ly]) => `<line x1="${ax}" y1="${ay}" x2="${lx}" y2="${ly}"/><text x="${lx}" y="${ly + (ly < ay ? -4 : 13)}" text-anchor="${lx < 120 ? 'start' : lx > 880 ? 'end' : 'middle'}">${t}</text>`).join('')}</g>`;
+    s += `<g class="lbl" id="lblLayer" pointer-events="none"></g>`;
     svg.innerHTML = s;
-    LAY = { plant, memPts, nuc, golgiAt, vesTargets, streamPath, cent };
+    LAY = { plant, memPts, nuc, golgiAt, vesTargets, streamPath, cent, labels: labelsFor(plant, nuc, golgiAt, cent) };
+    drawLabels(true);
     initAnim();
     $('#lblLayer').style.display = $('#lblT').checked ? '' : 'none';
     svg.querySelectorAll('.csk').forEach(g => g.style.display = $('#cskT').checked ? '' : 'none');
     chips();
   }
+  const LBLK = { 'Nucleus': 'nucleus', 'Nucleolus': 'nucleus', 'Rough ER': 'rer', 'Golgi apparatus': 'golgi', 'Golgi': 'golgi', 'Mitochondrion': 'mito', 'Smooth ER': 'ser', 'Lysosome': 'lyso', 'Peroxisome': 'perox', 'Centrosome': 'centro', 'Plasma membrane': 'membrane', 'Vesicle': 'vesicle', 'Cell wall': 'wall', 'Large central vacuole': 'vacuole', 'Chloroplast': 'chloro', 'Plasmodesma': 'plasmo' };
+  let lblCompact = null;
+  // desktop: text labels with leader lines; phone: numbered badges plus a key under the figure
+  function drawLabels(force) {
+    if (!LAY) return; const W = svg.clientWidth || 1000, compact = W < 560;
+    if (!force && compact === lblCompact) return; lblCompact = compact;
+    const L = LAY.labels, layer = $('#lblLayer'), key = $('#cellKey');
+    if (!compact) {
+      layer.innerHTML = L.map(([t, ax, ay, lx, ly]) => `<line x1="${ax}" y1="${ay}" x2="${lx}" y2="${ly}"/><text x="${lx}" y="${ly + (ly < ay ? -4 : 13)}" text-anchor="${lx < 120 ? 'start' : lx > 880 ? 'end' : 'middle'}">${t}</text>`).join('');
+      key.innerHTML = ''; return;
+    }
+    const r = 30, pts = L.map(([t, ax, ay, lx, ly]) => ({ t, ax, ay, x: SL.clamp(lx, 40, 960), y: SL.clamp(ly, 40, 640) }));
+    for (let it = 0; it < 80; it++) { let moved = false;
+      for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) { const a = pts[i], b = pts[j]; let dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1; if (d < 2 * r + 8) { const k = (2 * r + 8 - d) / 2 / d; a.x -= dx * k; a.y -= dy * k; b.x += dx * k; b.y += dy * k; moved = true; } }
+      pts.forEach(p => { p.x = SL.clamp(p.x, 34, 966); p.y = SL.clamp(p.y, 34, 646); }); if (!moved) break; }
+    layer.innerHTML = pts.map((p, i) => `<line x1="${p.ax}" y1="${p.ay}" x2="${p.x.toFixed(1)}" y2="${p.y.toFixed(1)}" style="stroke-width:3"/><circle cx="${p.ax}" cy="${p.ay}" r="6" fill="#e2e8f0"/><g class="num"><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${r}"/><text x="${p.x.toFixed(1)}" y="${p.y.toFixed(1)}" dy=".36em" text-anchor="middle">${i + 1}</text></g>`).join('');
+    key.innerHTML = L.map(([t], i) => `<button data-k="${LBLK[t] || ''}"><b>${i + 1}</b>${t}</button>`).join('');
+  }
+  $('#cellKey').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || !b.dataset.k) return; const el = svg.querySelector(`.org[data-k="${b.dataset.k}"]`); if (el) zoomTo(el, b.dataset.k); });
+  new ResizeObserver(() => drawLabels(false)).observe(svg);
   function labelsFor(plant, nuc, g, cent) {
     if (!plant) return [
       ['Nucleus', nuc[0] - 90, nuc[1] - 40, 150, 120], ['Nucleolus', nuc[0] + 26, nuc[1] - 18, 470, 24], ['Rough ER', 560, 380, 610, 330], ['Golgi apparatus', g[0] + 20, g[1] - 50, 790, 30],
@@ -661,9 +692,8 @@
   }
   $('#orgChips').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const k = b.dataset.k; const el = svg.querySelector(`.org[data-k="${k}"]`); if (el) { if (k === 'cyto') { $('#cskT').checked = true; svg.querySelectorAll('.csk').forEach(g => g.style.display = ''); } zoomTo(el, k); } });
   document.querySelectorAll('#cellSeg button').forEach(b => b.onclick = () => { cellMode = b.dataset.m; document.querySelectorAll('#cellSeg button').forEach(x => x.classList.toggle('on', x === b)); VB = [0, 0, 1000, 680]; vbTo = null; svg.setAttribute('viewBox', VB.join(' ')); zoomedK = null; svg.classList.remove('zoomed'); $('#zoomOut').hidden = true; buildCell(); infoDefault(); $('#cellHud').textContent = (cellMode === 'animal' ? 'Animal' : 'Plant') + ' cell · click an organelle'; });
-  $('#lblT').onchange = e => $('#lblLayer').style.display = e.target.checked ? '' : 'none';
+  $('#lblT').onchange = e => { $('#lblLayer').style.display = e.target.checked ? '' : 'none'; $('#cellKey').style.display = e.target.checked ? '' : 'none'; };
   $('#cskT').onchange = e => svg.querySelectorAll('.csk').forEach(g => g.style.display = e.target.checked ? '' : 'none');
-  if (innerWidth < 600) $('#lblT').checked = false;
   buildCell(); infoDefault();
   function cellFrame(dt) {
     if (vbTo) { vbT = Math.min(1, vbT + dt / .9); const e = ease(vbT); VB = vbFrom.map((v, i) => SL.lerp(v, vbTo[i], e)); svg.setAttribute('viewBox', VB.map(v => v.toFixed(2)).join(' ')); if (vbT >= 1) vbTo = null; }
@@ -677,10 +707,12 @@
   const tr = { mode: 'simple', parts: null, carriers: [], pumps: [], channels: [], t: 0, paused: false, cnt: { glucIn: 0, cycles: 0, atp: 0, naOut: 0, kIn: 0 }, hist: [], atp: 60 };
   const TR = SL.canvas($('#cvTr'), () => { if (tr.parts) trReset(); });
   const TYPES = { O2: { r: 3.4, col: '#f87171', lab: 'O₂' }, CO2: { r: 3.6, col: '#cbd5e1', lab: 'CO₂' }, Glu: { r: 5, col: '#facc15', lab: 'glucose' }, G6P: { r: 5, col: '#fb923c', lab: 'glucose-6-P' }, Na: { r: 3.4, col: '#fbbf24', lab: 'Na⁺' }, K: { r: 3.6, col: '#a78bfa', lab: 'K⁺' } };
-  const geomT = () => { const { w, h } = TR; const mc = h * .5, half = 24; return { w, h, mc, m0: mc - half, m1: mc + half }; };
+  const geomT = () => { const { w, h } = TR; const wide = w >= 700, sw = wide ? Math.round(w * .66) : w, sh = wide ? h : h - 170; const mc = sh * .5, half = 30; return { w: sw, h: sh, W: w, H: h, wide, mc, m0: mc - half, m1: mc + half }; };
+  const TRSER = { simple: [['O₂ outside', '#f87171', 'O2o'], ['O₂ inside', '#fca5a5', 'O2i', 1]], facil: [['Glucose outside', '#facc15', 'Gluo'], ['Glucose inside', '#fde68a', 'GluIn', 1]], active: [['Na⁺ outside', '#fbbf24', 'Nao'], ['Na⁺ inside', '#fbbf24', 'Nai', 1], ['K⁺ outside', '#a78bfa', 'Ko'], ['K⁺ inside', '#a78bfa', 'Ki', 1]] };
+  function trSample() { const c = countSides(); c.GluIn = (c.Glui || 0) + (c.G6Pi || 0); tr.hist.push([tr.t, ...TRSER[tr.mode].map(sr => c[sr[2]] || 0)]); if (tr.hist.length > 400) tr.hist.shift(); }
   function addP(type, side, n) { const G = geomT(); for (let i = 0; i < n; i++) tr.parts.push({ type, x: 10 + Math.random() * (G.w - 20), y: side > 0 ? 8 + Math.random() * (G.m0 - 16) : G.m1 + 8 + Math.random() * (G.h - G.m1 - 16), vx: 0, vy: 0, bound: null }); }
   function trReset() {
-    const G = geomT(); tr.parts = []; tr.carriers = []; tr.pumps = []; tr.channels = []; tr.t = 0; tr.hist = []; tr.cnt = { glucIn: 0, cycles: 0, atp: 0, naOut: 0, kIn: 0 }; tr.atp = 60;
+    const G = geomT(); tr.parts = []; tr.carriers = []; tr.pumps = []; tr.channels = []; tr.t = 0; tr.hist = []; tr.cnt = { glucIn: 0, cycles: 0, atp: 0, naOut: 0, kIn: 0 }; tr.atp = 60; tr.flash = [];
     if (tr.mode === 'simple') { addP('O2', 1, +$('#o2out').value); addP('O2', -1, +$('#o2in').value); addP('CO2', -1, 30); addP('CO2', 1, 6); if ($('#addPolar').checked) { addP('Glu', 1, 14); addP('Na', 1, 14); } }
     if (tr.mode === 'facil') {
       addP('Glu', 1, +$('#gout').value); addP('Glu', -1, +$('#gin').value); addP('K', -1, 34); addP('K', 1, 8);
@@ -693,6 +725,7 @@
       const n = +$('#npump').value; for (let i = 0; i < n; i++) tr.pumps.push({ x: G.w * (i + 1) / (n + 1), st: 'E1', t: 0, na: [], k: [], phos: false });
       tr.channels = [{ x: G.w * .06 }, { x: G.w * .94 }];
     }
+    tr.parts.forEach(p => p.side = p.y < G.mc); trSample();
     trStats();
   }
   function setTrMode(m) { tr.mode = m; document.querySelectorAll('#trSeg button').forEach(b => b.classList.toggle('on', b.dataset.m === m)); $('#trSimple').hidden = m !== 'simple'; $('#trFacil').hidden = m !== 'facil'; $('#trActive').hidden = m !== 'active'; $('#trHud').textContent = { simple: 'Simple diffusion through the bilayer', facil: 'Facilitated diffusion: GLUT carriers and K⁺ channels', active: 'Primary active transport: Na⁺/K⁺-ATPase' }[m]; trReset(); }
@@ -740,13 +773,13 @@
       if (ny < r || ny > G.h - r) { p.vy *= -1; ny = SL.clamp(ny, r, G.h - r); }
       // membrane interaction
       const permeable = (p.type === 'O2' || p.type === 'CO2');
-      const inChannel = tr.channels.some(c => Math.abs(nx - c.x) < 7) && p.type === 'K' && ((tr.mode === 'facil' && $('#kOpen').checked) || (tr.mode === 'active' && $('#kLeak').checked));
+      const inChannel = tr.channels.some(c => Math.abs(nx - c.x) < 8) && p.type === 'K' && ((tr.mode === 'facil' && $('#kOpen').checked) || (tr.mode === 'active' && $('#kLeak').checked));
       if (!permeable && !inChannel) {
         const wasOut = p.y < G.mc;
         if (wasOut && ny + r > G.m0) { ny = G.m0 - r; p.vy = -Math.abs(p.vy); }
         if (!wasOut && ny - r < G.m1) { ny = G.m1 + r; p.vy = Math.abs(p.vy); }
       } else if (permeable && ny > G.m0 && ny < G.m1) { p.vx *= .7; }
-      if (inChannel && ny > G.m0 - 4 && ny < G.m1 + 4) { const c = tr.channels.find(c => Math.abs(nx - c.x) < 7); nx = SL.lerp(nx, c.x, .4); }
+      if (inChannel && ny > G.m0 - 4 && ny < G.m1 + 4) { const c = tr.channels.find(c => Math.abs(nx - c.x) < 8); nx = SL.lerp(nx, c.x, .4); }
       p.x = nx; p.y = ny;
     });
     // carriers
@@ -778,52 +811,95 @@
       q.na.forEach((p, i) => { p.x = q.x - 7 + i * 7; p.y = q.st === 'P' ? SL.lerp(G.m1 - 6, G.m0 + 6, Math.min(1, q.t / .45)) : G.m1 - 6; });
       q.k.forEach((p, i) => { p.x = q.x - 4 + i * 8; p.y = q.st === 'D' ? SL.lerp(G.m0 + 6, G.m1 - 6, Math.min(1, q.t / .45)) : G.m0 + 6; });
     });
-    if (Math.floor(tr.t * 4) !== Math.floor((tr.t - dt) * 4)) trStats();
+    // crossing events: flash where a molecule passes the membrane
+    tr.parts.forEach(p => { const sd = p.y < G.mc; if (p.side !== undefined && sd !== p.side) tr.flash.push({ x: p.x, y: G.mc, t: 0, col: TYPES[p.type].col, dn: !sd }); p.side = sd; });
+    tr.flash.forEach(f => f.t += dt); tr.flash = tr.flash.filter(f => f.t < .9);
+    if (Math.floor(tr.t * 4) !== Math.floor((tr.t - dt) * 4)) { trStats(); trSample(); }
   }
   function drawTr() {
-    const { ctx, w, h } = TR; const G = geomT(); ctx.clearRect(0, 0, w, h);
+    const { ctx } = TR; const G = geomT(), w = G.w, h = G.h; ctx.clearRect(0, 0, G.W, G.H);
+    ctx.fillStyle = '#070d1a'; ctx.fillRect(0, 0, G.W, G.H);
     let g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#0b2238'); g.addColorStop(.5, '#0a1626'); g.addColorStop(1, '#1b1035'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-    const nar = w < 600; ctx.font = '600 10.5px JetBrains Mono, monospace'; ctx.fillStyle = '#7dd3fc'; ctx.textAlign = 'left'; ctx.fillText(nar ? 'OUTSIDE' : 'OUTSIDE (extracellular fluid)', 10, 16); ctx.fillStyle = '#c4b5fd'; ctx.fillText(nar ? 'INSIDE' : 'INSIDE (cytoplasm)', 10, nar ? G.m1 + 40 : h - 8);
+    const nar = w < 600; ctx.font = '600 10.5px JetBrains Mono, monospace'; ctx.fillStyle = '#7dd3fc'; ctx.textAlign = 'left'; ctx.fillText(nar ? 'OUTSIDE' : 'OUTSIDE (extracellular fluid)', 10, nar ? 52 : 34); ctx.fillStyle = '#c4b5fd'; ctx.fillText(nar ? 'INSIDE' : 'INSIDE (cytoplasm)', 10, h - 10);
     // bilayer
-    const gaps = [...tr.carriers.map(c => [c.x, 18]), ...tr.pumps.map(p => [p.x, 24]), ...tr.channels.map(c => [c.x, 12])];
-    for (let x = 4; x < w; x += 7) {
+    const gaps = [...tr.carriers.map(c => [c.x, 30]), ...tr.pumps.map(p => [p.x, 36]), ...tr.channels.map(c => [c.x, 18])];
+    for (let x = 4; x < w; x += 8) {
       if (gaps.some(([gx, gw]) => Math.abs(x - gx) < gw)) continue;
-      ctx.strokeStyle = 'rgba(148,163,184,.35)'; ctx.lineWidth = 1; ctx.beginPath();
-      for (const s of [-1, 1]) { ctx.moveTo(x - 1, G.mc + s * (G.m1 - G.mc - 4)); ctx.lineTo(x - 1, G.mc + s * 2); ctx.moveTo(x + 1, G.mc + s * (G.m1 - G.mc - 4)); ctx.lineTo(x + 1, G.mc + s * 2); } ctx.stroke();
-      ctx.fillStyle = '#5b8bd6'; ctx.beginPath(); ctx.arc(x, G.m0 + 3, 3.2, 0, 7); ctx.arc(x, G.m1 - 3, 3.2, 0, 7); ctx.fill();
+      ctx.strokeStyle = 'rgba(148,163,184,.38)'; ctx.lineWidth = 1.2; ctx.beginPath();
+      for (const s of [-1, 1]) for (const o of [-1.4, 1.4]) { ctx.moveTo(x + o, G.mc + s * (G.m1 - G.mc - 6)); ctx.quadraticCurveTo(x + o + s * 1.5, G.mc + s * 12, x + o, G.mc + s * 2); } ctx.stroke();
+      ctx.fillStyle = '#5b8bd6'; ctx.beginPath(); ctx.arc(x, G.m0 + 4, 3.8, 0, 7); ctx.arc(x, G.m1 - 4, 3.8, 0, 7); ctx.fill();
     }
-    // channels
-    tr.channels.forEach(c => { const open = (tr.mode === 'facil' && $('#kOpen').checked) || (tr.mode === 'active' && $('#kLeak').checked); ctx.fillStyle = '#6366f1'; for (const s of [-1, 1]) { rr(ctx, c.x + s * (open ? 7 : 4) - 4, G.m0 - 4, 8, G.m1 - G.m0 + 8, 3); ctx.fill(); } ctx.fillStyle = '#93a1bd'; ctx.font = '600 9px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(open ? 'K⁺ channel' : 'closed', c.x, G.m1 + 18); });
-    // carriers
+    const lab = (t, x, y, col) => { ctx.fillStyle = col || '#cbd5e1'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(t, x, y); };
+    // ion channels: four helices around a pore; the inner gate widens when open
+    tr.channels.forEach(c => { const open = (tr.mode === 'facil' && $('#kOpen').checked) || (tr.mode === 'active' && $('#kLeak').checked);
+      for (const s of [-1, 1]) { const gr = ctx.createLinearGradient(c.x + s * 18, 0, c.x, 0); gr.addColorStop(0, '#4338ca'); gr.addColorStop(1, '#818cf8'); ctx.fillStyle = gr;
+        ctx.beginPath(); ctx.moveTo(c.x + s * 6, G.m0 - 8); ctx.lineTo(c.x + s * 17, G.m0 - 8); ctx.lineTo(c.x + s * 17, G.m1 + 8); ctx.lineTo(c.x + s * (open ? 9 : 3), G.m1 + 8); ctx.closePath(); ctx.fill(); }
+      ctx.fillStyle = '#fde68a'; for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.arc(c.x - 6, G.m0 - 2 + k * 5, 1.4, 0, 7); ctx.arc(c.x + 6, G.m0 - 2 + k * 5, 1.4, 0, 7); ctx.fill(); }
+      if (tr.mode === 'facil' && c !== tr.channels[0]) return; const lx = tr.mode === 'facil' && tr.channels[1] ? (c.x + tr.channels[1].x) / 2 : c.x; lab(open ? 'K⁺ channels' : 'closed', lx, G.m1 + 24, '#a5b4fc'); });
+    // GLUT carriers: two lobes rock between outward- and inward-open shapes (alternating access)
     tr.carriers.forEach(c => {
-      const f = c.flip > 0 ? 1 - c.flip / .22 : 1; let o = c.state === 'out' ? 1 : -1; if (c.flip > 0) o = o * (1 - 2 * f);
-      ctx.fillStyle = '#0ea5e9';
-      for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(c.x + s * 4, G.mc); ctx.lineTo(c.x + s * (4 + 8 * Math.max(0, o)), G.m0 - 4); ctx.lineTo(c.x + s * 16, G.m0 - 4); ctx.lineTo(c.x + s * 16, G.m1 + 4); ctx.lineTo(c.x + s * (4 + 8 * Math.max(0, -o)), G.m1 + 4); ctx.closePath(); ctx.fill(); }
-      ctx.fillStyle = '#93a1bd'; ctx.font = '600 9px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText('GLUT', c.x, G.m1 + 18);
-      if (c.bound) { c.bound.x = c.x; c.bound.y = G.mc + (c.state === 'out' ? -1 : 1) * 10 * (c.flip > 0 ? (1 - 2 * f) : 1); }
+      const f = c.flip > 0 ? 1 - c.flip / .22 : 1; let o = c.state === 'out' ? 1 : -1; if (c.flip > 0) o = o * (1 - 2 * ease(f));
+      for (const s of [-1, 1]) { const gr = ctx.createLinearGradient(c.x + s * 28, 0, c.x, 0); gr.addColorStop(0, '#0369a1'); gr.addColorStop(1, c.bound ? '#7dd3fc' : '#38bdf8'); ctx.fillStyle = gr;
+        const ti = c.x + s * (3 + 13 * Math.max(0, o)), bi = c.x + s * (3 + 13 * Math.max(0, -o));
+        ctx.beginPath(); ctx.moveTo(ti, G.m0 - 12); ctx.quadraticCurveTo(c.x + s * 28, G.m0 - 18, c.x + s * 28, G.mc); ctx.quadraticCurveTo(c.x + s * 28, G.m1 + 18, bi, G.m1 + 12); ctx.quadraticCurveTo(c.x + s * 6, G.mc, ti, G.m0 - 12); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = 'rgba(224,242,254,.5)'; ctx.lineWidth = 1; ctx.stroke(); }
+      if (!c.bound) { ctx.strokeStyle = 'rgba(250,204,21,.55)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(c.x, G.mc + o * -2, 6, 0, 7); ctx.stroke(); }
+      lab(c.flip > 0 ? 'flipping' : c.state === 'out' ? 'open out' : 'open in', c.x, c.state === 'out' ? G.m1 + 24 : G.m1 + 24, '#7dd3fc');
+      lab('GLUT', c.x, G.m0 - 20, '#bae6fd');
+      if (c.bound) { c.bound.x = c.x; c.bound.y = G.mc + (c.state === 'out' ? -1 : 1) * 10 * (c.flip > 0 ? (1 - 2 * ease(f)) : 1); }
     });
-    // pumps
+    // Na+/K+-ATPase: the ion cavity swings from inward-open (E1) to outward-open (E2) when phosphorylated
     tr.pumps.forEach(q => {
-      const open = q.st === 'E1' || q.st === 'P' ? 'in' : 'out';
-      const gp = ctx.createLinearGradient(q.x - 20, 0, q.x + 20, 0); gp.addColorStop(0, '#10b981'); gp.addColorStop(1, '#047857'); ctx.fillStyle = gp;
-      rr(ctx, q.x - 22, G.m0 - 12, 44, G.m1 - G.m0 + 24, 10); ctx.fill();
-      ctx.fillStyle = '#052e1f'; rr(ctx, q.x - 9, open === 'in' ? G.mc - 4 : G.m0 - 12, 18, (G.m1 - G.m0) / 2 + 16, 6); ctx.fill();
-      if (q.st === 'P' || q.st === 'E2' && false) { ctx.fillStyle = '#f472b6'; ctx.beginPath(); ctx.arc(q.x + 20, G.m1 + 4, 5, 0, 7); ctx.fill(); ctx.font = '700 8px JetBrains Mono, monospace'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText('P', q.x + 20, G.m1 + 7); }
-      if (q.st === 'P' && q.t < .45) { const a = q.t / .45; ctx.globalAlpha = 1 - a; ctx.fillStyle = '#fde047'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText('ATP → ADP', q.x, G.m1 + 22 + a * 16); ctx.globalAlpha = 1; }
-      if (q.st === 'D' && q.t < .45) { const a = q.t / .45; ctx.globalAlpha = 1 - a; ctx.fillStyle = '#f472b6'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText('Pi released', q.x, G.m1 + 22 + a * 16); ctx.globalAlpha = 1; }
-      ctx.fillStyle = '#d1fae5'; ctx.font = '600 9px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText($('#ouab').checked ? 'blocked' : { E1: 'E1 · binds 3Na⁺', P: 'E1-P · flipping', E2: 'E2 · binds 2K⁺', D: 'E2 · flipping' }[q.st], q.x, G.m0 - 18);
+      const u = q.st === 'E1' ? 0 : q.st === 'E2' ? 1 : q.st === 'P' ? ease(Math.min(1, q.t / .45)) : 1 - ease(Math.min(1, q.t / .45));
+      const gp = ctx.createLinearGradient(q.x - 32, 0, q.x + 32, 0); gp.addColorStop(0, '#047857'); gp.addColorStop(.5, '#34d399'); gp.addColorStop(1, '#065f46'); ctx.fillStyle = gp;
+      rr(ctx, q.x - 32, G.m0 - 18, 64, G.m1 - G.m0 + 36, 16); ctx.fill(); ctx.strokeStyle = 'rgba(209,250,229,.5)'; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.fillStyle = '#10b981'; rr(ctx, q.x + 14, G.m0 - 30, 20, 16, 7); ctx.fill(); // beta subunit
+      ctx.strokeStyle = '#bef264'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(q.x + 24, G.m0 - 30); ctx.lineTo(q.x + 24, G.m0 - 38); ctx.lineTo(q.x + 20, G.m0 - 42); ctx.moveTo(q.x + 24, G.m0 - 38); ctx.lineTo(q.x + 28, G.m0 - 42); ctx.stroke();
+      const tw = 4 + 18 * u, bw = 4 + 18 * (1 - u); ctx.fillStyle = '#052e1f';
+      ctx.beginPath(); ctx.moveTo(q.x - tw / 2, G.m0 - 18); ctx.lineTo(q.x + tw / 2, G.m0 - 18); ctx.lineTo(q.x + 7, G.mc); ctx.lineTo(q.x + bw / 2, G.m1 + 18); ctx.lineTo(q.x - bw / 2, G.m1 + 18); ctx.lineTo(q.x - 7, G.mc); ctx.closePath(); ctx.fill();
+      // empty binding sockets
+      const nNa = q.st === 'E1' ? 3 - q.na.length : 0, nK = q.st === 'E2' ? 2 - q.k.length : 0;
+      ctx.strokeStyle = 'rgba(251,191,36,.7)'; ctx.lineWidth = 1.3; for (let i = 3 - nNa; i < 3; i++) { ctx.beginPath(); ctx.arc(q.x - 7 + i * 7, G.m1 - 6, 3.6, 0, 7); ctx.stroke(); }
+      ctx.strokeStyle = 'rgba(167,139,250,.8)'; for (let i = 2 - nK; i < 2; i++) { ctx.beginPath(); ctx.arc(q.x - 4 + i * 8, G.m0 + 6, 4, 0, 7); ctx.stroke(); }
+      if (q.st === 'P' || q.st === 'E2') { ctx.fillStyle = '#f472b6'; ctx.beginPath(); ctx.arc(q.x - 24, G.m1 + 12, 7, 0, 7); ctx.fill(); ctx.font = '700 9px JetBrains Mono, monospace'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText('P', q.x - 24, G.m1 + 15); }
+      if (q.st === 'P' && q.t < .45) { const a = q.t / .45; ctx.globalAlpha = 1 - a; lab('ATP → ADP', q.x, G.m1 + 32 + a * 16, '#fde047'); ctx.globalAlpha = 1; }
+      if (q.st === 'D' && q.t < .45) { const a = q.t / .45; ctx.globalAlpha = 1 - a; lab('Pi released', q.x, G.m1 + 32 + a * 16, '#f472b6'); ctx.globalAlpha = 1; }
+      lab($('#ouab').checked ? 'blocked (ouabain)' : { E1: 'E1 · binds 3 Na⁺', P: 'E1-P · flipping', E2: 'E2-P · binds 2 K⁺', D: 'E2 · flipping back' }[q.st], q.x, G.m0 - 54, '#d1fae5');
     });
+    // crossing flashes
+    tr.flash.forEach(f => { const a = 1 - f.t / .9; ctx.globalAlpha = a; ctx.strokeStyle = f.col; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(f.x, f.y, 5 + f.t * 26, 0, 7); ctx.stroke(); SL.arrow(ctx, f.x + 14, f.y + (f.dn ? -10 : 10), f.x + 14, f.y + (f.dn ? 12 : -12), f.col, 2); ctx.globalAlpha = 1; });
     // particles
     tr.parts.forEach(p => {
       const T = TYPES[p.type]; ctx.fillStyle = T.col;
+      const crossing = p.y > G.m0 - 4 && p.y < G.m1 + 4; ctx.globalAlpha = crossing || p.bound ? 1 : .8;
       if (p.type === 'Glu' || p.type === 'G6P') { ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = k / 6 * 6.283; ctx.lineTo(p.x + Math.cos(a) * T.r, p.y + Math.sin(a) * T.r); } ctx.closePath(); ctx.fill(); }
       else if (p.type === 'O2' || p.type === 'CO2') { ctx.beginPath(); ctx.arc(p.x - 2, p.y, T.r * .75, 0, 7); ctx.arc(p.x + 2, p.y, T.r * .75, 0, 7); ctx.fill(); if (p.type === 'CO2') { ctx.fillStyle = '#334155'; ctx.beginPath(); ctx.arc(p.x, p.y, 1.6, 0, 7); ctx.fill(); } }
-      else { ctx.shadowColor = T.col; ctx.shadowBlur = 6; ctx.beginPath(); ctx.arc(p.x, p.y, T.r, 0, 7); ctx.fill(); ctx.shadowBlur = 0; }
+      else { if (p.bound) { ctx.shadowColor = T.col; ctx.shadowBlur = 8; } ctx.beginPath(); ctx.arc(p.x, p.y, T.r, 0, 7); ctx.fill(); ctx.shadowBlur = 0; }
+      ctx.globalAlpha = 1;
     });
     // legend
     const present = [...new Set(tr.parts.map(p => p.type))]; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'right'; let lx = w - 10;
-    ctx.fillStyle = 'rgba(5,9,19,.7)'; ctx.fillRect(nar ? 0 : w * .5, nar ? 22 : 4, nar ? w : w * .5, 16);
-    present.reverse().forEach(t => { const txt = '● ' + TYPES[t].lab; ctx.fillStyle = TYPES[t].col; ctx.fillText(txt, lx, nar ? 32 : 16); lx -= ctx.measureText(txt).width + 12; });
+    ctx.fillStyle = 'rgba(5,9,19,.7)'; ctx.fillRect(nar ? 0 : w * .45, nar ? 24 : 4, nar ? w : w * .55, 16);
+    present.reverse().forEach(t => { const txt = '● ' + TYPES[t].lab; ctx.fillStyle = TYPES[t].col; ctx.fillText(txt, lx, nar ? 36 : 16); lx -= ctx.measureText(txt).width + 12; });
+    drawTrGraph(G);
+  }
+  // live graph: molecules on each side against time
+  function drawTrGraph(G) {
+    const { ctx } = TR, ser = TRSER[tr.mode], H = tr.hist;
+    const x0 = G.wide ? G.w + 44 : 40, y0 = G.wide ? 50 : G.h + 30, gw = G.wide ? G.W - G.w - 58 : G.W - 54, gh = G.wide ? G.H - 160 : G.H - G.h - 76;
+    ctx.fillStyle = '#93a1bd'; ctx.font = '600 10.5px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText('Molecules on each side vs time', x0 - 30, y0 - 16);
+    const tEnd = Math.max(30, tr.t), tStart = tEnd - 30; let ymax = 10; H.forEach(r => r.slice(1).forEach(v => ymax = Math.max(ymax, v)));
+    const step = ymax > 80 ? 40 : ymax > 40 ? 20 : 10; ymax = Math.ceil(ymax / step) * step;
+    const X = t => x0 + (t - tStart) / 30 * gw, Y = v => y0 + gh - v / ymax * gh;
+    ctx.strokeStyle = '#1e2a44'; ctx.lineWidth = 1; ctx.fillStyle = '#7d8aa6'; ctx.font = '9px JetBrains Mono, monospace'; ctx.textAlign = 'right';
+    for (let v = 0; v <= ymax; v += step) { ctx.beginPath(); ctx.moveTo(x0, Y(v)); ctx.lineTo(x0 + gw, Y(v)); ctx.stroke(); ctx.fillText(v, x0 - 5, Y(v) + 3); }
+    ctx.textAlign = 'center'; for (let t = Math.ceil(tStart / 10) * 10; t <= tEnd; t += 10) ctx.fillText(t + ' s', X(t), y0 + gh + 13);
+    ctx.save(); ctx.beginPath(); ctx.rect(x0, y0 - 2, gw, gh + 4); ctx.clip();
+    ser.forEach((sr, k) => { ctx.strokeStyle = sr[1]; ctx.lineWidth = 2.2; ctx.setLineDash(sr[3] ? [5, 3] : []); ctx.beginPath(); let st = false; H.forEach(r => { if (r[0] < tStart - .5) return; const x = X(r[0]), y = Y(r[k + 1]); st ? ctx.lineTo(x, y) : ctx.moveTo(x, y); st = true; }); ctx.stroke(); });
+    ctx.restore(); ctx.setLineDash([]);
+    // legend
+    ctx.font = '600 9.5px JetBrains Mono, monospace'; ctx.textAlign = 'left';
+    ser.forEach((sr, k) => { const lx = x0 + (k % 2) * (gw / 2), ly = y0 + gh + 30 + Math.floor(k / 2) * 14; ctx.strokeStyle = sr[1]; ctx.lineWidth = 2.2; ctx.setLineDash(sr[3] ? [5, 3] : []); ctx.beginPath(); ctx.moveTo(lx, ly - 3); ctx.lineTo(lx + 16, ly - 3); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = '#cbd5e1'; ctx.fillText(sr[0], lx + 21, ly); });
   }
 
   /* =====================================================================
@@ -906,37 +982,51 @@
       ctx.strokeStyle = 'rgba(252,165,165,.6)'; ctx.lineWidth = 2; for (let k = 0; k < 7; k++) { const a = k / 7 * 6.283 + .3; ctx.beginPath(); ctx.arc(cx, cy, R0 * 1.15, a, a + .55); ctx.stroke(); }
       ctx.fillStyle = '#fecaca'; ctx.font = '600 12px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('ghost membrane · haemoglobin released', cx, cy + R0 * 1.9); return;
     }
-    const Rr = R0 * Math.cbrt(V); const spikes = V < .97 ? Math.min(1, (1 - V) / .25) : 0;
-    ctx.save(); ctx.beginPath();
-    const N = 120; for (let i = 0; i <= N; i++) { const a = i / N * 6.283; const k = 1 + spikes * .09 * Math.pow(Math.max(0, Math.sin(a * 11)), 6) - spikes * .02; const x = cx + Math.cos(a) * Rr * k, y = cy + Math.sin(a) * Rr * k; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
-    ctx.closePath();
-    const pallor = SL.clamp(1 - (V - 1) / .45, 0, 1) * (1 - spikes * .6);
-    const g = ctx.createRadialGradient(cx - Rr * .2, cy - Rr * .2, 0, cx, cy, Rr);
-    g.addColorStop(0, pallor > .1 ? `rgba(248,113,113,${1 - .55 * pallor})` : '#f87171'); g.addColorStop(.45, `rgba(239,68,68,${1 - .35 * pallor})`); g.addColorStop(.85, '#b91c1c'); g.addColorStop(1, '#7f1d1d');
-    ctx.fillStyle = g; ctx.shadowColor = 'rgba(239,68,68,.5)'; ctx.shadowBlur = 20; ctx.fill(); ctx.shadowBlur = 0;
-    ctx.strokeStyle = 'rgba(254,202,202,.7)'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
-    // side profile
-    const px = cx, py = cy + Rr * 1.55, pw = Rr * .9, th = 10 + 14 * Math.min(1, Math.max(0, V - .6)), dip = pallor * th * .7;
-    ctx.fillStyle = '#dc2626'; ctx.beginPath(); ctx.moveTo(px - pw, py);
-    ctx.bezierCurveTo(px - pw, py - th, px - pw * .5, py - th, px, py - th + dip); ctx.bezierCurveTo(px + pw * .5, py - th, px + pw, py - th, px + pw, py);
-    ctx.bezierCurveTo(px + pw, py + th, px + pw * .5, py + th, px, py + th - dip); ctx.bezierCurveTo(px - pw * .5, py + th, px - pw, py + th, px - pw, py); ctx.fill();
-    ctx.fillStyle = '#93a1bd'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(V > 1.15 ? 'side view: spherical' : V < .9 ? 'side view: crenated' : 'side view: biconcave disc', px, py + th + 16);
+    // Evans–Fung biconcave profile (µm) blended towards a sphere of equal area as the cell swells (sphere at V/V0 ≈ 1.6, the lysis point)
+    const s = SL.clamp((V - 1) / .6, 0, 1), spikes = V < .97 ? Math.min(1, (1 - V) / .25) : 0;
+    const Rd = 3.91 * (1 - s) + 3.28 * s, shrink = V < 1 ? Math.cbrt(Math.max(.5, V)) : 1;
+    const zf = rho => { const disc = .5 * Math.sqrt(Math.max(0, 1 - rho * rho)) * (.81 + 7.83 * rho * rho - 4.39 * rho ** 4); const sph = 3.28 * Math.sqrt(Math.max(0, 1 - rho * rho)); return (disc * (1 - s) + sph * s) * (V < 1 ? .85 + .15 * V : 1); };
+    const k = R0 / 3.91 * .95 * shrink, tilt = 1.0, ct = Math.cos(tilt), st2 = Math.sin(tilt), now = performance.now() / 1000, spin = now * .25;
+    const NR = 18, NA = 56, quads = [];
+    const vert = (i, j, side) => { const rho = i / NR, az = j / NA * 6.283 + spin; const azr = az - spin; let sp = 0; if (spikes) { const bump = (rc, ac, w) => { const dx = rho * Math.cos(azr) - rc * Math.cos(ac), dy = rho * Math.sin(azr) - rc * Math.sin(ac); return Math.exp(-(dx * dx + dy * dy) / (w * w)); }; let m = 0; for (let q = 0; q < 14; q++) m = Math.max(m, bump(.97, q / 14 * 6.283, .07)); for (let q = 0; q < 8; q++) m = Math.max(m, bump(.6, (q + (side > 0 ? .5 : 0)) / 8 * 6.283, .08)); sp = spikes * .16 * m; }
+      const rr2 = rho * Rd * (1 + sp), z = side * (zf(Math.min(rho, .999)) + sp * 1.2); const x = Math.cos(az) * rr2, y = Math.sin(az) * rr2; return [x, y * ct - z * st2, y * st2 + z * ct]; };
+    for (const side of [1, -1]) for (let i = 0; i < NR; i++) for (let j = 0; j < NA; j++) { const p1 = vert(i, j, side), p2 = vert(i + 1, j, side), p3 = vert(i + 1, j + 1, side), p4 = vert(i, j + 1, side);
+      const ux = p2[0] - p1[0], uy = p2[1] - p1[1], uz = p2[2] - p1[2], q4 = Math.hypot(p4[0] - p1[0], p4[1] - p1[1]) < 1e-6 ? p3 : p4, vx = q4[0] - p1[0], vy = q4[1] - p1[1], vz = q4[2] - p1[2];
+      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl; if (nz < 0) { nx = -nx; ny = -ny; nz = -nz; }
+      quads.push({ p: [p1, p2, p3, p4], z: (p1[2] + p3[2]) / 2, l: Math.max(0, -.45 * nx - .55 * ny + .7 * nz) }); }
+    quads.sort((a, b) => a.z - b.z);
+    ctx.save(); ctx.shadowColor = 'rgba(239,68,68,.35)'; ctx.shadowBlur = 24;
+    ctx.fillStyle = '#7f1d1d'; ctx.beginPath(); ctx.ellipse(cx, cy, Rd * k * 1.02, Rd * k * (ct + .05 + s * .3), 0, 0, 7); ctx.fill(); ctx.restore();
+    quads.forEach(q => { const L = .25 + .75 * q.l, sp = Math.pow(q.l, 18) * .5; ctx.fillStyle = `rgb(${Math.min(255, 70 + 185 * L + 255 * sp) | 0},${Math.min(255, 18 + 40 * L + 220 * sp) | 0},${Math.min(255, 22 + 40 * L + 220 * sp) | 0})`;
+      ctx.beginPath(); q.p.forEach((v, i) => { const X = cx + v[0] * k, Y = cy + v[1] * k; i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); }); ctx.closePath(); ctx.fill(); ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = .6; ctx.stroke(); });
+    // side profile (cross-section through the axis), same model
+    const px = cx, py = cy + R0 * 1.18, pw = Rd * k * .5, ksec = pw / Rd;
+    ctx.fillStyle = '#dc2626'; ctx.beginPath();
+    for (let i = 0; i <= 40; i++) { const rho = -1 + 2 * i / 40, z = zf(Math.abs(rho)); const X = px + rho * pw, Y = py - z * ksec; i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); }
+    for (let i = 40; i >= 0; i--) { const rho = -1 + 2 * i / 40, z = zf(Math.abs(rho)); ctx.lineTo(px + rho * pw, py + z * ksec); } ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(254,202,202,.6)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = '#93a1bd'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+    ctx.fillText(spikes > .3 ? 'crenated (echinocyte): spiky, shrunken' : s > .85 ? 'sphere: no spare membrane, about to burst' : s > .2 ? 'swelling: dimple filling in' : 'biconcave disc · cross-section below', cx, cy - R0 * 1.0);
+    ctx.fillText('cross-section', px, py + 3.3 * ksec + 14);
   }
   function drawPlantOs(ctx, cx, cy, R0) {
     const W = R0 * 2.6, H = R0 * 1.9, x0 = cx - W / 2, y0 = cy - H / 2;
     ctx.fillStyle = '#4d7c0f'; rr(ctx, x0 - 10, y0 - 10, W + 20, H + 20, 16); ctx.fill(); ctx.fillStyle = 'rgba(10,25,45,.95)'; rr(ctx, x0, y0, W, H, 10); ctx.fill();
     // external solution in gap
     const c = SL.clamp(os.C / 900, 0, 1); ctx.fillStyle = `rgba(250,204,21,${.08 + .18 * c})`; rr(ctx, x0, y0, W, H, 10); ctx.fill();
-    const s = Math.sqrt(os.V); const pw = (W - 6) * (os.V >= 1 ? 1 : s * .98), ph = (H - 6) * (os.V >= 1 ? 1 : s * .98), px = cx - pw / 2, py = cy - ph / 2;
-    const rad = os.V >= 1 ? 9 : 9 + (1 - os.V) * 80;
-    // Hechtian strands
-    if (os.V < 1) { ctx.strokeStyle = 'rgba(94,234,212,.5)'; ctx.lineWidth = 1; [[x0, cy - H * .2, px, cy - ph * .2], [x0 + W, cy + H * .15, px + pw, cy + ph * .15], [cx + W * .2, y0, cx + pw * .2, py], [cx - W * .25, y0 + H, cx - pw * .25, py + ph]].forEach(([a, b, c2, d]) => { ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c2, d); ctx.stroke(); }); }
-    ctx.fillStyle = '#14304a'; rr(ctx, px, py, pw, ph, rad); ctx.fill(); ctx.strokeStyle = '#5eead4'; ctx.lineWidth = 3; ctx.stroke();
-    // vacuole
-    ctx.fillStyle = '#1e4f6e'; rr(ctx, px + pw * .14, py + ph * .16, pw * .72, ph * .68, rad * .8 + 10); ctx.fill(); ctx.strokeStyle = '#7dd3fc'; ctx.lineWidth = 2; ctx.stroke();
-    // chloroplasts
-    for (let i = 0; i < 10; i++) { const t = i / 10; let x, y; if (i < 4) { x = px + pw * (.15 + t * 1.8); y = py + ph * .08; } else if (i < 7) { x = px + pw * (.15 + (i - 4) * .3); y = py + ph * .92; } else { x = i === 7 ? px + pw * .07 : px + pw * .93; y = py + ph * (i === 9 ? .5 : .45); } ctx.fillStyle = '#22c55e'; ctx.beginPath(); ctx.ellipse(x, y, 9, 5, i < 7 ? 0 : 1.57, 0, 7); ctx.fill(); }
-    ctx.fillStyle = '#6d5bd0'; ctx.beginPath(); ctx.ellipse(px + pw * .1, py + ph * .2, 10, 9, 0, 0, 7); ctx.fill();
+    // protoplast outline: a superellipse that hugs the wall when turgid and rounds off, with concave pulls, as it plasmolyses
+    const V = Math.min(1, os.V), sc = V >= 1 ? 1 : Math.sqrt(V) * .97, ax = (W - 6) / 2 * sc, ay = (H - 6) / 2 * sc, n = 2.4 + 9 * Math.pow(V, 6), dent = (1 - V) * .16;
+    const shape = (f, th) => { const c = Math.cos(th), sn = Math.sin(th); const r = Math.pow(Math.pow(Math.abs(c), n) + Math.pow(Math.abs(sn), n), -1 / n); const d = 1 - dent * Math.pow(Math.max(0, Math.sin(th * 3 + .7)), 3) - dent * .6 * Math.pow(Math.max(0, Math.cos(th * 2 - .4)), 4); return [cx + c * r * ax * f * d, cy + sn * r * ay * f * d]; };
+    const path = f => { ctx.beginPath(); for (let i = 0; i <= 120; i++) { const [x, y] = shape(f, i / 120 * 6.283); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.closePath(); };
+    // Hechtian strands: membrane threads still anchored to the wall
+    if (os.V < .99) { ctx.strokeStyle = 'rgba(94,234,212,.55)'; ctx.lineWidth = 1.2; [.35, 1.6, 2.5, 3.6, 4.6, 5.6].forEach(th => { const [x, y] = shape(1, th); const c = Math.cos(th), sn = Math.sin(th); const t = Math.min((W / 2) / Math.abs(c || 1e-6), (H / 2) / Math.abs(sn || 1e-6)); ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo((x + cx + c * t) / 2 + 4, (y + cy + sn * t) / 2 - 4, cx + c * t, cy + sn * t); ctx.stroke(); }); }
+    const gp = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(ax, ay)); gp.addColorStop(0, '#1b3d5c'); gp.addColorStop(1, '#14304a');
+    path(1); ctx.fillStyle = gp; ctx.fill(); ctx.strokeStyle = '#5eead4'; ctx.lineWidth = 3; ctx.stroke();
+    // vacuole loses most of the water, so it shrinks faster than the cytoplasm
+    path(Math.max(.45, .78 - (1 - V) * .25)); ctx.fillStyle = '#1e4f6e'; ctx.fill(); ctx.strokeStyle = '#7dd3fc'; ctx.lineWidth = 2; ctx.stroke();
+    // chloroplasts and nucleus in the cytoplasm layer
+    for (let i = 0; i < 12; i++) { const th = i / 12 * 6.283 + .2, [x, y] = shape(.9, th), [x2, y2] = shape(.9, th + .05); ctx.fillStyle = '#22c55e'; ctx.beginPath(); ctx.ellipse(x, y, 8, 4.5, Math.atan2(y2 - y, x2 - x), 0, 7); ctx.fill(); }
+    { const [x, y] = shape(.86, 3.75); ctx.fillStyle = '#6d5bd0'; ctx.beginPath(); ctx.ellipse(x, y, 10, 9, 0, 0, 7); ctx.fill(); }
     ctx.fillStyle = '#cbd5e1'; ctx.font = '600 10px Inter, sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('cell wall', cx, y0 - 16); ctx.fillText('vacuole', cx, cy + 4);
     if (os.V < .97) { ctx.fillStyle = '#fde68a'; ctx.fillText('outside solution fills the gap', cx, y0 + H + 26); }

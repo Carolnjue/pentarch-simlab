@@ -49,11 +49,15 @@
   .tablewrap{overflow-x:auto}
   @media (max-width:980px){.mb-stage{height:440px}}
   .pel small{font-size:.58rem}
+  .chal .prog{display:flex;gap:8px;margin-top:6px;font:600 .74rem var(--mono);font-style:normal}
+  .chal .prog span{padding:3px 8px;border-radius:7px;border:1px solid var(--line2);color:var(--dim)}
+  .chal .prog span.y{border-color:var(--ok);color:var(--ok)}
   @media (max-width:600px){
     .stage .hint{left:12px;right:12px;bottom:58px;max-width:none;font-size:.72rem;text-align:center}
     .palette-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
     .pel{aspect-ratio:auto;min-height:52px;font-size:1.05rem}.pel small{font-size:10px;margin-top:2px}
-    .presets .btn,.shape-table td .btn{min-height:36px}.stage .btn.sm{min-height:38px;min-width:40px}
+    .presets .btn,.shape-table td .btn{min-height:44px}.stage .btn.sm{min-height:44px;min-width:44px}
+    .seg button{min-height:44px} .toggle{min-height:44px} .centres button{min-height:40px}
   }
   /* keyboard focus always visible */
   main :is(button,a,[tabindex],summary,select,input):focus-visible{outline:2px solid var(--accent)!important;outline-offset:2px}
@@ -90,6 +94,7 @@
           <label class="toggle">Automatic hydrogens <input type="checkbox" id="autoH" checked></label>
           <label class="toggle">Show lone pairs <input type="checkbox" id="showLP" checked></label>
           <label class="toggle">Bond dipoles and net dipole <input type="checkbox" id="showDip"></label>
+          <label class="toggle">Show geometry (shape colours and angles) <input type="checkbox" id="showGeo"></label>
           <label class="toggle">Atom labels <input type="checkbox" id="showLab"></label>
           <label class="toggle">Auto-rotate <input type="checkbox" id="spin"></label>
         </div>
@@ -668,8 +673,11 @@
     ctx.strokeStyle = g; ctx.lineWidth = w; ctx.lineCap = 'butt'; ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
   }
   let hover = null, flash = 0, dip = null;
+  const GEO_COL = { 'Linear': '#facc15', 'Trigonal planar': '#22d3ee', 'Bent': '#f472b6', 'Tetrahedral': '#4ade80', 'Trigonal pyramidal': '#fb923c', 'Trigonal bipyramidal': '#a78bfa', 'See-saw': '#c084fc', 'T-shaped': '#e879f9', 'Octahedral': '#60a5fa', 'Square pyramidal': '#38bdf8', 'Square planar': '#f87171' };
+  const geoCol = sh => GEO_COL[sh] || '#94a3b8';
   function draw(t) {
     const { ctx, w, h } = S; ctx.clearRect(0, 0, w, h);
+    const geoOn = document.getElementById('showGeo').checked, geoV = new Map(); if (geoOn) atoms.forEach(a => { const v = vseprOf(a); if (v) geoV.set(a, v); });
     if (!atoms.length) {
       ctx.fillStyle = '#7d8aa6'; ctx.font = '500 14px Inter, sans-serif'; ctx.textAlign = 'center';
       ctx.fillText('Empty workspace: choose an element and click here, or load a preset', w / 2, h / 2);
@@ -694,7 +702,8 @@
         if (a === selected || a === bondStart) { ctx.strokeStyle = a === bondStart ? '#22d3ee' : 'rgba(163,230,53,.9)'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.arc(p.x, p.y, r + 6 + Math.sin(t * 4) * 1.5, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
         if (a.bad) { const g = ctx.createRadialGradient(p.x, p.y, r, p.x, p.y, r * 2.2); g.addColorStop(0, 'rgba(239,68,68,.6)'); g.addColorStop(1, 'transparent'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, r * 2.2, 0, 7); ctx.fill(); }
         if (a === hover) { ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.arc(p.x, p.y, r + 4, 0, 7); ctx.fill(); }
-        drawSphere(ctx, p.x, p.y, r, EL[a.el].c, dk(p.z));
+        if (geoOn) { const v = geoV.get(a); if (v) { const gc = geoCol(v.shape); const g = ctx.createRadialGradient(p.x, p.y, r * .8, p.x, p.y, r * 1.9); g.addColorStop(0, gc + '88'); g.addColorStop(1, gc + '00'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, r * 1.9, 0, 7); ctx.fill(); drawSphere(ctx, p.x, p.y, r, gc, dk(p.z)); } else { ctx.globalAlpha = .45; drawSphere(ctx, p.x, p.y, r, EL[a.el].c, dk(p.z)); ctx.globalAlpha = 1; } }
+        else drawSphere(ctx, p.x, p.y, r, EL[a.el].c, dk(p.z));
         if (document.getElementById('showLab').checked || r > 22) labels.push(() => { ctx.fillStyle = a.el === 'H' || a.el === 'F' || a.el === 'S' ? '#0b1222' : '#fff'; ctx.font = `600 ${Math.max(9, Math.min(15, r * 0.7))}px Inter, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(a.el, p.x, p.y + 1); ctx.textBaseline = 'alphabetic'; });
       } });
       if (showLP && neighbours(a).length >= 2) {
@@ -707,8 +716,21 @@
     const labels = [];
     items.sort((a, b) => a.z - b.z).forEach(it => it.f());
     labels.forEach(f => f());
+    // geometry overlay: one measured bond angle per centre, drawn as a 3D arc between two of its bonds, plus a legend
+    if (geoOn && geoV.size) {
+      const used = new Set();
+      geoV.forEach((v, a) => { used.add(v.shape); const nbs = neighbours(a); if (nbs.length < 2) return; const gc = geoCol(v.shape);
+        const u1 = norm(sub(nbs[0].p, a.p)), u2 = norm(sub(nbs[1].p, a.p)), ang = angle(u1, u2), R = radius(a.el) + .38;
+        const pts = []; for (let k = 0; k <= 16; k++) { const f = k / 16, d = norm(add(mul(u1, 1 - f), mul(u2, f))); pts.push(proj(add(a.p, mul(d, R)))); }
+        ctx.strokeStyle = gc; ctx.lineWidth = 2; ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke();
+        const m = proj(add(a.p, mul(norm(add(u1, u2)), R + .42))); const txt = SL.fmt(ang, 1) + '°'; ctx.font = '700 11px JetBrains Mono, monospace'; const tw = ctx.measureText(txt).width + 8;
+        ctx.fillStyle = 'rgba(5,9,19,.82)'; ctx.beginPath(); ctx.roundRect(m.x - tw / 2, m.y - 9, tw, 18, 6); ctx.fill(); ctx.strokeStyle = gc; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = gc; ctx.textAlign = 'center'; ctx.fillText(txt, m.x, m.y + 4); });
+      const L = [...used]; ctx.font = '600 11px Inter, sans-serif'; let ly = (document.querySelector('#stage .hud').offsetHeight || 30) + 34; const lx = 14;
+      ctx.fillStyle = 'rgba(5,9,19,.75)'; ctx.beginPath(); ctx.roundRect(lx - 6, ly - 14, Math.max(...L.map(n => ctx.measureText(n).width)) + 34, L.length * 18 + 10, 8); ctx.fill();
+      L.forEach(n => { ctx.fillStyle = geoCol(n); ctx.beginPath(); ctx.arc(lx + 6, ly - 4, 6, 0, 7); ctx.fill(); ctx.fillStyle = '#e6ecf7'; ctx.textAlign = 'left'; ctx.fillText(n, lx + 18, ly); ly += 18; });
+    }
     // bond angle arc at the selected centre
-    if (selected && atoms.includes(selected) && neighbours(selected).length >= 2) {
+    if (!geoOn && selected && atoms.includes(selected) && neighbours(selected).length >= 2) {
       const nbs = neighbours(selected), c = P.get(selected);
       const a1 = P.get(nbs[0]), a2 = P.get(nbs[1]);
       const ang = angle(sub(nbs[0].p, selected.p), sub(nbs[1].p, selected.p));
@@ -792,13 +814,13 @@
   function hintSet(msg) {
     const el = document.getElementById('hint');
     if (msg) { el.textContent = msg; return; }
-    if (innerWidth <= 600) { el.textContent = tool === 'add' ? `Tap an atom to bond a ${EL[palEl].n.toLowerCase()} to it · drag to rotate · pinch to zoom` : tool === 'bond' ? 'Tap two atoms to join them, or a bond to change its order' : 'Tap an atom or bond to delete it'; return; }
+    if (innerWidth <= 600) { el.textContent = tool === 'add' ? `Tap an atom to bond a ${EL[palEl].n.toLowerCase()} · one finger rotates the model · two fingers zoom · scroll the page outside the stage` : tool === 'bond' ? 'Tap two atoms to join them, or a bond to change its order' : 'Tap an atom or bond to delete it'; return; }
     el.textContent = tool === 'add' ? `Click an atom to bond a new ${EL[palEl].n.toLowerCase()} to it (${['', 'single', 'double', 'triple'][order]}); click an H to replace it · drag to rotate · wheel or pinch to zoom`
       : tool === 'bond' ? 'Click two atoms to join them (ring closure), or click a bond to cycle single → double → triple'
       : 'Click an atom or a bond to delete it';
   }
   document.getElementById('autoH').addEventListener('change', () => { snapshot(); edited(); });
-  ['showLP', 'showDip', 'showLab'].forEach(id => document.getElementById(id).addEventListener('change', () => {}));
+  ['showLP', 'showDip', 'showLab', 'showGeo'].forEach(id => document.getElementById(id).addEventListener('change', () => {}));
   document.getElementById('spin').addEventListener('change', e => autoRot = e.target.checked);
   document.getElementById('undo').onclick = undo;
   document.getElementById('shake').onclick = () => { atoms.forEach(a => a.p = add(a.p, [(Math.random() - .5) * .6, (Math.random() - .5) * .6, (Math.random() - .5) * .6])); };
@@ -911,7 +933,7 @@
       if (presetName || f.txt !== 'C2H6O') return false;
       const O = atoms.find(a => a.el === 'O'); const cs = neighbours(O).filter(x => x.el === 'C').length;
       const k = cs === 2 ? 'ether' : 'ethanol';
-      if (!found[k]) { found[k] = true; SL.toast(`You built ${k === 'ether' ? 'dimethyl ether, CH₃–O–CH₃' : 'ethanol, CH₃CH₂OH'}. ${found.ethanol && found.ether ? 'Both isomers found.' : 'Now build the other isomer.'}`, 'ok'); }
+      if (!found[k]) { found[k] = true; isoProg(); SL.toast(`You built ${k === 'ether' ? 'dimethyl ether, CH₃–O–CH₃' : 'ethanol, CH₃CH₂OH'}. ${found.ethanol && found.ether ? 'Both isomers found.' : 'Now build the other isomer.'}`, 'ok'); }
       return found.ethanol && found.ether;
     } },
     { id: 'pyr', t: 'Trigonal pyramid', d: 'Build a molecule with a trigonal pyramidal centre (AX₃E) yourself, for example NH₃, PCl₃ or methylamine.', ok: () => !presetName && atoms.some(a => { const v = vseprOf(a); return v && v.key === '3-1'; }) },
@@ -920,7 +942,9 @@
     { id: 'hyp', t: 'Expanded octet', d: 'Build a molecule with a see-saw, T-shaped or square planar centre. Turn off Automatic hydrogens, place S, Cl or Xe, and attach F atoms one at a time (SF₄, ClF₃ or XeF₄), checking the VSEPR panel.', ok: () => !presetName && atoms.some(a => { const v = vseprOf(a); return v && ['4-1', '3-2', '4-2'].includes(v.key); }) },
     { id: 'chain', t: 'Carbon chain', d: 'Build butane, C₄H₁₀ (or its isomer methylpropane).', ok: f => !presetName && f.txt === 'C4H10' },
   ];
-  document.getElementById('chals').innerHTML = CH.map(c => `<div class="chal"><span class="led" id="ch-${c.id}"></span><div><b>${c.t}</b><span>${c.d}</span></div></div>`).join('');
+  document.getElementById('chals').innerHTML = CH.map(c => `<div class="chal"><span class="led" id="ch-${c.id}"></span><div><b>${c.t}</b><span>${c.d}</span>${c.id === 'c2h6o' ? '<em class="prog" id="isoProg"></em>' : ''}</div></div>`).join('');
+  function isoProg() { const el = document.getElementById('isoProg'); if (el) el.innerHTML = `<span class="${found.ethanol ? 'y' : ''}">ethanol ${found.ethanol ? '✓' : '…'}</span><span class="${found.ether ? 'y' : ''}">dimethyl ether ${found.ether ? '✓' : '…'}</span>`; }
+  isoProg();
   function checkChallenges(f) {
     if (info.warn.some(w => w.t === 'bad' || /radical|free valence|incomplete/.test(w.m))) return;
     CH.forEach(c => { if (done[c.id]) return; if (c.ok(f)) { done[c.id] = true; document.getElementById('ch-' + c.id).classList.add('on'); SL.toast(`Challenge complete: <b>${c.t}</b>`, 'ok'); } });

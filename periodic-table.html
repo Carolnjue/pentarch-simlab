@@ -94,7 +94,15 @@
   .trend-why{margin-top:8px;display:grid;gap:4px;font-size:.84rem;color:var(--muted);line-height:1.45;border-left:3px solid var(--accent);padding:2px 0 2px 10px}
   .tw-arrows{display:flex;flex-wrap:wrap;gap:4px 16px;font:500 .78rem var(--mono);color:var(--dim)} .tw-arrows b{color:var(--accent);font-weight:600}
   .pt-hint{display:none;font-size:.78rem;color:var(--dim);margin:6px 2px 0}
-  @media (max-width:560px){.pt-grid{min-width:800px}.el .n{display:none}.flabel{font-size:10px!important}.el .z{font-size:10px;left:3px}.el .v{font-size:9.5px}.el .s{font-size:15px;margin-top:8px}.gnum{font-size:.7rem}.pt-hint{display:block}}
+  .pt-view,.phead{display:none}
+  #ptMainA{position:absolute;left:0;right:0;top:0;height:0;pointer-events:none}
+  /* phone: a period-by-period list with full-size tiles as an alternative to the swipeable table */
+  .pt-grid.list{grid-template-columns:repeat(auto-fill,minmax(48px,1fr));min-width:0!important;gap:4px}
+  .pt-grid.list .el{grid-column:auto!important;grid-row:auto!important}
+  .pt-grid.list .gnum,.pt-grid.list .flabel,.pt-grid.list .inset,.pt-grid.list>div[style*="height:6px"]{display:none}
+  .pt-grid.list .phead{display:block;grid-column:1/-1;font:600 .74rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:8px 0 0}
+  .pt-scroll.list+.pt-hint{display:none!important}
+  @media (max-width:560px){.pt-view{display:flex;margin-bottom:8px}.pt-grid{min-width:800px}.el .n{display:none}.flabel{font-size:10px!important}.el .z{font-size:10px;left:3px}.el .v{font-size:9.5px}.el .s{font-size:15px;margin-top:8px}.gnum{font-size:.7rem}.pt-hint{display:block}}
   /* keyboard focus always visible */
   main :is(button,a,[tabindex],summary,select,input):focus-visible{outline:2px solid var(--accent)!important;outline-offset:2px}
 </style>
@@ -135,6 +143,7 @@
           <button class="btn sm" data-t="3000">3000 K</button>
         </div>
       </div>
+      <div class="seg pt-view" id="ptView" aria-label="Table layout"><button data-v="list" class="on">By period</button><button data-v="table">Full table</button></div>
       <div class="pt-scroll"><div class="pt-grid" id="grid"></div></div>
       <p class="pt-hint">Swipe sideways to see the whole table. Tap an element for its details.</p>
       <div class="legend" id="legend"></div>
@@ -521,15 +530,19 @@
   const state = { mode: 'cat', prop: 'en', T: 298, sel: 26, hover: null, hiCat: null, query: '' };
   let html = '';
   for (let g = 1; g <= 18; g++) html += `<div class="gnum" style="grid-column:${g};grid-row:1">${g}</div>`;
-  html += `<div class="inset" id="inset"></div>`;
+  html += `<div class="inset" id="inset"></div><div id="ptMainA" aria-hidden="true"></div>`;
+  for (let p = 1; p <= 7; p++) html += `<div class="phead" style="order:${p * 1000}">Period ${p}${p === 6 ? ' · includes La–Yb' : p === 7 ? ' · includes Ac–No' : ''}</div>`;
   E.forEach(el => {
     const row = el.frow ? 9 + el.frow : el.period + 1;
-    html += `<button class="el" data-z="${el.z}" style="grid-column:${el.col};grid-row:${row}"><span class="z">${el.z}</span><span class="s">${el.sym}</span><span class="n">${el.name}</span><span class="v"></span></button>`;
+    html += `<button class="el" data-z="${el.z}" style="grid-column:${el.col};grid-row:${row};order:${el.period * 1000 + el.z}"><span class="z">${el.z}</span><span class="s">${el.sym}</span><span class="n">${el.name}</span><span class="v"></span></button>`;
   });
   html += `<div style="grid-column:1/-1;grid-row:9;height:6px"></div>`;
   html += `<div class="flabel" style="grid-column:1/4;grid-row:10">57–70 La–Yb</div><div class="flabel" style="grid-column:1/4;grid-row:11">89–102 Ac–No</div>`;
   grid.innerHTML = html;
   const cells = [...grid.querySelectorAll('.el')];
+  function ptView(v) { const L = v === 'list'; grid.classList.toggle('list', L); grid.parentNode.classList.toggle('list', L); document.querySelectorAll('#ptView button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
+  document.querySelectorAll('#ptView button').forEach(b => b.onclick = () => ptView(b.dataset.v));
+  if (innerWidth <= 560) ptView('list');
   const cellOf = z => cells[z - 1];
 
   function propRange(k) {
@@ -859,7 +872,7 @@
     { z: 16, a: 32, q: -2, d: 'a sulfide ion' }, { z: 19, a: 39, q: 1, d: 'a potassium ion' }, { z: 7, a: 15, q: 0, d: 'a nitrogen-15 atom' },
     { z: 10, a: 22, q: 0, d: 'a neon-22 atom' }, { z: 1, a: 1, q: 1, d: 'a proton (H⁺ ion)' }, { z: 15, a: 31, q: -3, d: 'a phosphide ion' },
   ];
-  const ba = { p: 0, n: 0, e: 0, tgt: null, streak: 0, done: 0 };
+  const ba = { p: 1, n: 0, e: 1, tgt: null, streak: 0, done: 0, fly: [], lt: 0, intro: false }; // opens on hydrogen-1
   const LIM = { p: 20, n: 28, e: 24 };
   const BC = SL.canvas(document.getElementById('baCv'));
   const supNum = q => q === 0 ? '' : (Math.abs(q) > 1 ? Math.abs(q) : '') + (q > 0 ? '+' : '−');
@@ -892,26 +905,39 @@
       setTimeout(() => { newTarget(); }, 700);
     }
   }
-  document.querySelectorAll('[data-pm]').forEach(b => b.onclick = () => { const [k, d] = b.dataset.pm.split(','); ba[k] = SL.clamp(ba[k] + +d, 0, LIM[k]); baUpdate(); });
-  document.getElementById('baClear').onclick = () => { ba.p = ba.n = ba.e = 0; baUpdate(); };
+  document.querySelectorAll('[data-pm]').forEach(b => b.onclick = () => { const [k, d] = b.dataset.pm.split(','); const old = ba[k]; ba[k] = SL.clamp(ba[k] + +d, 0, LIM[k]); if (ba[k] > old) ba.fly.push({ k, t: 0, a: Math.random() * 6.283 }); else ba.fly = ba.fly.filter((f, i, A) => f.k !== k || A.findIndex(g => g.k === k) !== i); baUpdate(); });
+  // first time the stage is seen: the hydrogen atom assembles itself (a proton, then its electron, fly in)
+  new IntersectionObserver((es, io) => { if (!es.some(e => e.isIntersecting) || ba.intro) return; ba.intro = true; io.disconnect(); if (ba.p === 1 && ba.e === 1 && !ba.n) ba.fly.push({ k: 'p', t: 0, a: 2.4 }, { k: 'e', t: -.45, a: 5.5 }); }, { threshold: .4 }).observe(document.getElementById('baCv'));
+  document.getElementById('baClear').onclick = () => { ba.p = ba.n = ba.e = 0; ba.fly = []; baUpdate(); };
   document.getElementById('baSkip').onclick = () => { ba.streak = 0; document.getElementById('baScore').textContent = 0; newTarget(); };
   function drawBA(t) {
     const { ctx, w, h } = BC; if (w < 10) return;
     ctx.clearRect(0, 0, w, h);
-    const cx = w / 2, cy = h / 2 + 10, tot = ba.p + ba.n;
+    const dt = ba.lt ? Math.min(.05, t - ba.lt) : 0; ba.lt = t; ba.fly.forEach(f => f.t += dt / .7); ba.fly = ba.fly.filter(f => f.t < 1);
+    const inF = k => ba.fly.filter(f => f.k === k).length, fp = Math.max(0, ba.p - inF('p')), fn = Math.max(0, ba.n - inF('n')), fe = Math.max(0, ba.e - inF('e'));
+    const cx = w / 2, cy = h / 2 + 10, tot = fp + fn;
     const R = tot ? 12 + Math.sqrt(tot) * 7 : 0;
-    if (tot) drawNucleus(ctx, cx, cy, ba.p, ba.n, R); else { ctx.strokeStyle = 'rgba(147,161,189,.3)'; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.arc(cx, cy, 18, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+    if (tot) drawNucleus(ctx, cx, cy, fp, fn, R); else { ctx.strokeStyle = 'rgba(147,161,189,.3)'; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.arc(cx, cy, 18, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
     const sh = [];
     // fill using aufbau for e electrons
-    const o = aufbau(ba.e); for (const k in o) { const n = +k[0]; sh[n - 1] = (sh[n - 1] || 0) + o[k]; }
+    const o = aufbau(fe); for (const k in o) { const n = +k[0]; sh[n - 1] = (sh[n - 1] || 0) + o[k]; }
     const Rmax = Math.min(w, h) / 2 - 16;
     sh.forEach((k, i) => {
       const rr = Math.max(R + 14, 30) + (i + 1) * (Rmax - Math.max(R + 14, 30)) / 4.2;
       ctx.strokeStyle = 'rgba(147,161,189,.25)'; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.stroke();
       for (let j = 0; j < k; j++) { const a = t * (0.9 / (i + 1)) + j * 2 * Math.PI / k; glowDot(ctx, cx + rr * Math.cos(a), cy + rr * Math.sin(a), 3, '#38bdf8'); }
     });
+    // particles in flight: protons and neutrons dive into the nucleus, electrons settle into their shell
+    const Rm = Math.min(w, h) / 2 - 16;
+    ba.fly.forEach(f => { if (f.t <= 0) return; const u = 1 - Math.pow(1 - f.t, 3), d0 = Math.hypot(w, h) * .55, isE = f.k === 'e';
+      const shellN = isE ? (() => { const sh2 = []; const o2 = aufbau(ba.e); for (const k in o2) { const n = +k[0]; sh2[n - 1] = 1; } return sh2.length; })() : 0;
+      const dEnd = isE ? Math.max(R + 14, 30) + shellN * (Rm - Math.max(R + 14, 30)) / 4.2 : 0, d = d0 + (dEnd - d0) * u, a = f.a + (isE ? u * 1.2 : 0);
+      const x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d, col = f.k === 'p' ? '#f87171' : f.k === 'n' ? '#cbd5e1' : '#38bdf8';
+      ctx.strokeStyle = col + '55'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * 26 * (1 - u), y + Math.sin(a) * 26 * (1 - u)); ctx.stroke();
+      glowDot(ctx, x, y, isE ? 3.5 : 7, col); });
     ctx.font = '500 11px JetBrains Mono, monospace'; ctx.fillStyle = '#7d8aa6'; ctx.textAlign = 'right';
     ctx.fillText(sh.length ? 'shells: ' + sh.join(', ') : 'no electrons', w - 12, h - 12);
+    ctx.textAlign = 'left'; let lx = 14; [['proton', '#f87171'], ['neutron', '#cbd5e1'], ['electron', '#38bdf8']].forEach(([n, c]) => { glowDot(ctx, lx + 4, h - 16, 4, c); ctx.fillStyle = '#93a1bd'; ctx.fillText(n, lx + 13, h - 12); lx += 26 + ctx.measureText(n).width; });
   }
 
   /* ===================== CHALLENGES ===================== */
@@ -953,7 +979,7 @@
     // jump (not smooth-scroll) to each target so the tip is placed against its final position
     const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
     const startTour = () => SL.tour(jump([
-      { el: '.pt-scroll', title: 'The periodic table', text: 'Tap any element for its configuration, atom model and properties. On a phone, swipe sideways.' },
+      { el: '#ptMainA', title: 'The periodic table', text: 'Tap any element for its configuration, atom model and properties. The f-block (La–Yb, Ac–No) sits in the two rows underneath.', before: () => { const a = document.getElementById('ptMainA'), g = grid.getBoundingClientRect(), last = cellOf(grid.classList.contains('list') ? 18 : 88).getBoundingClientRect(); a.style.height = Math.max(40, last.bottom - g.top + 2) + 'px'; } },
       { el: '#modeSeg', title: 'Colour by property', text: 'Colour the table by category, block or state of matter, or switch to a heatmap of a numeric property.' },
       { el: '#search', title: 'Find an element', text: 'Type a name, symbol or atomic number to highlight it.' },
       { el: '#legend', title: 'Read the pattern', text: 'Tap a category to highlight it. In heatmap mode this explains why the property rises or falls across periods and down groups.', before: () => { const b = document.querySelector('#modeSeg [data-m="heat"]'); if (b && !b.classList.contains('on')) b.click(); } },
