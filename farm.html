@@ -29,6 +29,19 @@
   .report table.data td{white-space:nowrap}
   .report h4{margin:.4em 0}
   .verdict{font:600 1.05rem var(--display);margin:0 0 6px}
+  .gradeRow{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:6px 0 12px}
+  .grade{width:64px;height:64px;border-radius:16px;display:grid;place-items:center;font:700 2.2rem var(--display);color:#06101f;flex:none;box-shadow:0 0 24px -4px currentColor}
+  .gkpi{display:flex;flex-direction:column;padding:6px 12px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);min-width:110px}
+  .gkpi span{font:600 .64rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+  .gkpi b{font:700 1.15rem var(--mono)}
+  .cmp{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+  .cmp .col2{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--bg2)}
+  .cmp h4{margin:0 0 6px;display:flex;align-items:center;gap:8px}
+  .cmp .row{display:flex;justify-content:space-between;gap:8px;font-size:.84rem;padding:3px 0;border-bottom:1px dashed var(--line)}
+  .cmp .row b{font-family:var(--mono)}
+  .cmp .barw{height:8px;border-radius:4px;background:rgba(255,255,255,.06);margin:2px 0 6px;overflow:hidden}
+  .cmp .barw i{display:block;height:100%;border-radius:4px}
+  @media (max-width:520px){.cmp{grid-template-columns:1fr}.grade{width:54px;height:54px;font-size:1.8rem}}
   .cl{display:flex;gap:10px;align-items:flex-start}.cl .led{margin-top:6px;flex:none}
   .worked h4{margin-top:0}
   .tablewrap{overflow-x:auto}
@@ -100,6 +113,7 @@
       </div>
       <div class="panel" id="irrPanel">
         <h3><i data-lucide="droplets"></i> Irrigation</h3>
+        <button class="btn sm" id="cmpBtn" style="width:100%;margin-bottom:10px"><i data-lucide="columns-2"></i> Compare rain-fed vs drip (same weather)</button>
         <div class="seg full" id="method"><button class="on" data-v="none">Rain-fed</button><button data-v="furrow">Furrow</button><button data-v="sprinkler">Sprinkler</button><button data-v="drip">Drip</button></div>
         <div class="panel-title">Scheduling</div>
         <div class="seg full" id="strat"><button class="on" data-v="auto" title="Irrigate whenever the readily available water (RAW) is used up, refilling the root zone">Refill at RAW</button><button data-v="deficit" title="Deliberately apply only about half the water: saves water at some cost in yield">Deficit (50%)</button><button data-v="manual">Manual</button></div>
@@ -415,12 +429,13 @@ const MONN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oc
 function dateStr(doy) { doy = ((doy % 365) + 365) % 365; let m = 0; while (doy >= MDAYS[m]) { doy -= MDAYS[m]; m++; } return `${doy + 1} ${MONN[m]}`; }
 const kes = v => 'KES ' + SL.fmt(Math.round(v), 0);
 let cfg = { crop: 'maize', dt: false, site: 'machakos', plant: 73, scen: 'normal', soil: 'loam', method: 'none', strat: 'auto', allow: 300, N: 50, ipm: false, mulch: false, ctill: false, pan: false, acres: 1, seed: 3 };
+let harvestBanner = null, PH = null;
 let F = null, running = false, acc = 0, dirty = true, last = null, rain = [], reported = false;
 const fSt = SL.canvas($('#fCv'), () => dirty = true), wbSt = SL.canvas($('#wbCv'), () => dirty = true), etSt = SL.canvas($('#etCv'), () => dirty = true);
 const STAGES = ['Initial', 'Development', 'Mid-season', 'Late season'];
 
 function newSeason(msg) {
-  F = makeFarm(cfg); running = false; acc = 0; last = null; reported = false; setPlay();
+  F = makeFarm(cfg); harvestBanner = null; running = false; acc = 0; last = null; reported = false; setPlay();
   $('#report').hidden = true; $('#sprayBtn').classList.remove('show');
   $('#hL').textContent = F.Ltot; $('#hDate').textContent = dateStr(cfg.plant); $('#hDay').textContent = 0; $('#hStage').textContent = 'Ready to plant'; $('#hKs').textContent = '1.00';
   $('#wxInfo').textContent = `weather #${cfg.seed}`;
@@ -443,14 +458,23 @@ function stepDay() {
   if (F.st.done) finish();
   dirty = true;
 }
+// grade from the share of potential yield reached, capped by profitability
+function gradeOf(R) {
+  const f = R.Ym > 0 ? R.Y / R.Ym : 0; let g = f >= 0.85 ? 0 : f >= 0.7 ? 1 : f >= 0.55 ? 2 : f >= 0.35 ? 3 : 4;
+  if (R.profit <= 0) g = Math.max(g, 3);
+  return { L: 'ABCDE'[g], col: ['#4ade80', '#a3e635', '#facc15', '#fb923c', '#f87171'][g], f, txt: ['Excellent', 'Good', 'Fair', 'Poor', 'Very poor'][g] };
+}
 function finish() {
   running = false; setPlay(); $('#sprayBtn').classList.remove('show');
   if (reported) return; reported = true;
   const R = F.report(), cu = F.st.cum, cr = F.cr;
+  const G = gradeOf(R); harvestBanner = { R, G, t: performance.now() };
   const verdict = R.profit > 0 ? (R.Y / R.Ym > 0.7 ? 'A strong season.' : 'A profitable but stressed season.') : 'A loss-making season.';
   const rows = Object.entries(R.costs).filter(([, v]) => v > 0).map(([k, v]) => `<tr><td>${k}</td><td class="num">${kes(v)}</td></tr>`).join('');
   const html = `<h3 style="display:flex;gap:8px;align-items:center"><i data-lucide="clipboard-check"></i> Season report: ${cr.name}, ${dateStr(cfg.plant)} planting</h3>
-    <p class="verdict" style="color:${R.profit > 0 ? '#4ade80' : '#f87171'}">${verdict} Profit ${kes(R.profit)} on ${cfg.acres} acre${cfg.acres !== 1 ? 's' : ''}.</p>
+    <div class="gradeRow"><div class="grade" style="background:${G.col};color:${G.col}"><span style="color:#06101f">${G.L}</span></div>
+      <div class="gkpi"><span>Yield</span><b>${SL.fmt(R.Y, 2)} t/ha</b></div><div class="gkpi"><span>of potential</span><b>${SL.fmt(G.f * 100, 0)}%</b></div><div class="gkpi"><span>Income</span><b>${kes(R.rev)}</b></div><div class="gkpi"><span>Profit</span><b style="color:${R.profit > 0 ? '#4ade80' : '#f87171'}">${kes(R.profit)}</b></div></div>
+    <p class="verdict" style="color:${R.profit > 0 ? '#4ade80' : '#f87171'}">Grade ${G.L} (${G.txt.toLowerCase()}). ${verdict} Profit ${kes(R.profit)} on ${cfg.acres} acre${cfg.acres !== 1 ? 's' : ''}.</p>
     <div class="grid2">
       <div><h4>Yield</h4><table class="data">
         <tr><td>Potential yield Y<sub>m</sub></td><td class="num">${SL.fmt(R.Ym, 1)} t/ha</td></tr>
@@ -501,7 +525,7 @@ function updStats() {
   $('#sY').innerHTML = pr ? `${SL.fmt(pr.Y, 2)}<small>t/ha</small>` : '–';
   if (pr) { const R = F.report(); const pf = $('#sProfit'); pf.innerHTML = `${SL.fmt(R.profit / 1000, 0)}k<small>KES</small>`; pf.className = 'v ' + (R.profit > 0 ? 'good' : 'bad'); } else $('#sProfit').textContent = '–';
   farmCaption(r);
-  if (r) { $('#hDay').textContent = F.st.day; $('#hDate').textContent = dateStr(cfg.plant + r.d); $('#hStage').textContent = STAGES[r.stage] + (F.st.done ? ' · harvested' : ''); const ks = $('#hKs'); ks.textContent = r.Ks.toFixed(2); ks.style.color = r.Ks > 0.95 ? '' : r.Ks > 0.6 ? '#fbbf24' : '#f87171'; }
+  if (r) { $('#hDay').textContent = F.st.day; $('#hDate').textContent = dateStr(cfg.plant + r.d); $('#hStage').textContent = F.st.done ? 'Harvested' : STAGES[r.stage] + ((cfg.crop === 'maize' || cfg.crop === 'sorghum') ? ' · ' + cerealPheno(cfg.crop, r.d, F.L).name : ''); const ks = $('#hKs'); ks.textContent = r.Ks.toFixed(2); ks.style.color = r.Ks > 0.95 ? '' : r.Ks > 0.6 ? '#fbbf24' : '#f87171'; }
 }
 
 // plain-language reading of the root-zone water balance
@@ -525,21 +549,45 @@ function farmCaption(r) {
 }
 
 /* ---------- drawing ---------- */
+// finer cereal phenology inside the four FAO-56 stages
+function cerealPheno(crop, d, L) {
+  const a = L[0], b = a + L[1], c = b + L[2], m = crop === 'maize';
+  let name; const f2 = (d - b) / L[2];
+  if (d < a) name = m ? 'emergence (VE–V3)' : 'emergence';
+  else if (d < b) name = (d - a) / L[1] < 0.5 ? (m ? 'knee-high (V6)' : 'tillering') : (m ? 'rapid growth (V12)' : 'booting');
+  else if (d < c) name = f2 < 0.15 ? (m ? 'tasselling (VT)' : 'heading') : f2 < 0.3 ? (m ? 'silking (R1)' : 'flowering') : f2 < 0.7 ? (m ? 'cob filling (milk)' : 'grain fill (milk)') : 'dough stage';
+  else name = (d - c) / L[3] < 0.5 ? (m ? 'dent stage' : 'hard dough') : 'maturity';
+  return { name, tassel: d >= b - 0.1 * L[1], silk: d >= b + 0.1 * L[2] && d < b + 0.45 * L[2], cob: clamp((d - (b + 0.1 * L[2])) / (0.75 * L[2] + 0.4 * L[3]), 0, 1), dry: d >= c ? (d - c) / L[3] : 0 };
+}
 function leafCol(ks, sen) { const g = [63, 157, 58], y = [181, 163, 58], b = [140, 110, 60]; const s = clamp((1 - ks) * 1.1, 0, 1); let c = g.map((v, i) => lerp(v, y[i], s)); c = c.map((v, i) => lerp(v, b[i], sen)); return `rgb(${c.map(Math.round).join(',')})`; }
 function drawPlant(ctx, crop, x, gy, H, g, stg, ks, sen, t, pest, i) {
-  const col = leafCol(ks, sen), droop = (1 - ks) * 0.9 + sen * 0.4, sway = Math.sin(t * 1.4 + i) * 0.04;
+  const col = leafCol(ks, sen), droop = (1 - ks) * 1.25 + sen * 0.4, sway = Math.sin(t * 1.4 + i) * 0.04 * ks + (1 - ks) * 0.12;
   ctx.lineCap = 'round';
   if (crop === 'maize' || crop === 'sorghum') {
     const h = H * (crop === 'maize' ? 1 : 0.8) * Math.max(0.05, g);
     ctx.strokeStyle = sen > 0.5 ? '#a08a52' : '#5f8f3a'; ctx.lineWidth = Math.max(1.5, H * 0.025);
     ctx.beginPath(); ctx.moveTo(x, gy); ctx.quadraticCurveTo(x + sway * h, gy - h * 0.5, x + sway * h * 2, gy - h); ctx.stroke();
     const nl = Math.max(2, Math.round(3 + g * 6));
-    ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.4, H * 0.022);
-    for (let k = 0; k < nl; k++) { const yy = gy - h * (0.15 + 0.8 * k / nl), dir = k % 2 ? 1 : -1, L = H * (0.18 + 0.12 * Math.sin(k / nl * 3.1)) * Math.min(1, g * 1.4); ctx.beginPath(); ctx.moveTo(x + sway * h * (1 - (gy - yy) / h), yy); ctx.quadraticCurveTo(x + dir * L * 0.6, yy - L * (0.35 - droop * 0.5), x + dir * L, yy + L * (droop * 0.8 - 0.05)); ctx.stroke(); }
-    if (stg >= 2 || (stg === 1 && g > 0.9)) {
-      if (crop === 'maize') { ctx.strokeStyle = '#d9c27a'; ctx.lineWidth = 1.2; for (let k = -2; k <= 2; k++) { ctx.beginPath(); ctx.moveTo(x + sway * h * 2, gy - h); ctx.lineTo(x + sway * h * 2 + k * 3, gy - h - H * 0.08); ctx.stroke(); }
-        ctx.fillStyle = sen > 0.4 ? '#c9a95a' : '#7fae4a'; ctx.beginPath(); ctx.ellipse(x + 4, gy - h * 0.5, H * 0.03, H * 0.08, 0.3, 0, 7); ctx.fill(); ctx.fillStyle = '#f2d36b'; ctx.beginPath(); ctx.ellipse(x + 5, gy - h * 0.5 - H * 0.06, H * 0.015, H * 0.025, 0.3, 0, 7); ctx.fill(); }
-      else { ctx.fillStyle = sen > 0.3 ? '#8b4a2b' : '#a7713a'; for (let k = 0; k < 12; k++) { ctx.beginPath(); ctx.arc(x + sway * h * 2 + Math.sin(k * 2.4) * H * 0.03, gy - h - H * 0.02 - (k / 12) * H * 0.1, H * 0.016, 0, 7); ctx.fill(); } }
+    ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.0, H * 0.022 * (0.55 + 0.45 * ks)); // leaves roll up (narrower) under water stress
+    for (let k = 0; k < nl; k++) { const yy = gy - h * (0.15 + 0.8 * k / nl), dir = k % 2 ? 1 : -1, L = H * (0.18 + 0.12 * Math.sin(k / nl * 3.1)) * Math.min(1, g * 1.4) * (0.75 + 0.25 * ks); ctx.beginPath(); ctx.moveTo(x + sway * h * (1 - (gy - yy) / h), yy); ctx.quadraticCurveTo(x + dir * L * 0.6, yy - L * (0.35 - droop * 0.5), x + dir * L, yy + L * (droop * 0.8 - 0.05)); ctx.stroke(); }
+    const ph = PH || { tassel: stg >= 2, silk: false, cob: stg >= 2 ? 0.6 : 0, dry: sen };
+    if (crop === 'maize' && ph.tassel) {
+      // tassel: branched spike at the top of the stalk
+      const tx = x + sway * h * 2, ty = gy - h, tl = H * 0.1;
+      ctx.strokeStyle = ph.dry > 0.3 ? '#b59a5a' : '#e3cf86'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx, ty - tl); ctx.stroke();
+      ctx.lineWidth = 1; for (let k = 0; k < 4; k++) { const yy = ty - tl * (0.3 + 0.18 * k), dir = k % 2 ? 1 : -1; ctx.beginPath(); ctx.moveTo(tx, yy); ctx.quadraticCurveTo(tx + dir * tl * 0.35, yy - tl * 0.1, tx + dir * tl * 0.45, yy + tl * 0.25); ctx.stroke(); }
+      if (ph.cob > 0 || ph.silk) {
+        // ear in its husk at mid-stalk; grows through grain fill and hangs down as it dries
+        const cx = x + 4 + sway * h, cy = gy - h * 0.5, sz = 0.45 + 0.55 * ph.cob, ang = 0.35 + ph.dry * 1.6;
+        ctx.save(); ctx.translate(cx, cy); ctx.rotate(ang);
+        ctx.fillStyle = ph.dry > 0.2 ? '#c9a95a' : '#7fae4a'; ctx.beginPath(); ctx.ellipse(0, -H * 0.06 * sz, H * 0.032 * sz, H * 0.085 * sz, 0, 0, 7); ctx.fill();
+        if (ph.cob > 0.3) { ctx.fillStyle = '#f2d36b'; ctx.beginPath(); ctx.ellipse(H * 0.008, -H * 0.12 * sz, H * 0.016 * sz, H * 0.03 * sz, 0, 0, 7); ctx.fill(); }
+        if (ph.silk || ph.cob < 0.5) { ctx.strokeStyle = ph.silk ? '#f0abfc' : '#9a6b3f'; ctx.lineWidth = 1; for (let k = -2; k <= 2; k++) { ctx.beginPath(); ctx.moveTo(0, -H * 0.14 * sz); ctx.quadraticCurveTo(k * 3, -H * 0.18 * sz, k * 5, -H * 0.2 * sz + 4); ctx.stroke(); } }
+        ctx.restore();
+      }
+    }
+    if (crop === 'sorghum' && (stg >= 2 || (stg === 1 && g > 0.9))) {
+      { ctx.fillStyle = sen > 0.3 ? '#8b4a2b' : '#a7713a'; for (let k = 0; k < 12; k++) { ctx.beginPath(); ctx.arc(x + sway * h * 2 + Math.sin(k * 2.4) * H * 0.03, gy - h - H * 0.02 - (k / 12) * H * 0.1, H * 0.016, 0, 7); ctx.fill(); } }
     }
   } else if (crop === 'beans') {
     const h = H * 0.42 * Math.max(0.08, g), n = Math.round(3 + g * 9);
@@ -606,6 +654,7 @@ function drawFarm(t, dt) {
   if (cfg.method === 'drip') { ctx.strokeStyle = '#111827'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x0 - 10, gy - 4); ctx.lineTo(x0 + span, gy - 4); ctx.stroke(); }
   if (cfg.method === 'furrow') { ctx.fillStyle = r && r.Ig > 0 ? '#3b82f6' : '#5a3d22'; for (let i = 0; i <= n; i++) ctx.fillRect(x0 + span * i / n - 6, gy - 2, 12, 4); }
   if (cfg.method === 'sprinkler') { for (let i = 1; i < n; i += 3) { const x = x0 + span * i / n; ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, gy); ctx.lineTo(x, gy - H * 1.05); ctx.stroke(); } }
+  PH = planted && (cfg.crop === 'maize' || cfg.crop === 'sorghum') ? cerealPheno(cfg.crop, d, L) : null;
   for (let i = 0; i < n; i++) { const x = x0 + span * (i + 0.5) / n; if (planted) drawPlant(ctx, cfg.crop, x, gy - 2, H, g, stg, ks, clamp(sen, 0, 1), t, pest, i); else { ctx.fillStyle = '#4a321c'; ctx.beginPath(); ctx.ellipse(x, gy - 1, 6, 2, 0, 0, 7); ctx.fill(); } }
   // irrigation animation
   if (r && r.Ig > 0) {
@@ -630,6 +679,25 @@ function drawFarm(t, dt) {
   ctx.font = `600 ${narrow ? 8.5 : 9.5}px JetBrains Mono, monospace`; ctx.textAlign = 'left'; ctx.fillStyle = '#cbd5e1';
   ctx.fillText('FC', bx + bw2 + 4, by + 4); ctx.fillStyle = '#4ade80'; ctx.fillText('RAW', bx + bw2 + 4, rawY + 3); ctx.fillStyle = '#f87171'; ctx.fillText('WP', bx + bw2 + 4, by + bh);
   ctx.fillStyle = '#e6ecf7'; ctx.textAlign = 'center'; ctx.font = `600 ${narrow ? 9 : 10.5}px JetBrains Mono, monospace`; ctx.fillText(`${Math.round(TAW - Dr)}/${Math.round(TAW)} mm`, bx + bw2 / 2 + 8, by + bh + 16);
+  // wilting call-out above the crop
+  if (planted && r && r.Ks < 0.75 && !F.st.done) {
+    const txt = r.Ks < 0.4 ? 'Severe wilting: leaves rolled and drooping' : 'Wilting: leaves rolling to save water', tw = ctx.measureText(txt).width;
+    ctx.font = `600 ${narrow ? 10 : 11.5}px Inter, sans-serif`; const tw2 = ctx.measureText(txt).width + 16, lx = SL.clamp(x0 + span / 2 - tw2 / 2, 6, fieldW - tw2), ly = Math.max(narrow ? 96 : 70, gy - H - 46);
+    ctx.fillStyle = 'rgba(69,26,3,.85)'; ctx.strokeStyle = r.Ks < 0.4 ? '#f87171' : '#fbbf24'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(lx, ly - 15, tw2, 22, 7) : ctx.rect(lx, ly - 15, tw2, 22); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = r.Ks < 0.4 ? '#fca5a5' : '#fde68a'; ctx.textAlign = 'left'; ctx.fillText(txt, lx + 8, ly + 0.5);
+  }
+  // harvest result banner
+  if (harvestBanner && F.st.done) {
+    const { R: Rr, G } = harvestBanner, bw = Math.min(narrow ? w - 24 : 420, fieldW - 16), bh2 = narrow ? 92 : 104, bx2 = Math.max(8, (fieldW - bw) / 2), by2 = narrow ? 84 : 64;
+    ctx.fillStyle = 'rgba(5,9,19,.9)'; ctx.strokeStyle = G.col; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx2, by2, bw, bh2, 14) : ctx.rect(bx2, by2, bw, bh2); ctx.fill(); ctx.stroke();
+    const gs = bh2 - 24; ctx.fillStyle = G.col; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx2 + 12, by2 + 12, gs, gs, 12) : ctx.rect(bx2 + 12, by2 + 12, gs, gs); ctx.fill();
+    ctx.fillStyle = '#06101f'; ctx.textAlign = 'center'; ctx.font = `700 ${Math.round(gs * 0.62)}px Space Grotesk, Inter, sans-serif`; ctx.fillText(G.L, bx2 + 12 + gs / 2, by2 + 12 + gs * 0.72);
+    const tx = bx2 + gs + 26; ctx.textAlign = 'left';
+    ctx.fillStyle = '#93a1bd'; ctx.font = `600 ${narrow ? 9.5 : 10.5}px JetBrains Mono, monospace`; ctx.fillText(`HARVEST · GRADE ${G.L} · ${G.txt.toUpperCase()}`, tx, by2 + 22);
+    ctx.fillStyle = '#fff'; ctx.font = `700 ${narrow ? 17 : 21}px JetBrains Mono, monospace`; ctx.fillText(`${SL.fmt(Rr.Y, 2)} t/ha`, tx, by2 + (narrow ? 46 : 52));
+    ctx.fillStyle = '#cbd5e1'; ctx.font = `600 ${narrow ? 10.5 : 12}px Inter, sans-serif`; ctx.fillText(`${SL.fmt(G.f * 100, 0)}% of potential · income ${kes(Rr.rev)}`, tx, by2 + (narrow ? 64 : 74));
+    ctx.fillStyle = Rr.profit > 0 ? '#4ade80' : '#f87171'; ctx.fillText(`Profit ${kes(Rr.profit)}`, tx, by2 + (narrow ? 80 : 92));
+  }
 }
 function drawCharts() {
   const log = F.st.log, Lt = F.Ltot;
@@ -662,6 +730,30 @@ function setPlay() { const b = $('#fPlay'); if (!F || (F.st.day === 0 && !runnin
 $('#fPlay').onclick = () => { if (F.st.done) { newSeason(); return; } running = !running; setPlay(); };
 $('#fStep').onclick = () => { running = false; stepDay(); setPlay(); };
 $('#fFinish').onclick = () => { running = false; while (!F.st.done) stepDay(); setPlay(); };
+// run the same season (same weather seed) rain-fed and with drip, then show both results
+function runSeason(over) {
+  const G = makeFarm(Object.assign({}, cfg, over));
+  while (!G.st.done) { G.step(); if (G.st.pest && !G.st.pest.ctrl && G.st.day - G.st.pest.day === 1) G.spray(); }
+  return { R: G.report(), cu: G.st.cum };
+}
+$('#cmpBtn').onclick = () => {
+  const A = runSeason({ method: 'none', pan: false }), B = runSeason({ method: 'drip', strat: 'auto' });
+  const cr = CROPS[cfg.crop], mx = k => Math.max(1e-9, Math.abs(A[k]), Math.abs(B[k]));
+  const runs = [['Rain-fed', 'cloud-rain', A], ['Drip, refill at RAW', 'droplets', B]];
+  const maxY = Math.max(A.R.Y, B.R.Y, 1e-9), maxP = Math.max(Math.abs(A.R.profit), Math.abs(B.R.profit), 1);
+  const col = ([name, icon, X]) => { const G = gradeOf(X.R); return `<div class="col2"><h4><i data-lucide="${icon}"></i> ${name} <span class="chip" style="margin-left:auto;background:${G.col};color:#06101f;border:0;font-weight:700">${G.L}</span></h4>
+    <div class="row"><span>Yield</span><b>${SL.fmt(X.R.Y, 2)} t/ha</b></div><div class="barw"><i style="width:${X.R.Y / maxY * 100}%;background:#4ade80"></i></div>
+    <div class="row"><span>Profit (${cfg.acres} acre${cfg.acres !== 1 ? 's' : ''})</span><b style="color:${X.R.profit > 0 ? '#4ade80' : '#f87171'}">${kes(X.R.profit)}</b></div><div class="barw"><i style="width:${Math.abs(X.R.profit) / maxP * 100}%;background:${X.R.profit > 0 ? '#22c55e' : '#ef4444'}"></i></div>
+    <div class="row"><span>Income</span><b>${kes(X.R.rev)}</b></div><div class="row"><span>Total costs</span><b>${kes(X.R.cost)}</b></div>
+    <div class="row"><span>Irrigation (gross)</span><b>${SL.fmt(X.cu.Ig, 0)} mm</b></div><div class="row"><span>Water-stress days</span><b>${X.cu.stress}</b></div>
+    <div class="row"><span>Water productivity</span><b>${SL.fmt(X.R.WP, 2)} kg/m³</b></div></div>`; };
+  const dY = B.R.Y - A.R.Y, dP = B.R.profit - A.R.profit;
+  SL.modal(`<h3 style="display:flex;gap:8px;align-items:center"><i data-lucide="columns-2"></i> Rain-fed vs drip: ${cr.name.toLowerCase()}, ${dateStr(cfg.plant)}, ${$('#scen').selectedOptions[0].text.toLowerCase()}</h3>
+    <p class="small muted" style="margin:4px 0 0">Same weather (#${cfg.seed}), soil and crop options; any pest outbreak is sprayed at once in both runs.</p>
+    <div class="cmp">${runs.map(col).join('')}</div>
+    <p style="margin:12px 0 0">Drip ${dY >= 0 ? 'adds' : 'loses'} <b>${SL.fmt(Math.abs(dY), 2)} t/ha</b> and ${dP >= 0 ? 'earns' : 'costs'} <b>${kes(Math.abs(dP))}</b> ${dP >= 0 ? 'more' : 'extra'} over the season. ${dP < 0 ? 'Here the equipment and pumping cost more than the extra harvest is worth: drip pays best in dry seasons and for high-value crops.' : 'The extra harvest more than covers the equipment and pumping.'}</p>`, { ok: 'Close' });
+  setTimeout(() => SL.refreshIcons(), 50);
+};
 $('#sprayBtn').onclick = () => { if (F.spray()) { $('#sprayBtn').classList.remove('show'); SL.toast('Sprayed in time: losses limited to about 5%.', 'ok'); done('ch5', 'pest outbreak controlled in time.'); } };
 $('#irrNow').onclick = () => { if (!F || F.st.done) return; if (cfg.method === 'none' && !cfg.pan) { SL.toast('Choose an irrigation method or add a water pan first.', 'warn'); return; } F.st.manual += 25; SL.toast('25 mm (gross) will be applied today.', 'ok', 1800); if (!running) stepDay(); };
 // plan controls: restart season
