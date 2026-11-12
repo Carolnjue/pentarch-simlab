@@ -52,6 +52,7 @@
   .stat .k{text-transform:none;letter-spacing:.03em}
   /* demo caption on phones; keep scrolled-to targets clear of the sticky header */
   @media (max-width:520px){.dk-cap .row{flex-wrap:wrap;row-gap:6px}.dk-cap .row .n{flex:1 0 100%}}
+  @media (max-width:699px){.dk-cap{position:fixed;bottom:8px}}
   .stage,.lab,.dk-bar,.dk-scen{scroll-margin-top:84px}
 </style>
 </head>
@@ -303,12 +304,14 @@
     const stage = $(o.stage); if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
     const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
     cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
-    (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
+    (o.capHost ? $(o.capHost) : innerWidth < 700 ? document.body : stage).appendChild(cap); /* phones: the caption is fixed to the viewport */ if (o.capFixed || innerWidth < 700) cap.classList.add('fixed'); icons(cap);
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     let run = null; // {abort, stepMode, nextRes}
     const D = { running: () => !!run };
     function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
     function hl(sel) { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); if (sel) { const e = $(sel); if (e) e.classList.add('dk-hl'); } }
+    // phones: bring the highlighted element into view, above the fixed caption
+    function vis(sel) { if (!sel || innerWidth >= 700) return; const e = $(sel); if (!e) return; const r = e.getBoundingClientRect(); if (!r.width && !r.height) return; const top = 84, bot = innerHeight - (cap.classList.contains('show') ? cap.offsetHeight + 16 : 0); if (r.top >= top && r.bottom <= bot) return; const dy = (r.top < top || r.height > bot - top) ? r.top - top : r.bottom - bot; window.scrollBy({ top: dy, behavior: reduce ? 'auto' : 'smooth' }); }
     const ABORT = { abort: true };
     function api(r) {
       const chk = () => { if (r.abort) throw ABORT; };
@@ -337,7 +340,9 @@
           const st = steps[i]; if (r.abort) throw ABORT;
           cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
           cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          setTimeout(() => { if (run === r) vis(st.hl); }, 80);
           if (st.run) await st.run(A);
+          if (run === r) vis(st.hl);
           if (r.abort) throw ABORT;
           pg.style.width = ((i + 1) / steps.length * 100) + '%';
           const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
