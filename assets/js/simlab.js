@@ -337,18 +337,26 @@
     let saved = false; try { saved = !!localStorage.getItem('sl-offline-saved'); } catch (e) {}
     if (saved) msg.textContent = 'All labs are saved on this device. They work without internet.';
     else msg.textContent = 'About 6 MB, once. Labs you open are also kept for offline use automatically.';
-    b.onclick = async () => {
-      const reg = await navigator.serviceWorker.ready; if (!reg.active) return;
-      const urls = ['index.html', ...MODULES.map(m => m.id + '.html'), ...MODULES.map(m => 'assets/thumbs/' + m.id + '.webp')];
-      b.disabled = true; msg.textContent = 'Saving… 0%';
-      navigator.serviceWorker.addEventListener('message', e => {
-        if (e.data && e.data.type === 'save-progress') {
-          msg.textContent = `Saving… ${Math.round(e.data.done / e.data.total * 100)}%`;
-          if (e.data.done === e.data.total) { msg.textContent = 'Done. All labs now work without internet on this device.'; b.disabled = false; try { localStorage.setItem('sl-offline-saved', '1'); } catch (er) {} toast('All labs saved for offline use.', 'ok'); }
-        }
-      });
-      reg.active.postMessage({ type: 'save-all', urls });
+    b.onclick = () => saveOffline(MODULES.map(m => m.id), b, msg, 'All labs');
+  }
+  /** Save a set of labs (ids) for offline use; reports progress into msg. */
+  async function saveOffline(ids, btn, msg, label) {
+    if (!('serviceWorker' in navigator) || location.protocol === 'file:') { if (msg) msg.textContent = 'Offline saving works on the live site.'; return; }
+    const reg = await navigator.serviceWorker.ready; if (!reg.active) return;
+    const urls = ['index.html', ...ids.map(id => id + '.html'), ...ids.map(id => 'assets/thumbs/' + id + '.webp')];
+    if (btn) btn.disabled = true; if (msg) msg.textContent = 'Saving… 0%';
+    const on = e => {
+      if (!e.data || e.data.type !== 'save-progress' || e.data.total !== urls.length) return;
+      if (msg) msg.textContent = `Saving… ${Math.round(e.data.done / e.data.total * 100)}%`;
+      if (e.data.done === e.data.total) {
+        navigator.serviceWorker.removeEventListener('message', on);
+        if (msg) msg.textContent = `Done. ${label} now work without internet on this device.`; if (btn) btn.disabled = false;
+        try { localStorage.setItem(ids.length === MODULES.length ? 'sl-offline-saved' : 'sl-offline-' + label, '1'); } catch (er) {}
+        toast(`${label} saved for offline use.`, 'ok');
+      }
     };
+    navigator.serviceWorker.addEventListener('message', on);
+    reg.active.postMessage({ type: 'save-all', urls });
   }
 
   /* ---------------- Mount ---------------- */
@@ -514,23 +522,91 @@
   }
 
   /** Quiz: questions = [{q, options:[...], answer:index, why}] */
+  /* Quiz. Options are shuffled (unless an option refers to the others, e.g. "all of the above") so the
+     right answer is not always in the same slot. Banks of more than 6 questions run as one-at-a-time
+     practice sets of 10 with a progress bar, review of mistakes, retry and an exam mode
+     (no feedback until the end, 60 s per question). */
+  function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+  function prepQ(q) {
+    const fixed = q.options.some(o => /\b(all|none|both|neither) of (the )?(above|these)|^(both|all|none|neither)\b|\b[A-D] and [A-D]\b/i.test(String(o).replace(/<[^>]+>/g, '')));
+    const order = fixed || q.keepOrder ? q.options.map((_, j) => j) : shuffle(q.options.map((_, j) => j));
+    return { q: q.q, why: q.why, options: order.map(j => q.options[j]), answer: order.indexOf(q.answer) };
+  }
+  const optHTML = (o, j) => `<button class="opt" data-j="${j}"><span class="ol">${'ABCDEFG'[j]}</span><span class="ot">${o}${/\$/.test(String(o)) ? `<span class="sr-only">${texSpeech(o)}</span>` : ''}</span></button>`;
   function quiz(container, questions) {
     const el = typeof container === 'string' ? document.querySelector(container) : container;
-    if (!el) return;
-    let score = 0, answered = 0;
+    if (!el || !questions || !questions.length) return;
     el.classList.add('quiz');
-    el.innerHTML = questions.map((q, i) => `<div class="q" data-i="${i}"><p>${i + 1}. ${q.q}</p><div class="opts">${q.options.map((o, j) => `<button class="opt" data-j="${j}">${o}${/\$/.test(String(o)) ? `<span class="sr-only">${texSpeech(o)}</span>` : ""}</button>`).join('')}</div><div class="why">${q.why || ''}</div></div>`).join('') + `<p class="score"></p>`;
+    const page = document.body.dataset.page;
+    if (questions.length <= 6) { // short inline quizzes: list view
+      const qs = questions.map(prepQ); let score = 0, answered = 0;
+      el.innerHTML = qs.map((q, i) => `<div class="q" data-i="${i}"><p>${i + 1}. ${q.q}</p><div class="opts">${q.options.map(optHTML).join('')}</div><div class="why">${q.why || ''}</div></div>`).join('') + `<p class="score"></p>`;
+      el.addEventListener('click', e => {
+        const b = e.target.closest('.opt'); if (!b || !el.contains(b)) return;
+        const qd = b.closest('.q'); if (qd.classList.contains('done')) return;
+        const q = qs[+qd.dataset.i], j = +b.dataset.j;
+        qd.classList.add('done'); answered++;
+        qd.querySelectorAll('.opt')[q.answer].classList.add('right');
+        if (j === q.answer) score++; else b.classList.add('wrong');
+        if (answered === qs.length && page) markQuiz(page, score, qs.length);
+        el.querySelector('.score').textContent = `Score: ${score} / ${answered}${answered === qs.length && score === qs.length ? ' · Perfect score!' : ''}`;
+      });
+      renderMath(el); return;
+    }
+    const SET = 10, nSets = Math.ceil(questions.length / SET);
+    let exam = false, set = [], idx = 0, picks = [], timer = null, tLeft = 0, setNo = 0, pool = [];
+    el.classList.add('qz');
+    function newPool() { pool = shuffle(questions.map((_, i) => i)); setNo = 0; }
+    function start(indices) {
+      clearInterval(timer);
+      set = indices.map(i => Object.assign(prepQ(questions[i]), { src: i })); idx = 0; picks = [];
+      if (exam) { tLeft = set.length * 60; timer = setInterval(() => { tLeft--; const t = el.querySelector('.qz-time'); if (t) t.textContent = fmtT(tLeft); if (tLeft <= 0) finish(); }, 1000); }
+      show();
+    }
+    const fmtT = s => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.max(0, s) % 60).padStart(2, '0')}`;
+    function nextSet() { if (setNo * SET >= pool.length) newPool(); const s = pool.slice(setNo * SET, setNo * SET + SET); setNo++; start(s); }
+    function head() {
+      const sc = picks.filter((p, i) => p === set[i].answer).length;
+      return `<div class="qz-head"><div class="qz-meta"><b>Set ${setNo || 1} of ${nSets}</b> · Question ${Math.min(idx + 1, set.length)} of ${set.length}${exam ? ` · <span class="qz-time">${fmtT(tLeft)}</span>` : ` · Score ${sc}/${picks.length}`}</div>
+        <div class="qz-bar"><i style="width:${(picks.length / set.length) * 100}%"></i></div>
+        <div class="qz-modes"><button class="chip ${exam ? '' : 'on'}" data-m="practice">Practice</button><button class="chip ${exam ? 'on' : ''}" data-m="exam">Exam mode (timed)</button><span class="qz-bank">${questions.length} questions in this bank</span></div></div>`;
+    }
+    function show() {
+      const q = set[idx], done = picks[idx] !== undefined;
+      el.innerHTML = head() + `<div class="q ${done && !exam ? 'done' : ''}"><p>${q.q}</p><div class="opts">${q.options.map(optHTML).join('')}</div><div class="why">${q.why || ''}</div></div>
+        <div class="qz-nav"><button class="btn" data-qa="prev" ${idx ? '' : 'disabled'}>Back</button><button class="btn primary" data-qa="next" ${done ? '' : 'disabled'}>${idx === set.length - 1 ? 'Finish set' : 'Next question'}</button></div>`;
+      if (done) { const os = el.querySelectorAll('.q .opt'); if (exam) os[picks[idx]].classList.add('sel'); else { os[q.answer].classList.add('right'); if (picks[idx] !== q.answer) os[picks[idx]].classList.add('wrong'); } }
+      renderMath(el); refreshIcons();
+    }
+    function finish() {
+      clearInterval(timer);
+      const sc = set.reduce((s, q, i) => s + (picks[i] === q.answer ? 1 : 0), 0), pct = Math.round(100 * sc / set.length);
+      if (page) markQuiz(page, sc, set.length);
+      const wrong = set.map((q, i) => ({ q, i })).filter(o => picks[o.i] !== o.q.answer);
+      el.innerHTML = `<div class="qz-end"><div class="qz-score ${pct >= 70 ? 'ok' : ''}">${sc}/${set.length}<small>${pct}%</small></div><p>${pct >= 90 ? 'Excellent: exam ready on this set.' : pct >= 70 ? 'Good pass. Review the ones you missed below.' : 'Keep going: read each explanation below, then retry.'}</p>
+        <div class="btn-row"><button class="btn primary" data-qa="nextset">Next set</button>${wrong.length ? '<button class="btn" data-qa="retry">Retry the ones I missed</button>' : ''}<button class="btn" data-qa="restart">Start over (new shuffle)</button></div></div>
+        <div class="qz-review">${set.map((q, i) => { const ok = picks[i] === q.answer; return `<div class="q done"><p>${ok ? '✓' : '✗'} ${q.q}</p><div class="opts">${q.options.map((o, j) => `<div class="opt ${j === q.answer ? 'right' : (j === picks[i] ? 'wrong' : '')}"><span class="ol">${'ABCDEFG'[j]}</span><span class="ot">${o}</span></div>`).join('')}</div><div class="why">${q.why || ''}</div></div>`; }).join('')}</div>`;
+      el._wrong = wrong.map(o => o.q.src); renderMath(el);
+    }
     el.addEventListener('click', e => {
-      const b = e.target.closest('.opt'); if (!b) return;
-      const qd = b.closest('.q'); if (qd.classList.contains('done')) return;
-      const q = questions[+qd.dataset.i]; const j = +b.dataset.j;
-      qd.classList.add('done'); answered++;
-      qd.querySelectorAll('.opt')[q.answer].classList.add('right');
-      if (j === q.answer) score++; else b.classList.add('wrong');
-      if (answered === questions.length && document.body.dataset.page) markQuiz(document.body.dataset.page, score, questions.length);
-      el.querySelector('.score').textContent = `Score: ${score} / ${answered}${answered === questions.length ? (score === questions.length ? ' · Perfect score!' : '') : ''}`;
+      const m = e.target.closest('[data-m]'); if (m && el.contains(m)) { exam = m.dataset.m === 'exam'; newPool(); nextSet(); return; }
+      const a = e.target.closest('[data-qa]');
+      if (a && el.contains(a)) {
+        const act = a.dataset.qa;
+        if (act === 'prev' && idx > 0) { idx--; show(); }
+        else if (act === 'next') { if (idx < set.length - 1) { idx++; show(); } else finish(); }
+        else if (act === 'nextset') nextSet();
+        else if (act === 'retry') start(el._wrong || []);
+        else if (act === 'restart') { newPool(); nextSet(); }
+        if (act !== 'prev') el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        return;
+      }
+      const b = e.target.closest('button.opt'); if (!b || !el.contains(b)) return;
+      if (picks[idx] !== undefined && !exam) return;
+      picks[idx] = +b.dataset.j; show();
+      if (exam && idx < set.length - 1) setTimeout(() => { if (picks[idx] !== undefined) { idx++; show(); } }, 250);
     });
-    renderMath(el);
+    newPool(); nextSet();
   }
 
   /** Lazily create a shared AudioContext (must be called from a user gesture first time). */
@@ -597,7 +673,7 @@
     });
   }
 
-  window.SL = { tour, runTour, niceRange, DEPTS, MODULES, byId, deptById, icon, refreshIcons, bind, canvas, loop, fmt, toast, modal, quiz, audio, clamp, lerp, deg, rad, cssVar, ptr, arrow, chart, renderMath, tex, tabs };
+  window.SL = { saveOffline, tour, runTour, niceRange, DEPTS, MODULES, byId, deptById, icon, refreshIcons, bind, canvas, loop, fmt, toast, modal, quiz, audio, clamp, lerp, deg, rad, cssVar, ptr, arrow, chart, renderMath, tex, tabs };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
 })();

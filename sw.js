@@ -1,7 +1,7 @@
 /* Pentarch SimLab service worker: works offline after a page has been visited once, and can save every lab
    for offline use on request (for students on limited data). */
-const VERSION = 'simlab-v2';
-const CORE = ['./', 'index.html', 'assets/css/simlab.css?v=14', 'assets/js/simlab.js?v=14',
+const VERSION = 'simlab-v3';
+const CORE = ['./', 'index.html', 'assets/css/simlab.css?v=15', 'assets/js/simlab.js?v=15',
   'https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js',
   'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css',
   'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js',
@@ -23,8 +23,14 @@ self.addEventListener('fetch', e => {
   const cacheable = url.origin === location.origin || /cdn\.jsdelivr\.net|fonts\.(googleapis|gstatic)\.com|pentarchcommunications\.com\/wp-content/.test(url.host + url.pathname);
   if (!cacheable) return;
   if (isPage) {
-    e.respondWith(fetch(req).then(r => { const c = r.clone(); caches.open(VERSION).then(ca => ca.put(req, c)); return r; })
-      .catch(() => caches.match(req, { ignoreSearch: true }).then(r => r || caches.match('index.html'))));
+    // Patchy data: if the network is slow (>3.5 s) and we have a saved copy, show the saved copy; the fresh one still updates the cache.
+    const net = fetch(req).then(r => { if (r && r.ok) { const c = r.clone(); caches.open(VERSION).then(ca => ca.put(req, c)); } return r; });
+    const cached = caches.match(req, { ignoreSearch: true });
+    e.respondWith(new Promise(resolve => {
+      let done = false; const fin = r => { if (!done && r) { done = true; resolve(r); } };
+      const t = setTimeout(() => cached.then(fin), 3500);
+      net.then(r => { clearTimeout(t); fin(r); }).catch(() => { clearTimeout(t); cached.then(r => fin(r || caches.match('index.html'))); });
+    }));
     return;
   }
   e.respondWith(caches.match(req).then(hit => {
