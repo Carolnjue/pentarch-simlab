@@ -54,9 +54,33 @@
   .why span.c{background:var(--bg2);border:1px solid var(--line2);border-radius:8px;padding:4px 8px}
   .why span.c b{color:var(--text);font-family:var(--mono);font-weight:600}
   .why span.c.ok{border-color:rgba(34,197,94,.45)} .why span.c.warn{border-color:rgba(245,158,11,.55)} .why span.c.bad{border-color:rgba(239,68,68,.6)}
+  /* photo review (camera playback screen) */
+  .review{position:absolute;inset:0;z-index:5;background:#000;display:none;cursor:pointer}
+  .review.on{display:block;animation:rvIn .25s ease}
+  @keyframes rvIn{from{transform:scale(1.04);opacity:0}to{transform:none;opacity:1}}
+  .review canvas{position:absolute;inset:0;width:100%;height:100%}
+  .review .rv-top{position:absolute;left:10px;top:10px;right:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .review .rv-chip{font:600 .74rem var(--mono);padding:4px 9px;border-radius:7px;background:rgba(5,9,19,.82);border:1px solid rgba(255,255,255,.18);color:#e6ecf7;backdrop-filter:blur(3px)}
+  .review .rv-chip.ok{border-color:rgba(34,197,94,.7);color:#bbf7d0} .review .rv-chip.warn{border-color:rgba(245,158,11,.75);color:#fde68a} .review .rv-chip.bad{border-color:rgba(239,68,68,.8);color:#fecaca}
+  .review .rv-bot{position:absolute;left:0;right:0;bottom:0;padding:10px 12px;background:linear-gradient(transparent,rgba(0,0,0,.85));display:flex;gap:10px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap}
+  .review .rv-res{font:600 .8rem var(--font);color:#e6ecf7;max-width:70%}
+  .review .rv-res b.ok{color:#86efac} .review .rv-res b.no{color:#fbbf24}
+  .review .rv-res ul{list-style:none;margin:4px 0 0;padding:0;font:500 .72rem var(--mono);color:#cbd5e1}
+  .review .rv-res li::before{content:"✓ ";color:#4ade80} .review .rv-res li.x::before{content:"✗ ";color:#f87171}
+  .review .rv-tag{position:absolute;right:12px;top:12px;font:700 .66rem var(--mono);letter-spacing:.14em;color:#93a1bd}
+  /* briefs next to the camera */
+  .briefs{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  .briefs .lead{font:600 .66rem var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-right:2px}
+  .briefs button{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:7px 11px;min-height:36px;border-radius:999px;border:1px solid var(--line2);background:var(--bg2);font-size:.8rem;font-weight:600;color:var(--muted)}
+  .briefs button svg{width:15px;height:15px;color:var(--accent)}
+  .briefs button.on{border-color:var(--accent);color:var(--text);background:color-mix(in srgb,var(--accent) 18%,var(--bg2))}
+  .briefs button .led{width:8px;height:8px}
+  .brief-d{font-size:.82rem;color:var(--muted);margin:6px 2px 0;line-height:1.45}
+  .brief-d b{color:var(--text)}
+  @media (max-width:600px){.review .rv-chip{font-size:.62rem;padding:3px 6px}.review .rv-res{max-width:100%;font-size:.74rem}.review .rv-res ul{font-size:.64rem}.review .rv-bot .btn{display:none}.briefs button{font-size:.76rem;padding:7px 9px}}
   @media (max-width:980px){
     .cam-left{display:contents}
-    .lab.wide-controls>.cam-left>.cstage{order:0} .cam-left>.why{order:1} .lab.wide-controls>aside{order:2} .cam-left>.strip{order:3} .cam-left>.cam-meters{order:4}
+    .lab.wide-controls>.cam-left>.cstage{order:0} .cam-left>.briefbox{order:1} .cam-left>.why{order:1} .lab.wide-controls>aside{order:2} .cam-left>.strip{order:3} .cam-left>.cam-meters{order:4}
   }
   @media (pointer:coarse){.wbchips button{padding:9px 10px;font-size:.78rem}.wbchips{gap:6px}}
   @media (max-width:600px){.cstage .hud .readout{font-size:.66rem;padding:3px 6px}.cstage .hud .readout:nth-child(3){display:none}.shot{white-space:normal}.shutter-btn{width:46px;height:46px;right:8px}.vf{font-size:.66rem;gap:8px}}
@@ -75,7 +99,9 @@
         <div class="vf" id="vf"></div>
         <button class="shutter-btn" id="shoot" aria-label="Take photo" title="Take photo"></button>
         <div class="flashw" id="flashw"></div>
+        <div class="review" id="review" role="dialog" aria-label="Photo review"><canvas id="rvCv"></canvas><div class="rv-top" id="rvTop"></div><span class="rv-tag">PLAYBACK</span><div class="rv-bot"><div class="rv-res" id="rvRes"></div><button class="btn sm" id="rvBack"><i data-lucide="camera"></i> Back to live view</button></div></div>
       </div>
+      <div class="briefbox"><div class="briefs" id="briefs"><span class="lead">Shoot this brief</span></div><p class="brief-d" id="briefD">Pick a brief, set up the camera, then press the round shutter button. Each photo is checked automatically.</p></div>
       <div class="why" id="why" aria-live="off"></div>
       <div class="strip" id="strip"><div class="shot" style="width:auto;color:var(--dim);padding:10px 12px"><i data-lucide="images" style="width:14px;height:14px;vertical-align:-2px"></i> Your photos appear here. Tap the image to focus on that point; press the round button to take a photo.</div></div>
       <div class="grid2 cam-meters" style="margin-top:8px">
@@ -817,7 +843,7 @@
   };
   let chal = null;
   $('#chal').innerHTML = Object.entries(CH).map(([k, c]) => `<div class="card" data-k="${k}" role="button" tabindex="0" aria-pressed="false"><h4><i data-lucide="${c.icon}"></i>${c.t}<span class="led" style="margin-left:auto" id="led-${k}"></span><span class="sr-only" id="ledt-${k}"></span></h4><p>${c.d}</p></div>`).join('');
-  $('#chal').addEventListener('click', e => { const c = e.target.closest('.card'); if (!c) return; chal = c.dataset.k; $('#chal').querySelectorAll('.card').forEach(x => { x.classList.toggle('on', x === c); x.setAttribute('aria-pressed', x === c); }); $('#cTitle').textContent = CH[chal].t; $('#cDesc').textContent = CH[chal].d; $('#cChecks').innerHTML = ''; if (chal === 'night' && st.scene !== 'night') { st.scene = 'night'; $('#scene').value = 'night'; sync(); } document.querySelector('.cstage').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+  $('#chal').addEventListener('click', e => { const c = e.target.closest('.card'); if (!c) return; chal = c.dataset.k; $('#chal').querySelectorAll('.card').forEach(x => { x.classList.toggle('on', x === c); x.setAttribute('aria-pressed', x === c); }); $('#cTitle').textContent = CH[chal].t; $('#cDesc').textContent = CH[chal].d; $('#cChecks').innerHTML = ''; if (chal === 'night' && st.scene !== 'night') { st.scene = 'night'; $('#scene').value = 'night'; sync(); } if (!briefNoScroll) document.querySelector('.cstage').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
   $('#chal').addEventListener('keydown', e => { const c = e.target.closest('.card'); if (c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); c.click(); } });
   function evaluate(info, k) {
     const d = delta(), pc = v => (v * 100).toFixed(2) + ' %';
@@ -846,9 +872,43 @@
       $('#cChecks').innerHTML = r.map(([t, o]) => `<li class="${o ? 'ok' : ''}"><span class="led ${o ? 'on' : 'bad'}"></span><span class="sr-only">${o ? 'Pass: ' : 'Not yet: '}</span>${t}</li>`).join('');
       th.insertAdjacentHTML('beforeend', `<br><span style="color:${ok ? 'var(--ok)' : 'var(--warn)'}">${CH[chal].t}: ${ok ? 'passed' : 'not yet'}</span>`);
       if (ok) { SL.toast(`<b>${CH[chal].t}</b>: challenge complete!`, 'ok', 5000); $('#led-' + chal).className = 'led on'; $('#led-' + chal).title = 'Completed'; $('#ledt-' + chal).textContent = '(completed)'; }
-      else SL.toast(`${CH[chal].t}: ${r.filter(x => !x[1]).length} check(s) not met. See the Experiments tab.`, 'warn');
+      else SL.toast(`${CH[chal].t}: ${r.filter(x => !x[1]).length} check(s) not met.`, 'warn');
     }
+    showReview(d);
   });
+  // playback screen: the photo, large, with exposure and blur feedback
+  const rv = $('#review'), rvCv = $('#rvCv');
+  let rvTimer = 0;
+  function showReview(d) {
+    rv.classList.add('on'); const r = rv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    rvCv.width = Math.round(r.width * dpr); rvCv.height = Math.round(r.height * dpr); rvCv.getContext('2d').drawImage(cv, 0, 0, rvCv.width, rvCv.height);
+    const i = lastInfo || {}, pc = v => (v * 100).toFixed(2) + ' %', ad = Math.abs(d);
+    const chip = (t, c) => `<span class="rv-chip ${c}">${t}</span>`;
+    const chips = [
+      chip(`Exposure ${(d > 0 ? '+' : d < 0 ? '−' : '') + ad.toFixed(1)} EV · ${ad <= 0.4 ? 'correct' : d > 0 ? 'too bright' : 'too dark'}`, ad <= 0.4 ? 'ok' : ad <= 1 ? 'warn' : 'bad'),
+      chip(`Subject blur ${pc(i.subjBlur || 0)}${(i.subjBlur || 0) <= 0.0015 ? ' · sharp' : ' · shaky'}`, (i.subjBlur || 0) <= 0.0015 ? 'ok' : (i.subjBlur || 0) <= 0.004 ? 'warn' : 'bad'),
+      i.cycIn ? chip(`Cyclist blur ${pc(i.cycBlur || 0)}${(i.cycBlur || 0) <= 0.002 ? ' · frozen' : ' · streaked'}`, (i.cycBlur || 0) <= 0.002 ? 'ok' : 'warn') : '',
+      chip(`Background blur ${pc(i.bgDof || 0)}`, ''),
+      chip(`ISO ${ISO()}${ISO() >= 6400 ? ' · noisy' : ''}`, ISO() >= 6400 ? 'warn' : ''),
+      chip(`f/${N()} · ${fmtT(TS[st.Ti])}`, ''),
+    ];
+    $('#rvTop').innerHTML = chips.join('');
+    let res = `<b>Photo #${shots}</b>`;
+    if (chal) { const rr = evaluate(lastInfo, chal), ok = rr.every(x => x[1]); res = `<b class="${ok ? 'ok' : 'no'}">${CH[chal].t}: ${ok ? 'brief met' : 'not yet'}</b><ul>${rr.map(([t, o]) => `<li class="${o ? '' : 'x'}">${t}</li>`).join('')}</ul>`; }
+    else res += ' · <span style="color:#93a1bd">pick a brief below to have it checked</span>';
+    $('#rvRes').innerHTML = res; SL.refreshIcons(rv);
+    rv.classList.add('on'); clearTimeout(rvTimer); rvTimer = setTimeout(hideReview, chal ? 7000 : 4500);
+  }
+  function hideReview() { clearTimeout(rvTimer); rv.classList.remove('on'); }
+  rv.addEventListener('click', hideReview);
+  // brief chips next to the camera share the challenge cards' selection
+  $('#briefs').insertAdjacentHTML('beforeend', Object.entries(CH).map(([k, c]) => `<button data-k="${k}" aria-pressed="false"><i data-lucide="${c.icon}"></i>${c.t}<span class="led" id="bled-${k}"></span></button>`).join(''));
+  SL.refreshIcons($('#briefs'));
+  $('#briefs').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const card = $(`#chal .card[data-k="${b.dataset.k}"]`); briefNoScroll = true; card.click(); briefNoScroll = false; });
+  let briefNoScroll = false;
+  function syncBriefs() { $('#briefs').querySelectorAll('button').forEach(b => { b.classList.toggle('on', b.dataset.k === chal); b.setAttribute('aria-pressed', b.dataset.k === chal); $('#bled-' + b.dataset.k).className = $('#led-' + b.dataset.k).className; }); if (chal) $('#briefD').innerHTML = `<b>${CH[chal].t}.</b> ${CH[chal].d}`; }
+  $('#chal').addEventListener('click', () => setTimeout(syncBriefs, 0));
+  $('#shoot').addEventListener('click', () => setTimeout(syncBriefs, 0));
   function shutterSound() { const ac = SL.audio(); if (!ac) return; const t = ac.currentTime; [0, Math.min(0.25, T())].forEach((dt, i) => { const b = ac.createBuffer(1, 2205, 44100), d = b.getChannelData(0); for (let j = 0; j < d.length; j++) d[j] = (Math.random() * 2 - 1) * Math.exp(-j / 220); const s = ac.createBufferSource(), g = ac.createGain(), bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = i ? 2500 : 1800; g.gain.value = 0.35; s.buffer = b; s.connect(bp).connect(g).connect(ac.destination); s.start(t + dt + 0.001); }); }
 
   /* ================= loop ================= */
@@ -886,6 +946,7 @@
   ]);
   const startTour = () => SL.tour([
     { el: '#cstage', title: 'The live view', text: 'This is what the sensor sees: a Nairobi street at golden hour. Tap the image to focus on that point, and press the round shutter button to take a photo.' },
+    { el: '#briefs', title: 'Shoot a brief', text: 'Pick a brief (freeze the cyclist, creamy portrait, night street, panning), set up the camera and take the photo. The playback screen grades it.' },
     { el: '#mode', title: 'Shooting mode', text: 'Av: you set the aperture and the camera picks the shutter speed. Tv is the reverse, P sets both, and M gives you full manual control.' },
     { el: '#cN', title: 'Aperture, shutter and ISO', text: 'Each full step doubles or halves the light. Change one and watch the other auto value and the viewfinder exposure scale respond.' },
     { el: '#why', title: 'What your settings do', text: 'This live caption links each setting to the picture: exposure, depth of field, motion blur and noise. Amber or red means something to fix.' },
