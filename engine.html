@@ -51,6 +51,13 @@
   @media (min-width:981px) and (max-width:1240px){.stroke-badge{left:10px;transform:none;font-size:.66rem;padding:5px 9px}}
   @media (max-width:980px){.stage.split{grid-template-columns:1fr;height:auto}.stage.split .cell{height:430px}.stage.split .cell+.cell{border-left:0;border-top:1px solid var(--line);height:340px}}
   @media (max-width:700px){.charts{grid-template-columns:1fr}}
+  .mini{display:none}
+  @media (max-width:980px){
+    .stage.split .mini{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;padding:10px 12px 12px;border-top:1px solid var(--line);background:rgba(5,9,19,.6)}
+    .mini .ctl{margin:0}
+    .mini .ctl label{font-size:.76rem}
+    .stage.split .cell+.mini+.cell{border-top:1px solid var(--line)}
+  }
 </style>
 </head>
 <body data-page="engine">
@@ -66,6 +73,10 @@
         <div class="stroke-badge" id="badge">Intake</div>
         <div class="playbar"><button class="btn sm" id="bPause" title="Pause"><i data-lucide="pause"></i></button><button class="btn sm" id="bStep" title="Step 5°"><i data-lucide="step-forward"></i></button></div>
         <div class="hud-cell"><span class="readout" title="Crank angle θ, 0–720° over one full four-stroke cycle">θ <b id="hTh">0</b>°</span><span class="readout" title="Gas pressure in the cylinder (1 bar = atmospheric)">p <b id="hP">1</b> bar</span><span class="readout" title="Gas temperature in the cylinder, in kelvin (300 K ≈ 27 °C)">T <b id="hT">300</b> K</span></div>
+      </div>
+      <div class="mini" aria-label="Quick engine controls">
+        <div class="ctl"><label for="crM">Compression r</label><output></output><input type="range" id="crM" min="4" max="14" step="0.1" value="10" aria-label="Compression ratio (quick control)"></div>
+        <div class="ctl"><label for="thrM">Throttle</label><output></output><input type="range" id="thrM" min="0.1" max="1" step="0.01" value="1" aria-label="Throttle (quick control)"></div>
       </div>
       <div class="cell">
         <canvas id="pv" aria-label="Pressure–volume diagram"></canvas>
@@ -315,6 +326,12 @@
   SL.bind('#gam', v => { S.g = v; update(); }, v => f(v, 2));
   SL.bind('#lam', v => { S.lam = v; update(); }, v => f(v, 1));
   SL.bind('#adv', v => { S.adv = v; update(); }, v => v + '° BTDC');
+  // phone quick sliders under the cutaway mirror the main ones
+  [['#crM', '#cr'], ['#thrM', '#thr']].forEach(([mi, ma]) => {
+    const a = $(mi), b = $(ma), out = () => { a.closest('.ctl').querySelector('output').textContent = b.closest('.ctl').querySelector('output').textContent; a.style.setProperty('--p', ((a.value - a.min) / (a.max - a.min) * 100) + '%'); };
+    a.addEventListener('input', () => { b.value = a.value; b.dispatchEvent(new Event('input', { bubbles: true })); out(); });
+    b.addEventListener('input', () => { if (a.value !== b.value) a.value = b.value; out(); }); setTimeout(out, 0);
+  });
   SL.bind('#rd', v => { S.rd = v; update(); }, v => f(v, 1) + ' : 1');
   SL.bind('#dsl', v => { S.dsl = v; $('#rdCtl').style.display = v ? '' : 'none'; update(); });
   SL.bind('#logp', v => { S.logp = v; });
@@ -555,9 +572,11 @@
     if (M.dsl) { ctx.strokeStyle = '#a78bfa'; ctx.lineWidth = 1.8; ctx.setLineDash([6, 3]); ctx.beginPath(); M.dsl.curve.forEach(([V, p], i) => { const x = X(V * 1e6), y = Y(p / 1e5); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); ctx.setLineDash([]); }
     // ideal
     if (S.cyc !== 'real') {
-      ctx.strokeStyle = S.cyc === 'both' ? 'rgba(34,211,238,.6)' : '#22d3ee'; ctx.lineWidth = S.cyc === 'both' ? 1.5 : 2.2;
+      ctx.strokeStyle = S.cyc === 'both' ? 'rgba(34,211,238,.7)' : '#22d3ee'; ctx.lineWidth = S.cyc === 'both' ? 1.2 : 2.2; if (S.cyc === 'both') ctx.setLineDash([5, 4]);
       ctx.beginPath(); id.curve.forEach(([t, V, p], i) => { const x = X(V * 1e6), y = Y(p / 1e5); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
-      ctx.lineTo(X(G.Vc * 1e6), Y(id.p1 / 1e5)); ctx.stroke();
+      ctx.lineTo(X(G.Vc * 1e6), Y(id.p1 / 1e5)); ctx.stroke(); ctx.setLineDash([]);
+      // current ideal process highlighted (ideal-only view)
+      if (S.cyc === 'ideal') { const ph = Math.floor(tNow / 180); ctx.save(); ctx.strokeStyle = phaseCol(tNow); ctx.lineWidth = 4.5; ctx.shadowColor = phaseCol(tNow); ctx.shadowBlur = 12; ctx.beginPath(); id.curve.filter(c => c[0] >= ph * 180 && c[0] <= ph * 180 + 180).forEach(([t, V, p], i) => { const x = X(V * 1e6), y = Y(p / 1e5); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); ctx.restore(); }
       if (S.cyc === 'ideal') { ctx.fillStyle = 'rgba(34,211,238,.08)'; ctx.beginPath(); id.curve.filter(c => c[0] >= 180 && c[0] <= 540).forEach(([t, V, p], i) => { const x = X(V * 1e6), y = Y(p / 1e5); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); ctx.fill(); }
       // state labels
       ctx.fillStyle = '#22d3ee'; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'left';
@@ -565,19 +584,29 @@
     }
     // realistic, coloured by stroke, brighter up to current angle
     if (S.cyc !== 'ideal') {
+      // net work = area enclosed by the realistic loop (compression → power), filled
+      const loop = R.curve.filter(c => c[0] >= 180 && c[0] <= 540);
+      const gw = ctx.createLinearGradient(0, Y(R.peak / 1e5), 0, Y(1)); gw.addColorStop(0, 'rgba(245,165,36,.42)'); gw.addColorStop(1, 'rgba(245,165,36,.08)');
+      ctx.fillStyle = gw; ctx.beginPath(); loop.forEach((c, i) => { const x = X(c[1] * 1e6), y = Y(c[2] / 1e5); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); ctx.fill();
+      { const te = 398, Ve = Vof(G, te) * 1e6, ye = Y(R.pAt(te) / 1e5) * 0.35 + Y(R.pAt(720 - te) / 1e5) * 0.65;
+        ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.strokeStyle = 'rgba(5,9,19,.85)'; ctx.lineWidth = 3; const tx = `net work ${SL.fmt(R.Wn, 0)} J`;
+        ctx.strokeText(tx, X(Ve) + 4, ye + 4); ctx.fillStyle = '#fcd34d'; ctx.fillText(tx, X(Ve) + 4, ye + 4); }
       ctx.lineWidth = 2.4; ctx.lineJoin = 'round';
       for (let i = 1; i < R.curve.length; i++) {
         const a = R.curve[i - 1], b = R.curve[i]; const done = b[0] <= tNow;
         ctx.strokeStyle = phaseCol(a[0]) + (done ? '' : '55');
         ctx.beginPath(); ctx.moveTo(X(a[1] * 1e6), Y(a[2] / 1e5)); ctx.lineTo(X(b[1] * 1e6), Y(b[2] / 1e5)); ctx.stroke();
       }
+      // current stroke's segment highlighted
+      const ph = Math.floor(tNow / 180); ctx.save(); ctx.strokeStyle = phaseCol(tNow); ctx.lineWidth = 5; ctx.shadowColor = phaseCol(tNow); ctx.shadowBlur = 14; ctx.globalAlpha = 0.9;
+      ctx.beginPath(); R.curve.filter(c => c[0] >= ph * 180 && c[0] <= ph * 180 + 180).forEach((c, i) => { const x = X(c[1] * 1e6), y = Y(c[2] / 1e5); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); ctx.restore();
     }
     // current marker
     const V = Vof(G, tNow) * 1e6, p = (S.cyc === 'ideal' ? id.pAt(tNow) : R.pAt(tNow)) / 1e5;
     ctx.save(); ctx.fillStyle = '#fff'; ctx.shadowColor = phaseCol(tNow); ctx.shadowBlur = 14; ctx.beginPath(); ctx.arc(X(V), Y(p), 5.5, 0, TAU); ctx.fill(); ctx.restore();
     // legend
     const items = [];
-    if (S.cyc !== 'real') items.push(['#22d3ee', 'Ideal Otto']);
+    if (S.cyc !== 'real') items.push(['#22d3ee', S.cyc === 'both' ? 'Ideal Otto (dashed)' : 'Ideal Otto']);
     if (S.cyc !== 'ideal') items.push(['#60a5fa', 'Intake'], ['#34d399', 'Compression'], ['#f5a524', 'Power'], ['#94a3b8', 'Exhaust']);
     if (M.dsl) items.push(['#a78bfa', 'Diesel r=' + S.rd]);
     ctx.font = '10px JetBrains Mono, monospace'; const narrowPV = w < 440; let lx = w - pad[1], ly = pad[0] + (narrowPV ? 32 : 4);
@@ -617,14 +646,26 @@
     if (t <= 180 || t > 540) { sx = 0; T = T1; if (t > 540) { sx = 0; } }
     if (t > 180 && t <= 360) { sx = 0; T = id.TAt(t); }
     if (t > 360 && t <= 540) { sx = s3; T = id.TAt(t); }
-    const ctx2 = cts.ctx; ctx2.fillStyle = '#fff'; ctx2.beginPath(); ctx2.arc(m.X(sx), m.Y(T), 4.5, 0, TAU); ctx2.fill();
+    const ctx2 = cts.ctx;
+    // highlight the process that belongs to the current stroke
+    const segs = { 1: [0], 2: [1, 2], 3: [3] }[Math.floor(t / 180)] || [];
+    ctx2.save(); ctx2.strokeStyle = phaseCol(t); ctx2.lineWidth = 4.5; ctx2.shadowColor = phaseCol(t); ctx2.shadowBlur = 12; ctx2.lineCap = 'round';
+    segs.forEach(k => { ctx2.beginPath(); pts.slice(k * (N + 1), (k + 1) * (N + 1)).forEach((q, i) => i ? ctx2.lineTo(m.X(q[0]), m.Y(q[1])) : ctx2.moveTo(m.X(q[0]), m.Y(q[1]))); ctx2.stroke(); });
+    ctx2.restore();
+    const lbl = ['Intake: gas exchange at state 1', 'Compression 1→2 (isentropic)', 'Power: heat in 2→3, expansion 3→4', 'Exhaust: heat out 4→1'][Math.floor(t / 180)];
+    ctx2.fillStyle = phaseCol(t); ctx2.font = '600 10px JetBrains Mono, monospace'; ctx2.textAlign = 'left'; ctx2.fillText(lbl, 66, 46);
+    ctx2.fillStyle = '#fff'; ctx2.beginPath(); ctx2.arc(m.X(sx), m.Y(T), 4.5, 0, TAU); ctx2.fill();
     ctx2.fillStyle = '#93a1bd'; ctx2.font = '10px JetBrains Mono, monospace'; ctx2.textAlign = 'right'; ctx2.fillText(`η = 1 − T₁/T₂ = ${SL.fmt(id.eta * 100, 1)}%`, cts.w - 14, cts.h - 40);
   }
   function drawTq() {
     if (!M || ctq.w < 10) return;
     const data = M.tq.map(([t, v]) => [t, v]);
     const m = SL.chart(ctq, [{ data, color: '#f5a524', label: `${S.ncyl}-cyl` }, { data: [[0, M.Tmean], [720, M.Tmean]], color: '#22d3ee', dash: [5, 4], label: `mean ${SL.fmt(M.Tmean, 1)} N·m` }], { xlabel: 'θ (°)', ylabel: '', xmin: 0, xmax: 720, pad: [30, 12, 34, 58] });
-    const ctx = ctq.ctx, x = m.X(((theta % 720) + 720) % 720);
+    const ctx = ctq.ctx, tN = ((theta % 720) + 720) % 720, x = m.X(tN), ph = Math.floor(tN / 180);
+    ctx.save(); ctx.fillStyle = phaseCol(tN) + '22'; ctx.fillRect(m.X(ph * 180), 24, m.X(ph * 180 + 180) - m.X(ph * 180), ctq.h - 58);
+    ctx.fillStyle = phaseCol(tN); ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(`cyl 1: ${phaseName(tN).toLowerCase()}`, m.X(ph * 180 + 90), ctq.h - 38);
+    ctx.strokeStyle = phaseCol(tN); ctx.lineWidth = 3.5; ctx.shadowColor = phaseCol(tN); ctx.shadowBlur = 10; ctx.beginPath(); data.filter(d => d[0] >= ph * 180 && d[0] <= ph * 180 + 180).forEach((d, i) => i ? ctx.lineTo(m.X(d[0]), m.Y(d[1])) : ctx.moveTo(m.X(d[0]), m.Y(d[1]))); ctx.stroke(); ctx.restore();
+    { let tv = data[0][1]; data.forEach(d => { if (Math.abs(d[0] - tN) < 1.01) tv = d[1]; }); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, m.Y(tv), 4, 0, TAU); ctx.fill(); }
     ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x, 24); ctx.lineTo(x, ctq.h - 30); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle = '#93a1bd'; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'right';
     ctx.fillText(`(max − min)/mean = ${SL.fmt((M.tqMax - M.tqMin) / Math.abs(M.Tmean || 1), 1)}`, ctq.w - 14, 44);
@@ -650,10 +691,12 @@
     const lab = (t, rr, s, c) => { const p = pos(t, rr); ctx.fillStyle = c; ctx.fillText(s, p[0], p[1] + 3); };
     lab(TIMING.IVC, R + 16, 'IVC', '#60a5fa'); lab(-10, R * 0.72 - 18, 'IVO', '#60a5fa'); lab(TIMING.EVO - 360, R * 0.72 - 16, 'EVO', '#f87171'); lab(TIMING.EVC + 8, R + 16, 'EVC', '#f87171');
     lab(M.real.ths - 360 - 18, R + 14, 'spark', '#facc15');
-    // crank pointer
-    const t = ((theta % 720) + 720) % 720, rr = t < 360 ? R : R * 0.72, p = pos(t, rr);
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(p[0], p[1]); ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(p[0], p[1], 4, 0, TAU); ctx.fill();
+    // crank pointer, with the current stroke's sector shaded
+    const t = ((theta % 720) + 720) % 720, rr = t < 360 ? R : R * 0.72, p = pos(t, rr), ph = Math.floor(t / 180), a0 = ((ph * 180) % 360) * D2R - Math.PI / 2;
+    ctx.save(); ctx.fillStyle = phaseCol(t) + '2a'; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, rr + 5, a0, a0 + Math.PI); ctx.closePath(); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.strokeStyle = phaseCol(t); ctx.lineWidth = 2.5; ctx.shadowColor = phaseCol(t); ctx.shadowBlur = 10; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(p[0], p[1]); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(p[0], p[1], 5, 0, TAU); ctx.fill(); ctx.restore();
+    { const q = pos(t, rr + 20); ctx.font = '700 11px JetBrains Mono, monospace'; ctx.fillStyle = phaseCol(t); ctx.textAlign = 'center'; ctx.strokeStyle = 'rgba(5,9,19,.9)'; ctx.lineWidth = 3; ctx.strokeText(`θ ${Math.round(t)}°`, q[0], q[1] + 4); ctx.fillText(`θ ${Math.round(t)}°`, q[0], q[1] + 4); }
     ctx.fillStyle = '#93a1bd'; ctx.font = '10px JetBrains Mono, monospace'; ctx.fillText(t < 360 ? 'rev 1 (outer)' : 'rev 2 (inner)', cx, cy + 4);
     ctx.fillText(`overlap ${720 - TIMING.IVO + TIMING.EVC}°`, cx, cy + 18);
   }

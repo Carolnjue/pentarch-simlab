@@ -60,7 +60,25 @@
   svg.diag .m{font-family:var(--mono);font-size:12px}
   .grab{font:600 .82rem var(--mono)}
   @media (max-width:980px){#stage{height:520px}}
-  @media (max-width:520px){#stage{height:440px}.legend3d{display:none}.tbar .btn span{display:none}}
+  .ctl[hidden],.toggle[hidden],[hidden]{display:none!important}
+  #stDemo{position:absolute;right:12px;top:52px;display:none;z-index:2;box-shadow:0 0 0 0 rgba(245,165,36,.6);animation:demoPulse 2s infinite}
+  #stDemo.show{display:inline-flex}
+  @keyframes demoPulse{0%{box-shadow:0 0 0 0 rgba(245,165,36,.55)}70%{box-shadow:0 0 0 12px rgba(245,165,36,0)}100%{box-shadow:0 0 0 0 rgba(245,165,36,0)}}
+  @media (prefers-reduced-motion:reduce){#stDemo{animation:none}}
+  @media (max-width:520px){#stage{height:460px}.legend3d{display:none}
+    .tbar{gap:5px}.tbar .btn.sm{padding:5px 8px;font-size:.72rem;min-height:34px;gap:4px}.tbar .btn svg{width:14px;height:14px}
+    #stDemo{top:56px;right:10px;font-size:.74rem}
+    /* DH table: one card per joint */
+    table.dh, table.dh tbody{display:block}
+    table.dh tr:first-child{display:none}
+    table.dh tr{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px;background:var(--bg2)}
+    table.dh td{display:flex;flex-direction:column;align-items:stretch;gap:3px;border:0;padding:0;text-align:left}
+    table.dh td::before{content:attr(data-l);font:600 .68rem var(--mono);letter-spacing:.05em;color:var(--dim)}
+    table.dh td.ji{font:700 .9rem var(--mono);color:var(--accent);flex-direction:row;align-items:baseline}
+    table.dh td.ji::before,table.dh td.jt::before{content:none}
+    table.dh td.jt{align-items:flex-end;justify-content:center;font-size:.78rem}
+    table.dh input{width:100%;min-height:38px}
+  }
 </style>
 </head>
 <body data-page="robot-arm">
@@ -85,6 +103,7 @@
           <button class="btn sm" id="bWork" title="Workspace"><i data-lucide="scatter-chart"></i><span>Workspace</span></button>
           <button class="btn sm on" id="bTrail" title="Tool trail"><i data-lucide="spline"></i><span>Trail</span></button>
         </div>
+        <button class="btn sm primary" id="stDemo"><i data-lucide="play"></i> Watch the robot do it</button>
       </div>
       <p class="small muted" style="margin:8px 2px 0" id="hint"><b>Start here:</b> in <b>Joints</b> mode move the joint sliders and watch where the tool ends up (forward kinematics). Then switch to <b>IK target</b> (inverse kinematics: you place the tool, the solver finds the joint angles) and drag the glowing target. Drag empty space to orbit the camera; scroll or pinch to zoom.</p>
       <div class="fkcap" id="fkCap" aria-live="polite"></div>
@@ -137,7 +156,7 @@
       <div class="panel" id="pPick" hidden>
         <h3><i data-lucide="package"></i> Pick and place</h3>
         <p class="small muted" style="margin-top:-4px">Move the tool to the block (use IK by dragging the target, or the joint sliders), grip it, carry it to the bin and release.</p>
-        <div class="btn-row"><button class="btn primary" id="bGrip"><i data-lucide="hand"></i> <span>Grip</span></button><button class="btn" id="bNew"><i data-lucide="refresh-cw"></i> New layout</button><button class="btn" id="bAuto"><i data-lucide="wand-sparkles"></i> Demo</button></div>
+        <div class="btn-row"><button class="btn primary" id="bGrip"><i data-lucide="hand"></i> <span>Grip</span></button><button class="btn" id="bNew"><i data-lucide="refresh-cw"></i> New layout</button><button class="btn" id="bAuto"><i data-lucide="wand-sparkles"></i> Auto demo</button></div>
         <label class="toggle" style="margin-top:6px">Drive with IK target <input type="checkbox" id="pickIK" checked></label>
         <div class="ikstat"><span class="led" id="pkLed"></span><span id="pkTxt">Block on the table.</span></div>
       </div>
@@ -567,6 +586,9 @@
       pts.push({ p: kk.tip, w }); wMax = Math.max(wMax, w);
     }
     S.ws = pts; S.wMax = wMax;
+    const rs = pts.map(q => Math.hypot(q.p[0], q.p[1])).sort((a, b) => a - b);
+    const la = S.rob.rows.map(r => Math.abs(r.a)), lsum = la.reduce((x, y) => x + y, 0); // planar arms: exact annulus from the link lengths
+    S.wsR = S.rob.planar ? [Math.max(0, 2 * Math.max(...la) - lsum), lsum] : [rs[Math.floor(rs.length * 0.01)], rs[rs.length - 1]];
   }
 
   /* ================================ camera ==================================== */
@@ -680,11 +702,32 @@
     if (S.work && S.ws) {
       for (const s of S.ws) { const p = S.rob.planar ? [s.p[0], s.p[1], z0 + 0.001] : s.p; const A = P(p); const t = Math.min(1, s.w / S.wMax); ctx.fillStyle = `hsla(${200 - t * 170},90%,${45 + t * 20}%,${0.25 + 0.5 * t})`; ctx.fillRect(A.x - 1, A.y - 1, 2.2, 2.2); }
     }
-    // shadows on table
-    if (!S.rob.planar) {
-      ctx.save(); ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineCap = 'round';
-      for (let i = 0; i < n; i++) { const a = col(Ts[i], 3), b = col(Ts[i + 1], 3), m = add(a, sc(col(Ts[i], 2), rowParams(rows[i], S.q[i]).d)); [[a, m], [m, b]].forEach(([u, v]) => { const U = P([u[0], u[1], 0]), V = P([v[0], v[1], 0]); ctx.lineWidth = Math.max(2, 0.05 * U.k); ctx.beginPath(); ctx.moveTo(U.x, U.y); ctx.lineTo(V.x, V.y); ctx.stroke(); }); }
-      ctx.restore();
+    // reachable workspace shaded on the floor (annulus from the sampled reach)
+    if (S.wsR && !S.work) {
+      const [r0, r1] = S.wsR, ring = r => { const pts = []; for (let k = 0; k <= 72; k++) { const t = k / 72 * TAU; pts.push(P([r * Math.cos(t), r * Math.sin(t), z0])); } return pts; };
+      const o = ring(r1), iN = r0 > 0.02 ? ring(r0) : null;
+      ctx.save(); ctx.beginPath(); o.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.closePath();
+      if (iN) { iN.slice().reverse().forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.closePath(); }
+      ctx.fillStyle = 'rgba(34,211,238,.075)'; ctx.fill('evenodd');
+      ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(34,211,238,.4)'; ctx.lineWidth = 1.2; ctx.beginPath(); o.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke();
+      if (iN) { ctx.beginPath(); iN.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke(); }
+      ctx.setLineDash([]); const L = P([r1 * Math.cos(-0.5), r1 * Math.sin(-0.5), z0]); ctx.font = '600 10px JetBrains Mono, monospace'; ctx.fillStyle = 'rgba(103,232,249,.75)'; ctx.fillText('reachable', L.x + 6, L.y + 12); ctx.restore();
+    }
+    // soft shadows on the table: light from above, slightly offset
+    { const sh = p => P([p[0] + 0.25 * (p[2] - z0) + 0.012, p[1] - 0.18 * (p[2] - z0) - 0.01, z0]);
+      ctx.save(); ctx.lineCap = 'round';
+      const segs = []; for (let i = 0; i < n; i++) { const a = col(Ts[i], 3), b = col(Ts[i + 1], 3), m = add(a, sc(col(Ts[i], 2), rowParams(rows[i], S.q[i]).d)); segs.push([a, m], [m, b]); }
+      [[2.2, 'rgba(0,0,0,.18)'], [1, 'rgba(0,0,0,.32)']].forEach(([wf, c]) => { ctx.strokeStyle = c; segs.forEach(([u, v]) => { if (norm(sub(u, v)) < 1e-6) return; const U = sh(u), V = sh(v); ctx.lineWidth = Math.max(2, 0.045 * wf * U.k); ctx.beginPath(); ctx.moveTo(U.x, U.y); ctx.lineTo(V.x, V.y); ctx.stroke(); }); });
+      const B0 = P([0.01, -0.01, z0]); const rb = (S.rob.planar ? 0.09 : 0.14) * B0.k; const g0 = ctx.createRadialGradient(B0.x, B0.y, 0, B0.x, B0.y, rb); g0.addColorStop(0, 'rgba(0,0,0,.5)'); g0.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g0; ctx.beginPath(); ctx.ellipse(B0.x, B0.y, rb, rb * 0.55, 0, 0, TAU); ctx.fill();
+      if (S.mode === 'pick' && S.block) { const bp = S.block.p, Q = sh([bp[0], bp[1], bp[2] - BS / 2]), rq = BS * 0.85 * Q.k, g1 = ctx.createRadialGradient(Q.x, Q.y, 0, Q.x, Q.y, rq); g1.addColorStop(0, 'rgba(0,0,0,.55)'); g1.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g1; ctx.beginPath(); ctx.ellipse(Q.x, Q.y, rq, rq * 0.6, 0, 0, TAU); ctx.fill(); }
+      ctx.restore(); }
+    // pick & place guide: ghost carry path from block to bin
+    if (S.mode === 'pick' && S.block && !S.pickDone && !S.seq) {
+      const b = S.block.p, c = [S.bin[0], S.bin[1], S.rob.planar ? 0 : BS / 2], lift = S.rob.planar ? 0 : 0.16, pts = [];
+      for (let k = 0; k <= 30; k++) { const t = k / 30; pts.push(P([b[0] + (c[0] - b[0]) * t, b[1] + (c[1] - b[1]) * t, (S.rob.planar ? 0 : b[2]) + (c[2] - (S.rob.planar ? 0 : b[2])) * t + lift * 4 * t * (1 - t)])); }
+      ctx.save(); ctx.strokeStyle = S.held ? 'rgba(74,222,128,.75)' : 'rgba(245,165,36,.55)'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]); ctx.lineDashOffset = -performance.now() / 60;
+      ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke(); ctx.setLineDash([]);
+      const e1 = pts[pts.length - 3], e2 = pts[pts.length - 1]; SL.arrow(ctx, e1.x, e1.y, e2.x, e2.y, ctx.strokeStyle, 2, 9); ctx.restore();
     }
     // trail
     if (S.trail && S.trailPts.length > 1) { ctx.save(); ctx.lineWidth = 2; ctx.lineCap = 'round'; for (let i = 1; i < S.trailPts.length; i++) { const A = P(S.trailPts[i - 1]), B = P(S.trailPts[i]); ctx.strokeStyle = `rgba(34,211,238,${0.1 + 0.6 * i / S.trailPts.length})`; ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke(); } ctx.restore(); }
@@ -723,10 +766,24 @@
     if (S.mode === 'pick' && S.block) {
       const bz = S.rob.planar ? z0 : 0;
       boxFaces([S.bin[0], S.bin[1], bz], 0.18, 0.07, '#334155', true).forEach(f => prims.push(f));
-      const bp = S.block.p; boxFaces([bp[0], bp[1], bp[2] - 0.025], 0.05, 0.05, S.pickDone ? '#22c55e' : '#f5a524').forEach(f => prims.push(f));
+      const bp = S.block.p, near = !S.held && !S.pickDone && blockGrabbable(); boxFaces([bp[0], bp[1], bp[2] - BS / 2], BS, BS, S.pickDone ? '#22c55e' : near ? '#4ade80' : '#f5a524').forEach(f => prims.push(f));
     }
     prims.sort((A, B) => B.z - A.z);
     for (const pr of prims) { if (pr.kind === 'seg') drawSeg(ctx, pr); else if (pr.kind === 'ball') drawBall(ctx, pr); else if (pr.kind === 'cyl') drawCyl(ctx, pr); else drawFace(ctx, pr); }
+    // pick & place cues: in-reach highlight, finger contact markers, bin target
+    if (S.mode === 'pick' && S.block) {
+      const bp = S.block.p, B = P(bp), pulse = 0.5 + 0.5 * Math.sin(performance.now() / 180);
+      ctx.save(); ctx.font = '700 12px Inter, sans-serif'; ctx.textAlign = 'center';
+      if (!S.held && !S.pickDone && blockGrabbable()) {
+        ctx.strokeStyle = `rgba(74,222,128,${0.6 + 0.4 * pulse})`; ctx.lineWidth = 3; ctx.shadowColor = '#4ade80'; ctx.shadowBlur = 16; ctx.beginPath(); ctx.arc(B.x, B.y, BS * B.k * 0.95 + 6 * pulse, 0, TAU); ctx.stroke();
+        ctx.shadowBlur = 0; ctx.fillStyle = '#4ade80'; ctx.strokeStyle = 'rgba(5,9,19,.9)'; ctx.lineWidth = 4; const t = 'In reach: press Grip (G)'; ctx.strokeText(t, B.x, B.y - BS * B.k - 14); ctx.fillText(t, B.x, B.y - BS * B.k - 14);
+      } else if (!S.held && !S.pickDone) { ctx.fillStyle = '#fbbf24'; ctx.strokeStyle = 'rgba(5,9,19,.9)'; ctx.lineWidth = 4; ctx.strokeText('block', B.x, B.y - BS * B.k - 10); ctx.fillText('block', B.x, B.y - BS * B.k - 10); }
+      if (S.held) { // contact markers where the fingers touch the block
+        const Tm = K.T, side = col(Tm, 1); [1, -1].forEach(sg => { const c = P(add(K.tip, sc(side, sg * 0.026))); ctx.fillStyle = '#4ade80'; ctx.beginPath(); ctx.arc(c.x, c.y, 4, 0, TAU); ctx.fill(); ctx.strokeStyle = '#052e16'; ctx.lineWidth = 1.5; ctx.stroke(); });
+        const over = inBin(bp), Bn = P([S.bin[0], S.bin[1], S.rob.planar ? z0 : 0.07]); ctx.fillStyle = over ? '#4ade80' : '#94a3b8'; ctx.strokeStyle = 'rgba(5,9,19,.9)'; ctx.lineWidth = 4; const t2 = over ? 'Over the bin: Release' : 'bin'; ctx.strokeText(t2, Bn.x, Bn.y - 14); ctx.fillText(t2, Bn.x, Bn.y - 14);
+      } else if (!S.pickDone) { const Bn = P([S.bin[0], S.bin[1], S.rob.planar ? z0 : 0.07]); ctx.fillStyle = '#94a3b8'; ctx.strokeStyle = 'rgba(5,9,19,.9)'; ctx.lineWidth = 4; ctx.strokeText('bin', Bn.x, Bn.y - 12); ctx.fillText('bin', Bn.x, Bn.y - 12); }
+      ctx.restore();
+    }
     // frames
     if (S.frames) { const L = S.key === 'puma' ? 0.1 : 0.08; Ts.forEach((Tm, i) => frameAxes(ctx, Tm, i === 0 ? L * 1.4 : L, String(i), i > 0 && i < n)); }
     // manipulability ellipse (planar + scara, xy)
@@ -798,11 +855,11 @@
   function buildDH() {
     const rows = S.rob.rows;
     $('#dhTbl').innerHTML = `<tr><th>i</th><th>joint</th><th>a<sub>i</sub> (m)</th><th>α<sub>i</sub> (°)</th><th>d<sub>i</sub> (m)</th><th>θ<sub>i</sub> (°)</th></tr>` +
-      rows.map((r, i) => `<tr><td>${i + 1}</td><td class="jt">${r.type}</td>
-        <td><input type="number" step="0.01" data-k="a" data-i="${i}" aria-label="a${i + 1} link length (m)" value="${r.a}"></td>
-        <td><input type="number" step="15" data-k="alpha" data-i="${i}" aria-label="alpha${i + 1} link twist (degrees)" value="${r.alpha}"></td>
-        <td><input type="number" step="${r.type === 'P' ? 0.005 : 0.01}" data-k="d" data-i="${i}" aria-label="d${i + 1} link offset (m)" class="${r.type === 'P' ? 'var' : ''}" value=""></td>
-        <td><input type="number" step="1" data-k="theta" data-i="${i}" aria-label="theta${i + 1} joint angle (degrees)" class="${r.type === 'R' ? 'var' : ''}" value=""></td></tr>`).join('');
+      rows.map((r, i) => `<tr><td class="ji">Joint ${i + 1}</td><td class="jt">${r.type === 'R' ? 'revolute (R)' : 'prismatic (P)'}</td>
+        <td data-l="a${i + 1} link length (m)"><input type="number" step="0.01" data-k="a" data-i="${i}" aria-label="a${i + 1} link length (m)" value="${r.a}"></td>
+        <td data-l="α${i + 1} link twist (°)"><input type="number" step="15" data-k="alpha" data-i="${i}" aria-label="alpha${i + 1} link twist (degrees)" value="${r.alpha}"></td>
+        <td data-l="d${i + 1} offset (m)${r.type === 'P' ? ' *' : ''}"><input type="number" step="${r.type === 'P' ? 0.005 : 0.01}" data-k="d" data-i="${i}" aria-label="d${i + 1} link offset (m)" class="${r.type === 'P' ? 'var' : ''}" value=""></td>
+        <td data-l="θ${i + 1} angle (°)${r.type === 'R' ? ' *' : ''}"><input type="number" step="1" data-k="theta" data-i="${i}" aria-label="theta${i + 1} joint angle (degrees)" class="${r.type === 'R' ? 'var' : ''}" value=""></td></tr>`).join('');
     syncDH();
   }
   function syncDH() {
@@ -910,6 +967,7 @@
       : 'Drag to orbit the camera, scroll or pinch to zoom. Move the joint sliders or type into the DH table.';
     if (m === 'traj') planTraj();
     cv.classList.toggle('tgt', m === 'ik');
+    $('#stDemo').classList.toggle('show', m === 'pick');
   }
   $('#robSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setRobot(b.dataset.r); });
   $('#modeSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; stopMotion(); S.mode = b.dataset.m; if (S.mode === 'ik' || S.mode === 'pick') { S.target = [...K.tip]; syncTaskSliders(); } if (S.mode === 'pick') newLayout(); updateModeUI(); refresh(true); });
@@ -1014,9 +1072,10 @@
 
   /* ============================= pick & place ================================= */
   S.pickIK = true;
+  const BS = 0.08; // block edge (m)
   function newLayout(silent) {
     // random reachable block and bin positions on the table
-    const rows = S.rob.rows; const z = S.rob.planar ? 0 : 0.025;
+    const rows = S.rob.rows; const z = S.rob.planar ? 0 : BS / 2;
     const reachMax = S.key === 'puma' ? 0.62 : S.key === 'scara' ? rows[0].a + rows[1].a : rows[0].a + rows[1].a + (S.key === 'rrr' ? rows[2].a * 0.6 : 0);
     const reachMin = S.key === 'puma' ? 0.28 : Math.abs(rows[0].a - rows[1].a) + 0.05;
     const pick = () => { const r = reachMin + (reachMax * 0.88 - reachMin) * Math.random(), a = (Math.random() * 2 - 1) * Math.PI * 0.8; return [r * Math.cos(a), r * Math.sin(a)]; };
@@ -1030,15 +1089,15 @@
   function gripPoint() { return K.tip; }
   function blockGrabbable() {
     const g = gripPoint(), b = S.block.p;
-    if (S.rob.planar) return Math.hypot(g[0] - b[0], g[1] - b[1]) < 0.035;
-    return norm(sub(g, [b[0], b[1], b[2] + 0.02])) < 0.045;
+    if (S.rob.planar) return Math.hypot(g[0] - b[0], g[1] - b[1]) < 0.05;
+    return norm(sub(g, [b[0], b[1], b[2] + 0.02])) < 0.06;
   }
   function inBin(p) { return Math.abs(p[0] - S.bin[0]) < 0.08 && Math.abs(p[1] - S.bin[1]) < 0.08; }
   function toggleGrip() {
     if (S.mode !== 'pick' || S.pickDone) return;
     if (!S.held) {
       if (blockGrabbable()) { S.held = true; $('#bGrip').querySelector('span').textContent = 'Release'; setPickMsg('Holding the block. Carry it over the bin and release.', 'warn'); }
-      else { const g = gripPoint(), b = S.block.p; setPickMsg(`Too far from the block: ${SL.fmt(norm(sub(S.rob.planar ? [g[0], g[1], 0] : g, S.rob.planar ? [b[0], b[1], 0] : [b[0], b[1], b[2] + 0.02])) * 100, 1)} cm. Get within ${S.rob.planar ? 3.5 : 4.5} cm.`, 'bad'); }
+      else { const g = gripPoint(), b = S.block.p; setPickMsg(`Too far from the block: ${SL.fmt(norm(sub(S.rob.planar ? [g[0], g[1], 0] : g, S.rob.planar ? [b[0], b[1], 0] : [b[0], b[1], b[2] + 0.02])) * 100, 1)} cm. Get within ${S.rob.planar ? 5 : 6} cm: the block glows green when the gripper is close enough.`, 'bad'); }
     } else {
       S.held = false; $('#bGrip').querySelector('span').textContent = 'Grip';
       if (inBin(S.block.p)) {
@@ -1055,6 +1114,7 @@
   $('#bNew').onclick = () => { S.autoUsed = false; newLayout(); };
   document.addEventListener('keydown', e => { if ((e.key === 'g' || e.key === 'G') && !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) toggleGrip(); });
   SL.bind('#pickIK', v => { S.pickIK = v; if (!ready) return; if (v && K) { S.target = [...K.tip]; syncTaskSliders(); } updateModeUI(); });
+  $('#stDemo').onclick = () => $('#bAuto').click();
   $('#bAuto').onclick = () => {
     stopMotion(); S.autoUsed = true;
     for (let attempt = 0; attempt < 8; attempt++) {
@@ -1148,7 +1208,7 @@
     // carried block follows gripper
     if (S.mode === 'pick' && S.block) {
       if (S.held) { const g = gripPoint(); S.block.p = S.rob.planar ? [g[0], g[1], 0] : [g[0], g[1], g[2] - 0.02]; }
-      else if (!S.rob.planar) { const floor = 0.025 + (S.pickDone || inBin(S.block.p) ? 0.005 : 0); if (S.block.p[2] > floor) { S.block.vz -= 9.81 * dt; S.block.p[2] = Math.max(floor, S.block.p[2] + S.block.vz * dt); } else S.block.vz = 0; }
+      else if (!S.rob.planar) { const floor = BS / 2 + (S.pickDone || inBin(S.block.p) ? 0.005 : 0); if (S.block.p[2] > floor) { S.block.vz -= 9.81 * dt; S.block.p[2] = Math.max(floor, S.block.p[2] + S.block.vz * dt); } else S.block.vz = 0; }
     }
     if (S.dirty) {
       if (S.trail) { const tp = K.tip, last = S.trailPts[S.trailPts.length - 1]; if (!last || norm(sub(last, tp)) > 0.004) { S.trailPts.push([...tp]); if (S.trailPts.length > 400) S.trailPts.shift(); } }

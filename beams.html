@@ -35,7 +35,7 @@
   .wk h4{margin-top:1.2em}
   #resStats{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
   @media (max-width:980px){#stage{height:640px}}
-  @media (max-width:520px){#stage{height:600px}.loadlist button{padding:9px 12px}.seg button{min-height:38px}.btn-row .btn.sm{min-height:36px}}
+  @media (max-width:520px){#stage{height:860px}.loadlist button{padding:9px 12px}.seg button{min-height:38px}.btn-row .btn.sm{min-height:36px}}
   .scen{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:center;margin:10px 0 2px}
   .scen label{font-size:.86rem;color:var(--muted)}
   .scen-note{font-size:.78rem;color:var(--dim);margin:4px 0 0;min-height:0}
@@ -431,9 +431,13 @@
   let R = null;            // latest result
   let shown = null;        // animated deflection (m) per node
   let hoverX = null, drag = null, hoverHit = null;
+  // x-probe: a pinned section cursor (starts at mid-span) that hovering previews and tapping/dragging moves
+  let probeX = null, probeDown = false, probeTouched = false;
+  const qX = () => Math.min(S.L, hoverX !== null ? hoverX : probeX !== null ? probeX : S.L / 2);
   const lay = () => {
     const w = st.w, h = st.h, pl = w < 500 ? 46 : 62, pr = w < 500 ? 18 : 30;
-    const hb = Math.round(h * 0.4), hs = Math.round((h - hb) / 3);
+    // phones get a taller stage; each diagram keeps its own strip height and scale
+    const hb = Math.round(h * (w < 520 ? 0.31 : 0.4)), hs = Math.round((h - hb) / 3);
     return { w, h, pl, pr, X: x => pl + x / S.L * (w - pl - pr), invX: px => (px - pl) / (w - pl - pr) * S.L, yb: Math.round(42 + (hb - 42) * 0.5), hb, strips: [hb, hb + hs, hb + 2 * hs, h] };
   };
 
@@ -464,12 +468,31 @@
     drawDiagram(ctx, G, s2, s3, R.samp.map(s => [s.x, s.M]), COL.M, 'Bending moment M', 'kN·m');
     drawDiagram(ctx, G, s3, s4, shown.map((y, i) => [R.defl[i].x, y * 1000]), COL.D, 'Deflection y', 'mm', true);
     // hover crosshair
-    if (hoverX !== null && !drag) {
-      const px = X(hoverX);
-      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(px, 6); ctx.lineTo(px, h); ctx.stroke(); ctx.setLineDash([]);
-      const [V, M] = R.VM(hoverX + 1e-9);
-      const y = interpDefl(hoverX) * 1000, sig = Math.abs(M) * 1e3 / R.sp.Z / 1e6;
-      const lines = [`x = ${fmt(hoverX, 2)} m`, `V = ${fmt(V, 2)} kN`, `M = ${fmt(M, 2)} kN·m`, `y = ${fmt(y, 2)} mm`, `σmax = ${fmt(sig, 1)} MPa`];
+    if (!drag) {
+      const xq = qX(), px = X(xq);
+      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(px, G.hb - 50); ctx.lineTo(px, h); ctx.stroke(); ctx.setLineDash([]);
+      const [V, M] = R.VM(xq + 1e-9);
+      const y = interpDefl(xq) * 1000, sig = Math.abs(M) * 1e3 / R.sp.Z / 1e6;
+      // probe dots on each diagram
+      const [s1, s2, s3, s4] = G.strips;
+      const nar = w < 520;
+      [[s1, s2, R.samp.map(s => [s.x, s.V]), V, COL.V, 'V', 'kN'], [s2, s3, R.samp.map(s => [s.x, s.M]), M, COL.M, 'M', 'kN·m'], [s3, s4, shown.map((v, i) => [R.defl[i].x, v * 1000]), y, COL.D, 'y', 'mm']].forEach(([a, b, data, v, col, nm, u]) => {
+        let mx = 0; data.forEach(d => mx = Math.max(mx, Math.abs(d[1]))); if (mx < 1e-9) return;
+        const zero = (a + b) / 2 + 8, half = (b - a) / 2 - 26, py = zero - v * half / mx; ctx.fillStyle = col; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(px, py, 4.5, 0, 7); ctx.fill(); ctx.stroke();
+        if (nar) { // phones: value printed beside its own dot instead of a box over the diagram
+          const t2 = `${nm} = ${fmt(v, 2)} ${u}`; ctx.font = '600 11px JetBrains Mono, monospace'; const tw2 = ctx.measureText(t2).width + 10, right = px + 10 + tw2 < w - 4;
+          const bx = right ? px + 8 : px - 8 - tw2, by = SL.clamp(py - 9 + (v >= 0 ? 16 : -16), a + 20, b - 20);
+          ctx.fillStyle = 'rgba(5,9,19,.85)'; roundRect(ctx, bx, by, tw2, 18, 6); ctx.fill(); ctx.fillStyle = col; ctx.textAlign = 'left'; ctx.fillText(t2, bx + 5, by + 13); } });
+      // drag handle
+      const hy = G.hb - 17, lab = `x = ${fmt(xq, 2)} m`; ctx.font = '600 11px JetBrains Mono, monospace';
+      const tw = ctx.measureText(lab).width + 34, hx = SL.clamp(px, tw / 2 + 2, w - tw / 2 - 2);
+      ctx.save(); ctx.shadowColor = '#f5a524'; ctx.shadowBlur = probeTouched ? 0 : 10 + 6 * Math.sin(t * 4);
+      ctx.fillStyle = 'rgba(245,165,36,.95)'; roundRect(ctx, hx - tw / 2, hy - 11, tw, 22, 11); ctx.fill(); ctx.restore();
+      ctx.fillStyle = '#1a1205'; ctx.textAlign = 'center'; ctx.fillText(`◂ ${lab} ▸`, hx, hy + 4);
+      if (!probeTouched) { ctx.fillStyle = '#f5a524'; ctx.font = '600 11px Inter, sans-serif'; const right = hx + tw / 2 + (nar ? 70 : 170) < w; ctx.textAlign = right ? 'left' : 'right'; const hint = nar ? 'drag me' : 'drag me to probe any section'; ctx.fillText(right ? '◂ ' + hint : hint + ' ▸', right ? hx + tw / 2 + 8 : hx - tw / 2 - 8, hy + 4); }
+      if (nar) return;
+      const lines = [`x = ${fmt(xq, 2)} m`, `V = ${fmt(V, 2)} kN`, `M = ${fmt(M, 2)} kN·m`, `y = ${fmt(y, 2)} mm`, `σmax = ${fmt(sig, 1)} MPa`];
       ctx.font = '11px JetBrains Mono, monospace';
       const bwid = 150, bh = lines.length * 16 + 10; let bx = px + 12, by = G.strips[0] + 8; if (bx + bwid > w - 4) bx = px - bwid - 12;
       ctx.fillStyle = 'rgba(5,9,19,.92)'; ctx.strokeStyle = '#2a3a5c'; roundRect(ctx, bx, by, bwid, bh, 8); ctx.fill(); ctx.stroke();
@@ -480,28 +503,44 @@
   function interpDefl(x) { const d = R.defl; for (let i = 1; i < d.length; i++) if (d[i].x >= x) { const f = (x - d[i - 1].x) / (d[i].x - d[i - 1].x || 1); return SL.lerp(shown[i - 1], shown[i], f); } return 0; }
 
   function drawBeam(ctx, G, t) {
-    const X = G.X, L = S.L, yb = G.yb, th = 14;
+    const X = G.X, L = S.L, yb = G.yb, sec = S.sec, sp = R.sp;
+    const th = Math.round(SL.clamp(16 + sec.h / 600 * 22, 16, 38) * (G.w < 520 ? 0.8 : 1));
     const mat = R.mat, Zs = R.sp.Z;
-    // deflected ghost (exaggerated)
-    const maxd = Math.max(1e-9, ...shown.map(Math.abs)); const amp = 34 / Math.max(maxd, Math.abs(R.Dmax) || 1e-9);
-    // beam body coloured by stress
-    const n = Math.max(40, Math.round((X(L) - X(0)) / 3));
+    // deflected shape, exaggerated so the sag is always clearly visible
+    const maxd = Math.max(1e-9, ...shown.map(Math.abs)); const ampPx = SL.clamp(G.hb - yb - th / 2 - 52, 26, 56), amp = ampPx / Math.max(maxd, Math.abs(R.Dmax) || 1e-9);
+    // undeformed reference
+    ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.setLineDash([5, 5]); ctx.strokeRect(X(0), yb - th / 2, X(L) - X(0), th); ctx.setLineDash([]);
+    // beam body coloured by stress, with the section's parts drawn along it
+    const tf = Math.max(3, th * (sp.t || sec.t) / sec.h), n = Math.max(40, Math.round((X(L) - X(0)) / 3));
+    const band = (x0, x1, y0, y1, a, b) => { ctx.beginPath(); ctx.moveTo(X(x0), y0 + a); ctx.lineTo(X(x1) + .6, y1 + a); ctx.lineTo(X(x1) + .6, y1 + b); ctx.lineTo(X(x0), y0 + b); ctx.closePath(); ctx.fill(); };
     for (let i = 0; i < n; i++) {
       const x0 = i * L / n, x1 = (i + 1) * L / n, xm = (x0 + x1) / 2;
       const M = R.VM(xm)[1]; const r = Math.abs(M) * 1e3 / Zs / mat.f;
-      ctx.fillStyle = stressColor(r);
       const y0 = yb - interpDefl(x0) * amp, y1 = yb - interpDefl(x1) * amp;
-      ctx.beginPath(); ctx.moveTo(X(x0), y0 - th / 2); ctx.lineTo(X(x1) + .6, y1 - th / 2); ctx.lineTo(X(x1) + .6, y1 + th / 2); ctx.lineTo(X(x0), y0 + th / 2); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = stressColor(r); band(x0, x1, y0, y1, -th / 2, th / 2);
+      if (sec.shape === 'I') { ctx.fillStyle = 'rgba(0,0,0,.34)'; band(x0, x1, y0, y1, -th / 2 + tf, th / 2 - tf); }
+      else if (sec.shape === 'box' || sec.shape === 'tube') { ctx.fillStyle = 'rgba(0,0,0,.18)'; band(x0, x1, y0, y1, -th / 2 + tf, th / 2 - tf); }
+      if (sec.shape === 'circ' || sec.shape === 'tube') { ctx.fillStyle = 'rgba(255,255,255,.22)'; band(x0, x1, y0, y1, -th / 2, -th / 2 + th * 0.22); ctx.fillStyle = 'rgba(0,0,0,.28)'; band(x0, x1, y0, y1, th / 2 - th * 0.25, th / 2); }
+      else { ctx.fillStyle = 'rgba(255,255,255,.28)'; band(x0, x1, y0, y1, -th / 2, -th / 2 + 2); ctx.fillStyle = 'rgba(0,0,0,.3)'; band(x0, x1, y0, y1, th / 2 - 2, th / 2); }
     }
-    // undeformed reference
-    ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.setLineDash([5, 5]); ctx.strokeRect(X(0), yb - th / 2, X(L) - X(0), th); ctx.setLineDash([]);
-    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 8; ctx.restore();
+    if (sec.shape === 'box' || sec.shape === 'tube') { // hidden inner walls
+      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
+      [-th / 2 + tf, th / 2 - tf].forEach(o => { ctx.beginPath(); for (let i = 0; i <= n; i++) { const x = i * L / n, y = yb - interpDefl(x) * amp + o; i ? ctx.lineTo(X(x), y) : ctx.moveTo(X(x), y); } ctx.stroke(); }); ctx.setLineDash([]); }
+    // end view of the cross-section, drawn to scale with the beam depth
+    { const bb = sec.shape === 'circ' || sec.shape === 'tube' ? sec.h : sec.b, sc = th / sec.h, B = Math.min(G.pl - 18, bb * sc), Hh = th, cx = G.pl / 2 - 2, cy = yb - 18, T = Math.max(2, tf);
+      ctx.save(); ctx.fillStyle = hexA(mat.col, .9); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath();
+      if (sec.shape === 'rect') ctx.rect(cx - B / 2, cy - Hh / 2, B, Hh);
+      else if (sec.shape === 'circ') ctx.arc(cx, cy, Hh / 2, 0, 7);
+      else if (sec.shape === 'tube') { ctx.arc(cx, cy, Hh / 2, 0, 7); ctx.moveTo(cx + Hh / 2 - T, cy); ctx.arc(cx, cy, Math.max(0, Hh / 2 - T), 0, 7, true); }
+      else if (sec.shape === 'box') { ctx.rect(cx - B / 2, cy - Hh / 2, B, Hh); ctx.rect(cx + B / 2 - T, cy - Hh / 2 + T, -(B - 2 * T), Hh - 2 * T); }
+      else { const tw = Math.max(2, T * 0.6); ctx.rect(cx - B / 2, cy - Hh / 2, B, T); ctx.rect(cx - B / 2, cy + Hh / 2 - T, B, T); ctx.rect(cx - tw / 2, cy - Hh / 2 + T, tw, Hh - 2 * T); }
+      ctx.fill('evenodd'); ctx.stroke(); ctx.fillStyle = COL.dim; ctx.font = '9px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText('section', cx, cy - Hh / 2 - 5); ctx.restore(); }
     // legend: stress colour scale + deflection exaggeration
-    { const lx = G.w / 2 - 110, ly = G.hb - 24; const gr = ctx.createLinearGradient(lx + 40, 0, lx + 120, 0);
+    { const nar = G.w < 520, lx = nar ? 8 : G.pl, ly = 18, bw = nar ? 46 : 80; const gr = ctx.createLinearGradient(lx + 40, 0, lx + 40 + bw, 0);
       for (let k = 0; k <= 10; k++) gr.addColorStop(k / 10, stressColor(k / 10));
       ctx.font = '10px JetBrains Mono, monospace'; ctx.fillStyle = COL.dim; ctx.textAlign = 'left';
-      ctx.fillText('σ/f  0', lx, ly + 4); ctx.fillStyle = gr; ctx.fillRect(lx + 40, ly - 3, 80, 6); ctx.fillStyle = COL.dim; ctx.fillText('1', lx + 124, ly + 4);
-      ctx.fillText(`shape ×${fmt(amp, 0)}`, lx + 140, ly + 4); }
+      ctx.fillText('σ/f  0', lx, ly + 4); ctx.fillStyle = gr; ctx.fillRect(lx + 40, ly - 3, bw, 6); ctx.fillStyle = COL.dim; ctx.fillText('1', lx + 44 + bw, ly + 4);
+      if (nar) ctx.fillText(`sag ×${fmt(amp, 0)}`, lx, ly + 18); else ctx.fillText(`sag drawn ×${fmt(amp, 0)}`, lx + 60 + bw, ly + 4); }
     // supports & reactions
     const maxR = Math.max(1, ...R.reactions.map(r => Math.abs(r.F)));
     R.reactions.forEach((r, i) => {
@@ -527,16 +566,20 @@
       }
     });
     // loads
-    const allP = R.pts.map(p => -p.F), maxP = Math.max(1, ...allP);
+    // one force scale for every arrow: length grows with the load (relative to the largest point load or
+    // distributed-load resultant on the beam)
+    const allP = S.loads.filter(l => l.type === 'point').map(l => Math.abs(l.P)), maxP = Math.max(1e-6, ...allP);
     const maxW = Math.max(1, ...R.ds.map(d => Math.max(d.w1, d.w2)));
-    const avail = Math.max(50, yb - th / 2 - 40 - 16), dH = avail * 0.42;
+    const resD = Math.max(0, ...S.loads.filter(l => l.type === 'udl' || l.type === 'tri').map(l => Math.abs(l.b - l.a) * (l.type === 'udl' ? l.w : (l.w1 + l.w2) / 2)));
+    const Fref = Math.max(maxP, resD, 1e-6);
+    const avail = Math.max(50, yb - th / 2 - 40 - 16), dH = avail * (0.18 + 0.3 * resD / Fref);
     S.loads.forEach(l => {
       const sel = S.sel === l.id, hov = hoverHit && hoverHit.id === l.id;
       const glow = sel ? 14 : hov ? 8 : 0;
       ctx.save(); ctx.shadowColor = COL.load; ctx.shadowBlur = glow;
       if (l.type === 'point') {
-        const px = X(l.x), yy = yb - th / 2 - interpDefl(l.x) * amp, len = (R.ds.length ? dH + 18 : 26) + (avail - (R.ds.length ? dH + 18 : 26)) * l.P / maxP;
-        if (l.P > 0) SL.arrow(ctx, px, yy - len, px, yy - 2, sel ? '#fda4af' : COL.load, 3, 11);
+        const px = X(l.x), yy = yb - th / 2 - interpDefl(l.x) * amp, fr = SL.clamp(Math.abs(l.P) / Fref, 0, 1), len = 16 + (avail - 16) * fr;
+        if (l.P > 0) SL.arrow(ctx, px, yy - len, px, yy - 2, sel ? '#fda4af' : COL.load, 1.6 + 2.8 * fr, 7 + 6 * fr);
         ctx.shadowBlur = 0; ctx.fillStyle = sel ? '#fff' : COL.load; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'center';
         ctx.fillText(`${fmt(l.P, 1)} kN`, SL.clamp(px, G.pl + 20, G.w - G.pr - 20), yy - len - 6);
       } else if (l.type === 'udl' || l.type === 'tri') {
@@ -660,7 +703,7 @@
     ctx.setLineDash([4, 3]); ctx.strokeStyle = '#f5a524'; ctx.beginPath(); ctx.moveTo(cx - B / 2 - 10, cy); ctx.lineTo(w * 0.62 + 70, cy); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle = '#f5a524'; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText('N.A.', 4, cy - 4);
     // stress distribution at hovered section (or max-moment section)
-    const xq = hoverX !== null ? hoverX : R.xM; const M = R.VM(xq + 1e-9)[1];
+    const xq = qX(); const M = R.VM(xq + 1e-9)[1];
     const smax = M * 1e3 * sp.c / sp.I / 1e6; // MPa (bottom fibre, + tension for sagging)
     const ax = w * 0.66, sw = w * 0.26, lim = Math.max(Math.abs(smax), 1e-9);
     const top = cy - H / 2, bot = cy + H / 2;
@@ -807,7 +850,7 @@
       drag = Object.assign({ x0: G.invX(p.x) }, hit);
       if (hit.kind === 'load') { const l = S.loads.find(x => x.id === hit.id); drag.orig = { x: l.x, a: l.a, b: l.b }; if (S.sel !== hit.id) { S.sel = hit.id; renderLoadList(); renderEditor(); } }
       e.preventDefault();
-    } else { hoverX = SL.clamp(G.invX(p.x), 0, S.L); }
+    } else { hoverX = probeX = snap(SL.clamp(G.invX(p.x), 0, S.L)); probeDown = true; probeTouched = true; drawSection(); }
   });
   cv.addEventListener('pointermove', e => {
     const p = SL.ptr(e, cv), G = lay(), xm = SL.clamp(G.invX(p.x), 0, S.L);
@@ -831,13 +874,13 @@
       }
       update();
     } else {
-      hoverX = xm; const h = hitTest(p.x, p.y); hoverHit = h ? Object.assign({ id: h.id }, h) : null;
+      hoverX = xm; if (probeDown) probeX = snap(xm); const h = hitTest(p.x, p.y); hoverHit = h ? Object.assign({ id: h.id }, h) : null;
       cv.style.cursor = h ? (h.kind === 'sup' || h.key !== 'body' ? 'ew-resize' : 'grab') : 'crosshair';
     }
   });
-  const endDrag = () => { if (drag) { drag = null; renderLoadList(); } };
+  const endDrag = () => { probeDown = false; if (drag) { drag = null; renderLoadList(); } };
   cv.addEventListener('pointerup', endDrag); cv.addEventListener('pointercancel', endDrag);
-  cv.addEventListener('pointerleave', () => { hoverX = null; hoverHit = null; });
+  cv.addEventListener('pointerleave', () => { hoverX = null; hoverHit = null; drawSection(); });
   function syncEditorValues(l) {
     const set = (id, v, u) => { const el = document.getElementById(id); if (el) { el.value = v; el.closest('.ctl').querySelector('output').textContent = `${fmt(v, 2)} ${u}`; el.style.setProperty('--p', ((v - el.min) / (el.max - el.min) * 100) + '%'); } };
     if ('x' in l) set('eX', l.x, 'm'); if ('a' in l) { set('eA', l.a, 'm'); set('eB', l.b, 'm'); }
@@ -851,7 +894,7 @@
     const k = 1 - Math.exp(-dt * 10);
     R.defl.forEach((d, i) => { shown[i] += (d.y - shown[i]) * k; });
     draw(T);
-    if (hoverX !== null) drawSection();
+    if (hoverX !== null || probeDown) drawSection();
   });
   { // run only while the stage is on screen and the tab is visible
     let onScreen = true; const sync = () => (document.hidden || !onScreen) ? beamLoop.stop() : beamLoop.start();

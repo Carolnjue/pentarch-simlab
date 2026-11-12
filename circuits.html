@@ -53,6 +53,30 @@
   .elist .note{flex-basis:100%;font:400 .8rem var(--font);color:var(--dim);line-height:1.5}
   @media (max-width:520px){#stage{height:330px} #scv{height:240px}.sc-ctl select{min-height:36px}.lab .btn.sm{min-height:36px}}
   .pbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}   /* keyboard focus */
+  /* phone quick-tool strip (sticky over the board) */
+  .cstrip{display:none}
+  #scMore{display:none}
+  .ebal .erow{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-top:8px;font:500 .78rem var(--mono);color:var(--muted)}
+  .ebal .erow .k{font:600 .68rem var(--font);letter-spacing:.08em;text-transform:uppercase;color:var(--dim);min-width:92px}
+  .ebal .erow b{color:var(--text);font-weight:600}
+  .ebal .op{color:var(--dim)}
+  .ebal .bal{margin-left:auto;color:var(--ok)}
+  .ebar.src{height:8px;margin-bottom:4px}
+  #fitBtn.on{border-color:var(--accent)}
+  @media (max-width:760px){
+    #labMain{display:flex;flex-direction:column}
+    #labMain>.cstrip{order:0} #labMain>#stage{order:1} #labMain>.scope{order:2;margin-top:10px} #labMain>.cnote{order:3} #labMain>.ebal{order:4}
+    .cstrip{display:block;position:sticky;top:var(--hdr);z-index:30;margin:0 -2px 8px;padding:6px;border:1px solid var(--line);border-radius:12px;background:rgba(10,15,28,.94);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 6px 18px rgba(0,0,0,.35)}
+    .cs-tools{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
+    .csb{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-height:44px;border-radius:9px;border:1px solid var(--line2);background:var(--bg2);font-size:.66rem;color:var(--muted);text-align:center}
+    .csb svg{width:28px;height:15px}
+    .csb.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 20%,var(--bg2));color:#fff}
+    .cs-meter{margin-top:6px;padding:5px 8px;border-radius:8px;background:#0b1a12;border:1px solid #1d3b2a;font:500 .74rem var(--mono);color:#86efac;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .cs-meter b{color:#bbf7d0}
+    .sc-ctl .adv{display:none}
+    .scope.show-adv .sc-ctl .adv{display:block}
+    #scMore{display:inline-flex}
+  }
 </style>
 </head>
 <body data-page="circuits">
@@ -61,7 +85,11 @@
 
 <main class="container">
   <section class="lab wide-controls">
-    <div>
+    <div id="labMain">
+      <div class="cstrip" id="cstrip" aria-label="Quick tools">
+        <div class="cs-tools" id="csTools"></div>
+        <div class="cs-meter" id="csMeter" aria-live="off"></div>
+      </div>
       <div class="stage" id="stage">
         <canvas id="cv" aria-label="Breadboard circuit editor"></canvas>
         <div class="hud">
@@ -70,15 +98,17 @@
           <span class="readout" id="hudWarn" style="display:none;color:#fde68a"></span>
         </div>
         <div class="stage-toolbar">
+          <button class="btn sm on" id="fitBtn" title="Zoom to the circuit or show the whole breadboard"><i data-lucide="scan"></i> <span>Fit</span></button>
           <button class="btn sm" id="pause"><i data-lucide="pause"></i> Pause</button>
           <button class="btn sm" id="resetSim"><i data-lucide="rotate-ccw"></i> Reset</button>
         </div>
         <div class="errbox" id="err"></div>
       </div>
-      <p class="small dim" style="margin:8px 2px 0"><b>New to circuits?</b> Choose <i>Series resistors</i> in Presets, click a part to read its voltage and current on the multimeter, and change its value in Properties. The oscilloscope below plots voltages against time; CH1 and CH2 are its two inputs and "/div" is the size of one grid square.</p>
+      <p class="small dim cnote" style="margin:8px 2px 0"><b>New to circuits?</b> Choose <i>Series resistors</i> in Presets, click a part to read its voltage and current on the multimeter, and change its value in Properties. The oscilloscope below plots voltages against time; CH1 and CH2 are its two inputs and "/div" is the size of one grid square.</p>
       <div class="ebal" id="ebal" aria-live="off">
-        <div class="eh"><b>Where the energy goes</b><span class="small dim">average over one sweep</span></div>
-        <div class="ebar" id="ebar"></div>
+        <div class="eh"><b>Where the energy goes</b><span class="small dim" id="ewin">average over whole cycles</span></div>
+        <div class="ebar src" id="ebarIn" title="Power in: sources (and any energy released by capacitors or inductors)"></div>
+        <div class="ebar" id="ebar" title="Power out: heat, light and net energy stored"></div>
         <div class="elist" id="elist"></div>
       </div>
       <div class="scope">
@@ -90,15 +120,15 @@
           <div class="sc-ctl">
             <div class="full"><label class="ch1" for="ch1">CH1 signal</label><select id="ch1"></select></div>
             <div><label class="ch1" for="vd1">CH1 scale /div</label><select id="vd1"></select></div>
-            <div><label class="ch1" for="po1">CH1 position</label><select id="po1"></select></div>
+            <div class="adv"><label class="ch1" for="po1">CH1 position</label><select id="po1"></select></div>
             <div class="full"><label class="ch2" for="ch2">CH2 signal</label><select id="ch2"></select></div>
             <div><label class="ch2" for="vd2">CH2 scale /div</label><select id="vd2"></select></div>
-            <div><label class="ch2" for="po2">CH2 position</label><select id="po2"></select></div>
+            <div class="adv"><label class="ch2" for="po2">CH2 position</label><select id="po2"></select></div>
             <div><label for="tdiv">Time /div</label><select id="tdiv"></select></div>
-            <div><label for="tsrc">Trigger</label><select id="tsrc"><option value="1">CH1 ↑</option><option value="2">CH2 ↑</option><option value="-1">CH1 ↓</option><option value="-2">CH2 ↓</option></select></div>
-            <div><label for="tlev">Trigger level</label><select id="tlev"></select></div>
-            <div><label for="tmode">Mode</label><select id="tmode"><option value="auto">Auto</option><option value="normal">Normal</option><option value="single">Single</option></select></div>
-            <div class="full btn-row" style="margin-top:4px"><button class="btn sm" id="autoset"><i data-lucide="wand-sparkles"></i> Auto scale</button><button class="btn sm" id="arm"><i data-lucide="crosshair"></i> Re-arm</button></div>
+            <div class="adv"><label for="tsrc">Trigger</label><select id="tsrc"><option value="1">CH1 ↑</option><option value="2">CH2 ↑</option><option value="-1">CH1 ↓</option><option value="-2">CH2 ↓</option></select></div>
+            <div class="adv"><label for="tlev">Trigger level</label><select id="tlev"></select></div>
+            <div class="adv"><label for="tmode">Mode</label><select id="tmode"><option value="auto">Auto</option><option value="normal">Normal</option><option value="single">Single</option></select></div>
+            <div class="full btn-row" style="margin-top:4px"><button class="btn sm" id="autoset"><i data-lucide="wand-sparkles"></i> Auto scale</button><button class="btn sm" id="arm"><i data-lucide="crosshair"></i> Re-arm</button><button class="btn sm" id="scMore" aria-expanded="false"><i data-lucide="sliders-horizontal"></i> Trigger &amp; position</button></div>
           </div>
         </div>
       </div>
@@ -340,7 +370,7 @@
     const old = SIM.topo ? SIM.topo.segs : []; segs.forEach(sg => { const o = old.find(x => key(x.a) === key(sg.a) && key(x.b) === key(sg.b)); if (o) sg.ph = o.ph; });
     return { N, nbr, comps, netOf, err: errs[0] || null, segs };
   }
-  function retopo() { SIM.topo = topology(); SIM.err = SIM.topo.err; showErr(); refreshScopeSignals(); }
+  function retopo() { if (typeof EB !== 'undefined') EB.key = ''; SIM.topo = topology(); SIM.err = SIM.topo.err; showErr(); refreshScopeSignals(); }
 
   /* ---------------- linear algebra ---------------- */
   function luSolve(A, b, n) { // partial pivoting, in place
@@ -497,7 +527,9 @@
     blank: { ch1: null, ch2: null, vd1: 1, vd2: 1, tdiv: 1e-3 },
   };
   function loadPreset(name, quiet) {
-    building = []; PRESETS[name](); els = building; uid = Math.max(0, ...els.map(e => e.id)) + 1; sel = null;
+    building = []; PRESETS[name](); els = building; uid = Math.max(0, ...els.map(e => e.id)) + 1;
+    // pre-select a part so the multimeter shows live V, I and P straight away
+    sel = els.find(e => e.label === 'R1') || els.find(e => e.type !== 'wire' && e.type !== 'gnd') || null;
     resetSim(); retopo();
     const s = PSCOPE[name];
     SC.ch1 = s.ch1 ? sigId(s.ch1) : ''; SC.ch2 = s.ch2 ? sigId(s.ch2) : '';
@@ -510,16 +542,24 @@
   /* ---------------- canvas / view ---------------- */
   const cv = $('#cv'); let st = null; st = SL.canvas(cv, () => { if (st) draw(); });
   // On narrow screens the view zooms to the part of the board in use (with a margin to build into)
-  let frozenVB = null;
+  // The view zooms to the part of the board in use (with a margin to build into), then grows rows or
+  // columns until the board fills the stage. "Whole board" shows every hole.
+  let frozenVB = null, fitOn = true;
   function viewBox() {
     if (frozenVB) return frozenVB;
-    if (st.w >= 600 || !els.length) return [0, 0, GW - 1, GH - 1];
+    if (!fitOn || !els.length) return [0, 0, GW - 1, GH - 1];
     let x0 = GW, y0 = GH, x1 = 0, y1 = 0; els.forEach(e => [e.a, e.type === 'gnd' ? [e.a[0], e.a[1] + 1] : e.b].forEach(p => { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); }));
-    x0 = Math.max(0, x0 - 1); x1 = Math.min(GW - 1, x1 + 2); y0 = Math.max(0, y0 - 1); y1 = Math.min(GH - 1, y1 + 1);
+    const mx = st.w < 600 ? 1 : 2;
+    x0 = Math.max(0, x0 - mx); x1 = Math.min(GW - 1, x1 + mx); y0 = Math.max(0, y0 - 1); y1 = Math.min(GH - 1, y1 + 1);
     while (x1 - x0 < 9) { if (x0 > 0) x0--; if (x1 - x0 < 9 && x1 < GW - 1) x1++; if (x0 === 0 && x1 === GW - 1) break; }
-    // the view is width-limited on phones, so use the spare height to show more rows to build into
-    const c = (st.w - 20) / (x1 - x0 + 0.6), rows = Math.floor((st.h - 100) / c - 0.6);
-    while (y1 - y0 < rows && (y0 > 0 || y1 < GH - 1)) { if (y1 < GH - 1) y1++; if (y1 - y0 < rows && y0 > 0) y0--; }
+    while (y1 - y0 < 5) { if (y1 < GH - 1) y1++; if (y1 - y0 < 5 && y0 > 0) y0--; if (y0 === 0 && y1 === GH - 1) break; }
+    const aw = st.w - 20, ah = st.h - 50, cOf = (nx, ny) => Math.min(aw / (nx + 0.6), ah / (ny + 0.6));
+    // grow whichever dimension leaves empty space, keeping the circuit centred
+    for (let g = 0; g < 40; g++) {
+      const c = cOf(x1 - x0, y1 - y0), wideLimited = aw / (x1 - x0 + 0.6) <= ah / (y1 - y0 + 0.6);
+      if (wideLimited) { if (cOf(x1 - x0, y1 - y0 + 1) < c - 1e-9 || (y0 === 0 && y1 === GH - 1)) break; if ((g & 1 || y0 === 0) && y1 < GH - 1) y1++; else y0--; }
+      else { if (cOf(x1 - x0 + 1, y1 - y0) < c - 1e-9 || (x0 === 0 && x1 === GW - 1)) break; if ((g & 1 || x0 === 0) && x1 < GW - 1) x1++; else x0--; }
+    }
     return [x0, y0, x1, y1];
   }
   const view = () => { const w = st.w, h = st.h, [x0, y0, x1, y1] = viewBox(), nx = x1 - x0, ny = y1 - y0; const c = Math.min((w - 20) / (nx + 0.6), (h - 50) / (ny + 0.6)); const ox = (w - c * nx) / 2 - x0 * c, oy = 42 + (h - 42 - c * ny) / 2 - y0 * c; return { w, h, c, x0, y0, x1, y1, X: x => ox + x * c, Y: y => oy + y * c, ix: px => (px - ox) / c, iy: py => (py - oy) / c }; };
@@ -701,8 +741,18 @@
   ];
   $('#palette').innerHTML = PAL.map(([t, n, svg]) => `<button class="pbtn${t === 'select' ? ' on' : ''}" data-tool="${t}" title="${n}"><svg class="sym" viewBox="0 0 34 18">${svg}</svg>${n}</button>`).join('') + `<button class="pbtn" id="rotBtn" title="Rotate selected"><svg class="sym" viewBox="0 0 34 18"><path d="M11 9 A6 6 0 1 0 17 3 M17 3 L14 0.5 M17 3 L14 5.5" stroke="currentColor" stroke-width="1.8" fill="none"/></svg>Rotate</button><button class="pbtn" id="delBtn" title="Delete selected"><svg class="sym" viewBox="0 0 34 18"><path d="M11 4 H23 M13 4 V16 H21 V4 M15 2 H19" stroke="currentColor" stroke-width="1.8" fill="none"/></svg>Delete</button><button class="pbtn" id="clrBtn" title="Clear the board"><svg class="sym" viewBox="0 0 34 18"><path d="M8 3 L26 15 M26 3 L8 15" stroke="currentColor" stroke-width="1.8"/></svg>Clear</button>`;
   const HINTS = { select: 'Select: click a part to edit it, drag to move it, drag an end of the selected part to stretch it. Tap a switch to toggle it.', wire: 'Wire: drag from one hole to another. Wires join everything at their ends.' };
-  function setTool(t) { tool = t; document.querySelectorAll('#palette [data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); $('#toolHint').textContent = HINTS[t] || `${TYPES[t].name}: click a hole to place it (two holes long), or drag to set its length and direction. Terminal "+" is where you start.`; }
+  function setTool(t) { tool = t; document.querySelectorAll('#csTools [data-qt]').forEach(b => b.classList.toggle('on', b.dataset.qt === t)); document.querySelectorAll('#palette [data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); $('#toolHint').textContent = HINTS[t] || `${TYPES[t].name}: click a hole to place it (two holes long), or drag to set its length and direction. Terminal "+" is where you start.`; }
   document.querySelectorAll('#palette [data-tool]').forEach(b => b.onclick = () => setTool(b.dataset.tool));
+  // phone quick-tool strip: the most used tools, always within reach above the board
+  const QT = ['select', 'wire', 'res', 'cap'].map(t => PAL.find(p => p[0] === t));
+  $('#csTools').innerHTML = QT.map(([t, n, svg]) => `<button class="csb${t === 'select' ? ' on' : ''}" data-qt="${t}" aria-label="${n}"><svg viewBox="0 0 34 18">${svg}</svg>${t === 'res' ? 'R' : t === 'cap' ? 'C' : n}</button>`).join('')
+    + `<button class="csb" id="qDel" aria-label="Delete selected part"><svg viewBox="0 0 34 18"><path d="M11 4 H23 M13 4 V16 H21 V4 M15 2 H19" stroke="currentColor" stroke-width="1.8" fill="none"/></svg>Delete</button>`
+    + `<button class="csb" id="qMore" aria-label="All parts and properties"><svg viewBox="0 0 34 18"><circle cx="10" cy="9" r="2" fill="currentColor"/><circle cx="17" cy="9" r="2" fill="currentColor"/><circle cx="24" cy="9" r="2" fill="currentColor"/></svg>More</button>`;
+  document.querySelectorAll('#csTools [data-qt]').forEach(b => b.onclick = () => setTool(b.dataset.qt));
+  $('#qDel').onclick = () => $('#delBtn').click();
+  $('#qMore').onclick = () => $('#palette').closest('.panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('#fitBtn').onclick = () => { fitOn = !fitOn; $('#fitBtn').classList.toggle('on', fitOn); $('#fitBtn span').textContent = fitOn ? 'Fit' : 'Whole board'; draw(); };
+  $('#scMore').onclick = () => { const sc = $('.scope'), on = sc.classList.toggle('show-adv'); $('#scMore').setAttribute('aria-expanded', on); };
   $('#rotBtn').onclick = () => { if (!sel || sel.type === 'gnd') return; const dx = sel.b[0] - sel.a[0], dy = sel.b[1] - sel.a[1]; let nb = [sel.a[0] - dy, sel.a[1] + dx]; if (!inGrid(nb)) nb = [sel.a[0] + dy, sel.a[1] - dx]; if (inGrid(nb)) { sel.b = nb; changed(); } };
   $('#delBtn').onclick = () => { if (sel) { els = els.filter(e => e !== sel); sel = null; changed(); renderProps(); } };
   $('#clrBtn').onclick = () => { els = []; sel = null; changed(); renderProps(); };
@@ -791,9 +841,12 @@
   function paramChanged(e) { if (e.type === 'dc' && e.rint > 0) changed(); refreshScopeSignals(); }
   function meterHTML() { return `<div class="meter"><div class="ttl">Multimeter${sel && sel.label ? ' · ' + sel.label : ''}</div><div class="lcd" id="lcd"><span>V</span><b>—</b><span>I</span><b>—</b><span>P</span><b>—</b></div></div>`; }
   function updateMeter() {
-    const el = document.getElementById('lcd'); if (!el) return; const e = sel; if (!e || e.type === 'wire' || e.type === 'gnd') return;
+    const el = document.getElementById('lcd'), e = sel, cm = $('#csMeter');
+    if (!e || e.type === 'wire' || e.type === 'gnd') { cm.innerHTML = 'Tap a part to read its V, I and P'; return; }
     const src = e.type === 'dc' || e.type === 'ac';
     const I = src ? -e.i : e.i, Pw = src ? -e.v * e.i : e.v * e.i;
+    cm.innerHTML = `${e.label} &nbsp;V <b>${eng(e.v, 'V', 3)}</b> · I <b>${eng(I, 'A', 3)}</b> · P <b>${eng(Pw, 'W', 3)}</b>`;
+    if (!el) return;
     el.innerHTML = `<span>V</span><b>${eng(e.v, 'V', 4)}</b><span>V rms</span><b>${eng(Math.sqrt(e.ems), 'V', 4)}</b><span>I${src ? ' (out of +)' : ''}</span><b>${eng(I, 'A', 4)}</b><span>I rms</span><b>${eng(Math.sqrt(e.emis), 'A', 4)}</b><span>P ${src ? 'delivered' : 'absorbed'}</span><b>${eng(Pw, 'W', 4)}</b>`;
   }
 
@@ -886,7 +939,7 @@
   }
 
   /* ---------------- simulation loop ---------------- */
-  function resetSim() { SIM.t = 0; els.forEach(e => { e.v = e.i = e.vp = e.ip = 0; e.vd = 0.6; e.ema = e.ems = e.emi = e.emis = e.emp = 0; e.hot = 0; }); armScope(); SC.last = null; }
+  function resetSim() { EB.key = ''; SIM.t = 0; els.forEach(e => { e.v = e.i = e.vp = e.ip = 0; e.vd = 0.6; e.ema = e.ems = e.emi = e.emis = e.emp = 0; e.hot = 0; }); armScope(); SC.last = null; }
   $('#resetSim').onclick = () => { resetSim(); retopo(); };
   $('#pause').onclick = () => { SIM.paused = !SIM.paused; $('#pause').innerHTML = SIM.paused ? '<i data-lucide="play"></i> Run' : '<i data-lucide="pause"></i> Pause'; SL.refreshIcons($('#pause')); };
   $('#method').onchange = e => { SIM.method = e.target.value; };
@@ -899,6 +952,8 @@
     if (document.hidden) return;
     T0 += dt;
     const span = 10 * SC.tdiv; SIM.h = span / 1000;
+    { // with an AC source, round the step so one source period is a whole number of steps (exact cycle averages)
+      const fa = els.filter(e => e.type === 'ac').map(e => e.f); if (fa.length) { const T = 1 / Math.min(...fa); SIM.h = T / Math.max(1, Math.round(T / SIM.h)); } }
     if (!SIM.paused && !SIM.err && SIM.topo) {
       const realSweep = 2.5 / SIM.speed; acc += span / realSweep * dt;
       let steps = Math.min(400, Math.floor(acc / SIM.h)); acc -= steps * SIM.h; if (acc > SIM.h * 400) acc = 0;
@@ -907,7 +962,7 @@
         if (!step(SIM.h)) break;
         const a = SIM.h / tau;
         SIM.topo.comps.forEach(e => { e.emp = (e.emp || 0) + (e.v * e.i - (e.emp || 0)) * a; e.ema += (e.v - e.ema) * a; e.ems += (e.v * e.v - e.ems) * a; e.emi += (e.i - e.emi) * a; e.emis += (e.i * e.i - e.emis) * a; });
-        scopeSample();
+        scopeSample(); eAcc(SIM.h);
       }
       // LED burn-out
       SIM.topo.comps.forEach(e => { if (e.type === 'led' && !e.burnt && e.hot > Math.min(0.3, span / 5)) { e.burnt = true; changed(); SL.toast(`${e.label} burnt out: its current exceeded 60 mA. Add or increase a series resistor, then replace it.`, 'bad', 6000); if (sel === e) renderProps(); } });
@@ -927,23 +982,57 @@
     if ('IntersectionObserver' in window) (() => { const vis = new Set(), io = new IntersectionObserver(es => { es.forEach(e => e.isIntersecting ? vis.add(e.target) : vis.delete(e.target)); onScreen = vis.size > 0; sync(); }, { rootMargin: '300px' }); document.querySelectorAll('.lab, main canvas').forEach(el => { if (!el.closest('.tabs')) io.observe(el); }); })(); else mainLoop.start();
   }
 
-  /* Energy balance (Tellegen: the powers of all parts sum to zero at every instant) */
-  let ebN = 0;
+  /* Energy balance (Tellegen: the powers of all parts sum to zero at every instant).
+     Averages are exact boxcar means over a whole number of source cycles (or one sweep for DC), kept as
+     a sliding window of time steps, so in the AC steady state the capacitors' and inductors' share falls to zero. */
+  let ebN = 0; var EB = { key: '', n: 0, N: 1, win: 0, cyc: 0, now: null };
+  function ePow(e) { // power absorbed by each part, split into categories (W)
+    const p = e.v * e.i;
+    if (e.type === 'dc' && e.rint > 0) return { src: -e.V * e.i, heat: e.i * e.i * e.rint }; // EMF power, internal heat
+    if (e.type === 'dc' || e.type === 'ac') return { src: -p };
+    if (e.type === 'res' || e.type === 'lamp') return { heat: p };
+    if (e.type === 'led') return { led: p };
+    if (e.type === 'cap') return { cap: p };
+    if (e.type === 'ind') return { ind: p };
+    return {};
+  }
+  const ECAT = ['src', 'heat', 'led', 'cap', 'ind'];
+  function eAcc(h) { // ring buffer of per-step energies: an exact sliding mean over the window
+    const span = 10 * SC.tdiv, fs = els.filter(e => e.type === 'ac').map(e => e.f);
+    let win = span, cyc = 0; if (fs.length) { const T = 1 / Math.min(...fs); cyc = Math.max(1, Math.round(span / T)); win = cyc * T; }
+    const N = Math.max(1, Math.round(win / h)), k = N + '|' + h.toPrecision(8) + '|' + fs.join(',');
+    if (k !== EB.key) { EB.key = k; EB.win = win; EB.cyc = cyc; EB.N = N; EB.buf = new Float64Array(N * 5); EB.sum = new Float64Array(5); EB.i = 0; EB.n = 0; }
+    const now = { src: 0, heat: 0, led: 0, cap: 0, ind: 0 };
+    SIM.topo.comps.forEach(e => { const q = ePow(e); for (const j in q) now[j] += q[j]; });
+    const o = EB.i * 5; ECAT.forEach((c, j) => { const v = now[c] * h; EB.sum[j] += v - EB.buf[o + j]; EB.buf[o + j] = v; });
+    EB.i = (EB.i + 1) % N; EB.n = Math.min(N, EB.n + 1); EB.now = now; EB.h = h;
+    if (EB.i === 0) { EB.sum.fill(0); for (let r = 0; r < N; r++) for (let j = 0; j < 5; j++) EB.sum[j] += EB.buf[r * 5 + j]; } // limit round-off drift
+  }
   function energy() {
-    const C = SIM.topo ? SIM.topo.comps : [], g = { src: 0, heat: 0, led: 0, cap: 0, ind: 0 }, now = { cap: 0, ind: 0 };
-    C.forEach(e => { const pa = e.emp || 0, pn = e.v * e.i;
-      if (e.type === 'dc' || e.type === 'ac') { g.src -= pa; if (e.type === 'dc' && e.rint > 0) g.heat += e.i * e.i * e.rint; }
-      else if (e.type === 'res' || e.type === 'lamp') g.heat += pa; else if (e.type === 'led') g.led += pa;
-      else if (e.type === 'cap') { g.cap += pa; now.cap += pn; } else if (e.type === 'ind') { g.ind += pa; now.ind += pn; } });
-    const P = v => eng(Math.abs(v) < 1e-12 ? 0 : v, 'W').replace(/^-/, '−'), tot = Math.max(1e-15, g.heat + g.led + Math.max(0, g.cap) + Math.max(0, g.ind));
-    const parts = [['heat', '#f97316', 'Resistors and lamps (heat)'], ['led', '#a3e635', 'LEDs (light + heat)'], ['cap', '#38bdf8', 'Capacitors (stored)'], ['ind', '#c084fc', 'Inductors (stored)']];
-    $('#ebar').innerHTML = parts.map(([k, c]) => `<i style="width:${(Math.max(0, g[k]) / tot * 100).toFixed(1)}%;background:${c}"></i>`).join('');
-    const has = t => C.some(e => e.type === t);
-    let h = `<span>Sources deliver <b>${P(g.src)}</b></span>`;
-    parts.forEach(([k, c, n]) => { if (k === 'heat' ? (has('res') || has('lamp') || has('dc')) : has(k === 'led' ? 'led' : k)) h += `<span><i class="sw" style="background:${c}"></i>${n} <b>${P(g[k])}</b></span>`; });
-    const reac = has('cap') || has('ind');
-    if (!C.length || SIM.err) h = '<span class="note">Build a complete circuit to see how the power from the sources is shared out.</span>';
-    else h += `<span class="note">${reac ? `Right now ${has('cap') ? `the capacitors are ${now.cap >= 0 ? 'storing' : 'returning'} ${P(Math.abs(now.cap))}` : ''}${has('cap') && has('ind') ? ' and ' : ''}${has('ind') ? `the inductors are ${now.ind >= 0 ? 'storing' : 'returning'} ${P(Math.abs(now.ind))}` : ''}. Over a full AC cycle they store and return equal energy, so their average falls towards zero. ` : ''}Energy is conserved: at every instant the source power equals the sum of the others.</span>`;
+    const C = SIM.topo ? SIM.topo.comps : [], has = t => C.some(e => e.type === t);
+    if (!C.length || SIM.err || !EB.n) {
+      $('#ebarIn').innerHTML = $('#ebar').innerHTML = '';
+      $('#elist').innerHTML = `<span class="note">${!C.length || SIM.err ? 'Build a complete circuit to see how the power from the sources is shared out.' : 'Measuring…'}</span>`; return;
+    }
+    const g = {}, tt = EB.n * EB.h; ECAT.forEach((c, j) => g[c] = EB.sum[j] / tt);
+    const full = EB.n >= EB.N;
+    $('#ewin').textContent = (full ? 'average over ' : 'averaging… ') + (EB.cyc ? `${EB.cyc} whole cycle${EB.cyc > 1 ? 's' : ''} of the source` : `the last ${eng(EB.win, 's')}`);
+    const P = v => eng(Math.abs(v) < 1e-12 ? 0 : v, 'W').replace(/^-/, '−');
+    // energy in: sources, plus stores that are giving energy back; energy out: heat, light, stores that are filling
+    const ins = [['src', '#f5a524', 'Sources deliver', g.src]];
+    const outs = [['heat', '#f97316', 'Resistors and lamps (heat)', g.heat], ['led', '#a3e635', 'LEDs (light + heat)', g.led]];
+    [['cap', '#38bdf8', 'Capacitors'], ['ind', '#c084fc', 'Inductors']].forEach(([k, c, n]) => { if (!has(k)) return; const v = g[k]; if (v >= 0) outs.push([k, c, n + ' (net stored)', v]); else ins.push([k, c, n + ' (release)', -v]); });
+    const vis = outs.filter(([k, , , v]) => k === 'heat' ? (has('res') || has('lamp') || C.some(e => e.type === 'dc' && e.rint > 0)) : k === 'led' ? has('led') : true);
+    const tin = ins.reduce((a, r) => a + Math.max(0, r[3]), 0), tout = vis.reduce((a, r) => a + Math.max(0, r[3]), 0), tot = Math.max(1e-15, tin, tout);
+    const bar = rows => rows.map(([, c, , v]) => `<i style="width:${(Math.max(0, v) / tot * 100).toFixed(1)}%;background:${c}"></i>`).join('');
+    $('#ebarIn').innerHTML = bar(ins); $('#ebar').innerHTML = bar(vis);
+    const item = ([, c, n, v]) => `<span><i class="sw" style="background:${c}"></i>${n} <b>${P(v)}</b></span>`;
+    const err = Math.abs(tin - tout) / tot * 100;
+    let h = `<div class="erow"><span class="k">Average in</span>${ins.map(item).join('<span class="op">+</span>')}</div>`
+      + `<div class="erow"><span class="k">Average out</span>${vis.map(item).join('<span class="op">+</span>')}<span class="bal">${err < 1 ? 'in = out ✓' : 'settling…'}</span></div>`;
+    const n = EB.now, reac = has('cap') || has('ind');
+    if (n && reac) h += `<div class="erow"><span class="k">Right now</span><span>source <b>${P(n.src)}</b></span>${has('cap') ? `<span>power into capacitors (now) <b>${P(n.cap)}</b></span>` : ''}${has('ind') ? `<span>power into inductors (now) <b>${P(n.ind)}</b></span>` : ''}</div>`
+      + (!els.some(e => e.type === 'ac') ? `<span class="note">While a capacitor charges or an inductor's current builds, part of the source power is being stored; once the circuit settles all of it ends up as heat or light.</span>` : `<span class="note">Instantaneous values swing every cycle: capacitors and inductors take energy in for part of the cycle (+) and hand it back for the rest (−). Averaged over whole cycles their net share is zero, so the sources' power all ends up as heat or light.</span>`);
     $('#elist').innerHTML = h;
   }
 
