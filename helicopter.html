@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 <link rel="stylesheet" href="assets/css/simlab.css?v=15">
 <style>
-  .stage.hc{height:560px;touch-action:none;outline:none}
+  .stage.hc{height:560px;touch-action:pan-y;outline:none}
   @media (max-width:640px){.stage.hc{height:430px;min-height:0}}
   .hidden{display:none!important}
   .flybar{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px;margin-top:10px}
@@ -98,6 +98,9 @@
   .stage.hc .demo-cap{bottom:auto;top:50px}
   @media (max-width:980px){.labcol .demo-bar,.labcol .scn-pop,.labcol .scn-active{order:1}}
   @media (max-width:640px){.stage.hc .demo-cap{top:88px}}
+  .stage .readout{backdrop-filter:none;-webkit-backdrop-filter:none;background:rgba(5,9,19,.88)} /* no blur over the live canvas */
+  @media (pointer:coarse),(hover:none){.keys{display:none}} /* keyboard hints do not apply on touch */
+  .stage canvas{will-change:transform} /* own compositing layer: redrawing the canvas does not repaint the page */
 </style>
 </head>
 <body data-page="helicopter">
@@ -263,6 +266,30 @@ window.SLDemo = (() => {
     get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
+  /* one lab-bar look on every lab (same as the DemoKit bar): primary Watch demo, Scenarios, one-line Start here */
+  const css = `
+  .demo-bar{gap:8px;margin:0 0 10px}
+  .demo-bar .btn{min-height:40px}
+  .demo-bar #demoBtn{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;font-weight:600;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .demo-bar #demoBtn.on{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .demo-bar .demo-start{flex:1 1 260px;min-width:0;font-size:.84rem;color:var(--muted);line-height:1.4}
+  .demo-bar .demo-start b{color:var(--text)}
+  .demo-bar .demo-start~.demo-sp{display:none}
+  .demo-cap .dc-txt{margin:0}
+  .demo-cap .dc-txt .dc-wait{color:var(--muted);font-style:italic}
+  .demo-cap .dc-end{display:none;gap:8px;flex-wrap:wrap;margin:8px 0 2px}
+  .demo-cap.ended .dc-end{display:flex}
+  .demo-cap.ended .dc-ctl,.demo-cap.ended .dc-bar{display:none}
+  .demo-cap.below{position:relative;left:auto;bottom:auto;transform:none;width:auto;margin:8px 0 0;box-shadow:none}
+  .demo-cap.pin{position:fixed;left:8px;right:8px;bottom:8px;transform:none;width:auto;max-height:30vh;overflow:auto;z-index:60;box-shadow:0 -6px 24px rgba(0,0,0,.5)}
+  .scn-card .scn-go{display:inline-flex;align-items:center;gap:4px;margin-top:6px;font:600 .74rem var(--sans,inherit);color:var(--accent)}
+  .lab-more{margin:8px 2px 0;font-size:.84rem;color:var(--muted)}
+  .lab-more>summary{cursor:pointer;color:var(--text);font-weight:500;min-height:32px;display:flex;align-items:center;gap:6px}
+  .lab-more>summary svg{width:15px;height:15px}
+  .lab-more p{margin:6px 0 0;line-height:1.5}
+  @media (pointer:coarse),(hover:none){.demo-bar kbd,.demo-bar .demo-keys,.kbd-only{display:none!important}.demo-cap .dc-ctl .btn,.demo-cap .dc-end .btn{min-height:42px;min-width:44px}.lab-more>summary{min-height:44px}}
+  @media (max-width:720px){.demo-bar .demo-start{flex-basis:100%;order:3;font-size:.8rem}}`;
+  { const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s); }
   /** Set a control's value and fire its input event, so the page reacts exactly as to a user. */
   function set(sel, v) {
     const el = typeof sel === 'string' ? q(sel) : sel; if (!el) return;
@@ -278,12 +305,27 @@ window.SLDemo = (() => {
   let cfg = null, run = null, stage = null, cap = null, scn = null, scnTimer = 0;
   const page = () => document.body.dataset.page || 'lab';
 
+  /* the demo never earns credit: busy while it runs and for a moment after the silent restore;
+     challenge/scenario toasts are swallowed then, and other toasts are marked "Demo:" */
+  let quietUntil = 0, kitMsg = false;
+  const busy = () => !!run || performance.now() < quietUntil;
+  const rawToast = SL.toast;
+  SL.toast = function (m, t, ms) {
+    if (!kitMsg && busy()) {
+      if (/challenge|scenario|solved|achieved/i.test(String(m)) || !run) return;
+      m = '<b>Demo:</b> ' + m;
+    }
+    return rawToast.call(this, m, t, ms);
+  };
+  const kitToast = (m, t, ms) => { kitMsg = true; try { SL.toast(m, t, ms); } finally { kitMsg = false; } };
+
   let DK = 'D', SK = 'S';
   function mount(c) {
     cfg = c; DK = c.demoKey || 'D'; SK = c.scnKey || 'S'; stage = q(c.stage || '#stage');
-    const bar = document.createElement('div'); bar.className = 'demo-bar';
+    const bar = document.createElement('div'); bar.className = 'demo-bar lab-bar';
     bar.innerHTML = `<button class="btn sm primary" id="demoBtn" title="Watch a guided demo of this lab (${DK})">${SL.icon('play-circle')}<span>Watch demo</span><kbd>${DK}</kbd></button>` +
       (c.scenarios && c.scenarios.length ? `<button class="btn sm" id="scnBtn" aria-expanded="false" aria-controls="scnPop" title="Real-world tasks with a goal (${SK})">${SL.icon('target')}<span>Scenarios</span><kbd>${SK}</kbd></button>` : '') +
+      (c.start ? `<span class="demo-start"><b>Start here:</b> ${c.start}</span>` : '') +
       `<span class="demo-sp"></span><button class="btn sm ghost demo-keys" id="keysBtn" title="Keyboard shortcuts (?)">${SL.icon('keyboard')}<span>Shortcuts</span></button>`;
     stage.parentNode.insertBefore(bar, stage);
     const pop = document.createElement('div'); pop.className = 'scn-pop'; pop.id = 'scnPop'; pop.hidden = true;
@@ -294,70 +336,115 @@ window.SLDemo = (() => {
     q('#keysBtn').onclick = showKeys;
     if (q('#scnBtn')) { q('#scnBtn').onclick = () => togglePop(); renderPop(); }
     document.addEventListener('keydown', onKey);
-    // a real interaction with the controls or the stage hands the lab over to the student
-    const take = e => { if (!run || !e.isTrusted || (cap && cap.contains(e.target)) || e.target.closest('.demo-bar')) return; stop(false, true); };
-    const lab = stage.closest('.lab') || document;
-    lab.addEventListener('pointerdown', take, true);
+    // the student takes over only with a deliberate tap/click (under 10 px of movement) on the lab, or a real
+    // change of a control. Scrolling the page with a finger never stops the demo.
+    const lab = stage.closest('.lab') || document.body;
+    const mine = t => t && t.closest && !(cap && cap.contains(t)) && !t.closest('.demo-bar');
+    let pd = null;
+    lab.addEventListener('pointerdown', e => { pd = (run || (cap && cap.classList.contains('ended'))) && e.isTrusted && mine(e.target) ? { x: e.clientX, y: e.clientY } : null; }, true);
+    lab.addEventListener('pointercancel', () => { pd = null; }, true);
+    lab.addEventListener('pointerup', e => {
+      if (!pd || !e.isTrusted) return; const mv = Math.hypot(e.clientX - pd.x, e.clientY - pd.y); pd = null;
+      if (mv >= 10 || !mine(e.target)) return;
+      if (run) stop(false, true); else if (cap && cap.classList.contains('ended')) closeEnd();
+    }, true);
+    const ctl = e => { if (run && e.isTrusted && mine(e.target) && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) stop(false, true); };
+    lab.addEventListener('input', ctl, true); lab.addEventListener('change', ctl, true);
+    addEventListener('scroll', () => { if (!run && cap && cap.classList.contains('ended') && cap.classList.contains('pin')) { const r = stage.getBoundingClientRect(); if (r.bottom < 80 || r.top > innerHeight) closeEnd(); } }, { passive: true });
   }
 
   /* ---------------- demo ---------------- */
+  // phones: compact caption bar pinned to the bottom, the stage scrolled to sit above it;
+  // laptops: under the stage when both fit the window, otherwise over the bottom of the stage
+  function placeCap() {
+    cap.classList.remove('below', 'pin');
+    if (matchMedia('(max-width:720px)').matches) { cap.classList.add('pin'); document.body.appendChild(cap); }
+    else if (stage.offsetHeight + 136 <= innerHeight - 64) { cap.classList.add('below'); stage.after(cap); }
+    else stage.appendChild(cap);
+  }
+  function closeEnd() { if (cap && !run) { cap.remove(); cap = null; } }
   function start() {
     if (run || !cfg.steps) return;
-    closePop();
-    run = { i: -1, el: 0, paused: reduced(), snap0: cfg.snapshot(), snaps: [], last: performance.now(), raf: 0, manual: reduced() };
+    closePop(); closeEnd();
+    run = { i: -1, el: 0, paused: reduced(), snap0: cfg.snapshot(), snaps: [], last: performance.now(), raf: 0, manual: reduced(), shown: false };
     stage.classList.add('demo-on');
     cap = document.createElement('div'); cap.className = 'demo-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo captions');
-    cap.innerHTML = `<div class="dc-top"><span class="dc-n"></span><span class="dc-ctl"><button class="btn sm" data-a="prev" title="Previous step (←)" aria-label="Previous step">${SL.icon('skip-back')}</button><button class="btn sm" data-a="pause" title="Pause or play (Space)" aria-label="Pause or play"></button><button class="btn sm" data-a="next" title="Next step (→)" aria-label="Next step">${SL.icon('skip-forward')}</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)" aria-label="Stop demo">${SL.icon('x')}</button></span></div><div class="dc-bar"><i></i></div><div class="dc-txt" aria-live="polite"></div>`;
-    stage.appendChild(cap);
-    cap.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a; if (a === 'prev') prev(); else if (a === 'next') next(); else if (a === 'pause') togglePause(); else stop(); });
+    cap.innerHTML = `<div class="dc-top"><span class="dc-n"></span><span class="dc-ctl"><button class="btn sm" data-a="prev" title="Previous step (←)" aria-label="Previous step">${SL.icon('skip-back')}</button><button class="btn sm" data-a="pause" title="Pause or play (Space)" aria-label="Pause or play"></button><button class="btn sm" data-a="next" title="Next step (→)" aria-label="Next step">${SL.icon('skip-forward')}</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)" aria-label="Stop demo">${SL.icon('x')}</button></span></div><div class="dc-bar"><i></i></div><p class="dc-txt" aria-live="polite"></p><div class="dc-end"><button class="btn sm primary" data-e="try">${SL.icon('hand')}<span>Try it yourself</span></button><button class="btn sm" data-e="again">${SL.icon('rotate-ccw')}<span>Watch again</span></button></div>`;
+    placeCap();
+    cap.addEventListener('click', e => {
+      const x = e.target.closest('[data-e]');
+      if (x) { const again = x.dataset.e === 'again'; cap.remove(); cap = null; if (again) start(); else { const f = (stage.closest('.lab') || document).querySelector('aside input, aside select, aside button'); if (f) f.focus({ preventScroll: true }); } return; }
+      const b = e.target.closest('[data-a]'); if (!b || !run) return; const a = b.dataset.a; if (a === 'prev') prev(); else if (a === 'next') next(); else if (a === 'pause') togglePause(); else stop();
+    });
     setBtn();
     if (document.activeElement && document.activeElement.id === 'demoBtn') cap.querySelector('[data-a=pause]').focus({ preventScroll: true });
     try { cfg.onStart && cfg.onStart(); } catch (e) { console.warn(e); }
-    const r = stage.getBoundingClientRect(); if (r.top < 60 || r.bottom > innerHeight) stage.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'center' });
+    const r = stage.getBoundingClientRect(), capH = cap.classList.contains('below') ? 150 : 0;
+    if (cap.classList.contains('pin')) { if (Math.abs(r.top - 64) > 30) scrollTo({ top: Math.max(0, r.top + scrollY - 64), behavior: reduced() ? 'auto' : 'smooth' }); }
+    else if (r.top < 56 || r.bottom + capH > innerHeight) scrollTo({ top: Math.max(0, r.top + scrollY - Math.max(64, (innerHeight - r.height - capH) / 2)), behavior: reduced() ? 'auto' : 'smooth' });
     go(0);
     const tick = now => {
       if (!run) return;
       const dt = Math.min(0.25, (now - run.last) / 1000); run.last = now;
       const s = cfg.steps[run.i];
       if (!run.paused && !document.hidden) run.el += dt;
-      const dur = s.dur || 5, ramp = s.ramp ? s.ramp : dur * 0.6;
-      if (s.tick && !run.manual) { try { s.tick(ease(Math.min(1, run.el / ramp))); } catch (e) { console.warn(e); } }
-      const tot = cfg.steps.reduce((a, x) => a + (x.dur || 5), 0), doneT = cfg.steps.slice(0, run.i).reduce((a, x) => a + (x.dur || 5), 0);
+      const dur = stepDur(s), rmp = rampT(s);
+      if (s.tick && !run.manual) { try { s.tick(ease(Math.min(1, run.el / rmp))); } catch (e) { console.warn(e); } }
+      // the caption describes the result, so show it once the action has played out
+      if (!run.shown && (!s.tick || run.manual || run.el >= rmp)) showCap();
+      const tot = cfg.steps.reduce((a, x) => a + stepDur(x), 0), doneT = cfg.steps.slice(0, run.i).reduce((a, x) => a + stepDur(x), 0);
       cap.querySelector('.dc-bar i').style.width = (100 * Math.min(tot, doneT + Math.min(run.el, dur)) / tot) + '%';
       if (!run.paused && run.el >= dur) { if (run.i >= cfg.steps.length - 1) { stop(true); return; } go(run.i + 1); }
       run.raf = requestAnimationFrame(tick);
     };
     run.raf = requestAnimationFrame(tick);
   }
+  const rampT = s => s.ramp ? s.ramp : (s.dur || 5) * 0.6;
+  const words = s => { const c = typeof s.cap === 'function' ? '' : String(s.cap || ''); return c.replace(/<[^>]+>/g, '').split(/\s+/).length; };
+  // after the action, leave enough reading time for the caption
+  const stepDur = s => { const d = s.dur || 5; return s.tick ? Math.max(d, rampT(s) + Math.min(8, Math.max(2.5, words(s) * 0.22))) : d; };
+  function showCap() {
+    const s = cfg.steps[run.i]; run.shown = true;
+    const t = cap.querySelector('.dc-txt'); t.innerHTML = typeof s.cap === 'function' ? s.cap() : s.cap; SL.renderMath && SL.renderMath(t);
+  }
   function go(i) {
-    run.i = i; run.el = 0;
+    run.i = i; run.el = 0; run.shown = false;
     if (!run.snaps[i]) run.snaps[i] = cfg.snapshot();
     const s = cfg.steps[i];
     if (s.tick && s.tick.reset) s.tick.reset();
     try { s.at && s.at(); } catch (e) { console.warn(e); }
     if (s.tick && run.manual) { try { s.tick(1); } catch (e) { console.warn(e); } }
     cap.querySelector('.dc-n').textContent = `Demo · step ${i + 1} of ${cfg.steps.length}`;
-    const t = cap.querySelector('.dc-txt'); t.innerHTML = typeof s.cap === 'function' ? s.cap() : s.cap; SL.renderMath && SL.renderMath(t);
+    if (s.tick && !run.manual) cap.querySelector('.dc-txt').innerHTML = '<span class="dc-wait">Watch the lab…</span>'; else showCap();
     cap.querySelector('[data-a=prev]').disabled = i === 0;
   }
   function next() { if (!run) return; const s = cfg.steps[run.i]; if (s.tick) { try { s.tick(1); } catch (e) {} } if (run.i >= cfg.steps.length - 1) return stop(true); go(run.i + 1); }
   function prev() { if (!run || run.i === 0) return; const i = run.i - 1; try { cfg.restore(run.snaps[i]); } catch (e) { console.warn(e); } go(i); }
   function togglePause() { if (!run) return; run.paused = !run.paused; if (!run.paused && run.manual) { run.manual = false; } setBtn(); }
   function setBtn() {
-    const b = cap.querySelector('[data-a=pause]'); b.innerHTML = SL.icon(run.paused ? 'play' : 'pause'); SL.refreshIcons(cap);
+    const b = cap.querySelector('[data-a=pause]'); b.innerHTML = SL.icon(run.paused ? 'play' : 'pause'); b.setAttribute('aria-label', run.paused ? 'Play' : 'Pause'); SL.refreshIcons(cap);
     const d = q('#demoBtn'); d.innerHTML = `${SL.icon('square')}<span>Stop demo</span><kbd>${DK}</kbd>`; d.classList.add('on'); SL.refreshIcons(d);
   }
-  /** finished: true at the natural end; takeover: the student grabbed a control, so keep their set-up */
+  /** finished: true at the natural end; takeover: the student tapped the lab. Either way their own set-up comes back silently, so the demo's state can never earn credit */
   function stop(finished, takeover) {
     if (!run) return;
     cancelAnimationFrame(run.raf);
-    const r = run; run = null;
-    if (!takeover) { try { cfg.restore(r.snap0); } catch (e) { console.warn(e); } }
+    const r = run;
+    quietUntil = performance.now() + 1500;
+    try { cfg.restore(r.snap0); } catch (e) { console.warn(e); }
+    run = null; quietUntil = performance.now() + 1500;
     try { cfg.onEnd && cfg.onEnd(!!takeover); } catch (e) { console.warn(e); }
-    stage.classList.remove('demo-on'); cap && cap.remove(); cap = null;
+    stage.classList.remove('demo-on');
     const d = q('#demoBtn'); d.innerHTML = `${SL.icon('play-circle')}<span>Watch demo</span><kbd>${DK}</kbd>`; d.classList.remove('on'); SL.refreshIcons(d);
-    if (finished) SL.toast(`Demo finished and your set-up is restored.${cfg.scenarios ? ' Now try a <b>Scenario</b>.' : ''}`, 'ok', 5000);
-    else if (takeover) SL.toast('Demo stopped: the lab is yours.', '', 2200);
+    if (finished && cap) {
+      cap.classList.add('ended'); cap.querySelector('.dc-n').textContent = 'Demo complete';
+      cap.querySelector('.dc-txt').innerHTML = `Your own set-up is back as it was. Now try it yourself${cfg.scenarios ? ', pick a <b>Scenario</b>,' : ''} or watch the demo again.`;
+      SL.refreshIcons(cap);
+      if (document.activeElement && cap.contains(document.activeElement)) cap.querySelector('[data-e=try]').focus({ preventScroll: true });
+    } else {
+      cap && cap.remove(); cap = null;
+      kitToast(takeover ? 'Demo stopped. Your own set-up is back: the lab is yours.' : 'Demo stopped. Your set-up is restored.', '', 2600);
+    }
   }
 
   /* ---------------- scenarios ---------------- */
@@ -365,7 +452,7 @@ window.SLDemo = (() => {
   function renderPop() {
     const s = solved(), pop = q('#scnPop');
     pop.innerHTML = `<div class="scn-head"><div><b>Scenarios</b><span class="small muted">Real tasks with a clear goal. The lab checks your work live.</span></div><button class="btn sm ghost" data-x aria-label="Close scenarios">${SL.icon('x')}</button></div><div class="scn-list">` +
-      cfg.scenarios.map((x, i) => `<button class="scn-card${s[x.id] ? ' done' : ''}" data-i="${i}"><span class="scn-ic">${SL.icon(s[x.id] ? 'check-circle-2' : (x.icon || 'target'))}</span><span><b>${x.title}</b><span class="small">${x.brief}</span></span></button>`).join('') + '</div>';
+      cfg.scenarios.map((x, i) => `<button class="scn-card${s[x.id] ? ' done' : ''}" data-i="${i}"><span class="scn-ic">${SL.icon(s[x.id] ? 'check-circle-2' : (x.icon || 'target'))}</span><span><b>${x.title}</b><span class="small">${x.brief}</span><span class="scn-go">${SL.icon('play')} ${s[x.id] ? 'Play again' : 'Start'}</span></span></button>`).join('') + '</div>';
     SL.refreshIcons(pop);
     pop.onclick = e => { if (e.target.closest('[data-x]')) return closePop(); const b = e.target.closest('.scn-card'); if (b) pick(+b.dataset.i); };
   }
@@ -373,19 +460,19 @@ window.SLDemo = (() => {
   function closePop() { const p = q('#scnPop'); if (p && !p.hidden) { p.hidden = true; q('#scnBtn').setAttribute('aria-expanded', 'false'); } }
   function pick(i) {
     if (run) stop();
-    closePop();
+    closePop(); closeEnd();
     const x = cfg.scenarios[i];
     scn = { x, i, ok: false };
     try { x.setup(); } catch (e) { console.warn(e); }
     const a = q('#scnActive'); a.hidden = false; a.classList.remove('ok');
-    a.innerHTML = `<div class="sa-top"><span class="sa-ic">${SL.icon(x.icon || 'target')}</span><b>${x.title}</b><span class="demo-sp"></span><button class="btn sm ghost" data-r title="Set the scenario up again">${SL.icon('rotate-ccw')}<span>Restart</span></button><button class="btn sm ghost" data-x title="Leave the scenario" aria-label="Leave scenario">${SL.icon('x')}</button></div><p class="sa-goal">${x.goal}</p><p class="sa-ok small"><b>Success:</b> ${x.success}</p><div class="sa-now"><span class="led"></span><span class="sa-txt"></span></div>${x.hint ? `<details class="small"><summary>Hint</summary>${x.hint}</details>` : ''}`;
+    a.innerHTML = `<div class="sa-top"><span class="sa-ic">${SL.icon(x.icon || 'target')}</span><b>${x.title}</b><span class="demo-sp"></span><button class="btn sm ghost" data-r title="Set the scenario up again" aria-label="Restart scenario">${SL.icon('rotate-ccw')}<span>Restart</span></button><button class="btn sm ghost" data-x title="Leave the scenario" aria-label="Leave scenario">${SL.icon('x')}</button></div><p class="sa-goal">${x.goal}</p><p class="sa-ok small"><b>Success:</b> ${x.success}</p><div class="sa-now"><span class="led"></span><span class="sa-txt"></span></div>${x.hint ? `<details class="small"><summary>Hint</summary>${x.hint}</details>` : ''}`;
     SL.refreshIcons(a); SL.renderMath && SL.renderMath(a);
     a.onclick = e => { if (e.target.closest('[data-x]')) leave(); else if (e.target.closest('[data-r]')) pick(scn.i); };
     clearInterval(scnTimer); scnTimer = setInterval(checkScn, 300); checkScn();
     const r = a.getBoundingClientRect(); if (r.top < 70 || r.top > innerHeight * 0.6) a.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
   }
   function checkScn() {
-    if (!scn || document.hidden) return;
+    if (!scn || document.hidden || busy()) return;
     const a = q('#scnActive'), x = scn.x;
     let now = ''; try { now = x.now ? x.now() : ''; } catch (e) {}
     const t = a.querySelector('.sa-txt'); if (t && t.innerHTML !== now && !scn.ok) t.innerHTML = now;
@@ -417,16 +504,16 @@ window.SLDemo = (() => {
       if (k === 'ArrowLeft' && tag !== 'INPUT') { e.preventDefault(); return prev(); }
       if (k === ' ' && tag !== 'BUTTON' && tag !== 'INPUT') { e.preventDefault(); return togglePause(); }
     }
-    if (k === 'Escape') return closePop();
-    if (cfg.skipKey && cfg.skipKey(k, e)) return;
+    if (k === 'Escape') { closeEnd(); return closePop(); }
     if (tag === 'INPUT' && /^Arrow|^Page|Home|End/.test(k)) return;
-    if (k.toUpperCase() === DK) { e.preventDefault(); return run ? stop() : start(); }
-    if (k.toUpperCase() === SK && q('#scnBtn')) { e.preventDefault(); return togglePop(); }
+    if (cfg.skipKey && cfg.skipKey(k)) return;
+    if (k === DK.toLowerCase() || k === DK.toUpperCase()) { e.preventDefault(); return run ? stop() : start(); }
+    if ((k === SK.toLowerCase() || k === SK.toUpperCase()) && q('#scnBtn')) { e.preventDefault(); return togglePop(); }
     if (k === '?') { e.preventDefault(); return showKeys(); }
     const m = (cfg.keys || []).find(x => x.keys.includes(k));
     if (m && !(k === ' ' && (tag === 'BUTTON' || tag === 'INPUT'))) { e.preventDefault(); m.fn(e); }
   }
-  return { mount, start, stop, set, lerp, ramp, store, get running() { return !!run; }, get scenario() { return scn; }, pick, leave };
+  return { mount, start, stop, set, lerp, ramp, store, get running() { return !!run; }, get busy() { return busy(); }, get scenario() { return scn; }, pick, leave };
 })();
 </script>
 
@@ -513,7 +600,7 @@ window.SLDemo = (() => {
   let mission = 'hover';
   const missionDone = {};
   let S = null, paused = false, autoPilot = null;
-  const demoOn = () => !!(window.SLDemo && SLDemo.running);
+  const demoOn = () => !!(window.SLDemo && SLDemo.running), demoBusy = () => !!(window.SLDemo && SLDemo.busy);
   const keys = {};
 
   function start() {
@@ -551,10 +638,10 @@ window.SLDemo = (() => {
     if (Math.abs(S.vh) > 0.5) return `Climbing ${fmt(S.vh, 1)} m/s: ease the collective to hold height`;
     return '';
   }
-  function msg(s, col) { $('#hMsg').innerHTML = col ? `<span style="color:${col}">${s}</span>` : s; }
+  function msg(s, col) { const v = col ? `<span style="color:${col}">${s}</span>` : s; if (msg.last !== v) { msg.last = v; $('#hMsg').innerHTML = v; } }
   function endBanner(title, text, ok) { $('#bTitle').innerHTML = title; $('#bTitle').style.color = ok ? '#4ade80' : '#f87171'; $('#bText').innerHTML = text; $('#banner').style.display = 'block'; }
   function crash(why) { if (S.crashed) return; S.crashed = true; endBanner('Crashed', why, false); msg('CRASHED', '#ef4444'); SL.toast(why, 'bad'); }
-  function win(id, text) { if (S.done) return; if (demoOn()) { S.hoverT = Math.min(S.hoverT, 10); return; } S.done = true; missionDone[id] = true; renderMissions(); renderChals(); SL.toast('<b>Mission complete:</b> ' + MISSIONS.find(m => m.id === id).t, 'ok', 5000); endBanner('Mission complete', text, true); }
+  function win(id, text) { if (S.done) return; if (demoBusy()) { S.hoverT = Math.min(S.hoverT, 10); return; } S.done = true; missionDone[id] = true; renderMissions(); renderChals(); SL.toast('<b>Mission complete:</b> ' + MISSIONS.find(m => m.id === id).t, 'ok', 5000); endBanner('Mission complete', text, true); }
 
   /* ======================= Physics step ======================= */
   function step(dt) {
@@ -666,7 +753,7 @@ window.SLDemo = (() => {
     if (vs < -3.2) return crash(`Hard landing at ${fmt(-vs, 1)} m/s: skids and airframe damaged.`);
     if (Math.abs(S.ph) > 14 * D2R) return crash('The skids hit the ground at a steep attitude and the helicopter rolled over.');
     if (Math.abs(S.vx) > 12) return crash(`Touched down at ${fmt(Math.abs(S.vx), 1)} m/s along the ground: the skids dug in.`);
-    S.lastTD = { vs, vx: S.vx, x: S.x, rpm: S.Om / H.Om0 };
+    S.lastTD = { vs, vx: S.vx, x: S.x, rpm: S.Om / H.Om0 }; S.tdInfo = S.lastTD;
     if (vs < -1.5) SL.toast(`Firm touchdown: ${fmt(-vs, 1)} m/s`, 'warn', 2500);
   }
   function missionLogic(dt) {
@@ -924,7 +1011,7 @@ window.SLDemo = (() => {
     $('#missions').innerHTML = MISSIONS.map(m => `<button type="button" class="mission ${m.id === mission ? 'on' : ''}" data-mis="${m.id}" aria-pressed="${m.id === mission}"><span class="led ${missionDone[m.id] ? 'on' : ''}" aria-hidden="true"></span><span class="mt"><b>${m.t}${missionDone[m.id] ? ' <em class="mdone">Completed</em>' : ''}</b><span>${m.d}</span></span></button>`).join('');
     document.querySelectorAll('[data-mis]').forEach(el => el.onclick = () => { mission = el.dataset.mis; renderMissions(); start(); stage.focus({ preventScroll: true }); });
   }
-  function setOut(id, v, txt) { const el = $('#' + id); el.value = v; el.closest('.ctl').querySelector('output').textContent = txt; el.style.setProperty('--p', ((v - el.min) / (el.max - el.min) * 100) + '%'); }
+  function setOut(id, v, txt) { const el = $('#' + id); if (el._v === v && el._t === txt && +el.value === +v) return; el._v = v; el._t = txt; el.value = v; el.closest('.ctl').querySelector('output').textContent = txt; el.style.setProperty('--p', ((v - el.min) / (el.max - el.min) * 100) + '%'); }
   function syncSliders() {
     if (!S) return;
     setOut('col', S.col, fmt(S.col * 100, 0) + '% (' + fmt((1 + 13 * S.col), 1) + '°)');
@@ -981,21 +1068,23 @@ window.SLDemo = (() => {
   });
   document.querySelectorAll('[data-tap]').forEach(b => b.addEventListener('click', () => tap(b.dataset.tap)));
 
+  /* HUD writes only when the text changes: every DOM write costs a layout and a repaint */
+  const hudC = {}, tx = (s, v) => { v = String(v); if (hudC[s] !== v) { hudC[s] = v; $(s).textContent = v; } }, hx = (s, v) => { if (hudC[s] !== v) { hudC[s] = v; $(s).innerHTML = v; } };
   function hud() {
-    $('#hAlt').textContent = fmt(S.h, 1); $('#hVs').textContent = fmt(S.vh, 1); $('#hGs').textContent = fmt(S.vx, 1);
-    $('#hRpm').textContent = fmt(S.Om / H.Om0 * 100, 0); $('#hCol').textContent = fmt(S.col * 100, 0);
+    tx('#hAlt', fmt(S.h, 1)); tx('#hVs', fmt(S.vh, 1)); tx('#hGs', fmt(S.vx, 1));
+    tx('#hRpm', fmt(S.Om / H.Om0 * 100, 0)); tx('#hCol', fmt(S.col * 100, 0));
     const flags = [];
     if (S.limiting) flags.push('LIMIT');
     if (S.onGround) flags.push('ON GROUND');
     else { if (S.kG < 0.97) flags.push('IGE'); else flags.push('OGE'); }
     if (Math.abs(S.vx) > 7 && Math.abs(S.vx) < 14 && !S.onGround) flags.push('ETL');
     if (S.load && S.load.hooked) flags.push('LOAD ' + (S.load.ten ? fmt(S.load.ten / 1000, 1) + ' kN' : 'slack'));
-    $('#hFlags').textContent = flags.join(' · ');
-    $('#sT').innerHTML = fmt(S.T / 1000, 2) + '<small>kN</small>';
-    $('#sVi').innerHTML = fmt(S.vi, 1) + '<small>m/s</small>';
-    $('#sPr').innerHTML = `<span style="color:${S.P > S.Pa ? '#ef4444' : 'inherit'}">${fmt(S.P / 1000, 0)}</span><small>kW</small>`;
-    $('#sTr').innerHTML = fmt(S.Ttr, 0) + '<small>N</small>';
-    $('#sYaw').innerHTML = Math.abs(S.r * R2D).toFixed(1) + '<small>°/s ' + (Math.abs(S.r) < 0.01 ? '' : S.r > 0 ? 'left' : 'right') + '</small>';
+    tx('#hFlags', flags.join(' · '));
+    hx('#sT', fmt(S.T / 1000, 2) + '<small>kN</small>');
+    hx('#sVi', fmt(S.vi, 1) + '<small>m/s</small>');
+    hx('#sPr', `<span style="color:${S.P > S.Pa ? '#ef4444' : 'inherit'}">${fmt(S.P / 1000, 0)}</span><small>kW</small>`);
+    hx('#sTr', fmt(S.Ttr, 0) + '<small>N</small>');
+    hx('#sYaw', Math.abs(S.r * R2D).toFixed(1) + '<small>°/s ' + (Math.abs(S.r) < 0.01 ? '' : S.r > 0 ? 'left' : 'right') + '</small>');
     if (!S.crashed && !S.done) {
       const rpm = S.Om / H.Om0;
       if (rpm < 0.9 && !S.onGround) msg(`LOW ROTOR RPM ${fmt(rpm * 100, 0)}%: lower collective`, '#ef4444');
@@ -1074,6 +1163,9 @@ window.SLDemo = (() => {
 
   /* ======================= Loop ======================= */
   let chartT = 0;
+  /* phones and low-core CPUs: the simulation steps every frame, but the canvases are redrawn at most 30 times a second */
+  const LOWEND = (window.matchMedia && matchMedia('(pointer:coarse)').matches) || (navigator.hardwareConcurrency || 8) <= 4;
+  const pace = (() => { let last = 0; return hz => { const now = performance.now(); if (now - last < 1000 / hz - 4) return false; last = now; return true; }; })();
   const loop = SL.loop((dt, t) => {
     if (S && !paused) {
       const n = Math.max(1, Math.round(dt * 240));
@@ -1081,6 +1173,7 @@ window.SLDemo = (() => {
       S.blade += S.Om * dt * 0.55; S.tblade += S.Om * 5.5 * dt * 0.25;
       updDust(dt);
     }
+    if (LOWEND && !pace(30)) return;
     draw(t, dt); if (S) { hud(); syncSliders(); }
     if ((chartT += dt) > 0.5) { chartT = 0; drawChart(); }
   });
@@ -1105,7 +1198,7 @@ window.SLDemo = (() => {
   function apHold(dt) {
     const m = mass(), rho = atmos(C.elev + Math.max(0, S.h), C.dT).rho;
     if (ap.I == null) ap.I = findCollective(m, rho, 0, 0) * 0.9;
-    const e = ap.h - S.h, vt = clamp(0.6 * e, -1.5, 2);
+    const e = ap.h - S.h, vt = clamp(0.6 * e, -Math.max(0.35, Math.min(1.5, 0.3 * S.h)), 2);   // sink gently near the ground
     ap.I = clamp(ap.I + 0.05 * (vt - S.vh) * dt, 0, 1);
     let c = clamp(ap.I + 0.06 * (vt - S.vh), 0, 1);
     if (S.onGround && ap.h > 0) c = Math.max(c, Math.min(S.col + 0.2 * dt, 1));
@@ -1113,7 +1206,25 @@ window.SLDemo = (() => {
     S.col = clamp(c, S.col - 0.3 * dt, S.col + (S.onGround ? 0.3 : 0.12) * dt);
     S.cycSpring = false; S.cyc = clamp(0.06 * (ap.v - S.vx) + (ap.v ? 0.15 * Math.min(1, Math.abs(S.vx) / 20) : 0), -0.45, 0.45);
   }
-  function apAuto(dt) { if (!S.engine) { S.col = Math.max(0.04, S.col - 0.6 * dt); } }
+  /* expert autorotation: collective down at once and then flown to hold rotor RPM; a steady glide near 20 m/s;
+     at about 25 m a cyclic flare kills the groundspeed, then the collective cushions the last metres */
+  function apAuto(dt) {
+    if (S.engine) return;
+    const rpm = S.Om / H.Om0, h = S.h, FL = 30, CH = 6;
+    S.cycSpring = false;
+    if (h > FL) {
+      S.col = clamp(S.col + 1.5 * (rpm - 1.0) * dt - (S.t < S.failT + 1.2 ? 0.8 * dt : 0), 0.0, 0.6);
+      S.cyc = clamp(0.05 * (26 - S.vx) + 0.15 * Math.min(1, Math.abs(S.vx) / 20), -0.45, 0.45);
+    } else if (h > CH) {   // flare: nose up to trade forward speed for rotor energy and a lower sink rate
+      const vxT = 4 + (h - CH) / (FL - CH) * (26 - 4);
+      S.cyc = clamp(0.08 * (vxT - S.vx), -0.8, 0.3);
+      S.col = clamp(S.col + 1.5 * (rpm - 1.04) * dt, 0.0, 0.6);
+    } else {   // cushion: level the skids and pull collective against the sink rate, spending rotor RPM
+      S.cyc = clamp(0.05 * (0 - S.vx), -0.3, 0.3);
+      const vt = -Math.max(0.4, 0.25 * h), want = S.col + 0.5 * (vt - S.vh);
+      S.col = clamp(want, S.col - 0.6 * dt, S.col + 0.6 * dt);
+    }
+  }
   const kw = v => fmt(v / 1000, 0), v1 = x => (Math.abs(x) < 0.05 ? 0 : x).toFixed(1);
   const DEMO = [
     { dur: 6, at: () => { fly('hover', { elev: 1687, dT: 15, pay: 120, beg: true, assist: true }); },
@@ -1123,14 +1234,18 @@ window.SLDemo = (() => {
     { dur: 7, cap: () => `Inside the band it turns <b>green</b> and the hold timer runs. Hovering here needs about <b>${kw(S.P)} kW</b> of the <b>${kw(S.Pa)} kW</b> the engine can give in this thin, warm air.` },
     { dur: 7, at: () => { ap.h = 14; },
       cap: () => `Climb to 14 m, out of ground effect (<b>OGE</b> on the HUD). The cushion is gone, so the same hover now costs more power: watch required power rise towards the ${kw(S.Pa)} kW limit on the gauge.` },
-    { dur: 8, at: () => { ap.h = 3.5; }, tick: p => { const v = Math.round(lerp(120, 250, Math.max(0, p * 1.6 - 0.6)) / 10) * 10; if (v !== C.pay) setCond({ pay: v }); }, ramp: 7,
-      cap: 'Back down into the cushion, and the crew loads <b>250 kg</b>: three people and kit. In ground effect the rotor still has enough power to hover.' },
+    { dur: 10, at: () => { ap.h = 3; }, tick: p => { const v = Math.round(lerp(120, 220, clamp((p - 0.6) / 0.4, 0, 1)) / 10) * 10; if (v !== C.pay) setCond({ pay: v }); }, ramp: 9,
+      cap: 'Back down into the cushion at 3 m, and the crew loads <b>220 kg</b>: two people and their kit. In ground effect the rotor still has enough power to hover.' },
     { dur: 7, at: () => { ap.h = 14; },
       cap: () => `Now try to climb out. Out of ground effect this load needs about ${kw(levelPower(0, mass(), atmos(C.elev, C.dT).rho, 0).P)} kW but the engine gives only ${kw(S.Pa)} kW, so the <b>power limiter</b> holds the collective before the rotor RPM can droop. The helicopter is stuck low: hot and high.` },
-    { dur: 11, at: () => { ap.h = 14; ap.v = 20; },
+    { dur: 11, at: () => { ap.h = 14; }, ramp: 6, tick: p => { ap.v = 20 * p; },
       cap: 'The way out with a heavy load: fly forward. Above about 8 m/s the rotor meets fresh air (<b>translational lift</b>, ETL on the HUD) and the power needed falls into the <b>bucket</b> of the power curve below, so the helicopter can climb away.' },
     { dur: 9, at: () => { fly('auto', { pay: 120 }); autoPilot = apAuto; },
-      cap: 'Engine failure at 300 m. The pilot lowers the collective <b>at once</b>: air flowing up through the disc now drives the rotor, keeping rotor RPM in the green. This is <b>autorotation</b>; a flare near the ground trades rotor energy for a soft landing.' },
+      cap: 'Engine failure at 300 m. The pilot lowers the collective <b>at once</b>: air flowing up through the disc now drives the rotor, keeping rotor RPM in the green. This is <b>autorotation</b>: a steady glide at about 26 m/s.' },
+    { dur: 10, at: () => { if (S && !S.onGround) for (let i = 0; i < 240 * 60 && S && !S.crashed && S.h > 45; i++) step(1 / 240); },
+      cap: 'Skipping ahead to 45 m. At about 30 m the nose comes up in a <b>flare</b>, killing the forward speed and slowing the descent; in the last few metres the collective is raised to <b>cushion</b> the touchdown with the energy stored in the spinning rotor.' },
+    { dur: 7, at: () => { if (S && !S.tdInfo) for (let i = 0; i < 240 * 30 && S && !S.crashed && !S.tdInfo; i++) step(1 / 240); },
+      cap: () => S && S.tdInfo ? `On the ground at <b>${fmt(-S.tdInfo.vs, 2)} m/s</b> down and ${fmt(Math.abs(S.tdInfo.vx), 1)} m/s along, rotor at ${fmt(S.tdInfo.rpm * 100, 0)}%: a soft autorotative landing with no engine. Now try the missions yourself.` : 'Touchdown.' },
   ];
   const onM = id => S && mission === id;
   const SCN = [
@@ -1177,7 +1292,7 @@ window.SLDemo = (() => {
   const remember = () => { if (!demoOn()) Dm.store.set('sl-heli-last', { C: Object.assign({}, C), beg: $('#beg').checked, assist: $('#assist').checked, mission }); };
   ['#pay', '#dT', '#site', '#beg', '#assist'].forEach(sel => $(sel).addEventListener('change', remember));
   $('#missions').addEventListener('click', () => setTimeout(remember, 0));
-  Dm.mount({ steps: DEMO, scenarios: SCN, keys: KEYS, snapshot: snapAll, restore: restoreAll, demoKey: 'G', scnKey: 'N',
+  Dm.mount({ steps: DEMO, scenarios: SCN, keys: KEYS, snapshot: snapAll, restore: restoreAll, demoKey: 'G', scnKey: 'N', start: 'pick the <b>Hover</b> mission and raise the collective slowly until the skids lift.',
     skipKey: k => /^[wasdqehprx]$/i.test(k),
     onEnd: () => { autoPilot = null; } });
   { const last = Dm.store.get('sl-heli-last', null);
@@ -1197,7 +1312,7 @@ window.SLDemo = (() => {
   { let onScreen = true; const sync = () => (document.hidden || !onScreen) ? loop.stop() : loop.start();
     document.addEventListener('visibilitychange', sync);
     if ('IntersectionObserver' in window) (() => { const vis = new Set(), io = new IntersectionObserver(es => { es.forEach(e => e.isIntersecting ? vis.add(e.target) : vis.delete(e.target)); onScreen = vis.size > 0; sync(); }, { rootMargin: '300px' }); document.querySelectorAll('.lab, main canvas').forEach(el => { if (!el.closest('.tabs')) io.observe(el); }); })(); }
-  window.HC = { H, C, atmos, rotor, levelPower, vInduced, vAxial, Pavail, findCollective, get S() { return S; }, step, start, keys, set mission(m) { mission = m; }, hoverCeilingPayload, mass, get mission() { return mission; }, setAP: f => { autoPilot = f; }, ap, apHold, setCond };
+  window.HC = { H, C, atmos, rotor, levelPower, vInduced, vAxial, Pavail, findCollective, get S() { return S; }, step, start, keys, set mission(m) { mission = m; }, hoverCeilingPayload, mass, get mission() { return mission; }, setAP: f => { autoPilot = f; }, ap, apHold, apAuto, setCond };
 })();
 </script>
 </body>

@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 <link rel="stylesheet" href="assets/css/simlab.css?v=15">
 <style>
-  #stage{height:560px;touch-action:none}
+  #stage{height:560px;touch-action:pan-y}
   #stage canvas{cursor:grab}
   #stage canvas.drag{cursor:grabbing}
   .gtip{position:absolute;pointer-events:none;background:rgba(5,9,19,.92);border:1px solid var(--line2);border-radius:9px;padding:8px 10px;font:500 .76rem var(--mono);color:var(--text);display:none;z-index:5;max-width:240px;line-height:1.45}
@@ -54,7 +54,7 @@
   .gcap .chain{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
   .gcap .chain span{font:500 .76rem var(--mono);padding:3px 8px;border-radius:7px;background:rgba(255,255,255,.04);border:1px solid var(--line);color:var(--text)}
   @media (max-width:980px){#stage{height:460px}}
-  @media (max-width:520px){#stage{height:400px}.stage-toolbar .btn span{display:none}.stage-toolbar .btn.sm{min-height:36px;min-width:40px}.grow .x{width:34px;height:34px}.grow .sub select{padding:6px 8px;min-height:34px}.mode-seg button{min-height:38px}}
+  @media (max-width:520px){#stage{height:400px}.stage-toolbar{gap:4px}.stage-toolbar .btn.sm{flex-direction:column;gap:1px;min-height:44px;min-width:50px;padding:3px 5px;font-size:.64rem;line-height:1.1}.stage-toolbar .btn.sm svg{width:16px;height:16px}.grow .x{width:34px;height:34px}.grow .sub select{padding:6px 8px;min-height:34px}.mode-seg button{min-height:38px}}
   .grow .x:focus-visible{outline:2px solid var(--accent);outline-offset:2px}   /* keyboard focus */
   /* demo, scenarios, shortcuts */
   .demo-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px}
@@ -102,6 +102,9 @@
   .scn-active .sa-now .led{flex:none}
   .scn-active details{margin-top:6px;color:var(--muted)}
   @media (max-width:520px){.scn-active .sa-top .btn span{display:none}}
+  .stage .readout{backdrop-filter:none;-webkit-backdrop-filter:none;background:rgba(5,9,19,.88)} /* no blur over the live canvas */
+  @media (pointer:coarse){.grow .x{width:44px;height:44px}.grow .sub select{min-height:44px}} /* touch targets */
+  .stage canvas{will-change:transform} /* own compositing layer: redrawing the canvas does not repaint the page */
 </style>
 </head>
 <body data-page="gears">
@@ -128,7 +131,7 @@
         </div>
         <div class="gtip" id="tip"></div>
       </div>
-      <p class="small muted" style="margin:8px 2px 0"><i data-lucide="mouse-pointer-2" style="width:14px;height:14px;vertical-align:-2px"></i> <b>Start here:</b> pick a preset or move a gear's tooth slider, then watch the ratio, output speed and torque above the gears. Drag a gear to swing it around its partner. Drag the driver (G1) or empty space to pan; scroll or pinch to zoom. Hover any gear for details.</p>
+      <details class="lab-more"><summary><i data-lucide="info"></i> How to use this lab</summary><p>Pick a preset or move a gear's tooth slider, then watch the ratio, output speed and torque above the gears. Drag a gear to swing it around its partner. Drag the driver (G1) or empty space to pan (on a phone, swipe on empty space to scroll the page); pinch or scroll to zoom. Hover any gear for details.</p></details>
       <div class="gcap" id="gCap" aria-live="polite"></div>
     </div>
     <aside>
@@ -181,7 +184,7 @@
       </div>
 
       <div class="panel" id="pWorm" hidden>
-        <h3><i data-lucide="screw"></i> Worm and wheel</h3>
+        <h3><i data-lucide="cog"></i> Worm and wheel</h3>
         <div class="ctl"><label for="wz1">Worm starts z<sub>1</sub></label><output></output><input type="range" id="wz1" min="1" max="4" step="1" value="1"></div>
         <div class="ctl"><label for="wz2">Wheel teeth z<sub>2</sub></label><output></output><input type="range" id="wz2" min="20" max="80" step="1" value="40"></div>
         <div class="ctl"><label for="wm">Module m</label><output></output><input type="range" id="wm" min="1" max="4" step="0.5" value="2"></div>
@@ -389,6 +392,30 @@ window.SLDemo = (() => {
     get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
+  /* one lab-bar look on every lab (same as the DemoKit bar): primary Watch demo, Scenarios, one-line Start here */
+  const css = `
+  .demo-bar{gap:8px;margin:0 0 10px}
+  .demo-bar .btn{min-height:40px}
+  .demo-bar #demoBtn{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;font-weight:600;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .demo-bar #demoBtn.on{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .demo-bar .demo-start{flex:1 1 260px;min-width:0;font-size:.84rem;color:var(--muted);line-height:1.4}
+  .demo-bar .demo-start b{color:var(--text)}
+  .demo-bar .demo-start~.demo-sp{display:none}
+  .demo-cap .dc-txt{margin:0}
+  .demo-cap .dc-txt .dc-wait{color:var(--muted);font-style:italic}
+  .demo-cap .dc-end{display:none;gap:8px;flex-wrap:wrap;margin:8px 0 2px}
+  .demo-cap.ended .dc-end{display:flex}
+  .demo-cap.ended .dc-ctl,.demo-cap.ended .dc-bar{display:none}
+  .demo-cap.below{position:relative;left:auto;bottom:auto;transform:none;width:auto;margin:8px 0 0;box-shadow:none}
+  .demo-cap.pin{position:fixed;left:8px;right:8px;bottom:8px;transform:none;width:auto;max-height:30vh;overflow:auto;z-index:60;box-shadow:0 -6px 24px rgba(0,0,0,.5)}
+  .scn-card .scn-go{display:inline-flex;align-items:center;gap:4px;margin-top:6px;font:600 .74rem var(--sans,inherit);color:var(--accent)}
+  .lab-more{margin:8px 2px 0;font-size:.84rem;color:var(--muted)}
+  .lab-more>summary{cursor:pointer;color:var(--text);font-weight:500;min-height:32px;display:flex;align-items:center;gap:6px}
+  .lab-more>summary svg{width:15px;height:15px}
+  .lab-more p{margin:6px 0 0;line-height:1.5}
+  @media (pointer:coarse),(hover:none){.demo-bar kbd,.demo-bar .demo-keys,.kbd-only{display:none!important}.demo-cap .dc-ctl .btn,.demo-cap .dc-end .btn{min-height:42px;min-width:44px}.lab-more>summary{min-height:44px}}
+  @media (max-width:720px){.demo-bar .demo-start{flex-basis:100%;order:3;font-size:.8rem}}`;
+  { const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s); }
   /** Set a control's value and fire its input event, so the page reacts exactly as to a user. */
   function set(sel, v) {
     const el = typeof sel === 'string' ? q(sel) : sel; if (!el) return;
@@ -404,11 +431,27 @@ window.SLDemo = (() => {
   let cfg = null, run = null, stage = null, cap = null, scn = null, scnTimer = 0;
   const page = () => document.body.dataset.page || 'lab';
 
+  /* the demo never earns credit: busy while it runs and for a moment after the silent restore;
+     challenge/scenario toasts are swallowed then, and other toasts are marked "Demo:" */
+  let quietUntil = 0, kitMsg = false;
+  const busy = () => !!run || performance.now() < quietUntil;
+  const rawToast = SL.toast;
+  SL.toast = function (m, t, ms) {
+    if (!kitMsg && busy()) {
+      if (/challenge|scenario|solved|achieved/i.test(String(m)) || !run) return;
+      m = '<b>Demo:</b> ' + m;
+    }
+    return rawToast.call(this, m, t, ms);
+  };
+  const kitToast = (m, t, ms) => { kitMsg = true; try { SL.toast(m, t, ms); } finally { kitMsg = false; } };
+
+  let DK = 'D', SK = 'S';
   function mount(c) {
-    cfg = c; stage = q(c.stage || '#stage');
-    const bar = document.createElement('div'); bar.className = 'demo-bar';
-    bar.innerHTML = `<button class="btn sm primary" id="demoBtn" title="Watch a guided demo of this lab (D)">${SL.icon('play-circle')}<span>Watch demo</span><kbd>D</kbd></button>` +
-      (c.scenarios && c.scenarios.length ? `<button class="btn sm" id="scnBtn" aria-expanded="false" aria-controls="scnPop" title="Real-world tasks with a goal (S)">${SL.icon('target')}<span>Scenarios</span><kbd>S</kbd></button>` : '') +
+    cfg = c; DK = c.demoKey || 'D'; SK = c.scnKey || 'S'; stage = q(c.stage || '#stage');
+    const bar = document.createElement('div'); bar.className = 'demo-bar lab-bar';
+    bar.innerHTML = `<button class="btn sm primary" id="demoBtn" title="Watch a guided demo of this lab (${DK})">${SL.icon('play-circle')}<span>Watch demo</span><kbd>${DK}</kbd></button>` +
+      (c.scenarios && c.scenarios.length ? `<button class="btn sm" id="scnBtn" aria-expanded="false" aria-controls="scnPop" title="Real-world tasks with a goal (${SK})">${SL.icon('target')}<span>Scenarios</span><kbd>${SK}</kbd></button>` : '') +
+      (c.start ? `<span class="demo-start"><b>Start here:</b> ${c.start}</span>` : '') +
       `<span class="demo-sp"></span><button class="btn sm ghost demo-keys" id="keysBtn" title="Keyboard shortcuts (?)">${SL.icon('keyboard')}<span>Shortcuts</span></button>`;
     stage.parentNode.insertBefore(bar, stage);
     const pop = document.createElement('div'); pop.className = 'scn-pop'; pop.id = 'scnPop'; pop.hidden = true;
@@ -419,71 +462,115 @@ window.SLDemo = (() => {
     q('#keysBtn').onclick = showKeys;
     if (q('#scnBtn')) { q('#scnBtn').onclick = () => togglePop(); renderPop(); }
     document.addEventListener('keydown', onKey);
-    // a real interaction with the controls or the stage hands the lab over to the student
-    const take = e => { if (!run || !e.isTrusted || (cap && cap.contains(e.target)) || e.target.closest('.demo-bar') || !e.target.closest('button,input,select,canvas,label,a,summary,[data-o],[data-i]')) return; stop(false, true); };
-    const lab = stage.closest('.lab') || document;
-    lab.addEventListener('click', take, true); lab.addEventListener('input', take, true);
+    // the student takes over only with a deliberate tap/click (under 10 px of movement) on the lab, or a real
+    // change of a control. Scrolling the page with a finger never stops the demo.
+    const lab = stage.closest('.lab') || document.body;
+    const mine = t => t && t.closest && !(cap && cap.contains(t)) && !t.closest('.demo-bar');
+    let pd = null;
+    lab.addEventListener('pointerdown', e => { pd = (run || (cap && cap.classList.contains('ended'))) && e.isTrusted && mine(e.target) ? { x: e.clientX, y: e.clientY } : null; }, true);
+    lab.addEventListener('pointercancel', () => { pd = null; }, true);
+    lab.addEventListener('pointerup', e => {
+      if (!pd || !e.isTrusted) return; const mv = Math.hypot(e.clientX - pd.x, e.clientY - pd.y); pd = null;
+      if (mv >= 10 || !mine(e.target)) return;
+      if (run) stop(false, true); else if (cap && cap.classList.contains('ended')) closeEnd();
+    }, true);
+    const ctl = e => { if (run && e.isTrusted && mine(e.target) && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) stop(false, true); };
+    lab.addEventListener('input', ctl, true); lab.addEventListener('change', ctl, true);
+    addEventListener('scroll', () => { if (!run && cap && cap.classList.contains('ended') && cap.classList.contains('pin')) { const r = stage.getBoundingClientRect(); if (r.bottom < 80 || r.top > innerHeight) closeEnd(); } }, { passive: true });
   }
 
   /* ---------------- demo ---------------- */
+  // phones: compact caption bar pinned to the bottom, the stage scrolled to sit above it;
+  // laptops: under the stage when both fit the window, otherwise over the bottom of the stage
+  function placeCap() {
+    cap.classList.remove('below', 'pin');
+    if (matchMedia('(max-width:720px)').matches) { cap.classList.add('pin'); document.body.appendChild(cap); }
+    else if (stage.offsetHeight + 136 <= innerHeight - 64) { cap.classList.add('below'); stage.after(cap); }
+    else stage.appendChild(cap);
+  }
+  function closeEnd() { if (cap && !run) { cap.remove(); cap = null; } }
   function start() {
     if (run || !cfg.steps) return;
-    closePop();
-    run = { i: -1, el: 0, paused: reduced(), snap0: cfg.snapshot(), snaps: [], last: performance.now(), raf: 0, manual: reduced() };
+    closePop(); closeEnd();
+    run = { i: -1, el: 0, paused: reduced(), snap0: cfg.snapshot(), snaps: [], last: performance.now(), raf: 0, manual: reduced(), shown: false };
     stage.classList.add('demo-on');
     cap = document.createElement('div'); cap.className = 'demo-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo captions');
-    cap.innerHTML = `<div class="dc-top"><span class="dc-n"></span><span class="dc-ctl"><button class="btn sm" data-a="prev" title="Previous step (←)" aria-label="Previous step">${SL.icon('skip-back')}</button><button class="btn sm" data-a="pause" title="Pause or play (Space)" aria-label="Pause or play"></button><button class="btn sm" data-a="next" title="Next step (→)" aria-label="Next step">${SL.icon('skip-forward')}</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)" aria-label="Stop demo">${SL.icon('x')}</button></span></div><div class="dc-bar"><i></i></div><div class="dc-txt" aria-live="polite"></div>`;
-    if (matchMedia('(max-width:640px)').matches) { cap.classList.add('below'); stage.after(cap); } else stage.appendChild(cap);
-    cap.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a; if (a === 'prev') prev(); else if (a === 'next') next(); else if (a === 'pause') togglePause(); else stop(); });
+    cap.innerHTML = `<div class="dc-top"><span class="dc-n"></span><span class="dc-ctl"><button class="btn sm" data-a="prev" title="Previous step (←)" aria-label="Previous step">${SL.icon('skip-back')}</button><button class="btn sm" data-a="pause" title="Pause or play (Space)" aria-label="Pause or play"></button><button class="btn sm" data-a="next" title="Next step (→)" aria-label="Next step">${SL.icon('skip-forward')}</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)" aria-label="Stop demo">${SL.icon('x')}</button></span></div><div class="dc-bar"><i></i></div><p class="dc-txt" aria-live="polite"></p><div class="dc-end"><button class="btn sm primary" data-e="try">${SL.icon('hand')}<span>Try it yourself</span></button><button class="btn sm" data-e="again">${SL.icon('rotate-ccw')}<span>Watch again</span></button></div>`;
+    placeCap();
+    cap.addEventListener('click', e => {
+      const x = e.target.closest('[data-e]');
+      if (x) { const again = x.dataset.e === 'again'; cap.remove(); cap = null; if (again) start(); else { const f = (stage.closest('.lab') || document).querySelector('aside input, aside select, aside button'); if (f) f.focus({ preventScroll: true }); } return; }
+      const b = e.target.closest('[data-a]'); if (!b || !run) return; const a = b.dataset.a; if (a === 'prev') prev(); else if (a === 'next') next(); else if (a === 'pause') togglePause(); else stop();
+    });
     setBtn();
     if (document.activeElement && document.activeElement.id === 'demoBtn') cap.querySelector('[data-a=pause]').focus({ preventScroll: true });
     try { cfg.onStart && cfg.onStart(); } catch (e) { console.warn(e); }
-    const r = stage.getBoundingClientRect(), bottom = cap.classList.contains('below') ? r.bottom + 150 : r.bottom;
-    if (r.top < 70 || bottom > innerHeight) { const top = r.top + scrollY - (cap.classList.contains('below') ? Math.max(72, innerHeight - (bottom - r.top) - 8) : Math.max(72, (innerHeight - r.height) / 2)); scrollTo({ top, behavior: reduced() ? 'auto' : 'smooth' }); }
+    const r = stage.getBoundingClientRect(), capH = cap.classList.contains('below') ? 150 : 0;
+    if (cap.classList.contains('pin')) { if (Math.abs(r.top - 64) > 30) scrollTo({ top: Math.max(0, r.top + scrollY - 64), behavior: reduced() ? 'auto' : 'smooth' }); }
+    else if (r.top < 56 || r.bottom + capH > innerHeight) scrollTo({ top: Math.max(0, r.top + scrollY - Math.max(64, (innerHeight - r.height - capH) / 2)), behavior: reduced() ? 'auto' : 'smooth' });
     go(0);
     const tick = now => {
       if (!run) return;
       const dt = Math.min(0.25, (now - run.last) / 1000); run.last = now;
       const s = cfg.steps[run.i];
       if (!run.paused && !document.hidden) run.el += dt;
-      const dur = s.dur || 5, ramp = s.ramp ? s.ramp : dur * 0.6;
-      if (s.tick && !run.manual) { try { s.tick(ease(Math.min(1, run.el / ramp))); } catch (e) { console.warn(e); } }
-      const tot = cfg.steps.reduce((a, x) => a + (x.dur || 5), 0), doneT = cfg.steps.slice(0, run.i).reduce((a, x) => a + (x.dur || 5), 0);
+      const dur = stepDur(s), rmp = rampT(s);
+      if (s.tick && !run.manual) { try { s.tick(ease(Math.min(1, run.el / rmp))); } catch (e) { console.warn(e); } }
+      // the caption describes the result, so show it once the action has played out
+      if (!run.shown && (!s.tick || run.manual || run.el >= rmp)) showCap();
+      const tot = cfg.steps.reduce((a, x) => a + stepDur(x), 0), doneT = cfg.steps.slice(0, run.i).reduce((a, x) => a + stepDur(x), 0);
       cap.querySelector('.dc-bar i').style.width = (100 * Math.min(tot, doneT + Math.min(run.el, dur)) / tot) + '%';
       if (!run.paused && run.el >= dur) { if (run.i >= cfg.steps.length - 1) { stop(true); return; } go(run.i + 1); }
       run.raf = requestAnimationFrame(tick);
     };
     run.raf = requestAnimationFrame(tick);
   }
+  const rampT = s => s.ramp ? s.ramp : (s.dur || 5) * 0.6;
+  const words = s => { const c = typeof s.cap === 'function' ? '' : String(s.cap || ''); return c.replace(/<[^>]+>/g, '').split(/\s+/).length; };
+  // after the action, leave enough reading time for the caption
+  const stepDur = s => { const d = s.dur || 5; return s.tick ? Math.max(d, rampT(s) + Math.min(8, Math.max(2.5, words(s) * 0.22))) : d; };
+  function showCap() {
+    const s = cfg.steps[run.i]; run.shown = true;
+    const t = cap.querySelector('.dc-txt'); t.innerHTML = typeof s.cap === 'function' ? s.cap() : s.cap; SL.renderMath && SL.renderMath(t);
+  }
   function go(i) {
-    run.i = i; run.el = 0;
+    run.i = i; run.el = 0; run.shown = false;
     if (!run.snaps[i]) run.snaps[i] = cfg.snapshot();
     const s = cfg.steps[i];
     if (s.tick && s.tick.reset) s.tick.reset();
     try { s.at && s.at(); } catch (e) { console.warn(e); }
     if (s.tick && run.manual) { try { s.tick(1); } catch (e) { console.warn(e); } }
     cap.querySelector('.dc-n').textContent = `Demo · step ${i + 1} of ${cfg.steps.length}`;
-    const t = cap.querySelector('.dc-txt'); t.innerHTML = typeof s.cap === 'function' ? s.cap() : s.cap; SL.renderMath && SL.renderMath(t);
+    if (s.tick && !run.manual) cap.querySelector('.dc-txt').innerHTML = '<span class="dc-wait">Watch the lab…</span>'; else showCap();
     cap.querySelector('[data-a=prev]').disabled = i === 0;
   }
   function next() { if (!run) return; const s = cfg.steps[run.i]; if (s.tick) { try { s.tick(1); } catch (e) {} } if (run.i >= cfg.steps.length - 1) return stop(true); go(run.i + 1); }
   function prev() { if (!run || run.i === 0) return; const i = run.i - 1; try { cfg.restore(run.snaps[i]); } catch (e) { console.warn(e); } go(i); }
   function togglePause() { if (!run) return; run.paused = !run.paused; if (!run.paused && run.manual) { run.manual = false; } setBtn(); }
   function setBtn() {
-    const b = cap.querySelector('[data-a=pause]'); b.innerHTML = SL.icon(run.paused ? 'play' : 'pause'); SL.refreshIcons(cap);
-    const d = q('#demoBtn'); d.innerHTML = `${SL.icon('square')}<span>Stop demo</span><kbd>D</kbd>`; d.classList.add('on'); SL.refreshIcons(d);
+    const b = cap.querySelector('[data-a=pause]'); b.innerHTML = SL.icon(run.paused ? 'play' : 'pause'); b.setAttribute('aria-label', run.paused ? 'Play' : 'Pause'); SL.refreshIcons(cap);
+    const d = q('#demoBtn'); d.innerHTML = `${SL.icon('square')}<span>Stop demo</span><kbd>${DK}</kbd>`; d.classList.add('on'); SL.refreshIcons(d);
   }
-  /** finished: true at the natural end; takeover: the student grabbed a control, so keep their set-up */
+  /** finished: true at the natural end; takeover: the student tapped the lab. Either way their own set-up comes back silently, so the demo's state can never earn credit */
   function stop(finished, takeover) {
     if (!run) return;
     cancelAnimationFrame(run.raf);
-    const r = run; run = null;
-    if (!takeover) { try { cfg.restore(r.snap0); } catch (e) { console.warn(e); } }
+    const r = run;
+    quietUntil = performance.now() + 1500;
+    try { cfg.restore(r.snap0); } catch (e) { console.warn(e); }
+    run = null; quietUntil = performance.now() + 1500;
     try { cfg.onEnd && cfg.onEnd(!!takeover); } catch (e) { console.warn(e); }
-    stage.classList.remove('demo-on'); cap && cap.remove(); cap = null;
-    const d = q('#demoBtn'); d.innerHTML = `${SL.icon('play-circle')}<span>Watch demo</span><kbd>D</kbd>`; d.classList.remove('on'); SL.refreshIcons(d);
-    if (finished) SL.toast(`Demo finished and your set-up is restored.${cfg.scenarios ? ' Now try a <b>Scenario</b>.' : ''}`, 'ok', 5000);
-    else if (takeover) SL.toast('Demo stopped: the lab is yours.', '', 2200);
+    stage.classList.remove('demo-on');
+    const d = q('#demoBtn'); d.innerHTML = `${SL.icon('play-circle')}<span>Watch demo</span><kbd>${DK}</kbd>`; d.classList.remove('on'); SL.refreshIcons(d);
+    if (finished && cap) {
+      cap.classList.add('ended'); cap.querySelector('.dc-n').textContent = 'Demo complete';
+      cap.querySelector('.dc-txt').innerHTML = `Your own set-up is back as it was. Now try it yourself${cfg.scenarios ? ', pick a <b>Scenario</b>,' : ''} or watch the demo again.`;
+      SL.refreshIcons(cap);
+      if (document.activeElement && cap.contains(document.activeElement)) cap.querySelector('[data-e=try]').focus({ preventScroll: true });
+    } else {
+      cap && cap.remove(); cap = null;
+      kitToast(takeover ? 'Demo stopped. Your own set-up is back: the lab is yours.' : 'Demo stopped. Your set-up is restored.', '', 2600);
+    }
   }
 
   /* ---------------- scenarios ---------------- */
@@ -491,7 +578,7 @@ window.SLDemo = (() => {
   function renderPop() {
     const s = solved(), pop = q('#scnPop');
     pop.innerHTML = `<div class="scn-head"><div><b>Scenarios</b><span class="small muted">Real tasks with a clear goal. The lab checks your work live.</span></div><button class="btn sm ghost" data-x aria-label="Close scenarios">${SL.icon('x')}</button></div><div class="scn-list">` +
-      cfg.scenarios.map((x, i) => `<button class="scn-card${s[x.id] ? ' done' : ''}" data-i="${i}"><span class="scn-ic">${SL.icon(s[x.id] ? 'check-circle-2' : (x.icon || 'target'))}</span><span><b>${x.title}</b><span class="small">${x.brief}</span></span></button>`).join('') + '</div>';
+      cfg.scenarios.map((x, i) => `<button class="scn-card${s[x.id] ? ' done' : ''}" data-i="${i}"><span class="scn-ic">${SL.icon(s[x.id] ? 'check-circle-2' : (x.icon || 'target'))}</span><span><b>${x.title}</b><span class="small">${x.brief}</span><span class="scn-go">${SL.icon('play')} ${s[x.id] ? 'Play again' : 'Start'}</span></span></button>`).join('') + '</div>';
     SL.refreshIcons(pop);
     pop.onclick = e => { if (e.target.closest('[data-x]')) return closePop(); const b = e.target.closest('.scn-card'); if (b) pick(+b.dataset.i); };
   }
@@ -499,19 +586,19 @@ window.SLDemo = (() => {
   function closePop() { const p = q('#scnPop'); if (p && !p.hidden) { p.hidden = true; q('#scnBtn').setAttribute('aria-expanded', 'false'); } }
   function pick(i) {
     if (run) stop();
-    closePop();
+    closePop(); closeEnd();
     const x = cfg.scenarios[i];
     scn = { x, i, ok: false };
     try { x.setup(); } catch (e) { console.warn(e); }
     const a = q('#scnActive'); a.hidden = false; a.classList.remove('ok');
-    a.innerHTML = `<div class="sa-top"><span class="sa-ic">${SL.icon(x.icon || 'target')}</span><b>${x.title}</b><span class="demo-sp"></span><button class="btn sm ghost" data-r title="Set the scenario up again">${SL.icon('rotate-ccw')}<span>Restart</span></button><button class="btn sm ghost" data-x title="Leave the scenario" aria-label="Leave scenario">${SL.icon('x')}</button></div><p class="sa-goal">${x.goal}</p><p class="sa-ok small"><b>Success:</b> ${x.success}</p><div class="sa-now"><span class="led"></span><span class="sa-txt"></span></div>${x.hint ? `<details class="small"><summary>Hint</summary>${x.hint}</details>` : ''}`;
+    a.innerHTML = `<div class="sa-top"><span class="sa-ic">${SL.icon(x.icon || 'target')}</span><b>${x.title}</b><span class="demo-sp"></span><button class="btn sm ghost" data-r title="Set the scenario up again" aria-label="Restart scenario">${SL.icon('rotate-ccw')}<span>Restart</span></button><button class="btn sm ghost" data-x title="Leave the scenario" aria-label="Leave scenario">${SL.icon('x')}</button></div><p class="sa-goal">${x.goal}</p><p class="sa-ok small"><b>Success:</b> ${x.success}</p><div class="sa-now"><span class="led"></span><span class="sa-txt"></span></div>${x.hint ? `<details class="small"><summary>Hint</summary>${x.hint}</details>` : ''}`;
     SL.refreshIcons(a); SL.renderMath && SL.renderMath(a);
     a.onclick = e => { if (e.target.closest('[data-x]')) leave(); else if (e.target.closest('[data-r]')) pick(scn.i); };
     clearInterval(scnTimer); scnTimer = setInterval(checkScn, 300); checkScn();
     const r = a.getBoundingClientRect(); if (r.top < 70 || r.top > innerHeight * 0.6) a.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
   }
   function checkScn() {
-    if (!scn || document.hidden || run) return;
+    if (!scn || document.hidden || busy()) return;
     const a = q('#scnActive'), x = scn.x;
     let now = ''; try { now = x.now ? x.now() : ''; } catch (e) {}
     const t = a.querySelector('.sa-txt'); if (t && t.innerHTML !== now && !scn.ok) t.innerHTML = now;
@@ -528,7 +615,7 @@ window.SLDemo = (() => {
 
   /* ---------------- keys ---------------- */
   function showKeys() {
-    const rows = [['D', 'Watch or stop the demo'], ['S', 'Open scenarios'], ['Esc', 'Stop the demo / close'], ['← →', 'Previous / next demo step'], ['Space', 'Pause the demo while it plays']].concat((cfg.keys || []).map(k => [k.label, k.desc]));
+    const rows = [[DK, 'Watch or stop the demo'], [SK, 'Open scenarios'], ['Esc', 'Stop the demo / close'], ['← →', 'Previous / next demo step'], ['Space', 'Pause the demo while it plays']].concat((cfg.keys || []).map(k => [k.label, k.desc]));
     SL.modal(`<h3 style="margin-top:0">Keyboard shortcuts</h3><table class="data"><tbody>${rows.map(r => `<tr><td><kbd class="kb">${r[0]}</kbd></td><td>${r[1]}</td></tr>`).join('')}</tbody></table>`);
   }
   function onKey(e) {
@@ -543,15 +630,16 @@ window.SLDemo = (() => {
       if (k === 'ArrowLeft' && tag !== 'INPUT') { e.preventDefault(); return prev(); }
       if (k === ' ' && tag !== 'BUTTON' && tag !== 'INPUT') { e.preventDefault(); return togglePause(); }
     }
-    if (k === 'Escape') return closePop();
+    if (k === 'Escape') { closeEnd(); return closePop(); }
     if (tag === 'INPUT' && /^Arrow|^Page|Home|End/.test(k)) return;
-    if (k === 'd' || k === 'D') { e.preventDefault(); return run ? stop() : start(); }
-    if ((k === 's' || k === 'S') && q('#scnBtn')) { e.preventDefault(); return togglePop(); }
+    if (cfg.skipKey && cfg.skipKey(k)) return;
+    if (k === DK.toLowerCase() || k === DK.toUpperCase()) { e.preventDefault(); return run ? stop() : start(); }
+    if ((k === SK.toLowerCase() || k === SK.toUpperCase()) && q('#scnBtn')) { e.preventDefault(); return togglePop(); }
     if (k === '?') { e.preventDefault(); return showKeys(); }
     const m = (cfg.keys || []).find(x => x.keys.includes(k));
     if (m && !(k === ' ' && (tag === 'BUTTON' || tag === 'INPUT'))) { e.preventDefault(); m.fn(e); }
   }
-  return { mount, start, stop, set, lerp, ramp, store, get running() { return !!run; }, get scenario() { return scn; }, pick, leave };
+  return { mount, start, stop, set, lerp, ramp, store, get running() { return !!run; }, get busy() { return busy(); }, get scenario() { return scn; }, pick, leave };
 })();
 </script>
 <script>
@@ -936,7 +1024,7 @@ window.SLDemo = (() => {
   }
   let chalReady = false;
   function checkChallenges() {
-    if (!R || (window.SLDemo && SLDemo.running)) return;
+    if (!R || (window.SLDemo && SLDemo.busy)) return;
     let changed = false;
     CH.forEach((c, i) => { if (!done.has(i)) { let ok = false; try { ok = c.ok(); } catch (e) {} if (ok) { done.add(i); changed = true; if (chalReady) SL.toast(`<b>Challenge solved:</b> ${c.t}`, 'ok'); } } });
     if (changed || !$('#chalList').innerHTML) renderChal();
@@ -981,14 +1069,26 @@ window.SLDemo = (() => {
     const c = [16, 8, 0].map(sh => Math.round(((pa >> sh) & 255) * (1 - t) + ((pb >> sh) & 255) * t));
     return '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
   }
-  // draw an external gear in world coords
-  function drawGear(ctx, x, y, z, m, phi, color, opts = {}) {
-    const o = gearOutline(z, m);
-    ctx.save();
-    ctx.translate(X(x), Y(y)); ctx.scale(view.s, -view.s); ctx.rotate(phi);
-    ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 4;
-    ctx.globalAlpha = opts.alpha ?? 1;
-    // body with lightening holes (evenodd)
+  /* render cache: each gear body is painted once into an offscreen sprite (re-painted only when its size,
+     colour or zoom changes) and then blitted rotated every frame. No shadowBlur in the frame loop. */
+  const SPR = new Map();
+  function sprite(key, Rw, paint) {
+    const dpr = st.dpr || 1, s = view.s; let e = SPR.get(key);
+    if (e && e.dpr === dpr && Math.abs(e.s - s) / s < 0.03) return e;
+    const half = Math.ceil(Rw * s + 3), px = Math.ceil(2 * half * dpr);
+    if (!(px > 0) || px > 3000) return null;
+    const c = e ? e.c : document.createElement('canvas'); c.width = c.height = px;
+    const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.translate(half, half); g.scale(s, -s); paint(g);
+    e = { c, half, s, dpr }; SPR.delete(key); SPR.set(key, e);
+    if (SPR.size > 48) SPR.delete(SPR.keys().next().value);
+    return e;
+  }
+  function blit(ctx, e, sx, sy, rot, dy) { const k = view.s / e.s, hw = e.half * k; ctx.save(); ctx.translate(sx, sy + (dy || 0)); if (rot) ctx.rotate(rot); ctx.drawImage(e.c, -hw, -hw, 2 * hw, 2 * hw); ctx.restore(); }
+  function softShadow(ctx, x, y, R0, R1) {
+    const e = sprite('sh' + R0.toFixed(2) + '|' + R1.toFixed(2), R1, g => { const gr = g.createRadialGradient(0, 0, R0, 0, 0, R1); gr.addColorStop(0, 'rgba(0,0,0,.5)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.beginPath(); g.arc(0, 0, R1, 0, TAU); g.fill(); });
+    if (e) blit(ctx, e, X(x), Y(y), 0, 4);
+  }
+  function paintGear(ctx, o, z, m, color, opts) {
     const body = new Path2D(); body.addPath(o.path);
     const hub = Math.min(Math.max(o.r * 0.22, 4 * m), o.rf - 1.4 * m);
     const holeR = (o.rf - hub) * 0.25;
@@ -996,22 +1096,26 @@ window.SLDemo = (() => {
     if (o.rf - hub > 9 * m && o.r > 18) { holes = z > 40 ? 6 : 5; for (let k = 0; k < holes; k++) { const a = k * TAU / holes + Math.PI / holes, cx = (hub + o.rf) / 2 * Math.cos(a), cy = (hub + o.rf) / 2 * Math.sin(a); body.moveTo(cx + holeR, cy); body.arc(cx, cy, holeR, 0, TAU, true); } }
     ctx.fillStyle = gearFill(ctx, null, o.r, color);
     ctx.fill(body, 'evenodd');
-    ctx.shadowColor = 'transparent';
     ctx.lineWidth = 1.2 / view.s; ctx.strokeStyle = opts.clash ? '#ef4444' : mix(color, '#ffffff', 0.5);
     if (opts.clash) ctx.lineWidth = 3 / view.s;
     ctx.stroke(o.path);
-    // web rings
     ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 1.5 / view.s;
     ctx.beginPath(); ctx.arc(0, 0, o.rf - 1.2 * m, 0, TAU); ctx.stroke();
-    // hub
     const hg = ctx.createRadialGradient(-hub * .3, hub * .3, 1, 0, 0, hub);
     hg.addColorStop(0, '#e5e9f2'); hg.addColorStop(1, '#5d6678');
     ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(0, 0, hub, 0, TAU); ctx.fill();
-    // shaft + key
     const sr = hub * 0.55; ctx.fillStyle = '#0b1020'; ctx.beginPath(); ctx.arc(0, 0, sr, 0, TAU); ctx.fill();
     ctx.fillStyle = '#9aa4b8'; ctx.fillRect(sr * 0.55, -sr * 0.22, sr * 0.6, sr * 0.44);
-    // index mark
     if (o.rf - hub > 3.2 * m) { ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.arc((o.rf + hub) / 2, 0, Math.min(0.6 * m, (o.rf - hub) * 0.18), 0, TAU); ctx.fill(); }
+  }
+  // draw an external gear in world coords
+  function drawGear(ctx, x, y, z, m, phi, color, opts = {}) {
+    const o = gearOutline(z, m);
+    ctx.save(); ctx.globalAlpha = opts.alpha ?? 1;
+    softShadow(ctx, x, y, o.rf * 0.85, o.ra * 1.1);
+    const e = sprite(`g${z}|${m}|${color}|${opts.clash ? 1 : 0}`, o.ra + 3 / view.s, g => paintGear(g, o, z, m, color, opts));
+    if (e) blit(ctx, e, X(x), Y(y), -phi);
+    else { ctx.translate(X(x), Y(y)); ctx.scale(view.s, -view.s); ctx.rotate(phi); paintGear(ctx, o, z, m, color, opts); }
     ctx.restore();
     if (S.showPitch) { ctx.save(); ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(X(x), Y(y), o.r * view.s, 0, TAU); ctx.stroke(); ctx.restore(); }
     if (opts.sel) { ctx.save(); ctx.strokeStyle = cssAccent; ctx.lineWidth = 2; ctx.setLineDash([2, 4]); ctx.beginPath(); ctx.arc(X(x), Y(y), o.ra * view.s + 6, 0, TAU); ctx.stroke(); ctx.restore(); }
@@ -1024,7 +1128,6 @@ window.SLDemo = (() => {
     const ccw = n > 0; // math CCW = screen CCW (y flipped)
     const a0 = -Math.PI * 0.85, a1 = -Math.PI * 0.15; // top arc in screen coords
     ctx.save(); ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
-    ctx.shadowColor = color; ctx.shadowBlur = 8;
     ctx.beginPath(); ctx.arc(cx, cy, R, a0, a1); ctx.stroke();
     const end = ccw ? a0 : a1, tang = ccw ? end - Math.PI / 2 : end + Math.PI / 2;
     const ex = cx + R * Math.cos(end), ey = cy + R * Math.sin(end), hl = 9;
@@ -1033,11 +1136,22 @@ window.SLDemo = (() => {
     ctx.lineTo(ex + Math.cos(tang - 2.5) * hl * 0.8, ey + Math.sin(tang - 2.5) * hl * 0.8); ctx.closePath(); ctx.fill();
     ctx.restore();
   }
-  function label(ctx, x, y, lines, color) {
+  /** label box; `avoid` (optional) holds boxes already drawn: the new box is nudged down, then right/left, then above `alt` so none overlap */
+  function label(ctx, x, y, lines, color, avoid, alt) {
     ctx.save(); ctx.font = '600 11px JetBrains Mono, monospace';
     const w = Math.max(...lines.map(l => ctx.measureText(l).width)) + 14, h = lines.length * 14 + 8;
     let lx = Math.round(x - w / 2), ly = Math.round(y);
     lx = SL.clamp(lx, 4, st.w - w - 4); ly = SL.clamp(ly, 4, st.h - h - 4);
+    if (avoid) {
+      const hit = (ax, ay) => avoid.find(b => ax < b[0] + b[2] + 3 && ax + w + 3 > b[0] && ay < b[1] + b[3] + 3 && ay + h + 3 > b[1]);
+      const cands = [[lx, ly]];
+      for (let k = 1; k <= 4; k++) cands.push([lx, ly + k * (h + 4)]);
+      [1, -1].forEach(sd => avoid.forEach(b => cands.push([sd > 0 ? b[0] + b[2] + 4 : b[0] - w - 4, ly])));
+      if (alt != null) { const ay = Math.round(alt - h); cands.push([lx, ay], [lx, ay - h - 4]); }
+      const ok = cands.map(([cx, cy]) => [SL.clamp(cx, 4, st.w - w - 4), SL.clamp(cy, 4, st.h - h - 4)]).find(([cx, cy]) => !hit(cx, cy));
+      if (ok) [lx, ly] = ok;
+      avoid.push([lx, ly, w, h]);
+    }
     ctx.fillStyle = 'rgba(5,9,19,.82)'; ctx.strokeStyle = color; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.roundRect ? ctx.roundRect(lx, ly, w, h, 6) : ctx.rect(lx, ly, w, h); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#e6ecf7'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
@@ -1054,33 +1168,45 @@ window.SLDemo = (() => {
     const pt = s => [X(P[0] + u[0] * s), Y(P[1] + u[1] * s)];
     ctx.save(); ctx.strokeStyle = 'rgba(34,211,238,.55)'; ctx.lineWidth = 1.2; ctx.setLineDash([6, 4]);
     let p1 = pt(s1), p2 = pt(s2); ctx.beginPath(); ctx.moveTo(...p1); ctx.lineTo(...p2); ctx.stroke(); ctx.setLineDash([]);
-    ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 3.5; ctx.shadowColor = '#22d3ee'; ctx.shadowBlur = 8;
+    ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 3.5;
     p1 = pt(a1); p2 = pt(a2); ctx.beginPath(); ctx.moveTo(...p1); ctx.lineTo(...p2); ctx.stroke();
     ctx.fillStyle = '#fff'; const pp = pt(0); ctx.beginPath(); ctx.arc(pp[0], pp[1], 3.5, 0, TAU); ctx.fill();
     // base circles
-    ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(34,211,238,.25)'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
+    ctx.strokeStyle = 'rgba(34,211,238,.25)'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
     ctx.beginPath(); ctx.arc(X(A[0]), Y(A[1]), rbA * view.s, 0, TAU); ctx.stroke();
     ctx.beginPath(); ctx.arc(X(B[0]), Y(B[1]), rbB * view.s, 0, TAU); ctx.stroke();
     ctx.restore();
   }
 
   let cssAccent = '#f5a524';
+  let gridC = null, gridKey = '';
   function grid(ctx) {
-    const { w, h } = st;
-    const bg = ctx.createRadialGradient(w * 0.5, h * 0.45, 20, w * 0.5, h * 0.5, Math.max(w, h) * 0.75);
-    bg.addColorStop(0, '#0d1528'); bg.addColorStop(1, '#04070f');
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
-    // mm grid: 10 mm
+    const { w, h } = st, dpr = st.dpr || 1;
     let step = 10 * view.s; while (step < 14) step *= 5;
-    ctx.strokeStyle = 'rgba(120,150,210,.06)'; ctx.lineWidth = 1; ctx.beginPath();
-    for (let x = ((view.ox % step) + step) % step; x < w; x += step) { ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, h); }
-    for (let y = ((view.oy % step) + step) % step; y < h; y += step) { ctx.moveTo(0, y + .5); ctx.lineTo(w, y + .5); }
-    ctx.stroke();
+    const fx = ((view.ox % step) + step) % step, fy = ((view.oy % step) + step) % step;
+    const key = [w, h, dpr, step.toFixed(2), fx.toFixed(1), fy.toFixed(1)].join('|');
+    if (key !== gridKey) {
+      gridKey = key; gridC = gridC || document.createElement('canvas'); gridC.width = Math.round(w * dpr); gridC.height = Math.round(h * dpr);
+      const g = gridC.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const bg = g.createRadialGradient(w * 0.5, h * 0.45, 20, w * 0.5, h * 0.5, Math.max(w, h) * 0.75);
+      bg.addColorStop(0, '#0d1528'); bg.addColorStop(1, '#04070f');
+      g.fillStyle = bg; g.fillRect(0, 0, w, h);
+      g.strokeStyle = 'rgba(120,150,210,.06)'; g.lineWidth = 1; g.beginPath();
+      for (let x = fx; x < w; x += step) { g.moveTo(x + .5, 0); g.lineTo(x + .5, h); }
+      for (let y = fy; y < h; y += step) { g.moveTo(0, y + .5); g.lineTo(w, y + .5); }
+      g.stroke();
+    }
+    ctx.drawImage(gridC, 0, 0, w, h);
   }
 
-  function frame(dt) {
+  /* phones and low-core CPUs: the simulation steps every frame, but the canvases are redrawn at most 30 times a second */
+  const LOWEND = (window.matchMedia && matchMedia('(pointer:coarse)').matches) || (navigator.hardwareConcurrency || 8) <= 4;
+  const pace = (() => { let last = 0; return hz => { const now = performance.now(); if (now - last < 1000 / hz - 4) return false; last = now; return true; }; })();
+  let hpLast = '', dtAcc = 0;
+  function frame(dt0) {
     const { ctx, w, h } = st;
     if (!R) return;
+    dtAcc += dt0; if (LOWEND && !pace(30)) return; const dt = dtAcc; dtAcc = 0;
     computeView();
     const k = 0.18; view.s += (view.tgt.s - view.s) * (view.first ? 1 : k); view.ox += (view.tgt.ox - view.ox) * (view.first ? 1 : k); view.oy += (view.tgt.oy - view.oy) * (view.first ? 1 : k); view.first = false;
     // playback scaling
@@ -1089,7 +1215,7 @@ window.SLDemo = (() => {
     if (S.mode === 'planet') maxRev = Math.max(Math.abs(R.w.s), Math.abs(R.w.c), Math.abs(R.w.r), Math.abs(R.wp)) / 60;
     if (S.mode === 'worm') maxRev = S.rpm / 60 * 0.15;
     let f = PLAY[S.play][1]; if (f === 0) f = Math.min(1, 0.45 / Math.max(maxRev, 1e-6));
-    $('#hPlay').textContent = f >= 0.999 ? 'Playback: real time' : 'Slow motion ×' + (f < 0.01 ? f.toExponential(1) : SL.fmt(f, 3));
+    { const hp = f >= 0.999 ? 'Playback: real time' : 'Slow motion ×' + (f < 0.01 ? f.toExponential(1) : SL.fmt(f, 3)); if (hp !== hpLast) { hpLast = hp; $('#hPlay').textContent = hp; } }
     if (!S.paused) { simT += dt * f; }
     const sgn = S.rev ? -1 : 1;
     phi0 = W(S.rpm) * simT * sgn;
@@ -1119,30 +1245,32 @@ window.SLDemo = (() => {
       const small = same.reduce((a, b) => a.r < b.r ? a : b);
       dirArrow(ctx, it.x, it.y, small.r * 0.6, it.n, it.n > 0 ? '#34d399' : '#f472b6');
     });
-    seen.clear();
+    seen.clear(); const boxes = [];
     items.forEach((it, i) => {
       const key = it.x.toFixed(3) + ',' + it.y.toFixed(3);
       if (seen.has(key)) return; seen.add(key);
       const same = items.filter(q => q.x === it.x && q.y === it.y);
       const big = same.reduce((a, b) => a.r > b.r ? a : b);
       const names = same.map(q => `G${q.i + 1}`).join('+');
-      label(ctx, X(it.x), Y(it.y) + big.ra * view.s + 8, [`${names} · ${same.map(q => q.z + 'T').join('/')}`, `${SL.fmt(Math.abs(it.n), 1)} rpm ${dirName(it.n)}`], same[0].color);
+      label(ctx, X(it.x), Y(it.y) + big.ra * view.s + 8, [`${names} · ${same.map(q => q.z + 'T').join('/')}`, `${SL.fmt(Math.abs(it.n), 1)} rpm ${dirName(it.n)}`], same[0].color, boxes, Y(it.y) - big.ra * view.s - 8);
     });
   }
 
   function drawRing(ctx, zr, m, phi, color) {
     const hole = gearOutline(zr, m, 1.25, 1.0, -0.035);
     const Ro = m * zr / 2 + 1.25 * m + 3 * m;
-    ctx.save(); ctx.translate(X(0), Y(0)); ctx.scale(view.s, -view.s); ctx.rotate(phi + Math.PI / zr * 0);
-    const p = new Path2D(); p.arc(0, 0, Ro, 0, TAU); p.closePath(); p.addPath(hole.path);
-    const g = ctx.createRadialGradient(0, 0, Ro * 0.8, 0, 0, Ro);
-    g.addColorStop(0, mix(color, '#05070d', 0.15)); g.addColorStop(0.7, color); g.addColorStop(1, mix(color, '#05070d', 0.6));
-    ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 16;
-    ctx.fillStyle = g; ctx.fill(p, 'evenodd'); ctx.shadowColor = 'transparent';
-    ctx.strokeStyle = mix(color, '#ffffff', 0.45); ctx.lineWidth = 1.2 / view.s; ctx.stroke(hole.path);
-    ctx.beginPath(); ctx.arc(0, 0, Ro, 0, TAU); ctx.stroke();
-    // index marks on rim
-    ctx.fillStyle = 'rgba(255,255,255,.7)'; for (let k = 0; k < 4; k++) { const a = k * TAU / 4; ctx.beginPath(); ctx.arc((Ro - 1.4 * m) * Math.cos(a), (Ro - 1.4 * m) * Math.sin(a), 0.7 * m, 0, TAU); ctx.fill(); }
+    const paint = g => {
+      const p = new Path2D(); p.arc(0, 0, Ro, 0, TAU); p.closePath(); p.addPath(hole.path);
+      const gr = g.createRadialGradient(0, 0, Ro * 0.8, 0, 0, Ro);
+      gr.addColorStop(0, mix(color, '#05070d', 0.15)); gr.addColorStop(0.7, color); gr.addColorStop(1, mix(color, '#05070d', 0.6));
+      g.fillStyle = gr; g.fill(p, 'evenodd');
+      g.strokeStyle = mix(color, '#ffffff', 0.45); g.lineWidth = 1.2 / view.s; g.stroke(hole.path);
+      g.beginPath(); g.arc(0, 0, Ro, 0, TAU); g.stroke();
+      g.fillStyle = 'rgba(255,255,255,.7)'; for (let k = 0; k < 4; k++) { const a = k * TAU / 4; g.beginPath(); g.arc((Ro - 1.4 * m) * Math.cos(a), (Ro - 1.4 * m) * Math.sin(a), 0.7 * m, 0, TAU); g.fill(); }
+    };
+    ctx.save();
+    const e = sprite(`r${zr}|${m}|${color}`, Ro + 3 / view.s, paint);
+    if (e) blit(ctx, e, X(0), Y(0), -phi); else { ctx.translate(X(0), Y(0)); ctx.scale(view.s, -view.s); ctx.rotate(phi); paint(ctx); }
     ctx.restore();
     if (S.showPitch) { ctx.save(); ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.beginPath(); ctx.arc(X(0), Y(0), m * zr / 2 * view.s, 0, TAU); ctx.stroke(); ctx.restore(); }
   }
@@ -1180,7 +1308,7 @@ window.SLDemo = (() => {
       const ang = p.b + pc; const x = a * Math.cos(ang), y = a * Math.sin(ang);
       drawGear(ctx, x, y, zp, m, p.pRel + pc, '#60a5fa');
       // carrier pin
-      ctx.save(); ctx.fillStyle = '#a78bfa'; ctx.shadowColor = '#a78bfa'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(X(x), Y(y), Math.max(3, 1.6 * m * view.s), 0, TAU); ctx.fill(); ctx.restore();
+      ctx.save(); ctx.fillStyle = '#a78bfa'; ctx.beginPath(); ctx.arc(X(x), Y(y), Math.max(3, 1.6 * m * view.s), 0, TAU); ctx.fill(); ctx.restore();
     });
     if (S.showLoa) { const x = a * Math.cos(pc), y = a * Math.sin(pc); lineOfAction(ctx, [0, 0], [x, y], zs * m / 2, zp * m / 2, zs * m / 2 + m, zp * m / 2 + m, pc, Math.sign(R.w.s - R.w.c) || 1); }
     // arrows
@@ -1226,14 +1354,14 @@ window.SLDemo = (() => {
     ctx.save(); ctx.translate(view.ox, view.oy); ctx.scale(view.s, -view.s);
     const g = ctx.createLinearGradient(0, -r + m, 0, -r - 4 * m);
     g.addColorStop(0, '#cbd5e1'); g.addColorStop(0.4, '#64748b'); g.addColorStop(1, '#1e293b');
-    ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 12; ctx.fillStyle = g; ctx.fill(path); ctx.shadowColor = 'transparent';
+    ctx.fillStyle = g; ctx.fill(path);
     ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1 / view.s; ctx.stroke(path);
     ctx.restore();
     if (S.showPitch) { ctx.save(); ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.beginPath(); ctx.moveTo(0, Y(-r)); ctx.lineTo(st.w, Y(-r)); ctx.stroke(); ctx.restore(); }
     drawGear(ctx, 0, 0, z, m, phi0, '#f5a524');
     if (S.showLoa) {
       const u = [Math.sign(R.v || 1) * Math.cos(ALPHA), -Math.sin(ALPHA)], P = [0, -r];
-      ctx.save(); ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2.5; ctx.shadowColor = '#22d3ee'; ctx.shadowBlur = 8;
+      ctx.save(); ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.moveTo(X(P[0] - u[0] * 3 * m), Y(P[1] - u[1] * 3 * m)); ctx.lineTo(X(P[0] + u[0] * 3 * m), Y(P[1] + u[1] * 3 * m)); ctx.stroke(); ctx.restore();
     }
     dirArrow(ctx, 0, 0, r * 0.55, R.nin, R.nin > 0 ? '#34d399' : '#f472b6');
@@ -1337,6 +1465,12 @@ window.SLDemo = (() => {
   });
   const end = e => { pts.delete(e.pointerId); if (drag && drag.type === 'gear') update(false); if (pts.size < 2) { drag = null; cv.classList.remove('drag'); } };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+  // touch: a finger on a movable gear swings it, two fingers zoom; anywhere else a vertical swipe scrolls the page
+  cv.addEventListener('touchstart', e => {
+    if (e.touches.length > 1) { e.preventDefault(); return; }
+    const r = cv.getBoundingClientRect(), t0 = e.touches[0], i = hitGear({ x: t0.clientX - r.left, y: t0.clientY - r.top });
+    if (i > 0) { let j = i; while (j > 0 && S.gears[j].coax) j--; if (j > 0) e.preventDefault(); }
+  }, { passive: false });
   cv.addEventListener('pointerleave', () => { tip.style.display = 'none'; });
   cv.addEventListener('wheel', e => { e.preventDefault(); view.zoom = SL.clamp(view.zoom * Math.exp(-e.deltaY * 0.0012), 0.3, 6); }, { passive: false });
 
@@ -1505,7 +1639,7 @@ window.SLDemo = (() => {
   ];
   document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z') && !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) { e.preventDefault(); undo(); } });
   function setupDemo() {
-    D.mount({ steps: DEMO, scenarios: SCN, keys: KEYS, snapshot: snapAll, restore: restoreAll,
+    D.mount({ steps: DEMO, scenarios: SCN, keys: KEYS, snapshot: snapAll, restore: restoreAll, start: 'press <b>Watch demo</b>, then change a gear\'s teeth and watch the ratio, output speed and torque.',
       onStart: () => { if (S.paused) $('#bPause').click(); D.set('#play', 0); view.zoom = 1; view.px = 0; view.py = 0; view.fitNow = true; } });
   }
 

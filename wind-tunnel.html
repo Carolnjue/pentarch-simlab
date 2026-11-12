@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 <link rel="stylesheet" href="assets/css/simlab.css?v=15">
 <style>
-  .stage.wt{height:540px;touch-action:none;cursor:ns-resize}
+  .stage.wt{height:540px;touch-action:pan-y;cursor:ns-resize}
   @media (max-width:640px){.stage.wt{height:400px;min-height:0}}
   .charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
   @media (max-width:640px){.charts{grid-template-columns:1fr}}
@@ -107,6 +107,8 @@
   .scn-active details{margin-top:6px;color:var(--muted)}
   @media (max-width:520px){.scn-active .sa-top .btn span{display:none}}
   @media (max-width:980px){.labcol .demo-bar,.labcol .scn-pop,.labcol .scn-active{order:1}}
+  .stage .readout{backdrop-filter:none;-webkit-backdrop-filter:none;background:rgba(5,9,19,.88)} /* no blur over the live canvas */
+  .stage canvas{will-change:transform} /* own compositing layer: redrawing the canvas does not repaint the page */
 </style>
 </head>
 <body data-page="wind-tunnel">
@@ -128,7 +130,7 @@
         </div>
         <div class="tip" id="tip"></div>
       </div>
-      <p class="small dim" style="margin:8px 2px 0"><b>Start here:</b> drag up or down on the airfoil (or use the α slider) to tilt it. Blue areas are low pressure (suction); watch Lift on the force balance grow, then collapse when the wing stalls. Press <b>Record point</b> to log a measurement.</p>
+      <details class="lab-more"><summary><i data-lucide="info"></i> How to use this lab</summary><p>Drag up or down on the airfoil (or use the α slider) to tilt it. Blue areas are low pressure (suction); watch Lift on the force balance grow, then collapse when the wing stalls. Press <b>Record point</b> to log a measurement. On a phone, swipe away from the airfoil to scroll the page.</p></details>
       <div class="vischips" id="visChips">
         <label class="chipt"><input type="checkbox" id="vP" checked> Pressure map</label>
         <label class="chipt"><input type="checkbox" id="vS" checked> Streamlines</label>
@@ -288,6 +290,30 @@ window.SLDemo = (() => {
     get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
+  /* one lab-bar look on every lab (same as the DemoKit bar): primary Watch demo, Scenarios, one-line Start here */
+  const css = `
+  .demo-bar{gap:8px;margin:0 0 10px}
+  .demo-bar .btn{min-height:40px}
+  .demo-bar #demoBtn{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;font-weight:600;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .demo-bar #demoBtn.on{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .demo-bar .demo-start{flex:1 1 260px;min-width:0;font-size:.84rem;color:var(--muted);line-height:1.4}
+  .demo-bar .demo-start b{color:var(--text)}
+  .demo-bar .demo-start~.demo-sp{display:none}
+  .demo-cap .dc-txt{margin:0}
+  .demo-cap .dc-txt .dc-wait{color:var(--muted);font-style:italic}
+  .demo-cap .dc-end{display:none;gap:8px;flex-wrap:wrap;margin:8px 0 2px}
+  .demo-cap.ended .dc-end{display:flex}
+  .demo-cap.ended .dc-ctl,.demo-cap.ended .dc-bar{display:none}
+  .demo-cap.below{position:relative;left:auto;bottom:auto;transform:none;width:auto;margin:8px 0 0;box-shadow:none}
+  .demo-cap.pin{position:fixed;left:8px;right:8px;bottom:8px;transform:none;width:auto;max-height:30vh;overflow:auto;z-index:60;box-shadow:0 -6px 24px rgba(0,0,0,.5)}
+  .scn-card .scn-go{display:inline-flex;align-items:center;gap:4px;margin-top:6px;font:600 .74rem var(--sans,inherit);color:var(--accent)}
+  .lab-more{margin:8px 2px 0;font-size:.84rem;color:var(--muted)}
+  .lab-more>summary{cursor:pointer;color:var(--text);font-weight:500;min-height:32px;display:flex;align-items:center;gap:6px}
+  .lab-more>summary svg{width:15px;height:15px}
+  .lab-more p{margin:6px 0 0;line-height:1.5}
+  @media (pointer:coarse),(hover:none){.demo-bar kbd,.demo-bar .demo-keys,.kbd-only{display:none!important}.demo-cap .dc-ctl .btn,.demo-cap .dc-end .btn{min-height:42px;min-width:44px}.lab-more>summary{min-height:44px}}
+  @media (max-width:720px){.demo-bar .demo-start{flex-basis:100%;order:3;font-size:.8rem}}`;
+  { const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s); }
   /** Set a control's value and fire its input event, so the page reacts exactly as to a user. */
   function set(sel, v) {
     const el = typeof sel === 'string' ? q(sel) : sel; if (!el) return;
@@ -303,12 +329,27 @@ window.SLDemo = (() => {
   let cfg = null, run = null, stage = null, cap = null, scn = null, scnTimer = 0;
   const page = () => document.body.dataset.page || 'lab';
 
+  /* the demo never earns credit: busy while it runs and for a moment after the silent restore;
+     challenge/scenario toasts are swallowed then, and other toasts are marked "Demo:" */
+  let quietUntil = 0, kitMsg = false;
+  const busy = () => !!run || performance.now() < quietUntil;
+  const rawToast = SL.toast;
+  SL.toast = function (m, t, ms) {
+    if (!kitMsg && busy()) {
+      if (/challenge|scenario|solved|achieved/i.test(String(m)) || !run) return;
+      m = '<b>Demo:</b> ' + m;
+    }
+    return rawToast.call(this, m, t, ms);
+  };
+  const kitToast = (m, t, ms) => { kitMsg = true; try { SL.toast(m, t, ms); } finally { kitMsg = false; } };
+
   let DK = 'D', SK = 'S';
   function mount(c) {
     cfg = c; DK = c.demoKey || 'D'; SK = c.scnKey || 'S'; stage = q(c.stage || '#stage');
-    const bar = document.createElement('div'); bar.className = 'demo-bar';
+    const bar = document.createElement('div'); bar.className = 'demo-bar lab-bar';
     bar.innerHTML = `<button class="btn sm primary" id="demoBtn" title="Watch a guided demo of this lab (${DK})">${SL.icon('play-circle')}<span>Watch demo</span><kbd>${DK}</kbd></button>` +
       (c.scenarios && c.scenarios.length ? `<button class="btn sm" id="scnBtn" aria-expanded="false" aria-controls="scnPop" title="Real-world tasks with a goal (${SK})">${SL.icon('target')}<span>Scenarios</span><kbd>${SK}</kbd></button>` : '') +
+      (c.start ? `<span class="demo-start"><b>Start here:</b> ${c.start}</span>` : '') +
       `<span class="demo-sp"></span><button class="btn sm ghost demo-keys" id="keysBtn" title="Keyboard shortcuts (?)">${SL.icon('keyboard')}<span>Shortcuts</span></button>`;
     stage.parentNode.insertBefore(bar, stage);
     const pop = document.createElement('div'); pop.className = 'scn-pop'; pop.id = 'scnPop'; pop.hidden = true;
@@ -319,70 +360,115 @@ window.SLDemo = (() => {
     q('#keysBtn').onclick = showKeys;
     if (q('#scnBtn')) { q('#scnBtn').onclick = () => togglePop(); renderPop(); }
     document.addEventListener('keydown', onKey);
-    // a real interaction with the controls or the stage hands the lab over to the student
-    const take = e => { if (!run || !e.isTrusted || (cap && cap.contains(e.target)) || e.target.closest('.demo-bar')) return; stop(false, true); };
-    const lab = stage.closest('.lab') || document;
-    lab.addEventListener('pointerdown', take, true);
+    // the student takes over only with a deliberate tap/click (under 10 px of movement) on the lab, or a real
+    // change of a control. Scrolling the page with a finger never stops the demo.
+    const lab = stage.closest('.lab') || document.body;
+    const mine = t => t && t.closest && !(cap && cap.contains(t)) && !t.closest('.demo-bar');
+    let pd = null;
+    lab.addEventListener('pointerdown', e => { pd = (run || (cap && cap.classList.contains('ended'))) && e.isTrusted && mine(e.target) ? { x: e.clientX, y: e.clientY } : null; }, true);
+    lab.addEventListener('pointercancel', () => { pd = null; }, true);
+    lab.addEventListener('pointerup', e => {
+      if (!pd || !e.isTrusted) return; const mv = Math.hypot(e.clientX - pd.x, e.clientY - pd.y); pd = null;
+      if (mv >= 10 || !mine(e.target)) return;
+      if (run) stop(false, true); else if (cap && cap.classList.contains('ended')) closeEnd();
+    }, true);
+    const ctl = e => { if (run && e.isTrusted && mine(e.target) && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) stop(false, true); };
+    lab.addEventListener('input', ctl, true); lab.addEventListener('change', ctl, true);
+    addEventListener('scroll', () => { if (!run && cap && cap.classList.contains('ended') && cap.classList.contains('pin')) { const r = stage.getBoundingClientRect(); if (r.bottom < 80 || r.top > innerHeight) closeEnd(); } }, { passive: true });
   }
 
   /* ---------------- demo ---------------- */
+  // phones: compact caption bar pinned to the bottom, the stage scrolled to sit above it;
+  // laptops: under the stage when both fit the window, otherwise over the bottom of the stage
+  function placeCap() {
+    cap.classList.remove('below', 'pin');
+    if (matchMedia('(max-width:720px)').matches) { cap.classList.add('pin'); document.body.appendChild(cap); }
+    else if (stage.offsetHeight + 136 <= innerHeight - 64) { cap.classList.add('below'); stage.after(cap); }
+    else stage.appendChild(cap);
+  }
+  function closeEnd() { if (cap && !run) { cap.remove(); cap = null; } }
   function start() {
     if (run || !cfg.steps) return;
-    closePop();
-    run = { i: -1, el: 0, paused: reduced(), snap0: cfg.snapshot(), snaps: [], last: performance.now(), raf: 0, manual: reduced() };
+    closePop(); closeEnd();
+    run = { i: -1, el: 0, paused: reduced(), snap0: cfg.snapshot(), snaps: [], last: performance.now(), raf: 0, manual: reduced(), shown: false };
     stage.classList.add('demo-on');
     cap = document.createElement('div'); cap.className = 'demo-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo captions');
-    cap.innerHTML = `<div class="dc-top"><span class="dc-n"></span><span class="dc-ctl"><button class="btn sm" data-a="prev" title="Previous step (←)" aria-label="Previous step">${SL.icon('skip-back')}</button><button class="btn sm" data-a="pause" title="Pause or play (Space)" aria-label="Pause or play"></button><button class="btn sm" data-a="next" title="Next step (→)" aria-label="Next step">${SL.icon('skip-forward')}</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)" aria-label="Stop demo">${SL.icon('x')}</button></span></div><div class="dc-bar"><i></i></div><div class="dc-txt" aria-live="polite"></div>`;
-    stage.appendChild(cap);
-    cap.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a; if (a === 'prev') prev(); else if (a === 'next') next(); else if (a === 'pause') togglePause(); else stop(); });
+    cap.innerHTML = `<div class="dc-top"><span class="dc-n"></span><span class="dc-ctl"><button class="btn sm" data-a="prev" title="Previous step (←)" aria-label="Previous step">${SL.icon('skip-back')}</button><button class="btn sm" data-a="pause" title="Pause or play (Space)" aria-label="Pause or play"></button><button class="btn sm" data-a="next" title="Next step (→)" aria-label="Next step">${SL.icon('skip-forward')}</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)" aria-label="Stop demo">${SL.icon('x')}</button></span></div><div class="dc-bar"><i></i></div><p class="dc-txt" aria-live="polite"></p><div class="dc-end"><button class="btn sm primary" data-e="try">${SL.icon('hand')}<span>Try it yourself</span></button><button class="btn sm" data-e="again">${SL.icon('rotate-ccw')}<span>Watch again</span></button></div>`;
+    placeCap();
+    cap.addEventListener('click', e => {
+      const x = e.target.closest('[data-e]');
+      if (x) { const again = x.dataset.e === 'again'; cap.remove(); cap = null; if (again) start(); else { const f = (stage.closest('.lab') || document).querySelector('aside input, aside select, aside button'); if (f) f.focus({ preventScroll: true }); } return; }
+      const b = e.target.closest('[data-a]'); if (!b || !run) return; const a = b.dataset.a; if (a === 'prev') prev(); else if (a === 'next') next(); else if (a === 'pause') togglePause(); else stop();
+    });
     setBtn();
     if (document.activeElement && document.activeElement.id === 'demoBtn') cap.querySelector('[data-a=pause]').focus({ preventScroll: true });
     try { cfg.onStart && cfg.onStart(); } catch (e) { console.warn(e); }
-    const r = stage.getBoundingClientRect(); if (r.top < 60 || r.bottom > innerHeight) stage.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'center' });
+    const r = stage.getBoundingClientRect(), capH = cap.classList.contains('below') ? 150 : 0;
+    if (cap.classList.contains('pin')) { if (Math.abs(r.top - 64) > 30) scrollTo({ top: Math.max(0, r.top + scrollY - 64), behavior: reduced() ? 'auto' : 'smooth' }); }
+    else if (r.top < 56 || r.bottom + capH > innerHeight) scrollTo({ top: Math.max(0, r.top + scrollY - Math.max(64, (innerHeight - r.height - capH) / 2)), behavior: reduced() ? 'auto' : 'smooth' });
     go(0);
     const tick = now => {
       if (!run) return;
       const dt = Math.min(0.25, (now - run.last) / 1000); run.last = now;
       const s = cfg.steps[run.i];
       if (!run.paused && !document.hidden) run.el += dt;
-      const dur = s.dur || 5, ramp = s.ramp ? s.ramp : dur * 0.6;
-      if (s.tick && !run.manual) { try { s.tick(ease(Math.min(1, run.el / ramp))); } catch (e) { console.warn(e); } }
-      const tot = cfg.steps.reduce((a, x) => a + (x.dur || 5), 0), doneT = cfg.steps.slice(0, run.i).reduce((a, x) => a + (x.dur || 5), 0);
+      const dur = stepDur(s), rmp = rampT(s);
+      if (s.tick && !run.manual) { try { s.tick(ease(Math.min(1, run.el / rmp))); } catch (e) { console.warn(e); } }
+      // the caption describes the result, so show it once the action has played out
+      if (!run.shown && (!s.tick || run.manual || run.el >= rmp)) showCap();
+      const tot = cfg.steps.reduce((a, x) => a + stepDur(x), 0), doneT = cfg.steps.slice(0, run.i).reduce((a, x) => a + stepDur(x), 0);
       cap.querySelector('.dc-bar i').style.width = (100 * Math.min(tot, doneT + Math.min(run.el, dur)) / tot) + '%';
       if (!run.paused && run.el >= dur) { if (run.i >= cfg.steps.length - 1) { stop(true); return; } go(run.i + 1); }
       run.raf = requestAnimationFrame(tick);
     };
     run.raf = requestAnimationFrame(tick);
   }
+  const rampT = s => s.ramp ? s.ramp : (s.dur || 5) * 0.6;
+  const words = s => { const c = typeof s.cap === 'function' ? '' : String(s.cap || ''); return c.replace(/<[^>]+>/g, '').split(/\s+/).length; };
+  // after the action, leave enough reading time for the caption
+  const stepDur = s => { const d = s.dur || 5; return s.tick ? Math.max(d, rampT(s) + Math.min(8, Math.max(2.5, words(s) * 0.22))) : d; };
+  function showCap() {
+    const s = cfg.steps[run.i]; run.shown = true;
+    const t = cap.querySelector('.dc-txt'); t.innerHTML = typeof s.cap === 'function' ? s.cap() : s.cap; SL.renderMath && SL.renderMath(t);
+  }
   function go(i) {
-    run.i = i; run.el = 0;
+    run.i = i; run.el = 0; run.shown = false;
     if (!run.snaps[i]) run.snaps[i] = cfg.snapshot();
     const s = cfg.steps[i];
     if (s.tick && s.tick.reset) s.tick.reset();
     try { s.at && s.at(); } catch (e) { console.warn(e); }
     if (s.tick && run.manual) { try { s.tick(1); } catch (e) { console.warn(e); } }
     cap.querySelector('.dc-n').textContent = `Demo · step ${i + 1} of ${cfg.steps.length}`;
-    const t = cap.querySelector('.dc-txt'); t.innerHTML = typeof s.cap === 'function' ? s.cap() : s.cap; SL.renderMath && SL.renderMath(t);
+    if (s.tick && !run.manual) cap.querySelector('.dc-txt').innerHTML = '<span class="dc-wait">Watch the lab…</span>'; else showCap();
     cap.querySelector('[data-a=prev]').disabled = i === 0;
   }
   function next() { if (!run) return; const s = cfg.steps[run.i]; if (s.tick) { try { s.tick(1); } catch (e) {} } if (run.i >= cfg.steps.length - 1) return stop(true); go(run.i + 1); }
   function prev() { if (!run || run.i === 0) return; const i = run.i - 1; try { cfg.restore(run.snaps[i]); } catch (e) { console.warn(e); } go(i); }
   function togglePause() { if (!run) return; run.paused = !run.paused; if (!run.paused && run.manual) { run.manual = false; } setBtn(); }
   function setBtn() {
-    const b = cap.querySelector('[data-a=pause]'); b.innerHTML = SL.icon(run.paused ? 'play' : 'pause'); SL.refreshIcons(cap);
+    const b = cap.querySelector('[data-a=pause]'); b.innerHTML = SL.icon(run.paused ? 'play' : 'pause'); b.setAttribute('aria-label', run.paused ? 'Play' : 'Pause'); SL.refreshIcons(cap);
     const d = q('#demoBtn'); d.innerHTML = `${SL.icon('square')}<span>Stop demo</span><kbd>${DK}</kbd>`; d.classList.add('on'); SL.refreshIcons(d);
   }
-  /** finished: true at the natural end; takeover: the student grabbed a control, so keep their set-up */
+  /** finished: true at the natural end; takeover: the student tapped the lab. Either way their own set-up comes back silently, so the demo's state can never earn credit */
   function stop(finished, takeover) {
     if (!run) return;
     cancelAnimationFrame(run.raf);
-    const r = run; run = null;
-    if (!takeover) { try { cfg.restore(r.snap0); } catch (e) { console.warn(e); } }
+    const r = run;
+    quietUntil = performance.now() + 1500;
+    try { cfg.restore(r.snap0); } catch (e) { console.warn(e); }
+    run = null; quietUntil = performance.now() + 1500;
     try { cfg.onEnd && cfg.onEnd(!!takeover); } catch (e) { console.warn(e); }
-    stage.classList.remove('demo-on'); cap && cap.remove(); cap = null;
+    stage.classList.remove('demo-on');
     const d = q('#demoBtn'); d.innerHTML = `${SL.icon('play-circle')}<span>Watch demo</span><kbd>${DK}</kbd>`; d.classList.remove('on'); SL.refreshIcons(d);
-    if (finished) SL.toast(`Demo finished and your set-up is restored.${cfg.scenarios ? ' Now try a <b>Scenario</b>.' : ''}`, 'ok', 5000);
-    else if (takeover) SL.toast('Demo stopped: the lab is yours.', '', 2200);
+    if (finished && cap) {
+      cap.classList.add('ended'); cap.querySelector('.dc-n').textContent = 'Demo complete';
+      cap.querySelector('.dc-txt').innerHTML = `Your own set-up is back as it was. Now try it yourself${cfg.scenarios ? ', pick a <b>Scenario</b>,' : ''} or watch the demo again.`;
+      SL.refreshIcons(cap);
+      if (document.activeElement && cap.contains(document.activeElement)) cap.querySelector('[data-e=try]').focus({ preventScroll: true });
+    } else {
+      cap && cap.remove(); cap = null;
+      kitToast(takeover ? 'Demo stopped. Your own set-up is back: the lab is yours.' : 'Demo stopped. Your set-up is restored.', '', 2600);
+    }
   }
 
   /* ---------------- scenarios ---------------- */
@@ -390,7 +476,7 @@ window.SLDemo = (() => {
   function renderPop() {
     const s = solved(), pop = q('#scnPop');
     pop.innerHTML = `<div class="scn-head"><div><b>Scenarios</b><span class="small muted">Real tasks with a clear goal. The lab checks your work live.</span></div><button class="btn sm ghost" data-x aria-label="Close scenarios">${SL.icon('x')}</button></div><div class="scn-list">` +
-      cfg.scenarios.map((x, i) => `<button class="scn-card${s[x.id] ? ' done' : ''}" data-i="${i}"><span class="scn-ic">${SL.icon(s[x.id] ? 'check-circle-2' : (x.icon || 'target'))}</span><span><b>${x.title}</b><span class="small">${x.brief}</span></span></button>`).join('') + '</div>';
+      cfg.scenarios.map((x, i) => `<button class="scn-card${s[x.id] ? ' done' : ''}" data-i="${i}"><span class="scn-ic">${SL.icon(s[x.id] ? 'check-circle-2' : (x.icon || 'target'))}</span><span><b>${x.title}</b><span class="small">${x.brief}</span><span class="scn-go">${SL.icon('play')} ${s[x.id] ? 'Play again' : 'Start'}</span></span></button>`).join('') + '</div>';
     SL.refreshIcons(pop);
     pop.onclick = e => { if (e.target.closest('[data-x]')) return closePop(); const b = e.target.closest('.scn-card'); if (b) pick(+b.dataset.i); };
   }
@@ -398,19 +484,19 @@ window.SLDemo = (() => {
   function closePop() { const p = q('#scnPop'); if (p && !p.hidden) { p.hidden = true; q('#scnBtn').setAttribute('aria-expanded', 'false'); } }
   function pick(i) {
     if (run) stop();
-    closePop();
+    closePop(); closeEnd();
     const x = cfg.scenarios[i];
     scn = { x, i, ok: false };
     try { x.setup(); } catch (e) { console.warn(e); }
     const a = q('#scnActive'); a.hidden = false; a.classList.remove('ok');
-    a.innerHTML = `<div class="sa-top"><span class="sa-ic">${SL.icon(x.icon || 'target')}</span><b>${x.title}</b><span class="demo-sp"></span><button class="btn sm ghost" data-r title="Set the scenario up again">${SL.icon('rotate-ccw')}<span>Restart</span></button><button class="btn sm ghost" data-x title="Leave the scenario" aria-label="Leave scenario">${SL.icon('x')}</button></div><p class="sa-goal">${x.goal}</p><p class="sa-ok small"><b>Success:</b> ${x.success}</p><div class="sa-now"><span class="led"></span><span class="sa-txt"></span></div>${x.hint ? `<details class="small"><summary>Hint</summary>${x.hint}</details>` : ''}`;
+    a.innerHTML = `<div class="sa-top"><span class="sa-ic">${SL.icon(x.icon || 'target')}</span><b>${x.title}</b><span class="demo-sp"></span><button class="btn sm ghost" data-r title="Set the scenario up again" aria-label="Restart scenario">${SL.icon('rotate-ccw')}<span>Restart</span></button><button class="btn sm ghost" data-x title="Leave the scenario" aria-label="Leave scenario">${SL.icon('x')}</button></div><p class="sa-goal">${x.goal}</p><p class="sa-ok small"><b>Success:</b> ${x.success}</p><div class="sa-now"><span class="led"></span><span class="sa-txt"></span></div>${x.hint ? `<details class="small"><summary>Hint</summary>${x.hint}</details>` : ''}`;
     SL.refreshIcons(a); SL.renderMath && SL.renderMath(a);
     a.onclick = e => { if (e.target.closest('[data-x]')) leave(); else if (e.target.closest('[data-r]')) pick(scn.i); };
     clearInterval(scnTimer); scnTimer = setInterval(checkScn, 300); checkScn();
     const r = a.getBoundingClientRect(); if (r.top < 70 || r.top > innerHeight * 0.6) a.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
   }
   function checkScn() {
-    if (!scn || document.hidden) return;
+    if (!scn || document.hidden || busy()) return;
     const a = q('#scnActive'), x = scn.x;
     let now = ''; try { now = x.now ? x.now() : ''; } catch (e) {}
     const t = a.querySelector('.sa-txt'); if (t && t.innerHTML !== now && !scn.ok) t.innerHTML = now;
@@ -442,16 +528,16 @@ window.SLDemo = (() => {
       if (k === 'ArrowLeft' && tag !== 'INPUT') { e.preventDefault(); return prev(); }
       if (k === ' ' && tag !== 'BUTTON' && tag !== 'INPUT') { e.preventDefault(); return togglePause(); }
     }
-    if (k === 'Escape') return closePop();
-    if (cfg.skipKey && cfg.skipKey(k, e)) return;
+    if (k === 'Escape') { closeEnd(); return closePop(); }
     if (tag === 'INPUT' && /^Arrow|^Page|Home|End/.test(k)) return;
-    if (k.toUpperCase() === DK) { e.preventDefault(); return run ? stop() : start(); }
-    if (k.toUpperCase() === SK && q('#scnBtn')) { e.preventDefault(); return togglePop(); }
+    if (cfg.skipKey && cfg.skipKey(k)) return;
+    if (k === DK.toLowerCase() || k === DK.toUpperCase()) { e.preventDefault(); return run ? stop() : start(); }
+    if ((k === SK.toLowerCase() || k === SK.toUpperCase()) && q('#scnBtn')) { e.preventDefault(); return togglePop(); }
     if (k === '?') { e.preventDefault(); return showKeys(); }
     const m = (cfg.keys || []).find(x => x.keys.includes(k));
     if (m && !(k === ' ' && (tag === 'BUTTON' || tag === 'INPUT'))) { e.preventDefault(); m.fn(e); }
   }
-  return { mount, start, stop, set, lerp, ramp, store, get running() { return !!run; }, get scenario() { return scn; }, pick, leave };
+  return { mount, start, stop, set, lerp, ramp, store, get running() { return !!run; }, get busy() { return busy(); }, get scenario() { return scn; }, pick, leave };
 })();
 </script>
 
@@ -1117,7 +1203,10 @@ window.SLDemo = (() => {
 
   // drag to pitch + hover probe
   let drag = null; const tip = $('#tip');
-  cv.addEventListener('pointerdown', e => { if (S.mode !== 'foil') return; drag = { y: SL.ptr(e, cv).y, a: +$('#alpha').value }; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointerdown', e => { if (S.mode !== 'foil') return; if (e.pointerType === 'touch' && !onFoil(SL.ptr(e, cv))) return; drag = { y: SL.ptr(e, cv).y, a: +$('#alpha').value }; cv.setPointerCapture(e.pointerId); });
+  // touch: a finger on (or close to) the airfoil pitches it; a swipe anywhere else scrolls the page
+  const onFoil = p => { const [x, y] = S2W(p.x, p.y); return Math.abs(x) < 2.4 && Math.abs(y) < 1.0; };
+  cv.addEventListener('touchstart', e => { if (e.touches.length > 1) return; const r = cv.getBoundingClientRect(), t0 = e.touches[0]; if (S.mode === 'foil' && onFoil({ x: t0.clientX - r.left, y: t0.clientY - r.top })) e.preventDefault(); }, { passive: false });
   cv.addEventListener('pointermove', e => {
     const p = SL.ptr(e, cv);
     if (drag) { const na = SL.clamp(Math.round((drag.a + (drag.y - p.y) * 0.12) * 2) / 2, -10, 25); if (na !== +$('#alpha').value) setRange('#alpha', na); tip.style.display = 'none'; return; }
@@ -1165,7 +1254,7 @@ window.SLDemo = (() => {
   }
   function nudges() { CH.forEach(c => { const el = $('#cn-' + c.id); if (!el) return; let t = ''; if (c.done) t = 'Solved.'; else { try { t = c.now(); } catch (e) {} } if (el.textContent !== t) el.textContent = t; }); }
   renderChals();
-  function done(id) { const c = CH.find(x => x.id === id); if (!c || c.done || (window.SLDemo && SLDemo.running)) return; c.done = true; $('#led-' + id).classList.add('on'); const cn = $('#cn-' + id); if (cn) cn.textContent = 'Solved.'; SL.toast('<b>Challenge complete:</b> ' + c.t, 'ok', 4200); }
+  function done(id) { const c = CH.find(x => x.id === id); if (!c || c.done || (window.SLDemo && SLDemo.busy)) return; c.done = true; $('#led-' + id).classList.add('on'); const cn = $('#cn-' + id); if (cn) cn.textContent = 'Solved.'; SL.toast('<b>Challenge complete:</b> ' + c.t, 'ok', 4200); }
   function checkChallenges(rec) {
     if (!R || !M || booting) return;
     nudges();
@@ -1346,7 +1435,7 @@ window.SLDemo = (() => {
     { keys: ['c', 'C'], label: 'C', desc: 'Airfoil or spinning cylinder', fn: () => setMode(S.mode === 'foil' ? 'cyl' : 'foil') },
     { keys: ['u', 'U'], label: 'U', desc: 'Undo the last change', fn: undo },
   ];
-  Dm.mount({ steps: DEMO, scenarios: SCN, keys: KEYS, snapshot: snapAll, restore: restoreAll });
+  Dm.mount({ steps: DEMO, scenarios: SCN, keys: KEYS, snapshot: snapAll, restore: restoreAll, start: 'drag the airfoil up (or use the α slider) and watch Lift grow, then collapse when it stalls.' });
   { const last = Dm.store.get('sl-tunnel-last', null); if (last && last.v) { try { restoreAll(last); lastStr = JSON.stringify(snapAll()); } catch (e) {} } }
   const tour = () => SL.tour([
     { el: '#demoBtn', title: 'Watch it first', text: 'Watch demo plays a one-minute guided run: lift and pressure, the stall, the effect of speed and of Nairobi’s thin air, a streamlined fairing and the Magnus effect. Scenarios gives you real design jobs, such as a medical drone wing or a boda boda fairing.' },

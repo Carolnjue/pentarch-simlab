@@ -58,6 +58,8 @@
     .mini .ctl label{font-size:.76rem}
     .stage.split .cell+.mini+.cell{border-top:1px solid var(--line)}
   }
+  .stage .readout{backdrop-filter:none;-webkit-backdrop-filter:none;background:rgba(5,9,19,.88)} /* no blur over the live canvas */
+  .stage canvas{will-change:transform} /* own compositing layer: redrawing the canvas does not repaint the page */
 </style>
 </head>
 <body data-page="engine">
@@ -87,7 +89,6 @@
     <aside>
       <div class="panel">
         <h3><i data-lucide="sliders-horizontal"></i> Engine</h3>
-        <p class="small muted" style="margin:-4px 0 8px"><b>Start here:</b> watch one cycle and its loop on the pressure–volume chart, then raise the compression ratio and see efficiency and power change in Results.</p>
         <div class="ctl"><label for="rpm">Engine speed N</label><output></output><input type="range" id="rpm" min="800" max="7000" step="100" value="3000"></div>
         <div class="ctl"><label for="cr" title="Cylinder volume with the piston at the bottom divided by the volume with it at the top">Compression ratio r</label><output></output><input type="range" id="cr" min="4" max="14" step="0.1" value="10"></div>
         <div class="ctl"><label for="bore">Bore B (cylinder diameter)</label><output></output><input type="range" id="bore" min="50" max="110" step="1" value="86"></div>
@@ -213,10 +214,14 @@
   if (window.DemoKit) return;
   const css = `
   .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
-  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn{min-height:40px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;font-weight:600;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
   .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
   .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
-  .dk-bar .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto}
+  .dk-bar .dk-start{flex:1 1 260px;min-width:0;font-size:.84rem;color:var(--muted);line-height:1.4}
+  .dk-bar .dk-start b{color:var(--text)}
+  .dk-bar .dk-keys{font-size:.76rem;color:var(--dim);flex-basis:100%;text-align:right;margin-top:-4px}
+  .dk-bar .dk-keys:empty{display:none}
   .dk-bar .dk-keys kbd{font-size:.72rem}
   .dk-goal{flex-basis:100%;display:none;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;padding:10px 12px}
   .dk-goal.show{display:flex}
@@ -230,15 +235,21 @@
   .dk-goal .hint{display:none;margin-top:4px;color:var(--muted)}
   .dk-goal .hint.show{display:block}
   .dk-goal .acts{display:flex;gap:6px;flex-wrap:wrap;flex:none}
-  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.93);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
-  .dk-cap.show{display:block}
-  .dk-cap.fixed{position:fixed;bottom:12px}
+  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.95);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none}
+  .dk-cap.show,.dk-cap.ended{display:block}
+  .dk-cap.below{position:relative;left:auto;bottom:auto;transform:none;width:auto;margin:8px 0 0;box-shadow:none}
+  .dk-cap.pin{position:fixed;left:8px;right:8px;bottom:8px;transform:none;width:auto;max-height:30vh;overflow:auto;z-index:60;padding:7px 10px;box-shadow:0 -6px 24px rgba(0,0,0,.5)}
+  .dk-cap.pin p{font-size:.82rem;margin:3px 0 5px}
   .dk-cap .row{display:flex;align-items:center;gap:8px}
   .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
   .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap p .dk-wait{color:var(--muted);font-style:italic}
   .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
   .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
   .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem;flex:none;width:auto;min-width:0}
+  .dk-cap .dk-end{display:none;gap:8px;flex-wrap:wrap;margin:2px 0 4px}
+  .dk-cap.ended .dk-end{display:flex}
+  .dk-cap.ended .row [data-a],.dk-cap.ended .pg{display:none}
   .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
   @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
   .dk-scen{margin:18px 0 6px;scroll-margin-top:calc(var(--hdr,64px) + 10px)}
@@ -255,36 +266,82 @@
   .dk-card.done .ok{display:inline-flex}
   .dk-card .ok svg{width:17px;height:17px}
   .dk-card .btn{align-self:flex-start}
-  @media (max-width:520px){.dk-bar .dk-keys{display:none}.dk-cap{bottom:8px}.dk-cap .row{flex-wrap:wrap;row-gap:4px}.dk-cap .n{flex-basis:100%}.dk-cap p{font-size:.86rem}.dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}}
+  .lab-more{margin:8px 2px 0;font-size:.84rem;color:var(--muted)}
+  .lab-more>summary{cursor:pointer;color:var(--text);font-weight:500;min-height:32px;display:flex;align-items:center;gap:6px}
+  .lab-more>summary svg{width:15px;height:15px}
+  .lab-more p{margin:6px 0 0;line-height:1.5}
+  @media (pointer:coarse){.dk-bar .dk-keys,.lab-more .kbd-only{display:none}.dk-cap .btn.sm{min-height:40px}.lab-more>summary{min-height:44px}}
+  @media (max-width:720px){.dk-bar .dk-keys{display:none}.dk-bar .dk-start{flex-basis:100%;order:3;font-size:.8rem}.dk-cap{padding:8px 10px}.dk-cap .row{flex-wrap:wrap;row-gap:4px}.dk-cap .n{flex-basis:100%}.dk-cap p{font-size:.86rem;margin:4px 0 6px}.dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}}
   @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}`;
   const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
   const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
   const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
   const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
+  const phone = () => matchMedia('(max-width:720px)').matches;
 
-  /* bar above the lab: Watch demo + Scenarios link + goal banner */
-  function bar(before) {
-    let b = document.querySelector('.dk-bar'); if (b) return b;
-    b = document.createElement('div'); b.className = 'dk-bar';
-    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
-    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
+  /* the demo never earns credit: while it runs (and briefly after its silent restore) DemoKit.busy() is true,
+     challenge and scenario toasts are swallowed and any other toast is marked "Demo:" */
+  let quietUntil = 0, kitMsg = false;
+  const DemoKit = {};
+  DemoKit.busy = () => !!(DemoKit._demo && DemoKit._demo.running()) || performance.now() < quietUntil;
+  const rawToast = SL.toast;
+  SL.toast = function (m, t, ms) {
+    if (!kitMsg && DemoKit.busy()) {
+      if (/challenge|scenario|achieved|complete/i.test(String(m)) || !(DemoKit._demo && DemoKit._demo.running())) return;
+      m = '<b>Demo:</b> ' + m;
+    }
+    return rawToast.call(this, m, t, ms);
+  };
+  const kitToast = (m, t, ms) => { kitMsg = true; try { SL.toast(m, t, ms); } finally { kitMsg = false; } };
+
+  /* one lab bar above the stage: Watch demo · Scenarios · Start here */
+  function bar(before, start) {
+    let b = document.querySelector('.dk-bar');
+    if (!b) {
+      b = document.createElement('div'); b.className = 'dk-bar lab-bar';
+      b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-start"></span><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+      const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b);
+    }
+    if (start) b.querySelector('.dk-start').innerHTML = '<b>Start here:</b> ' + start;
+    return b;
   }
-
-  const DemoKit = { bar };
+  DemoKit.bar = bar;
   /** add page shortcuts to the hint, e.g. '<kbd>1</kbd>–<kbd>5</kbd> modes' */
   DemoKit.keys = html => { const k = document.querySelector('.dk-keys'); if (k) k.innerHTML = html + ' · ' + k.innerHTML; };
-  /** demo({before, stage, steps:[{cap, run(api), ms, hl}], save(), restore(snap), onStop?}) */
+  /** demo({before, stage, start, steps:[{cap, run(api), ms, hl}], save(), restore(snap), onStart?, onStop?}) */
   DemoKit.demo = function (o) {
-    const b = bar(o.before), btn = b.querySelector('#dkPlay');
+    const b = bar(o.before, o.start), btn = b.querySelector('#dkPlay');
     const stage = $(o.stage); if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
     const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
-    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
-    (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)" aria-label="Next step"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)" aria-label="Stop the demo"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="dk-end"><button class="btn sm primary" data-e="try"><i data-lucide="hand"></i> Try it yourself</button><button class="btn sm" data-e="again"><i data-lucide="rotate-ccw"></i> Watch again</button></div><div class="pg"><i></i></div>`;
+    // phones: a compact caption bar pinned to the bottom of the screen (the stage is scrolled to sit above it);
+    // laptops: under the stage when stage + caption fit the window, otherwise over the bottom of the stage
+    const place = () => {
+      cap.classList.remove('below', 'pin');
+      if (o.capHost) { $(o.capHost).appendChild(cap); return; }
+      if (phone()) { cap.classList.add('pin'); document.body.appendChild(cap); }
+      else if (stage.offsetHeight + 136 <= innerHeight - 64) { cap.classList.add('below'); stage.after(cap); }
+      else stage.appendChild(cap);
+    };
+    place(); icons(cap);
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     let run = null; // {abort, stepMode, nextRes}
     const D = { running: () => !!run };
     function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
-    function hl(sel) { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); if (sel) { const e = $(sel); if (e) e.classList.add('dk-hl'); } }
+    // bring the highlighted element into view, above a pinned caption. On phones, controls in the side panel
+    // are not scrolled to: the stage, where the result shows, stays on screen.
+    function reveal(e) {
+      if (!e || !e.getClientRects().length) return;
+      if (phone() && e.closest('aside') && !stage.contains(e)) return;
+      const r = e.getBoundingClientRect(), bot = innerHeight - (cap.classList.contains('pin') ? cap.offsetHeight + 12 : 8);
+      if (r.top >= 60 && r.bottom <= bot) return;
+      const room = bot - 64, y = r.height > room ? r.top - 64 : r.top - 64 - (room - r.height) / 2;
+      scrollBy({ top: y, behavior: reduce ? 'auto' : 'smooth' });
+    }
+    function hl(sel) {
+      document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl'));
+      if (!sel) return; const e = $(sel); if (!e) return; e.classList.add('dk-hl'); reveal(e);
+    }
     const ABORT = { abort: true };
     function api(r) {
       const chk = () => { if (r.abort) throw ABORT; };
@@ -299,46 +356,81 @@
         hl
       };
     }
+    function hideEnd() { cap.classList.remove('ended', 'show'); }
     async function start() {
       if (run) return stop(true);
+      hideEnd();
       if (DemoKit._scen && DemoKit._scen.active()) DemoKit._scen.quit(true);
       let snap = null; try { snap = o.save ? o.save() : null; } catch (e) {}
       const r = run = { abort: false, stepMode: reduce, snap };
+      place();
       btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); setMode();
       if (o.onStart) try { o.onStart(); } catch (e) {}
-      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
-      if (stage.getBoundingClientRect().top < 0 || stage.getBoundingClientRect().bottom > innerHeight) stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' });
+      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i'), P = cap.querySelector('p');
+      { const sr = stage.getBoundingClientRect(), capH = cap.classList.contains('below') ? 150 : 0;
+        if (cap.classList.contains('pin')) { if (Math.abs(sr.top - 64) > 30) scrollTo({ top: Math.max(0, sr.top + scrollY - 64), behavior: reduce ? 'auto' : 'smooth' }); }
+        else if (sr.top < 56 || sr.bottom + capH > innerHeight) scrollTo({ top: Math.max(0, sr.top + scrollY - Math.max(64, (innerHeight - sr.height - capH) / 2)), behavior: reduce ? 'auto' : 'smooth' }); }
       try {
         for (let i = 0; i < steps.length; i++) {
           const st = steps[i]; if (r.abort) throw ABORT;
           cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
-          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
-          if (st.run) await st.run(A);
+          pg.style.width = (i / steps.length * 100) + '%';
+          // the caption describes the result, so it appears once the lab shows it
+          if (st.run) { P.innerHTML = '<span class="dk-wait">Watch the lab…</span>'; hl(st.hl); await st.run(A); }
           if (r.abort) throw ABORT;
+          P.innerHTML = st.cap; if (!st.run) hl(st.hl);
           pg.style.width = ((i + 1) / steps.length * 100) + '%';
-          const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
-          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+          const ms = st.ms == null ? 3200 : st.ms, words = String(st.cap).replace(/<[^>]+>/g, '').split(/\s+/).length;
+          const wait = Math.max(ms, Math.min(9000, words * 230)), t0 = performance.now();
+          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= wait) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
           r.nextRes = null;
         }
-        end(true);
+        end(true, null, true);
       } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
     }
-    function end(restore, msg) {
-      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
-      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+    /** restore: put the student's set-up back silently; finished: show the end card */
+    function end(restore, msg, finished) {
+      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT);
+      quietUntil = performance.now() + 1500;
       if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
+      run = null; quietUntil = performance.now() + 1500; hl(null);
+      btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
       if (o.onStop) try { o.onStop(); } catch (e) {}
-      SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+      if (finished) {
+        cap.querySelector('.n').textContent = 'Demo complete';
+        cap.querySelector('p').innerHTML = 'Your own set-up is back as it was. Now try it yourself, or watch the demo again.';
+        cap.classList.remove('show'); cap.classList.add('ended'); icons(cap);
+        const t = cap.querySelector('[data-e=try]'); if (t && document.activeElement && (cap.contains(document.activeElement) || document.activeElement === btn)) t.focus({ preventScroll: true });
+      } else {
+        hideEnd();
+        kitToast(msg || (restore ? 'Demo stopped. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+      }
     }
     function stop(restore) { end(restore !== false, restore === false ? null : 'Demo stopped. Your settings are back as they were.'); }
     D.stop = stop; D.start = start;
     btn.onclick = start;
-    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
-    // the student takes over: any trusted interaction with the lab outside the caption ends the demo where it is
-    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .dk-bar')) end(false); }, true);
+    cap.addEventListener('click', e => {
+      const x = e.target.closest('[data-e]');
+      if (x) { hideEnd(); if (x.dataset.e === 'again') start(); else { const t = document.querySelector(o.tryTarget || '.lab aside, .lab'); if (t) { const f = t.querySelector('input,select,button'); if (f) f.focus({ preventScroll: true }); } } return; }
+      const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); }
+    });
+    // the student takes over only on a deliberate tap/click (under 10 px of movement) or a real control change; scrolling never stops the demo
+    let pd = null;
+    const inLab = t => t && t.closest && t.closest(o.takeover || '.lab, .dk-bar') && !cap.contains(t) && !btn.contains(t);
+    document.addEventListener('pointerdown', e => { pd = (run || cap.classList.contains('ended')) && e.isTrusted && inLab(e.target) ? { x: e.clientX, y: e.clientY } : null; }, true);
+    document.addEventListener('pointercancel', () => { pd = null; }, true);
+    document.addEventListener('pointerup', e => {
+      if (!pd || !e.isTrusted) return; const moved = Math.hypot(e.clientX - pd.x, e.clientY - pd.y); pd = null;
+      if (moved >= 10 || !inLab(e.target)) return;
+      if (run) end(true, 'Demo stopped. Your own set-up is back: the lab is yours.'); else if (cap.classList.contains('ended') && !e.target.closest('.dk-bar')) hideEnd();
+    }, true);
+    addEventListener('scroll', () => { if (!run && cap.classList.contains('ended') && cap.classList.contains('pin')) { const r = stage.getBoundingClientRect(); if (r.bottom < 80 || r.top > innerHeight) hideEnd(); } }, { passive: true });
+    const ctlTake = e => { if (run && e.isTrusted && inLab(e.target) && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) end(true, 'Demo stopped. Your own set-up is back: the lab is yours.'); };
+    document.addEventListener('input', ctlTake, true); document.addEventListener('change', ctlTake, true);
     document.addEventListener('keydown', e => {
       if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
       if (run && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); stop(true); }
+      else if (!run && e.key === 'Escape' && cap.classList.contains('ended')) hideEnd();
       else if (run && e.key === 'ArrowRight' && run.nextRes) { e.preventDefault(); run.nextRes(); }
       else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); start(); }
     }, true);
@@ -363,7 +455,7 @@
       icons(goal); tick();
     }
     function tick() {
-      if (!act) return; const s = act.s; let st = '';
+      if (!act || DemoKit.busy()) return; const s = act.s; let st = '';
       try { st = s.status ? s.status() : ''; } catch (e) {}
       if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
       const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
@@ -544,6 +636,7 @@
   /* ================================ drawing =============================== */
   const ce = SL.canvas($('#eng')), cpv = SL.canvas($('#pv'));
   const cvt = SL.canvas($('#vt'), () => ready && drawVT()), cts = SL.canvas($('#ts'), () => ready && drawTs()), ctq = SL.canvas($('#tq'), () => ready && drawTq());
+  { const noBlur = c => { try { Object.defineProperty(c, 'shadowBlur', { set() {}, get() { return 0; }, configurable: true }); } catch (e) {} }; noBlur(ce.ctx); noBlur(cpv.ctx); noBlur(cvt.ctx); noBlur(cts.ctx); noBlur(ctq.ctx); } // no shadowBlur in the frame loop
   const phaseName = t => t < 180 ? 'Intake' : t < 360 ? 'Compression' : t < 540 ? 'Power' : 'Exhaust';
   const phaseCol = t => t < 180 ? '#60a5fa' : t < 360 ? '#34d399' : t < 540 ? '#f5a524' : '#94a3b8';
   // gas colour from state
@@ -773,11 +866,14 @@
         ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.strokeStyle = 'rgba(5,9,19,.85)'; ctx.lineWidth = 3; const tx = `net work ${SL.fmt(R.Wn, 0)} J`;
         ctx.strokeText(tx, X(Ve) + 4, ye + 4); ctx.fillStyle = '#fcd34d'; ctx.fillText(tx, X(Ve) + 4, ye + 4); }
       ctx.lineWidth = 2.4; ctx.lineJoin = 'round';
+      // one path per run of segments with the same colour (a handful of strokes instead of one per segment)
+      let runCol = null;
       for (let i = 1; i < R.curve.length; i++) {
-        const a = R.curve[i - 1], b = R.curve[i]; const done = b[0] <= tNow;
-        ctx.strokeStyle = phaseCol(a[0]) + (done ? '' : '55');
-        ctx.beginPath(); ctx.moveTo(X(a[1] * 1e6), Y(a[2] / 1e5)); ctx.lineTo(X(b[1] * 1e6), Y(b[2] / 1e5)); ctx.stroke();
+        const a = R.curve[i - 1], b = R.curve[i]; const col = phaseCol(a[0]) + (b[0] <= tNow ? '' : '55');
+        if (col !== runCol) { if (runCol) ctx.stroke(); runCol = col; ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(X(a[1] * 1e6), Y(a[2] / 1e5)); }
+        ctx.lineTo(X(b[1] * 1e6), Y(b[2] / 1e5));
       }
+      if (runCol) ctx.stroke();
       // current stroke's segment highlighted
       const ph = Math.floor(tNow / 180); ctx.save(); ctx.strokeStyle = phaseCol(tNow); ctx.lineWidth = 5; ctx.shadowColor = phaseCol(tNow); ctx.shadowBlur = 14; ctx.globalAlpha = 0.9;
       ctx.beginPath(); R.curve.filter(c => c[0] >= ph * 180 && c[0] <= ph * 180 + 180).forEach((c, i) => { const x = X(c[1] * 1e6), y = Y(c[2] / 1e5); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); ctx.restore();
@@ -882,24 +978,32 @@
     ctx.fillText(`overlap ${720 - TIMING.IVO + TIMING.EVC}°`, cx, cy + 18);
   }
 
+  /* phones and low-core CPUs: the simulation steps every frame, but the canvases are redrawn at most 30 times a second */
+  const LOWEND = (window.matchMedia && matchMedia('(pointer:coarse)').matches) || (navigator.hardwareConcurrency || 8) <= 4;
+  const pace = (() => { let last = 0; return hz => { const now = performance.now(); if (now - last < 1000 / hz - 4) return false; last = now; return true; }; })();
+  // side charts are redrawn only while they are on screen (each redraw re-uploads the canvas)
+  const chartOn = {}; if ('IntersectionObserver' in window) { const io = new IntersectionObserver(es => es.forEach(e => { chartOn['#' + e.target.id] = e.isIntersecting; }), { rootMargin: '100px' }); ['vt', 'ts', 'tq'].forEach(id => { const el = document.getElementById(id); if (el) io.observe(el); }); }
+  const chartVis = s => chartOn[s] !== false;
+  const hudLast = {};
   function frame(dt) {
     if (!M) return;
     if (!S.paused) theta = (theta + dt * S.spd * 360) % 720;
+    if (LOWEND && !pace(S.paused ? 12 : 30)) return;
     drawEngine(); drawPV();
     const t = ((theta % 720) + 720) % 720;
-    $('#badge').textContent = phaseName(t) + ' stroke'; $('#badge').style.color = phaseCol(t);
-    $('#hTh').textContent = Math.round(t);
     const p = (S.cyc === 'ideal' ? M.ideal.pAt(t) : M.real.pAt(t)), T = (S.cyc === 'ideal' ? M.ideal.TAt(t) : M.real.TAt(t));
-    $('#hP').textContent = SL.fmt(p / 1e5, 2); $('#hT').textContent = SL.fmt(T, 0);
-    frameN++; if (frameN % 3 === 0) { drawVT(); drawTs(); drawTq(); }
-    caption(t, p);
+    // HUD text: written only when it changes, and the fast-changing numbers at about 20 Hz (each write costs a layout)
+    const bd = phaseName(t) + ' stroke'; if (bd !== hudLast.bd) { hudLast.bd = bd; $('#badge').textContent = bd; $('#badge').style.color = phaseCol(t); }
+    if (S.paused || frameN % 3 === 0) { const a = Math.round(t), b = SL.fmt(p / 1e5, 2), c = SL.fmt(T, 0); if (a !== hudLast.a) { hudLast.a = a; $('#hTh').textContent = a; } if (b !== hudLast.b) { hudLast.b = b; $('#hP').textContent = b; } if (c !== hudLast.c) { hudLast.c = c; $('#hT').textContent = c; } }
+    frameN++; if (frameN % 3 === 0) { if (chartVis('#vt')) drawVT(); if (chartVis('#ts')) drawTs(); if (chartVis('#tq')) drawTq(); }
+    if (S.paused || frameN % 2 === 0) caption(t, p);
   }
   /* Live "what is happening" caption for the current stroke */
   let capKey = '';
   function caption(t, p) {
     const ph = t < 180 ? 0 : t < 360 ? 1 : t < 540 ? 2 : 3;
-    $('#eCur').style.left = `calc(${(t / 720 * 100).toFixed(2)}% - 1px)`;
-    $('#eCap .pht').textContent = `θ = ${Math.round(t)}° of 720°`;
+    const cl = `calc(${(t / 720 * 100).toFixed(1)}% - 1px)`; if (cl !== hudLast.cl) { hudLast.cl = cl; $('#eCur').style.left = cl; }
+    const pt = `θ = ${Math.round(t / 5) * 5}° of 720°`; if (pt !== hudLast.pt) { hudLast.pt = pt; $('#eCap .pht').textContent = pt; }
     const real = S.cyc !== 'ideal', W = real ? M.real.Wn : M.ideal.W, pk = real ? M.real.peak : M.ideal.p3;
     const key = [ph, S.cyc, S.r, S.thr, S.adv, S.N, S.B, S.St, S.g].join();
     if (key === capKey) return; capKey = key;
@@ -936,6 +1040,7 @@
   const chNow = c => { try { return c.now(); } catch (e) { return ''; } };
   function renderChal() { $('#chalList').innerHTML = CH.map((c, i) => `<div class="chal"><span class="led ${done.has(i) ? 'on' : ''}"></span><div><b>${c.t}</b><span class="small">${c.d}</span>${done.has(i) ? '<span class="small chal-now">Solved.</span>' : `<span class="small chal-now">${chNow(c)}</span><details class="small"><summary>Hint</summary>${c.h}</details>`}</div></div>`).join(''); $('#chalCount').textContent = done.size; }
   function checkChallenges() {
+    if (DemoKit.busy()) return;
     let ch = false;
     CH.forEach((c, i) => { if (done.has(i)) return; let ok = false; try { ok = c.ok(); } catch (e) {} if (ok) { done.add(i); ch = true; if (chalReady) SL.toast(`<b>Challenge solved:</b> ${c.t}`, 'ok'); } });
     if (ch || !$('#chalList').innerHTML) renderChal();
@@ -1032,7 +1137,7 @@
     const BODA = { N: 5000, r: 9, B: 57, St: 59, thr: 1, adv: 20, g: 1.4, lam: 3.5 };
     const boda = () => { Object.entries(BODA).forEach(([k, v]) => setR(k, v)); seg('cylSeg', 'n', 1); seg('cycSeg', 'c', 'both'); setChk('#dsl', false); setChk('#logp', false); };
     DemoKit.demo({
-      before: '.lab', stage: '#stage', save: eSave, restore: eLoad,
+      before: '.lab', stage: '#stage', save: eSave, restore: eLoad, start: 'watch one cycle and its loop on the p–V chart, then raise the <b>compression ratio</b> and see efficiency change.',
       steps: [
         { cap: 'A <b>150 cc boda boda engine</b>: one cylinder, 57 mm bore, 59 mm stroke. One full four-stroke cycle takes two turns of the crank (720°). Left: the cylinder; right: its pressure–volume loop.', hl: '#stage',
           run: async () => { boda(); setR('spd', 0.35); pause(false); theta = 0; }, ms: 6400 },
