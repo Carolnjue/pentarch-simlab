@@ -65,6 +65,25 @@
   .warnbox.bad{border-color:rgba(239,68,68,.5);background:rgba(239,68,68,.1);color:#fecaca}
   svg.diag text{font-family:var(--mono);font-size:12px;fill:var(--muted)}
   svg.diag{width:100%;height:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+  /* time warp + phone touch controls */
+  .flybar{grid-template-columns:repeat(9,minmax(0,1fr))}
+  .flybar .btn.warp b{font:700 .9rem var(--mono);color:var(--accent)}
+  .tc{display:none;position:absolute;bottom:12px;z-index:3;touch-action:none;user-select:none;-webkit-user-select:none}
+  .stage.touchui .tc{display:flex}
+  .tc-pitch{left:10px;flex-direction:column;gap:8px}
+  .tc-pitch button{width:62px;height:54px;border-radius:14px;border:1px solid rgba(255,255,255,.35);background:rgba(5,9,19,.38);color:#fff;display:grid;place-items:center;backdrop-filter:blur(3px);touch-action:none;padding:0}
+  .tc-pitch button svg{width:26px;height:26px}
+  .tc-pitch button.on{background:color-mix(in srgb,var(--accent) 45%,rgba(5,9,19,.4));border-color:var(--accent)}
+  .tc-pitch small{font:600 .58rem var(--mono);color:rgba(255,255,255,.8);text-align:center;letter-spacing:.06em}
+  .tc-thr{right:10px;flex-direction:column;align-items:center;gap:4px}
+  .tc-thr .trk{position:relative;width:46px;height:112px;border-radius:14px;border:1px solid rgba(255,255,255,.35);background:rgba(5,9,19,.38);backdrop-filter:blur(3px);overflow:hidden;touch-action:none}
+  .tc-thr .fill{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(to top,rgba(245,158,11,.25),rgba(245,158,11,.55))}
+  .tc-thr .knob{position:absolute;left:4px;right:4px;height:16px;border-radius:6px;background:#f8fafc;box-shadow:0 2px 8px rgba(0,0,0,.5);transform:translateY(50%)}
+  .tc-thr small{font:600 .58rem var(--mono);color:rgba(255,255,255,.85);letter-spacing:.06em}
+  .stage.touchui #hudFly{gap:4px}.stage.touchui #hudFly .readout{font-size:.66rem;padding:3px 6px}
+  .stage.touchui #hudR{left:50%;transform:translateX(-50%);max-width:190px;justify-content:center}
+  .stage.touchui #hudR .readout{font-size:.68rem;text-align:center}
+  @media (max-width:640px){.flybar{grid-template-columns:repeat(5,minmax(0,1fr))}.stage.touchui~.flybar [data-hold=up],.stage.touchui~.flybar [data-hold=down],.stage.touchui~.flybar [data-hold=thrUp],.stage.touchui~.flybar [data-hold=thrDn]{display:none}}
   .stage.pb:focus-visible{outline:2px solid var(--accent);outline-offset:2px}   /* keyboard focus */
 </style>
 </head>
@@ -92,6 +111,8 @@
         </div>
         <div class="hud hud-b hidden" id="hudR"><span class="readout" id="hMsg">Ready</span></div>
         <div class="banner" id="banner"><h3 id="bTitle"></h3><p id="bText"></p><div class="btn-row"><button class="btn primary" id="bRetry"><i data-lucide="rotate-ccw"></i> Fly again</button><button class="btn" id="bBuild"><i data-lucide="wrench"></i> Back to hangar</button></div></div>
+        <div class="tc tc-pitch hidden" id="tcPitch" aria-label="Pitch controls"><button data-hold="up" aria-label="Nose up"><i data-lucide="chevron-up"></i></button><small>PITCH</small><button data-hold="down" aria-label="Nose down"><i data-lucide="chevron-down"></i></button></div>
+        <div class="tc tc-thr hidden" id="tcThr"><small id="tcThrV">0%</small><div class="trk" id="tcTrk" role="slider" aria-label="Throttle lever" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="fill" id="tcFill"></div><div class="knob" id="tcKnob"></div></div><small>THR</small></div>
       </div>
       <div class="flybar hidden" id="flybar">
         <button class="btn" data-hold="up"><i data-lucide="arrow-up"></i>Nose up</button>
@@ -102,6 +123,7 @@
         <button class="btn" data-tap="gear"><i data-lucide="circle-dot"></i>Gear</button>
         <button class="btn" data-hold="brake"><i data-lucide="octagon"></i>Brakes</button>
         <button class="btn" data-tap="pause"><i data-lucide="pause"></i>Pause</button>
+        <button class="btn warp" data-tap="warp" id="warpBtn" title="Time acceleration (T): speeds up the simulation 2× or 4×"><b id="warpV">1×</b>Time</button>
       </div>
       <div class="chartbox" id="perfBox">
         <h4>Power required vs power available <span id="perfNote">at take-off mass, field elevation</span></h4>
@@ -194,7 +216,7 @@
           <div class="ctl"><label for="thr">Throttle</label><output></output><input type="range" id="thr" min="0" max="1" step="0.01" value="0"></div>
           <label class="toggle">Show force vectors (L, D, T, W)<input type="checkbox" id="vec" checked></label>
           <label class="toggle">Stall warning horn<input type="checkbox" id="horn" checked></label>
-          <div class="keys"><kbd>↑</kbd>/<kbd>W</kbd> nose up · <kbd>↓</kbd>/<kbd>S</kbd> nose down · <kbd>Space</kbd> centre elevator<br><kbd>Shift</kbd>/<kbd>A</kbd> throttle up · <kbd>Ctrl</kbd>/<kbd>Z</kbd> throttle down<br><kbd>F</kbd> flaps · <kbd>G</kbd> gear · <kbd>B</kbd> brakes · <kbd>P</kbd> pause · <kbd>R</kbd> restart</div>
+          <div class="keys"><kbd>↑</kbd>/<kbd>W</kbd> nose up · <kbd>↓</kbd>/<kbd>S</kbd> nose down · <kbd>Space</kbd> centre elevator<br><kbd>Shift</kbd>/<kbd>A</kbd> throttle up · <kbd>Ctrl</kbd>/<kbd>Z</kbd> throttle down<br><kbd>F</kbd> flaps · <kbd>G</kbd> gear · <kbd>B</kbd> brakes · <kbd>P</kbd> pause · <kbd>R</kbd> restart · <kbd>T</kbd> time ×1/×2/×4</div>
         </div>
         <div class="panel">
           <h3><i data-lucide="gauge"></i> Live flight data</h3>
@@ -729,7 +751,7 @@
     { id: 'glide', t: 'Engine-out glide', d: 'Engine failed at 600 m. Fly best-glide speed and land on the runway.' },
     { id: 'heavy', t: 'Heavy lift', d: 'Design an aircraft whose payload is at least 35% of take-off mass, then climb to 300 m.' },
   ];
-  let mission = 'climb';
+  let mission = 'climb', warp = 1;
   const missionDone = {};
   function renderMissions() {
     $('#missions').innerHTML = MISSIONS.map(m => `<button type="button" class="mission ${m.id === mission ? 'on' : ''}" data-mis="${m.id}" aria-pressed="${m.id === mission}"><span class="led ${missionDone[m.id] ? 'on' : ''}" aria-hidden="true"></span><span class="mt"><b>${m.t}${missionDone[m.id] ? ' <em class="mdone">Completed</em>' : ''}</b><span>${m.d}</span></span></button>`).join('');
@@ -781,7 +803,7 @@
       Object.assign(s, { x, h, vx: V * Math.cos(gam), vh: V * Math.sin(gam), th: tr.theta, thr: 0, elev: tr.elev, flap: 0, gear: !P.retract, engine: false, onGround: false, airborne: true });
     } else if (mission === 'free') { s.flap = 0; }
     s.elev0 = s.elev;
-    sim = s; paused = false; $('#banner').style.display = 'none';
+    sim = s; paused = false; $('#banner').style.display = 'none'; setWarp(1);
     $('#elev').value = s.elev; $('#thr').value = s.thr;
     msg(mission === 'heavy' && D.p.payload < 0.35 * D.m ? `Payload fraction ${fmt(D.p.payload / D.m * 100, 0)}%: below 35%, redesign in the hangar` : MISSIONS.find(m => m.id === mission).t);
     fdrReset();
@@ -900,10 +922,12 @@
     const { ctx, w, h } = st, s = sim, D = Dz;
     if (!s) return;
     const agl = s.h - terrain(s.x);
-    const target = clamp(h * 0.5 / (agl + 30), 0.3, 9);
+    // chase camera: close in on the aircraft near the ground, pull back as height grows (the minimap keeps the big picture)
+    const sprite = clamp(0.24 * w, 90, 175);                 // on-screen aircraft length in px
+    const target = clamp(h * 0.75 / (agl + 30), 0.6, sprite / D.L);
     cam.ppm = cam.ppm + (target - cam.ppm) * 0.05;
     const ppm = cam.ppm;
-    const px = w * (s.airborne ? 0.3 : 0.38);
+    const px = w * (stage.classList.contains('touchui') ? (s.airborne ? 0.36 : 0.45) : (s.airborne ? 0.3 : 0.38));
     const py = Math.max(h * 0.45, h - 105 - s.h * ppm);
     const groundY = py + s.h * ppm;            // screen y of altitude 0
     const toS = (x, alt) => [px + (x - s.x) * ppm, groundY - alt * ppm];
@@ -985,13 +1009,13 @@
     s.papi = s.x < RWY.aim && s.airborne ? papiSet.map(a => ang > a) : null;
     // runway-ahead cue when the runway is off screen
     if (s.airborne && s.x < RWY.x0 && toS(RWY.x0, 0)[0] > w - 20) {
-      const dist = RWY.x0 - s.x, yy = Math.min(h - 40, groundY - 14);
+      const dist = RWY.x0 - s.x, yy = stage.classList.contains('touchui') ? h - 140 : Math.min(h - 40, groundY - 14);
       ctx.font = '600 12px JetBrains Mono, monospace'; ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(5,9,19,.75)';
       const label = `RWY 06 ${fmt(dist / 1000, 2)} km ▶`; const tw = ctx.measureText(label).width;
       ctx.fillRect(w - tw - 104, yy - 14, tw + 14, 20); ctx.fillStyle = '#fde68a'; ctx.fillText(label, w - 96, yy);
     }
     // aircraft
-    const G2 = G, sc = ppm, vis = Math.max(1, 70 / (D.L * ppm));
+    const G2 = G, sc = ppm, vis = Math.max(1, sprite / (D.L * ppm));
     const [ax, ay] = toS(s.x, s.h);
     ctx.save(); ctx.translate(ax, ay); ctx.rotate(-s.th); ctx.scale(sc * vis, -sc * vis);
     drawAircraft(ctx, D, G2, { flap: s.flap, gear: s.gear, thr: s.engine && s.fuel > 0 ? s.thr : 0, prop: s.prop });
@@ -1004,7 +1028,7 @@
       const cgL = [(G2.xmg - D.xcg), G2.hc];
       const cxp = ax + (cgL[0] * Math.cos(s.th) - cgL[1] * Math.sin(s.th)) * sc * vis, cyp = ay - (cgL[0] * Math.sin(s.th) + cgL[1] * Math.cos(s.th)) * sc * vis;
       void cgx;
-      const Ls = 70 / s.W, gm = s.gam || 0;
+      const Ls = sprite * 0.6 / s.W, gm = s.gam || 0;
       const vec = (F, ang, col, lab) => { const len = F * Ls; if (Math.abs(len) < 3) return; const ex = cxp + Math.cos(ang) * len, ey = cyp - Math.sin(ang) * len; SL.arrow(ctx, cxp, cyp, ex, ey, col, 2.5, 9); ctx.fillStyle = col; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText(lab, ex + Math.cos(ang) * 10, ey - Math.sin(ang) * 10 + 4); };
       vec(s.L, gm + Math.PI / 2, '#34d399', 'L'); vec(s.Dn, gm + Math.PI, '#f87171', 'D'); vec(s.T, s.th, '#f59e0b', 'T'); vec(s.W, -Math.PI / 2, '#60a5fa', 'W');
       if (s.V > 3) { // flight path vector marker
@@ -1014,13 +1038,55 @@
       }
     }
     // instruments: AoA gauge + altitude tape
-    drawAoA(ctx, w - 66, h - 200, s);
+    const tui = stage.classList.contains('touchui');
+    drawAoA(ctx, w - 66, tui ? 118 : h - 200, s);
+    drawMinimap(ctx, tui ? 8 : w - 238, tui ? 76 : 52, tui ? (s.papi ? Math.min(150, w - 240) : 150) : 226, tui ? 54 : 78, s, agl);
+    drawRollBar(ctx, w, h, s, tui);
     if (s.stallWarn) { ctx.fillStyle = `rgba(239,68,68,${0.6 + 0.4 * Math.sin(t * 12)})`; ctx.font = '700 16px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText('STALL', w / 2, 70); }
-    if (s.papi) { const py0 = h - 252; ctx.font = '500 11px JetBrains Mono, monospace'; ctx.fillStyle = 'rgba(5,9,19,.75)'; ctx.fillRect(w - 150, py0, 136, 36); ctx.textAlign = 'left'; ctx.fillStyle = '#cbd5e1'; ctx.fillText('PAPI', w - 144, py0 + 14); s.papi.forEach((wht, i) => { ctx.fillStyle = wht ? '#fff' : '#ef4444'; ctx.beginPath(); ctx.arc(w - 98 + i * 18, py0 + 10, 5, 0, 7); ctx.fill(); });
+    if (s.papi) { const py0 = tui ? 76 : h - 262, X0 = tui ? w - 76 : w; ctx.font = '500 11px JetBrains Mono, monospace'; ctx.fillStyle = 'rgba(5,9,19,.75)'; ctx.fillRect(X0 - 150, py0, 136, 36); ctx.textAlign = 'left'; ctx.fillStyle = '#cbd5e1'; ctx.fillText('PAPI', X0 - 144, py0 + 14); s.papi.forEach((wht, i) => { ctx.fillStyle = wht ? '#fff' : '#ef4444'; ctx.beginPath(); ctx.arc(X0 - 98 + i * 18, py0 + 10, 5, 0, 7); ctx.fill(); });
       // say what the lights mean: two white and two red is the 3° path
       const nW = s.papi.filter(Boolean).length, pm = [['too low', '#f87171'], ['slightly low', '#fbbf24'], ['on the 3° path', '#4ade80'], ['slightly high', '#fbbf24'], ['too high', '#f87171']][nW];
-      ctx.font = '500 10.5px JetBrains Mono, monospace'; ctx.fillStyle = pm[1]; ctx.fillText(pm[0], w - 144, py0 + 30); }
+      ctx.font = '500 10.5px JetBrains Mono, monospace'; ctx.fillStyle = pm[1]; ctx.fillText(pm[0], X0 - 144, py0 + 30); }
     if (paused && !s.crashed && !s.done) { ctx.fillStyle = 'rgba(5,9,19,.55)'; ctx.fillRect(0, 0, w, h); ctx.fillStyle = '#fff'; ctx.font = '700 20px Space Grotesk, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('PAUSED (press P)', w / 2, h / 2); }
+  }
+  /* minimap: side profile of the whole airfield area with altitude, so the close chase camera never loses the big picture */
+  function drawMinimap(ctx, x, y, mw, mh, s, agl) {
+    const span = Math.max(6000, Math.abs(s.x - RWY.x0) * 1.6 + 2500), x0 = Math.min(s.x, RWY.x0) - span * 0.22, x1 = x0 + span;
+    const hMax = Math.max(400, Math.ceil((s.h + 150) / 200) * 200);
+    const X = v => x + 6 + (v - x0) / (x1 - x0) * (mw - 12), Y = v => y + mh - 14 - v / hMax * (mh - 26);
+    ctx.save(); ctx.fillStyle = 'rgba(5,9,19,.72)'; ctx.strokeStyle = 'rgba(148,163,184,.35)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, mw, mh, 8) : ctx.rect(x, y, mw, mh); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.rect(x + 1, y + 1, mw - 2, mh - 2); ctx.clip();
+    ctx.strokeStyle = 'rgba(148,163,184,.18)'; ctx.setLineDash([2, 3]); [0.5, 1].forEach(f => { ctx.beginPath(); ctx.moveTo(x + 4, Y(hMax * f)); ctx.lineTo(x + mw - 4, Y(hMax * f)); ctx.stroke(); }); ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(132,140,70,.75)'; ctx.beginPath(); ctx.moveTo(x, y + mh);
+    for (let i = 0; i <= 40; i++) { const v = x0 + (x1 - x0) * i / 40; ctx.lineTo(X(v), Y(terrain(v))); } ctx.lineTo(x + mw, y + mh); ctx.fill();
+    ctx.fillStyle = '#e5e7eb'; ctx.fillRect(X(RWY.x0), Y(0) - 1, Math.max(3, X(RWY.x1) - X(RWY.x0)), 3);
+    if (mission === 'land' || mission === 'glide') { ctx.strokeStyle = 'rgba(74,222,128,.55)'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(X(RWY.aim), Y(0)); ctx.lineTo(X(RWY.aim - hMax / Math.tan(3 * D2R)), Y(hMax)); ctx.stroke(); ctx.setLineDash([]); }
+    if (s.fdr.length > 1) { ctx.strokeStyle = 'rgba(34,211,238,.5)'; ctx.beginPath(); s.fdr.forEach((p, i) => { if (p[4] === undefined) return; const px = X(p[4]), py = Y(p[1] + terrain(p[4])); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }); ctx.stroke(); }
+    const ax = X(s.x), ay = Y(s.h);
+    ctx.fillStyle = '#22d3ee'; ctx.save(); ctx.translate(ax, ay); ctx.rotate(-s.th); ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(-5, -4); ctx.lineTo(-3, 0); ctx.lineTo(-5, 4); ctx.closePath(); ctx.fill(); ctx.restore();
+    ctx.restore();
+    ctx.font = '500 9.5px JetBrains Mono, monospace'; ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'left';
+    ctx.fillText(`${fmt(hMax, 0)} m`, x + 5, Y(hMax) + 9);
+    const d = RWY.aim - s.x, sm = mw < 200, lab = d > 30 ? `RWY ${fmt(d / 1000, 1)} km${sm ? '' : ' ahead'}` : s.x < RWY.x1 ? (sm ? 'over RWY' : 'over the runway') : `${fmt(-d / 1000, 1)} km past${sm ? '' : ' RWY'}`;
+    ctx.fillStyle = '#cbd5e1'; ctx.fillText(`${sm ? '' : 'AGL '}${fmt(agl, 0)} m · ${lab}`, x + 5, y + mh - 3);
+  }
+  /* take-off roll progress: IAS towards the rotation speed Vr */
+  function drawRollBar(ctx, w, h, s, tui) {
+    if (s.airborne || s.crashed || s.done || mission === 'land' || mission === 'glide') return;
+    const atm = atmos(P.elev, P.dT), ias = s.V * Math.sqrt(atm.sigma) * KT, vr = 1.2 * PF.Vs1 * Math.sqrt(atm.sigma) * KT, f = clamp(ias / vr, 0, 1);
+    const bw = tui ? Math.min(180, w - 170) : Math.min(340, w * 0.4), bx = (w - bw) / 2, by = tui ? h - 78 : h - 74;
+    ctx.fillStyle = 'rgba(5,9,19,.72)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx - 10, by - 20, bw + 20, 42, 9) : ctx.rect(bx - 10, by - 20, bw + 20, 42); ctx.fill();
+    ctx.fillStyle = 'rgba(148,163,184,.25)'; ctx.fillRect(bx, by, bw, 8);
+    const g = ctx.createLinearGradient(bx, 0, bx + bw, 0); g.addColorStop(0, '#f59e0b'); g.addColorStop(1, '#4ade80');
+    ctx.fillStyle = f >= 1 ? '#4ade80' : g; ctx.fillRect(bx, by, bw * f, 8);
+    ctx.font = '600 ' + (tui ? 10 : 11.5) + 'px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+    let txt, col = '#e2e8f0';
+    if (f >= 1) { txt = tui ? 'ROTATE: hold ▲' : 'ROTATE: hold nose up (↑)'; col = '#4ade80'; }
+    else if (s.thr < 0.95 && s.V < 2) { txt = tui ? 'Push THR lever to 100%' : 'Full throttle: hold Shift / A or Throttle +'; col = '#fbbf24'; }
+    else txt = `IAS ${fmt(ias, 0)} → Vr ${fmt(vr, 0)} kt` + (warp === 1 && !tui && f < 0.7 ? '  ·  T = speed up' : '');
+    ctx.fillStyle = col; ctx.fillText(txt, w / 2, by - 6);
+    ctx.fillStyle = '#fff'; ctx.fillRect(bx + bw - 1, by - 3, 2, 14);
   }
   function drawAoA(ctx, x, y, s) {
     const hgt = 110, aS = liftCoef(Dz, 0, s.flap).aS * R2D, a = (s.aw || 0) * R2D;
@@ -1067,6 +1133,7 @@
     $('#fVs').innerHTML = fmt(VsNow * KT, 0) + '<small>kt TAS</small>';
     const e = $('#elev'); if (+e.value !== s.elev) { e.value = s.elev; e.closest('.ctl').querySelector('output').textContent = (s.elev >= 0 ? '+' : '') + fmt(s.elev * 20, 1) + '°'; e.style.setProperty('--p', ((s.elev + 1) / 2 * 100) + '%'); }
     const th = $('#thr'); if (+th.value !== s.thr) { th.value = s.thr; th.closest('.ctl').querySelector('output').textContent = fmt(s.thr * 100, 0) + '%'; th.style.setProperty('--p', s.thr * 100 + '%'); }
+    { const pct = Math.round(s.thr * 100), k = $('#tcKnob'); const th = $('#tcTrk').clientHeight || 112; $('#tcFill').style.height = (8 + s.thr * (th - 16)) + 'px'; k.style.bottom = (8 + s.thr * (th - 16)) + 'px'; $('#tcThrV').textContent = pct + '%'; $('#tcTrk').setAttribute('aria-valuenow', pct); }
     if (!s.crashed && !s.done) {
       if (s.stallWarn) msg('STALL WARNING', '#ef4444');
       else if (!s.airborne && s.onGround && s.V > 1) msg(`Take-off roll · rotate at ~${fmt(1.2 * PF.Vs1 * Math.sqrt(atm.sigma) * KT, 0)} kt IAS`);
@@ -1089,7 +1156,8 @@
     $('#buildPanels').classList.toggle('hidden', m !== 'build'); $('#flyPanels').classList.toggle('hidden', m !== 'fly');
     $('#hudFly').classList.toggle('hidden', m !== 'fly'); $('#hudR').classList.toggle('hidden', m !== 'fly');
     $('#flybar').classList.toggle('hidden', m !== 'fly'); $('#fdrBox').classList.toggle('hidden', m !== 'fly');
-    $('#modeHint').textContent = m === 'build' ? 'Design your aircraft in the hangar, then switch to Fly. Your design drives the flight physics.' : 'Click the stage, then fly with the keyboard, or use the buttons and sliders.';
+    $('#tcPitch').classList.toggle('hidden', m !== 'fly'); $('#tcThr').classList.toggle('hidden', m !== 'fly');
+    $('#modeHint').textContent = m === 'build' ? 'Design your aircraft in the hangar, then switch to Fly. Your design drives the flight physics.' : (stage.classList.contains('touchui') ? 'Fly with the pitch pads and throttle lever on the flight view; Time speeds up the take-off roll.' : 'Click the stage, then fly with the keyboard, or use the buttons and sliders. Press T to speed up the take-off roll.');
     if (m === 'fly') { renderMissions(); startMission(); stage.focus({ preventScroll: true }); } else { hornSet(false); $('#banner').style.display = 'none'; buildDirty = true; }
     SL.refreshIcons();
   }
@@ -1098,8 +1166,10 @@
   $('#bBuild').onclick = () => setMode('build');
   const KEYMAP = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ShiftLeft: 'thrUp', ShiftRight: 'thrUp', KeyA: 'thrUp', ControlLeft: 'thrDn', ControlRight: 'thrDn', KeyZ: 'thrDn', KeyB: 'brake' };
   function inView() { const r = stage.getBoundingClientRect(); return r.bottom > 80 && r.top < innerHeight - 80; }
+  function setWarp(v) { warp = v; $('#warpV').textContent = v + '×'; $('#warpBtn').classList.toggle('on', v > 1); }
   function tap(a) {
     if (!sim) return;
+    if (a === 'warp') { setWarp(warp === 1 ? 2 : warp === 2 ? 4 : 1); SL.toast(warp > 1 ? `Time ×${warp}` : 'Real time', '', 1000); }
     if (a === 'flaps') { sim.flap = (sim.flap + 1) % 3; SL.toast(`Flaps ${FLAPS[sim.flap].deg}°`, '', 1200); }
     if (a === 'gear') { if (!P.retract) SL.toast('This design has fixed landing gear.', 'warn', 1800); else if (sim.onGround) SL.toast('Gear cannot retract on the ground.', 'warn', 1800); else { sim.gear = !sim.gear; SL.toast(`Gear ${sim.gear ? 'down' : 'up'}`, '', 1200); } }
     if (a === 'pause') paused = !paused;
@@ -1110,7 +1180,7 @@
     const k = KEYMAP[e.code];
     if (k) { keys[k] = true; e.preventDefault(); SL.audio(); }
     if (e.code === 'Space') { tap('centre'); e.preventDefault(); }
-    if (e.code === 'KeyF') tap('flaps'); if (e.code === 'KeyG') tap('gear'); if (e.code === 'KeyP') tap('pause');
+    if (e.code === 'KeyF') tap('flaps'); if (e.code === 'KeyG') tap('gear'); if (e.code === 'KeyP') tap('pause'); if (e.code === 'KeyT') tap('warp');
     if (e.code === 'KeyR') startMission();
     if (e.code === 'KeyV') { $('#vec').checked = !$('#vec').checked; }
   });
@@ -1125,6 +1195,13 @@
   document.querySelectorAll('[data-tap]').forEach(b => b.addEventListener('click', () => tap(b.dataset.tap)));
   $('#elev').addEventListener('input', e => { if (sim) sim.elev = +e.target.value; });
   $('#thr').addEventListener('input', e => { if (sim) sim.thr = +e.target.value; });
+  { const trk = $('#tcTrk'); let drag = false;
+    const setT = e => { const r = trk.getBoundingClientRect(); if (sim) sim.thr = clamp(1 - (e.clientY - r.top - 8) / (r.height - 16), 0, 1); };
+    trk.addEventListener('pointerdown', e => { drag = true; trk.setPointerCapture(e.pointerId); setT(e); SL.audio(); e.preventDefault(); });
+    trk.addEventListener('pointermove', e => { if (drag) setT(e); });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => trk.addEventListener(ev, () => drag = false));
+    const mq = matchMedia('(max-width: 640px), (pointer: coarse)'), applyTUI = () => stage.classList.toggle('touchui', mq.matches);
+    applyTUI(); mq.addEventListener ? mq.addEventListener('change', applyTUI) : mq.addListener(applyTUI); }
 
   /* ======================= Challenges (design) ======================= */
   const CH = [
@@ -1213,11 +1290,15 @@
   const loop = SL.loop((dt, t) => {
     if (mode === 'build') { drawBuild(t); return; }
     if (sim && !paused) {
-      const n = Math.max(1, Math.round(dt * 240));
-      for (let i = 0; i < n; i++) step(dt / n);
+      if (warp > 1 && (sim.crashed || sim.done)) setWarp(1);
+      if (warp > 1 && !sim.airborne && mission !== 'land' && mission !== 'glide') {   // drop back to real time just before rotation
+        const sg = Math.sqrt(atmos(P.elev, P.dT).sigma); if (sim.V * sg > 0.9 * 1.2 * PF.Vs1 * sg) { setWarp(1); SL.toast('Approaching rotation speed: back to real time.', '', 2200); }
+      }
+      const dts = dt * warp, n = Math.max(1, Math.round(dts * 240));
+      for (let i = 0; i < n; i++) step(dts / n);
       sim.prop += (sim.engine && sim.fuel > 0 ? 8 + 50 * sim.thr : 0) * dt;
-      sim.fdrT += dt;
-      if (sim.fdrT > 0.25) { sim.fdrT = 0; sim.fdr.push([sim.t, sim.h - terrain(sim.x), sim.V, (sim.ab || 0) * R2D]); if (sim.fdr.length > 480) sim.fdr.shift(); }
+      sim.fdrT += dts;
+      if (sim.fdrT > 0.25) { sim.fdrT = 0; sim.fdr.push([sim.t, sim.h - terrain(sim.x), sim.V, (sim.ab || 0) * R2D, sim.x]); if (sim.fdr.length > 480) sim.fdr.shift(); }
     }
     drawFly(t); hud();
     hornSet(!!(sim && sim.stallWarn && !paused && !sim.crashed));
@@ -1236,7 +1317,7 @@
     { el: '#perfPanel', title: 'Hangar performance', text: 'Stall speed, take-off distance, climb rate, top speed and static margin, worked out from your design.' },
     { el: '#modeSeg', title: 'Go flying', text: 'Switch to Fly to take your design up. Use the keyboard or the on-screen buttons.' },
     { el: '#missions', title: 'Missions', text: 'Take off and climb, land on a 3° approach (follow the PAPI lights), glide with a dead engine or lift a heavy load.', before: () => setMode('fly') },
-    { el: '#flybar', title: 'Flight controls', text: 'Nose up and down, throttle, flaps, gear and brakes. On a phone, tap these buttons to fly.' },
+    { el: '#flybar', title: 'Flight controls', text: 'Nose up and down, throttle, flaps, gear and brakes. Time runs the take-off roll 2× or 4× faster. On a phone, fly with the pitch pads and throttle lever on the flight view.' },
     { el: '.tabs .tablist button:nth-child(3)', title: 'Take the challenges', text: 'Open Experiments & challenges for design tasks that are checked against the hangar numbers.' },
   ]);
   tour();

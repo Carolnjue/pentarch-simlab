@@ -115,6 +115,7 @@
         <div class="ctl"><label for="col">Collective (blade pitch)</label><output></output><input type="range" id="col" min="0" max="1" step="0.005" value="0"></div>
         <div class="ctl"><label for="cyc">Cyclic (− aft, + forward)</label><output></output><input type="range" id="cyc" min="-1" max="1" step="0.01" value="0"></div>
         <div class="ctl"><label for="ped">Pedals (− left, + right)</label><output></output><input type="range" id="ped" min="-1" max="1" step="0.01" value="0"></div>
+        <label class="toggle" title="Slows the collective near hover power and stops it before the rotor runs out of power, so the rotor RPM cannot droop. Turn it off once you can hover.">Beginner assist: smooth collective + power limiter<input type="checkbox" id="beg" checked></label>
         <label class="toggle">Automatic anti-torque (pedal assist)<input type="checkbox" id="assist" checked></label>
         <label class="toggle">Show forces and downwash vectors<input type="checkbox" id="vec" checked></label>
         <div class="btn-row" style="margin:8px 0 4px"><button class="btn sm danger" id="engBtn"><i data-lucide="power"></i> Cut engine</button><button class="btn sm" id="restart"><i data-lucide="rotate-ccw"></i> Restart</button></div>
@@ -333,8 +334,13 @@
   function step(dt) {
     if (!S || S.crashed || S.done) return;
     // pilot inputs
-    if (keys.colUp) S.col = clamp(S.col + 0.35 * dt, 0, 1);
+    const beg = $('#beg').checked;
+    // beginner assist: fast travel up to light collective, then a gentle rate; and a soft stop at the power limit
+    const upRate = beg ? (S.col < 0.3 ? 0.35 : 0.12) : 0.35;
+    S.limiting = beg && S.engine && S.Pa > 0 && S.P > 0.97 * S.Pa;
+    if (keys.colUp && !S.limiting) S.col = clamp(S.col + upRate * dt, 0, 1);
     if (keys.colDn) S.col = clamp(S.col - 0.35 * dt, 0, 1);
+    if (beg && S.engine && S.Pa > 0 && S.P > S.Pa) S.col = clamp(S.col - 0.25 * dt, 0, 1);
     const cycTarget = keys.cycF ? 1 : keys.cycB ? -1 : null;
     if (cycTarget !== null) S.cyc = clamp(S.cyc + Math.sign(cycTarget - S.cyc) * 1.6 * dt, -1, 1);
     else if (S.cycSpring) S.cyc -= Math.sign(S.cyc) * Math.min(Math.abs(S.cyc), 1.6 * dt);
@@ -516,7 +522,7 @@
   }
   function draw(t, dtFrame) {
     const { ctx, w, h } = st; if (!S) return;
-    const target = clamp(h * 0.42 / (S.h + 12), 1.2, 15);
+    const target = clamp(h * 0.5 / (S.h + 10), 1.2, Math.min(22, w * 0.5 / 9));   // closes in near the ground
     cam.ppm += (target - cam.ppm) * 0.05; const ppm = cam.ppm;
     const px = w * 0.42, py = Math.max(h * 0.45, h - 80 - S.h * ppm), gy = py + S.h * ppm;
     const toS = (x, a) => [px + (x - S.x) * ppm, gy - a * ppm];
@@ -545,6 +551,35 @@
     const pad = (x, label, col) => { const [a, b] = toS(x - 6, 0), [c2] = toS(x + 6, 0); ctx.fillStyle = '#9ca3af'; ctx.fillRect(a, b - 1, c2 - a, Math.max(3, 0.35 * ppm)); ctx.fillStyle = col; ctx.fillRect(a + (c2 - a) * 0.35, b - 1, (c2 - a) * 0.3, Math.max(2, 0.2 * ppm)); ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(label, (a + c2) / 2, b + 16); };
     pad(PADA, 'PAD A', '#facc15'); pad(PADB, 'H2 HOSPITAL', '#ef4444');
     { const [a, b] = toS(ZONE - 10, 0), [c2] = toS(ZONE + 10, 0); ctx.fillStyle = 'rgba(250,204,21,.35)'; ctx.fillRect(a, b - 1, c2 - a, Math.max(3, 0.3 * ppm)); ctx.fillStyle = '#fde68a'; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'center'; ctx.fillText('DROP ZONE', (a + c2) / 2, b + 16); }
+    // hover target band (skid height 4–6 m)
+    if (mission === 'hover' && !S.done) {
+      const yTop = gy - 6 * ppm, yBot = gy - 4 * ppm, inB = S.h >= 4 && S.h <= 6, okG = inB && Math.abs(S.vx) < 1;
+      const [bx0] = toS(PADA - 14, 0), [bx1] = toS(PADA + 14, 0);
+      ctx.fillStyle = okG ? 'rgba(74,222,128,.22)' : 'rgba(34,211,238,.13)'; ctx.fillRect(0, yTop, w, yBot - yTop);
+      ctx.fillStyle = okG ? 'rgba(74,222,128,.22)' : 'rgba(34,211,238,.16)'; ctx.fillRect(bx0, yTop, bx1 - bx0, yBot - yTop);
+      ctx.strokeStyle = okG ? 'rgba(74,222,128,.9)' : 'rgba(34,211,238,.75)'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 5]);
+      ctx.beginPath(); ctx.moveTo(0, yTop); ctx.lineTo(w, yTop); ctx.moveTo(0, yBot); ctx.lineTo(w, yBot); ctx.stroke(); ctx.setLineDash([]);
+      ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillStyle = okG ? '#4ade80' : '#67e8f9';
+      const lab = S.hoverT > 0 ? `HOLD ${fmt(S.hoverT, 1)} / 10 s` : 'HOVER BAND 4–6 m';
+      const lx = 10, ly = Math.max(yTop - 8, 72), lw = Math.max(120, ctx.measureText(lab).width); ctx.fillStyle = 'rgba(5,9,19,.7)'; ctx.fillRect(lx - 5, ly - 13, lw + 10, S.hoverT > 0 ? 25 : 18); ctx.fillStyle = okG ? '#4ade80' : '#67e8f9'; ctx.fillText(lab, lx, ly);
+      if (S.hoverT > 0) { ctx.fillStyle = 'rgba(5,9,19,.6)'; ctx.fillRect(lx, ly + 4, 120, 4); ctx.fillStyle = '#4ade80'; ctx.fillRect(lx, ly + 4, 120 * Math.min(1, S.hoverT / 10), 4); }
+    }
+    // downwash footprint: the dust ring spreads and darkens as the disc nears the ground (in ground effect)
+    { const z = S.h + H.hub, zr = z / H.R;
+      if (S.vi > 1 && S.Om > 10 && zr < 3) {
+        const k = clamp(1 - zr / 3, 0, 1), rad = H.R * (1.1 + 1.6 * k), [cx0, cy0] = toS(S.x, 0);
+        const g2 = ctx.createRadialGradient(cx0, cy0, rad * ppm * 0.35, cx0, cy0, rad * ppm);
+        g2.addColorStop(0, 'rgba(214,190,140,0)'); g2.addColorStop(0.75, `rgba(214,190,140,${0.45 * k})`); g2.addColorStop(1, 'rgba(214,190,140,0)');
+        ctx.save(); ctx.translate(cx0, cy0); ctx.scale(1, 0.16); ctx.translate(-cx0, -cy0); ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(cx0, cy0, rad * ppm, 0, 7); ctx.fill();
+        ctx.strokeStyle = `rgba(250,232,190,${0.75 * k})`; ctx.lineWidth = 2 / 0.16 * 0.5; ctx.beginPath(); ctx.arc(cx0, cy0, rad * ppm * 0.92, 0, 7); ctx.stroke(); ctx.restore();
+        if (!S.onGround || S.col > 0.2) {
+          const ige = S.kG < 0.97, sav = (1 - S.kG) * 100, txt = sav >= 0.5 ? `${ige ? 'IGE' : 'Weak ground effect'} · induced power −${fmt(sav, 0)}%` : 'OGE · no ground cushion';
+          ctx.font = '600 10.5px JetBrains Mono, monospace'; ctx.textAlign = 'center'; const tw = ctx.measureText(txt).width;
+          const tx = clamp(cx0, tw / 2 + 8, w - tw / 2 - 8), ty = Math.min(h - 8, cy0 + 34);
+          ctx.fillStyle = 'rgba(5,9,19,.65)'; ctx.fillRect(tx - tw / 2 - 6, ty - 12, tw + 12, 17);
+          ctx.fillStyle = ige ? '#fde68a' : '#cbd5e1'; ctx.fillText(txt, tx, ty);
+        }
+      } }
     // dust from downwash
     if (S.dust.length) { S.dust.forEach(d => { const [sx, sy] = toS(d.x, d.h); ctx.fillStyle = `rgba(214,190,140,${0.5 * (1 - d.age / d.life)})`; ctx.beginPath(); ctx.arc(sx, sy, (1 + d.age * 3) * Math.max(1, ppm * 0.18), 0, 7); ctx.fill(); }); }
     // sling load
@@ -723,6 +758,7 @@
     $('#hAlt').textContent = fmt(S.h, 1); $('#hVs').textContent = fmt(S.vh, 1); $('#hGs').textContent = fmt(S.vx, 1);
     $('#hRpm').textContent = fmt(S.Om / H.Om0 * 100, 0); $('#hCol').textContent = fmt(S.col * 100, 0);
     const flags = [];
+    if (S.limiting) flags.push('LIMIT');
     if (S.onGround) flags.push('ON GROUND');
     else { if (S.kG < 0.97) flags.push('IGE'); else flags.push('OGE'); }
     if (Math.abs(S.vx) > 7 && Math.abs(S.vx) < 14 && !S.onGround) flags.push('ETL');
@@ -737,6 +773,7 @@
       const rpm = S.Om / H.Om0;
       if (rpm < 0.9 && !S.onGround) msg(`LOW ROTOR RPM ${fmt(rpm * 100, 0)}%: lower collective`, '#ef4444');
       else if (rpm > 1.1) msg('ROTOR OVERSPEED: raise collective', '#f59e0b');
+      else if (S.limiting) msg('Power limit: the beginner assist holds the collective here', '#f59e0b');
       else if (S.P > S.Pa * 0.995 && S.engine && S.airborne) msg('Power limit: rotor RPM drooping', '#f59e0b');
       else if (mission === 'hover' && S.hoverT > 0) msg(`Hover hold ${fmt(S.hoverT, 1)} / 10 s`, '#4ade80');
       else if ((mission === 'hover' || mission === 'free') && S.t < 90 && coach()) msg(coach(), '#93c5fd');
@@ -826,7 +863,7 @@
   const tour = () => SL.tour([
     { el: '#stage', title: 'The helicopter', text: 'A light helicopter on pad A. The gauges show rotor RPM and power required against power available.' },
     { el: '#flybar', title: 'Fly it', text: 'Hold Collective + to lift off, use cyclic to move forward or back and the pedals to stop the yaw. Keys work too.' },
-    { el: '.ctl:has(#col)', title: 'Collective', text: 'Collective sets blade pitch: more pitch, more thrust and more power. The rotor must keep turning at 100%.' },
+    { el: '.ctl:has(#col)', title: 'Collective', text: 'Collective sets blade pitch: more pitch, more thrust and more power. The rotor must keep turning at 100%. Beginner assist (on at first) stops you pulling more power than the engine has.' },
     { el: '#hMsg', title: 'Coaching', text: 'This line tells you what to do next on your first flights, and warns of low rotor RPM or the power limit.' },
     { el: '#missions', title: 'Missions', text: 'Hover, land on the hospital pad, deliver a sling load or survive an engine failure by autorotating.' },
     { el: '#chP', title: 'The power curve', text: 'Hovering needs more power than cruising at about 20–25 m/s. Your current state is the blue dot.' },
