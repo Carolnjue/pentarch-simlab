@@ -346,12 +346,195 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=13"></script>
 <script>
+/* Watch-demo runner and goal-based scenarios (page-local kit) */
+(function () {
+  if (window.DemoKit) return;
+  const css = `
+  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
+  .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .dk-bar .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto}
+  .dk-bar .dk-keys kbd{font-size:.72rem}
+  .dk-goal{flex-basis:100%;display:none;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;padding:10px 12px}
+  .dk-goal.show{display:flex}
+  .dk-goal.won{border-color:#34d399;background:color-mix(in srgb,#34d399 10%,var(--panel))}
+  .dk-goal .ic{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+  .dk-goal.won .ic{color:#34d399;background:color-mix(in srgb,#34d399 18%,transparent)}
+  .dk-goal .tx{flex:1;min-width:0;font-size:.86rem;line-height:1.45}
+  .dk-goal .tx b{display:block;font-size:.92rem}
+  .dk-goal .st{display:block;margin-top:3px;font:500 .78rem var(--mono);color:var(--accent)}
+  .dk-goal.won .st{color:#34d399}
+  .dk-goal .hint{display:none;margin-top:4px;color:var(--muted)}
+  .dk-goal .hint.show{display:block}
+  .dk-goal .acts{display:flex;gap:6px;flex-wrap:wrap;flex:none}
+  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.93);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap.show{display:block}
+  .dk-cap.fixed{position:fixed;bottom:12px}
+  .dk-cap .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;row-gap:4px}
+  .dk-cap .n{min-width:150px}
+  .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
+  .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
+  .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
+  .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem}
+  .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
+  @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  .dk-scen{margin:18px 0 6px;scroll-margin-top:calc(var(--hdr,64px) + 10px)}
+  .dk-scen h3 .ct{margin-left:auto;font:500 .74rem var(--mono);color:var(--dim)}
+  .dk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:8px}
+  .dk-card{display:flex;flex-direction:column;gap:6px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+  .dk-card.on{border-color:var(--accent)}
+  .dk-card.done{border-color:color-mix(in srgb,#34d399 55%,var(--line))}
+  .dk-card .top{display:flex;align-items:center;gap:8px}
+  .dk-card .top b{flex:1;font-size:.93rem;line-height:1.3}
+  .dk-card .where{font:500 .7rem var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  .dk-card p{margin:0;font-size:.84rem;color:var(--muted);line-height:1.45;flex:1}
+  .dk-card .ok{color:#34d399;display:none}
+  .dk-card.done .ok{display:inline-flex}
+  .dk-card .ok svg{width:17px;height:17px}
+  .dk-card .btn{align-self:flex-start}
+  @media (max-width:520px){.dk-cap .row{flex-wrap:wrap;row-gap:4px}.dk-cap .n{flex-basis:100%}.dk-bar .dk-keys{display:none}.dk-cap{bottom:8px}.dk-cap p{font-size:.86rem}.dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}}
+  .dk-cap.over{position:fixed;z-index:360;bottom:14px}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}`;
+  const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+  const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+  const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
+
+  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  function bar(before) {
+    let b = document.querySelector('.dk-bar'); if (b) return b;
+    b = document.createElement('div'); b.className = 'dk-bar';
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
+  }
+
+  const DemoKit = { bar };
+  /** add page shortcuts to the hint, e.g. '<kbd>1</kbd>–<kbd>5</kbd> modes' */
+  DemoKit.keys = html => { const k = document.querySelector('.dk-keys'); if (k) k.innerHTML = html + ' · ' + k.innerHTML; };
+  /** demo({before, stage, steps:[{cap, run(api), ms, hl}], save(), restore(snap), onStop?}) */
+  DemoKit.demo = function (o) {
+    const b = bar(o.before), btn = b.querySelector('#dkPlay');
+    const stage = $(o.stage); if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
+    const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
+    (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let run = null; // {abort, stepMode, nextRes}
+    const D = { running: () => !!run };
+    function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
+    function hl(sel) { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); if (sel) { const e = $(sel); if (e) e.classList.add('dk-hl'); } }
+    const ABORT = { abort: true };
+    function api(r) {
+      const chk = () => { if (r.abort) throw ABORT; };
+      const sleep = ms => new Promise((res, rej) => { const t0 = performance.now(); const tick = () => { if (r.abort) return rej(ABORT); if (performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tick); }; tick(); });
+      const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+      return {
+        sleep, chk,
+        set(sel, v) { chk(); const el = $(sel); if (!el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; fire(el, 'input'); fire(el, 'change'); },
+        async slide(sel, to, ms) { const el = $(sel); if (!el) return; const a = +el.value, n = Math.max(1, Math.round((ms || 1200) / 60)); const stp = +el.step || 0; for (let i = 1; i <= n; i++) { chk(); let v = a + (to - a) * i / n; if (stp) v = Math.round(v / stp) * stp; el.value = v; fire(el, 'input'); await sleep((ms || 1200) / n); } el.value = to; fire(el, 'input'); fire(el, 'change'); },
+        click(sel) { chk(); const el = $(sel); if (el) el.click(); },
+        async until(fn, ms) { const t0 = performance.now(); while (!fn()) { if (performance.now() - t0 > (ms || 10000)) return false; await sleep(120); } return true; },
+        hl
+      };
+    }
+    async function start() {
+      if (run) return stop(true);
+      if (DemoKit._scen && DemoKit._scen.active()) DemoKit._scen.quit(true);
+      let snap = null; try { snap = o.save ? o.save() : null; } catch (e) {}
+      const r = run = { abort: false, stepMode: reduce, snap };
+      btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); setMode();
+      if (o.onStart) try { o.onStart(); } catch (e) {}
+      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
+      if (stage.getBoundingClientRect().top < 0 || stage.getBoundingClientRect().bottom > innerHeight) stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' });
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const st = steps[i]; if (r.abort) throw ABORT;
+          cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          if (st.run) await st.run(A);
+          if (r.abort) throw ABORT;
+          pg.style.width = ((i + 1) / steps.length * 100) + '%';
+          const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
+          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+          r.nextRes = null;
+        }
+        end(true);
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+    }
+    function end(restore, msg) {
+      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
+      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
+      if (o.onStop) try { o.onStop(); } catch (e) {}
+      SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+    }
+    function stop(restore) { end(restore !== false, restore === false ? null : 'Demo stopped. Your settings are back as they were.'); }
+    D.stop = stop; D.start = start;
+    btn.onclick = start;
+    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
+    // the student takes over: any trusted interaction with the lab outside the caption ends the demo where it is
+    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .dk-bar')) end(false); }, true);
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (run && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); stop(true); }
+      else if (run && e.key === 'ArrowRight' && run.nextRes) { e.preventDefault(); run.nextRes(); }
+      else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); start(); }
+    }, true);
+    DemoKit._demo = D; return D;
+  };
+
+  /** scenarios({before, mount, key, list:[{id, title, where, goal, success, hint, setup(), check()->bool, status()->html}], onQuit}) */
+  DemoKit.scenarios = function (o) {
+    const b = bar(o.before), goal = b.querySelector('#dkGoal');
+    const sec = document.createElement('section'); sec.className = 'panel dk-scen'; sec.id = 'dkScen';
+    let done = {}; try { done = JSON.parse(localStorage.getItem(o.key) || '{}') || {}; } catch (e) { done = {}; }
+    const save = () => { try { localStorage.setItem(o.key, JSON.stringify(done)); } catch (e) {} };
+    const ct = () => `${o.list.filter(s => done[s.id]).length}/${o.list.length} achieved`;
+    sec.innerHTML = `<h3><i data-lucide="map-pinned"></i> Scenarios: real-world goals <span class="ct"></span></h3><p class="small muted" style="margin:0">Each scenario sets up the lab, states the goal and checks it live. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
+    const m = $(o.mount); if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
+    let act = null, timer = 0;
+    function paint() { sec.querySelector('.ct').textContent = ct(); sec.querySelectorAll('.dk-card').forEach(c => { c.classList.toggle('done', !!done[c.dataset.id]); c.classList.toggle('on', !!act && act.s.id === c.dataset.id); const bt = c.querySelector('[data-go]'); bt.innerHTML = act && act.s.id === c.dataset.id ? '<i data-lucide="rotate-ccw"></i> Restart' : done[c.dataset.id] ? '<i data-lucide="repeat"></i> Play again' : '<i data-lucide="play"></i> Start'; }); icons(sec); }
+    function banner() {
+      if (!act) { goal.classList.remove('show', 'won'); goal.innerHTML = ''; return; }
+      const s = act.s; goal.classList.add('show'); goal.classList.toggle('won', act.won);
+      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the scenario up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
+      icons(goal); tick();
+    }
+    function tick() {
+      if (!act) return; const s = act.s; let st = '';
+      try { st = s.status ? s.status() : ''; } catch (e) {}
+      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
+    }
+    function startS(id) {
+      const s = o.list.find(x => x.id === id); if (!s) return;
+      if (DemoKit._demo && DemoKit._demo.running()) DemoKit._demo.stop(false);
+      if (act && act.s.quit) try { act.s.quit(); } catch (e) {}
+      act = { s, won: false, t0: performance.now() }; try { s.setup(); } catch (e) { console.warn(e); }
+      clearInterval(timer); timer = setInterval(tick, 300); paint(); banner();
+      const lab = o.scrollTo ? $(o.scrollTo) : b; if (lab) lab.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }
+    function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
+    sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
+    goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
+    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
+    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
+    paint();
+    const API = { active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
+    DemoKit._scen = API; return API;
+  };
+  window.DemoKit = DemoKit;
+})();
+</script>
+<script>
 (() => {
 'use strict';
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const clamp = SL.clamp;
 const chDone = {};
-function done(id, msg) { if (chDone[id]) return; chDone[id] = true; const el = document.getElementById(id); if (el) el.classList.add('on'); SL.toast('Challenge complete: ' + msg, 'ok', 5000); }
+function done(id, msg) { if (chDone[id] || (window.DemoKit && DemoKit._demo && DemoKit._demo.running())) return; chDone[id] = true; const el = document.getElementById(id); if (el) el.classList.add('on'); SL.toast('Challenge complete: ' + msg, 'ok', 5000); }
 
 /* ---------- small plotting helper ---------- */
 function niceStep(range, n) { const raw = range / n, p = Math.pow(10, Math.floor(Math.log10(raw || 1))), f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
@@ -1054,10 +1237,95 @@ SL.quiz('#quiz', [
 
 newQuake(); dirty.mag = true;
 loops.int.start();
+/* ==DEMOPASS== */
+/* ===================== WATCH DEMO, SCENARIOS, SHORTCUTS ===================== */
+const DK = window.DemoKit;
+const demoOn = () => DK && DK._demo && DK._demo.running();
+const STAGE_OF = { int: '#eStage', loc: '.locgrid', mag: '.stage.nomo', bld: '.stage.bld' };
+$('.locgrid').style.position = 'relative';
+// on phones the locate lab stacks map and seismograms, so its caption is pinned to the bottom of the screen instead
+const capTo = m => { const cap = $('.dk-cap'), st = m === 'loc' && innerWidth < 760 ? document.body : $(STAGE_OF[m]); if (!cap || !st) return; cap.classList.toggle('fixed', st === document.body); if (cap.parentNode !== st) st.appendChild(cap); };
+$$('#modeSeg button').forEach(b => b.addEventListener('click', () => capTo(b.dataset.mode)));
+const goMode = m => { const b = $(`#modeSeg [data-mode="${m}"]`); if (b && mode !== m) b.click(); capTo(m); };
+const setR = (id, v) => { const el = $(id); el.value = v; el.dispatchEvent(new Event('input')); };
+const seg = (id, v) => { const b = $(`#${id} [data-v="${v}"]`); if (b && !b.classList.contains('on')) b.click(); };
+const nPicked = () => STA.filter(s => picks[s.id] && picks[s.id].P != null && picks[s.id].S != null).length;
+const mlMean = () => { const m = STA.map(s => { const p = picks[s.id] || {}, A = ampIn[s.id], dt = p.P != null && p.S != null ? p.S - p.P : null; return dt > 0 && A > 0 ? Math.log10(A) + 3 * Math.log10(8 * dt) - 2.92 : null; }); return m.every(v => v != null) ? m.reduce((a, b) => a + b, 0) / 3 : null; };
+// a mystery quake at a named place (mystery mode, picks cleared)
+function quakeAt(lon, lat, M) { if (locMode !== 'mystery') seg('locMode', 'mystery'); if (Q) Q.M = M; newQuake(km(lon, lat)); Q.h = 5 + rq() * 8; Q.M = M; }
+let lastCheck = null;
+{ const orig = $('#checkBtn').onclick; $('#checkBtn').onclick = () => { orig(); if (guess && Q) lastCheck = { Q, err: Math.hypot(guess[0] - Q.x, guess[1] - Q.y), n: nPicked(), revealed, ml: mlMean() }; }; }
+const snapState = () => ({ mode, src, station, waveT, wavePlay, Q, traces: Object.assign({}, traces), picks: JSON.parse(JSON.stringify(picks)), guess: guess && guess.slice(), revealed, ampIn: Object.assign({}, ampIn), locMode, hud: $('#mHud').textContent, err: $('#locErr').innerHTML, m1: $('#m1').value, m2: $('#m2').value, gm, prot, gf: $('#gf').value, pga: $('#pga').value, zeta: $('#zeta').value, site: $('#site').value });
+function restoreState(o) {
+  src = o.src; station = o.station; waveT = o.waveT; wavePlay = o.wavePlay; setEPlay(); setR('#tScrub', o.waveT); dirty.int = true;
+  locMode = o.locMode; $$('#locMode button').forEach(x => x.classList.toggle('on', x.dataset.v === locMode));
+  Q = o.Q; traces = o.traces; picks = o.picks; guess = o.guess; revealed = o.revealed; ampIn = o.ampIn; renderTable(); $('#mHud').textContent = o.hud; $('#locErr').innerHTML = o.err; dirty.loc = true;
+  setR('#m1', o.m1); setR('#m2', o.m2);
+  seg('gmType', o.gm); $('#site').value = o.site; setR('#gf', o.gf); setR('#pga', o.pga); setR('#zeta', o.zeta); seg('prot', o.prot); sweep = null; resetBld();
+  goMode(o.mode);
+}
+if (DK) {
+  DK.demo({
+    before: '.labbar', stage: '#eStage', save: snapState, restore: restoreState,
+    steps: [
+      { cap: 'An earthquake (red star) sends seismic rays through the planet. <b>P waves</b> (blue) are compressional and fastest; <b>S waves</b> (pink) shear the rock and arrive later.', hl: '#ePlay',
+        run: async A => { goMode('int'); waveT = 0; wavePlay = true; setEPlay(); }, ms: 6000 },
+      { cap: 'Move the seismometer 120° away: no direct P or S arrives. The liquid outer core bends P waves away and stops S waves completely, leaving a <b>shadow zone</b>.', hl: '#seisPanel',
+        run: async A => { station = Math.atan2(Math.sin(src + 2.09), Math.cos(src + 2.09)); dirty.int = true; waveT = 0; wavePlay = true; setEPlay(); }, ms: 5400 },
+      { cap: 'Now a <b>Rift Valley tremor</b> near Lake Naivasha. Seismometers at Nairobi, Nakuru and Narok record it. On each trace the small P arrival comes first, then the larger S wave.',
+        run: async A => { goMode('loc'); quakeAt(36.42, -0.86, 3.8); }, ms: 4600 },
+      { cap: 'Pick P and S on every trace. The delay S − P grows with distance (d ≈ 8.2 km/s × Δt), so each pair draws a circle of possible epicentres around its station.', hl: '#stTable',
+        run: async A => { for (let i = 0; i < 3; i++) { const tr = traces[STA[i].id]; pickAt(i, tr.tp + 0.05); await A.sleep(450); pickAt(i, tr.ts + 0.05); await A.sleep(650); } }, ms: 3400 },
+      { cap: 'Three circles meet at one point: the <b>epicentre</b>. Mark it and check against the true location; this is how seismologists locate tremors every day.',
+        run: async A => { guess = [Q.x + 2.5, Q.y - 2]; dirty.loc = true; await A.sleep(600); $('#checkBtn').click(); await A.sleep(900); $('#revealBtn').click(); }, ms: 4600 },
+      { cap: '<b>Magnitude is logarithmic.</b> The 1928 Subukia earthquake (about M 6.9) released roughly 700 times the energy of an M 5 tremor: ×32 for every whole step.', hl: '#eRat',
+        run: async A => { goMode('mag'); setR('#m1', 5); setR('#m2', 6.9); }, ms: 5000 },
+      { cap: '<b>Resonance.</b> Shaking at 0.5 Hz (a 2 s period) matches the natural period of the 20-storey tower, so it sways far more than its neighbours. Try a scenario next.',
+        run: async A => { goMode('bld'); seg('gmType', 'sine'); seg('prot', 'fixed'); setR('#pga', 0.2); setR('#zeta', 0.05); setR('#gf', Math.log10(0.5)); sweep = null; resetBld(); }, ms: 7000 },
+    ]
+  });
+
+  const locStatus = () => { const n = nPicked(); if (n < 3) return `${n}/3 stations picked`; if (!guess) return 'All picks done: tap the map where the circles meet, then Check.'; if (!lastCheck || lastCheck.Q !== Q) return 'Press Check epicentre.'; return `Last check: ${SL.fmt(lastCheck.err, 1)} km off${lastCheck.ml != null ? ` · your M<sub>L</sub> ${lastCheck.ml.toFixed(2)}` : ''}${lastCheck.revealed ? ' (revealed, does not count)' : ''}`; };
+  DK.scenarios({
+    before: '.labbar', mount: '.tabs', key: 'sl-earthquake-scen',
+    intro: 'Rift Valley tremors are common: these use the real geometry of the central Kenya Rift.',
+    list: [
+      { id: 'naivasha', where: 'Lake Naivasha · Longonot', title: 'Locate a tremor near Longonot', goal: 'Residents around Lake Naivasha felt a small tremor. Pick P and S on all three seismograms and pin down the epicentre to within 10 km, without revealing it.', success: 'Your own picks on 3 stations, epicentre within 10 km.', hint: 'P is the first small wiggle after the quiet line; S is the larger, slower arrival after it. Picking S half a second late moves its circle about 4 km.',
+        setup: () => { goMode('loc'); quakeAt(36.47, -0.93, 3.6); lastCheck = null; },
+        check: () => !!(lastCheck && lastCheck.Q === Q && !lastCheck.revealed && lastCheck.n === 3 && lastCheck.err <= 10),
+        status: locStatus },
+      { id: 'bogoria', where: 'Lake Bogoria', title: 'Size a swarm earthquake at Bogoria', goal: 'Lake Bogoria sits on an active part of the Rift and has swarms of small earthquakes. Locate this one within 15 km and measure its local magnitude to within 0.3 using the peak S amplitudes.', success: 'Epicentre within 15 km and mean M<sub>L</sub> within 0.3 of the true value, checked together.', hint: 'Hover over each trace to read the largest S-wave swing in mm, type it into the A (mm) column, then press Check.',
+        setup: () => { goMode('loc'); quakeAt(36.12, 0.28, 4.3); lastCheck = null; },
+        check: () => !!(lastCheck && lastCheck.Q === Q && !lastCheck.revealed && lastCheck.n === 3 && lastCheck.err <= 15 && lastCheck.ml != null && Math.abs(lastCheck.ml - Q.M) <= 0.3),
+        status: locStatus },
+      { id: 'subukia', where: 'Subukia, 1928', title: 'How many small tremors make a Subukia?', goal: 'The 1928 Subukia earthquake was about M 6.9. Find the magnitude of a tremor that releases exactly one thousandth of its energy.', success: 'Earthquake B = 6.9 and the energy ratio B : A is 1000 (± 10%).', hint: 'Energy grows ×10<sup>1.5</sup> ≈ 32 per magnitude step. How many steps give 1000?',
+        setup: () => { goMode('mag'); setR('#m1', 6); setR('#m2', 6.9); },
+        check: () => { const a = +$('#m1').value, b = +$('#m2').value, r = Math.pow(10, 1.5 * (b - a)); return mode === 'mag' && Math.abs(b - 6.9) < 1e-6 && r >= 900 && r <= 1100; },
+        status: () => `A = M ${(+$('#m1').value).toFixed(1)} · B = M ${(+$('#m2').value).toFixed(1)} · energy ratio ${SL.fmt(Math.pow(10, 1.5 * ($('#m2').value - $('#m1').value)), 0)}`,
+        wonText: 'M 4.9: it takes about a thousand such tremors to release the energy of one Subukia.' },
+      { id: 'nakuru', where: 'Nakuru · tall buildings', title: 'Protect Nakuru’s new tower', goal: 'Steady 0.5 Hz shaking at 0.2 g (a 2 s period) puts the 20-storey tower into resonance. Choose protection and damping so that every building stays below 0.5% storey drift.', success: 'After 10 s of shaking at 0.5 Hz and 0.2 g, all five buildings below 0.5% drift.', hint: 'Base isolation shifts the period; a tuned mass damper absorbs energy near resonance. Extra structural damping also helps. Each change restarts the shaking.',
+        setup: () => { goMode('bld'); seg('gmType', 'sine'); seg('prot', 'fixed'); setR('#pga', 0.2); setR('#zeta', 0.05); setR('#gf', Math.log10(0.5)); sweep = null; resetBld(); },
+        check: () => mode === 'bld' && gm === 'sine' && Math.abs(freq() - 0.5) < 0.02 && Math.abs(+$('#pga').value - 0.2) < 0.005 && bt > 10 && !sweep && bld.every(b => driftRatio(b) < 0.005),
+        status: () => `Peak drift: ${bld.map(b => `${b.n}F ${(driftRatio(b) * 100).toFixed(2)}%`).join(' · ')} · ${bt > 10 ? '' : `settling ${SL.fmt(Math.max(0, 10 - bt), 0)} s`}` },
+    ]
+  });
+  DK.keys('<kbd>1</kbd>–<kbd>4</kbd> labs · <kbd>W</kbd> release waves');
+}
+document.addEventListener('keydown', e => {
+  const t = e.target; if (e.ctrlKey || e.metaKey || e.altKey || (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !/range|checkbox/.test(t.type)))) return;
+  if (document.querySelector('.sl-tour, .modal.show') || (t && t.tagName === 'CANVAS')) return;
+  const k = e.key.toLowerCase();
+  if (/^[1-4]$/.test(k)) { goMode(['int', 'loc', 'mag', 'bld'][+k - 1]); e.preventDefault(); }
+  else if (k === 'w' && mode === 'int') { $('#ePlay').click(); e.preventDefault(); }
+});
+setInterval(() => { if (!demoOn() && !(DK && DK._scen && DK._scen.active())) try { localStorage.setItem('sl-earthquake-last', JSON.stringify({ mode })); } catch (e) {} }, 1500);
+try { const o = JSON.parse(localStorage.getItem('sl-earthquake-last') || 'null'); if (o && STAGE_OF[o.mode] && o.mode !== 'int') goMode(o.mode); } catch (e) {}
+/* ==/DEMOPASS== */
   // guided tour (registered after SimLab mounts the hero; each target is scrolled into view instantly so the tip lands in the right place)
   const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
   tourGo([
     { el: '#eStage', before: () => document.querySelector('#modeSeg [data-mode=int]').click(), title: 'Inside the Earth', text: 'Seismic rays fan out from the red star through the mantle and core. Drag the star to move the earthquake; tap the surface to move the white seismometer, or inside the planet to read a layer. Release the waves and the strip below records its seismogram.' },
+    { el: '#dkPlay', title: 'Watch a demo', text: 'Short on time? Press <b>Watch demo</b> (or the D key) for a guided run-through of the key ideas with captions. Stop it at any time; your settings come back afterwards. <b>Scenarios</b> (S) sets real-world goals.' },
     { el: '#ePlay', title: 'Release the waves', text: 'Watch P waves (blue) race ahead of S waves (pink). S waves stop at the liquid outer core.' },
     { el: '#seisPanel', title: 'Read the seismometer', text: 'Distance, first P and S arrivals and the S − P delay at your station. The note explains what the reading tells us about the interior.' },
     { el: '#ttBox', title: 'Travel-time curves', text: 'Arrival time against distance for every ray, with the shadow zone shaded. The dashed line marks your station.' },

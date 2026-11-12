@@ -265,12 +265,195 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=13"></script>
 <script>
+/* Watch-demo runner and goal-based scenarios (page-local kit) */
+(function () {
+  if (window.DemoKit) return;
+  const css = `
+  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
+  .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .dk-bar .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto}
+  .dk-bar .dk-keys kbd{font-size:.72rem}
+  .dk-goal{flex-basis:100%;display:none;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;padding:10px 12px}
+  .dk-goal.show{display:flex}
+  .dk-goal.won{border-color:#34d399;background:color-mix(in srgb,#34d399 10%,var(--panel))}
+  .dk-goal .ic{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+  .dk-goal.won .ic{color:#34d399;background:color-mix(in srgb,#34d399 18%,transparent)}
+  .dk-goal .tx{flex:1;min-width:0;font-size:.86rem;line-height:1.45}
+  .dk-goal .tx b{display:block;font-size:.92rem}
+  .dk-goal .st{display:block;margin-top:3px;font:500 .78rem var(--mono);color:var(--accent)}
+  .dk-goal.won .st{color:#34d399}
+  .dk-goal .hint{display:none;margin-top:4px;color:var(--muted)}
+  .dk-goal .hint.show{display:block}
+  .dk-goal .acts{display:flex;gap:6px;flex-wrap:wrap;flex:none}
+  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.93);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap.show{display:block}
+  .dk-cap.fixed{position:fixed;bottom:12px}
+  .dk-cap .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;row-gap:4px}
+  .dk-cap .n{min-width:150px}
+  .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
+  .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
+  .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
+  .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem}
+  .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
+  @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  .dk-scen{margin:18px 0 6px;scroll-margin-top:calc(var(--hdr,64px) + 10px)}
+  .dk-scen h3 .ct{margin-left:auto;font:500 .74rem var(--mono);color:var(--dim)}
+  .dk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:8px}
+  .dk-card{display:flex;flex-direction:column;gap:6px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+  .dk-card.on{border-color:var(--accent)}
+  .dk-card.done{border-color:color-mix(in srgb,#34d399 55%,var(--line))}
+  .dk-card .top{display:flex;align-items:center;gap:8px}
+  .dk-card .top b{flex:1;font-size:.93rem;line-height:1.3}
+  .dk-card .where{font:500 .7rem var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  .dk-card p{margin:0;font-size:.84rem;color:var(--muted);line-height:1.45;flex:1}
+  .dk-card .ok{color:#34d399;display:none}
+  .dk-card.done .ok{display:inline-flex}
+  .dk-card .ok svg{width:17px;height:17px}
+  .dk-card .btn{align-self:flex-start}
+  @media (max-width:520px){.dk-cap .row{flex-wrap:wrap;row-gap:4px}.dk-cap .n{flex-basis:100%}.dk-bar .dk-keys{display:none}.dk-cap{bottom:8px}.dk-cap p{font-size:.86rem}.dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}}
+  .dk-cap.over{position:fixed;z-index:360;bottom:14px}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}`;
+  const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+  const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+  const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
+
+  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  function bar(before) {
+    let b = document.querySelector('.dk-bar'); if (b) return b;
+    b = document.createElement('div'); b.className = 'dk-bar';
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
+  }
+
+  const DemoKit = { bar };
+  /** add page shortcuts to the hint, e.g. '<kbd>1</kbd>–<kbd>5</kbd> modes' */
+  DemoKit.keys = html => { const k = document.querySelector('.dk-keys'); if (k) k.innerHTML = html + ' · ' + k.innerHTML; };
+  /** demo({before, stage, steps:[{cap, run(api), ms, hl}], save(), restore(snap), onStop?}) */
+  DemoKit.demo = function (o) {
+    const b = bar(o.before), btn = b.querySelector('#dkPlay');
+    const stage = $(o.stage); if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
+    const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
+    (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let run = null; // {abort, stepMode, nextRes}
+    const D = { running: () => !!run };
+    function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
+    function hl(sel) { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); if (sel) { const e = $(sel); if (e) e.classList.add('dk-hl'); } }
+    const ABORT = { abort: true };
+    function api(r) {
+      const chk = () => { if (r.abort) throw ABORT; };
+      const sleep = ms => new Promise((res, rej) => { const t0 = performance.now(); const tick = () => { if (r.abort) return rej(ABORT); if (performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tick); }; tick(); });
+      const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+      return {
+        sleep, chk,
+        set(sel, v) { chk(); const el = $(sel); if (!el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; fire(el, 'input'); fire(el, 'change'); },
+        async slide(sel, to, ms) { const el = $(sel); if (!el) return; const a = +el.value, n = Math.max(1, Math.round((ms || 1200) / 60)); const stp = +el.step || 0; for (let i = 1; i <= n; i++) { chk(); let v = a + (to - a) * i / n; if (stp) v = Math.round(v / stp) * stp; el.value = v; fire(el, 'input'); await sleep((ms || 1200) / n); } el.value = to; fire(el, 'input'); fire(el, 'change'); },
+        click(sel) { chk(); const el = $(sel); if (el) el.click(); },
+        async until(fn, ms) { const t0 = performance.now(); while (!fn()) { if (performance.now() - t0 > (ms || 10000)) return false; await sleep(120); } return true; },
+        hl
+      };
+    }
+    async function start() {
+      if (run) return stop(true);
+      if (DemoKit._scen && DemoKit._scen.active()) DemoKit._scen.quit(true);
+      let snap = null; try { snap = o.save ? o.save() : null; } catch (e) {}
+      const r = run = { abort: false, stepMode: reduce, snap };
+      btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); setMode();
+      if (o.onStart) try { o.onStart(); } catch (e) {}
+      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
+      if (stage.getBoundingClientRect().top < 0 || stage.getBoundingClientRect().bottom > innerHeight) stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' });
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const st = steps[i]; if (r.abort) throw ABORT;
+          cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          if (st.run) await st.run(A);
+          if (r.abort) throw ABORT;
+          pg.style.width = ((i + 1) / steps.length * 100) + '%';
+          const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
+          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+          r.nextRes = null;
+        }
+        end(true);
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+    }
+    function end(restore, msg) {
+      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
+      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
+      if (o.onStop) try { o.onStop(); } catch (e) {}
+      SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+    }
+    function stop(restore) { end(restore !== false, restore === false ? null : 'Demo stopped. Your settings are back as they were.'); }
+    D.stop = stop; D.start = start;
+    btn.onclick = start;
+    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
+    // the student takes over: any trusted interaction with the lab outside the caption ends the demo where it is
+    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .dk-bar')) end(false); }, true);
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (run && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); stop(true); }
+      else if (run && e.key === 'ArrowRight' && run.nextRes) { e.preventDefault(); run.nextRes(); }
+      else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); start(); }
+    }, true);
+    DemoKit._demo = D; return D;
+  };
+
+  /** scenarios({before, mount, key, list:[{id, title, where, goal, success, hint, setup(), check()->bool, status()->html}], onQuit}) */
+  DemoKit.scenarios = function (o) {
+    const b = bar(o.before), goal = b.querySelector('#dkGoal');
+    const sec = document.createElement('section'); sec.className = 'panel dk-scen'; sec.id = 'dkScen';
+    let done = {}; try { done = JSON.parse(localStorage.getItem(o.key) || '{}') || {}; } catch (e) { done = {}; }
+    const save = () => { try { localStorage.setItem(o.key, JSON.stringify(done)); } catch (e) {} };
+    const ct = () => `${o.list.filter(s => done[s.id]).length}/${o.list.length} achieved`;
+    sec.innerHTML = `<h3><i data-lucide="map-pinned"></i> Scenarios: real-world goals <span class="ct"></span></h3><p class="small muted" style="margin:0">Each scenario sets up the lab, states the goal and checks it live. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
+    const m = $(o.mount); if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
+    let act = null, timer = 0;
+    function paint() { sec.querySelector('.ct').textContent = ct(); sec.querySelectorAll('.dk-card').forEach(c => { c.classList.toggle('done', !!done[c.dataset.id]); c.classList.toggle('on', !!act && act.s.id === c.dataset.id); const bt = c.querySelector('[data-go]'); bt.innerHTML = act && act.s.id === c.dataset.id ? '<i data-lucide="rotate-ccw"></i> Restart' : done[c.dataset.id] ? '<i data-lucide="repeat"></i> Play again' : '<i data-lucide="play"></i> Start'; }); icons(sec); }
+    function banner() {
+      if (!act) { goal.classList.remove('show', 'won'); goal.innerHTML = ''; return; }
+      const s = act.s; goal.classList.add('show'); goal.classList.toggle('won', act.won);
+      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the scenario up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
+      icons(goal); tick();
+    }
+    function tick() {
+      if (!act) return; const s = act.s; let st = '';
+      try { st = s.status ? s.status() : ''; } catch (e) {}
+      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
+    }
+    function startS(id) {
+      const s = o.list.find(x => x.id === id); if (!s) return;
+      if (DemoKit._demo && DemoKit._demo.running()) DemoKit._demo.stop(false);
+      if (act && act.s.quit) try { act.s.quit(); } catch (e) {}
+      act = { s, won: false, t0: performance.now() }; try { s.setup(); } catch (e) { console.warn(e); }
+      clearInterval(timer); timer = setInterval(tick, 300); paint(); banner();
+      const lab = o.scrollTo ? $(o.scrollTo) : b; if (lab) lab.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }
+    function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
+    sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
+    goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
+    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
+    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
+    paint();
+    const API = { active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
+    DemoKit._scen = API; return API;
+  };
+  window.DemoKit = DemoKit;
+})();
+</script>
+<script>
 (() => {
 'use strict';
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const clamp = SL.clamp, lerp = SL.lerp;
 const chDone = {};
-function done(id, msg) { if (chDone[id]) return; chDone[id] = true; const el = document.getElementById(id); if (el) el.classList.add('on'); SL.toast('Challenge complete: ' + msg, 'ok', 5000); }
+function done(id, msg) { if (chDone[id] || (window.DemoKit && DemoKit._demo && DemoKit._demo.running())) return; chDone[id] = true; const el = document.getElementById(id); if (el) el.classList.add('on'); SL.toast('Challenge complete: ' + msg, 'ok', 5000); }
 
 /* ---------- small plotting helper ---------- */
 function niceStep(range, n) { const raw = range / n, p = Math.pow(10, Math.floor(Math.log10(raw || 1))), f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
@@ -503,7 +686,7 @@ function finish() {
   const nudge = [];
   if (!chDone.ch1 && cfg.crop === 'maize' && cfg.scen === 'drought' && cfg.plant === 73 && noIrr && R.Y < 2.8) nudge.push(`Beat the drought: ${SL.fmt(R.Y, 2)} of 2.8 t/ha. Combine several options (variety, mulch, tillage, nitrogen) and run again.`);
   if (!chDone.ch2 && cfg.crop === 'maize' && R.WP < 1.4) nudge.push(`Water productivity: ${SL.fmt(R.WP, 2)} of 1.4 kg/m³. More grain per mm of water used (less stress, enough nitrogen, mulch) raises it.`);
-  if (nudge.length) setTimeout(() => SL.toast(nudge.join('<br>'), 'warn', 7000), 600);
+  if (nudge.length && !(window.DemoKit && DemoKit._demo && DemoKit._demo.running())) setTimeout(() => SL.toast(nudge.join('<br>'), 'warn', 7000), 600);
   if (cfg.crop === 'tomato' && R.profit / cfg.acres >= 250000) done('ch3', `${kes(R.profit / cfg.acres)} profit per acre of tomatoes.`);
   if (cfg.site === 'machakos' && cfg.scen === 'drought' && cu.stress < 5 && cu.Ig < 250) done('ch4', `only ${cu.stress} stress days with ${SL.fmt(cu.Ig, 0)} mm of irrigation.`);
 }
@@ -791,10 +974,93 @@ loop.start();
 let inView = true; const syncLoop = () => (document.hidden || !inView) ? loop.stop() : loop.start();
 document.addEventListener('visibilitychange', syncLoop);
 if ('IntersectionObserver' in window) new IntersectionObserver(es => { inView = es[es.length - 1].isIntersecting; syncLoop(); }, { rootMargin: '200px' }).observe(document.querySelector('section.lab'));
+/* ==DEMOPASS== */
+/* ===================== WATCH DEMO, SCENARIOS, SHORTCUTS ===================== */
+const DK = window.DemoKit;
+const demoOn = () => DK && DK._demo && DK._demo.running();
+const PLAN_KEYS = ['crop', 'dt', 'site', 'plant', 'scen', 'soil', 'method', 'strat', 'allow', 'N', 'ipm', 'mulch', 'ctill', 'pan', 'acres', 'seed'];
+const segSet = (id, v) => $$(`#${id} button`).forEach(x => x.classList.toggle('on', x.dataset.v === v));
+// put a full plan into the controls and start a fresh season (one restart, not one per control)
+function applyPlan(o) {
+  Object.assign(cfg, o);
+  ['crop', 'site', 'scen', 'soil'].forEach(id => $('#' + id).value = cfg[id]); $('#plant').value = String(cfg.plant);
+  ['dt', 'mulch', 'ctill', 'pan', 'ipm'].forEach(id => $('#' + id).checked = !!cfg[id]);
+  segSet('method', cfg.method); segSet('strat', cfg.strat);
+  const setR = (id, v) => { const el = $('#' + id); el.value = v; el.dispatchEvent(new Event('input')); };
+  acresReady = false; setR('acres', cfg.acres); acresReady = true; setR('allow', cfg.allow); setR('N', cfg.N);
+  newSeason();
+}
+const planOf = () => Object.fromEntries(PLAN_KEYS.map(k => [k, cfg[k]]));
+const BASE = { crop: 'maize', dt: false, site: 'machakos', plant: 73, scen: 'normal', soil: 'loam', method: 'none', strat: 'auto', allow: 300, N: 50, ipm: false, mulch: false, ctill: false, pan: false, acres: 1, seed: 3 };
+const closeModals = () => $$('.modal.show [data-close]').forEach(b => b.click());
+const capOver = on => { const c = $('.dk-cap'); if (c) c.classList.toggle('over', on); };
+const finishNow = () => { running = false; while (!F.st.done) stepDay(); setPlay(); };
+let lastCmp = null;
+const cmpKey = () => JSON.stringify(['crop', 'dt', 'site', 'plant', 'scen', 'soil', 'N', 'ipm', 'mulch', 'ctill', 'acres', 'seed'].map(k => cfg[k]));
+{ const orig = $('#cmpBtn').onclick; $('#cmpBtn').onclick = () => { orig(); const A = runSeason({ method: 'none', pan: false }), B = runSeason({ method: 'drip', strat: 'auto' }); lastCmp = { key: cmpKey(), best: A.R.profit >= B.R.profit ? 'none' : 'drip', gap: Math.abs(A.R.profit - B.R.profit) }; }; }
+if (DK) {
+  DK.demo({
+    before: 'section.lab', stage: '#fStage', save: planOf,
+    restore: o => { closeModals(); capOver(false); applyPlan(o); },
+    onStop: () => { capOver(false); },
+    steps: [
+      { cap: 'A maize plot near <b>Machakos</b>, planted on 15 March in a <b>drought year</b>, with no irrigation. The season starts: the crop grows while its roots reach deeper into the soil.', hl: '#planPanel',
+        run: async A => { closeModals(); applyPlan(Object.assign({}, BASE, { scen: 'drought', ipm: true })); await A.sleep(600); running = true; setPlay(); }, ms: 5200 },
+      { cap: 'The blue store in the soil gauge is plant-available water. Once the crop has used the <b>readily available</b> part (RAW), K<sub>s</sub> drops below 1 and the leaves yellow: <b>water stress</b>.', hl: '#fCap',
+        run: async A => { await A.until(() => F.st.cum.stress > 3 || F.st.done, 9000); }, ms: 3800 },
+      { cap: 'Jump to harvest. Every stressed day cut the water the crop could use (ETa / ETm), and yield falls with it: Y = Y<sub>m</sub>[1 − K<sub>y</sub>(1 − ETa/ETm)].',
+        run: async A => { finishNow(); await A.sleep(400); capOver(true); }, ms: 4600 },
+      { cap: 'Same drought, same weather, now with three climate-smart options: a <b>drought-tolerant variety</b>, <b>mulch</b> and <b>conservation tillage</b>. Less runoff and evaporation leaves more water for the crop.', hl: '#ctill',
+        run: async A => { closeModals(); capOver(false); applyPlan(Object.assign({}, BASE, { scen: 'drought', ipm: true, dt: true, mulch: true, ctill: true })); await A.sleep(1600); finishNow(); await A.sleep(400); capOver(true); }, ms: 5200 },
+      { cap: '<b>Compare rain-fed vs drip</b> runs the same season twice. Drip removes almost all stress, but the kit and pumping cost money: for maize the extra grain does not cover it here.', hl: '#cmpBtn',
+        run: async A => { closeModals(); capOver(false); await A.sleep(300); $('#cmpBtn').click(); capOver(true); }, ms: 5600 },
+      { cap: 'High-value <b>tomatoes</b> are different: with drip, the harvest is worth far more than the water. Try the scenarios below to plan seasons for Machakos, Mwea and Kitui.',
+        run: async A => { closeModals(); capOver(false); applyPlan(Object.assign({}, BASE, { crop: 'tomato', plant: 273, ipm: true })); await A.sleep(300); $('#cmpBtn').click(); capOver(true); }, ms: 5600 },
+    ]
+  });
+
+  const R = () => F && F.st.done ? F.report() : null;
+  const live = () => { const pr = projected(); return F && F.st.day ? `Day ${F.st.day}/${F.Ltot} · projected ${pr ? SL.fmt(pr.Y, 2) : '–'} t/ha · ${F.st.cum.stress} stress days · ${SL.fmt(F.st.cum.Ig, 0)} mm irrigation` : 'Press Plant & run (or F to jump to harvest).'; };
+  DK.scenarios({
+    before: 'section.lab', mount: '.tabs', key: 'sl-farm-scen',
+    intro: 'Each sets the plan and the weather; you choose the options, run the season and the goal is checked at harvest.',
+    list: [
+      { id: 'machakos', where: 'Machakos · drought year', title: 'Save a maize harvest without irrigation', goal: 'The long rains fail. Grow rain-fed maize planted on 15 March with no pump and no water pan, yet harvest at least 3.5 t/ha with fewer than 45 water-stress days.', success: 'Rain-fed, ≥ 3.5 t/ha and < 45 stress days at harvest.', hint: 'Try one change at a time: a drought-tolerant variety, mulch, conservation tillage. Keep nitrogen at 50 kg/ha or more, and spray quickly if fall armyworm appears.',
+        setup: () => applyPlan(Object.assign({}, BASE, { scen: 'drought' })),
+        check: () => { const r = R(); return r && cfg.crop === 'maize' && cfg.scen === 'drought' && cfg.plant === 73 && cfg.method === 'none' && !cfg.pan && r.Y >= 3.5 && F.st.cum.stress < 45; },
+        status: () => R() ? `Harvest: ${SL.fmt(R().Y, 2)} t/ha with ${F.st.cum.stress} stress days` : live() },
+      { id: 'mwea', where: 'Mwea-style irrigated plot', title: 'Grow tomatoes for KES 350,000 an acre', goal: 'Tomatoes planted on 1 October, irrigated from a pumped allowance of at most 300 mm (modelled with the eastern semi-arid weather). Make at least KES 350,000 profit per acre.', success: 'Profit ≥ KES 350,000 per acre with ≤ 300 mm gross irrigation.', hint: 'Press Compare rain-fed vs drip first. Then add what protects a high-value crop: scouting for Tuta absoluta (IPM) and enough nitrogen.',
+        setup: () => applyPlan(Object.assign({}, BASE, { crop: 'tomato', plant: 273, method: 'furrow' })),
+        check: () => { const r = R(); return r && cfg.crop === 'tomato' && F.st.cum.Ig <= 300.5 && r.profit / cfg.acres >= 350000; },
+        status: () => R() ? `Profit ${kes(R().profit / cfg.acres)} per acre · ${SL.fmt(F.st.cum.Ig, 0)} mm irrigation` : live() },
+      { id: 'kitui', where: 'Kitui · La Niña short rains', title: 'Sorghum when the short rains fail', goal: 'La Niña usually weakens the October–December rains. Plant rain-fed sorghum in the short rains and still harvest at least 2.8 t/ha.', success: 'Rain-fed sorghum, La Niña year, ≥ 2.8 t/ha.', hint: 'Sorghum’s low K<sub>y</sub> already helps. Add a drought-tolerant variety, keep water in the soil with mulch and conservation tillage, and watch for quelea birds and stem borer: scout (IPM) or spray in time.',
+        setup: () => applyPlan(Object.assign({}, BASE, { crop: 'sorghum', plant: 287, scen: 'lanina' })),
+        check: () => { const r = R(); return r && cfg.crop === 'sorghum' && cfg.scen === 'lanina' && cfg.plant >= 273 && cfg.method === 'none' && !cfg.pan && r.Y >= 2.8; },
+        status: () => R() ? `Harvest: ${SL.fmt(R().Y, 2)} t/ha` : live() },
+      { id: 'dripq', where: 'Machakos · normal year', title: 'Does drip pay for maize?', goal: 'A dealer offers a drip kit for your maize. Use <b>Compare rain-fed vs drip</b> on this plan, then grow a full season with whichever earns more.', success: 'Compare first, then harvest the same plan with the more profitable method.', hint: 'Look at the profit row in the comparison, not the yield. Choose Rain-fed or Drip accordingly and press Plant & run.',
+        setup: () => { lastCmp = null; applyPlan(Object.assign({}, BASE)); },
+        check: () => !!(R() && lastCmp && cfg.crop === 'maize' && cmpKey() === lastCmp.key && cfg.method === lastCmp.best && !cfg.pan),
+        status: () => !lastCmp ? 'Step 1: press Compare rain-fed vs drip.' : cmpKey() !== lastCmp.key ? 'The plan changed after your comparison: compare again.' : R() ? `You grew it ${cfg.method === 'drip' ? 'with drip' : 'rain-fed'}; the comparison favoured ${lastCmp.best === 'drip' ? 'drip' : 'rain-fed'}.` : 'Step 2: choose the better method and run the season.',
+        wonText: 'Right call. Drip removes stress, but for a low-value crop in a normal year the kit and pumping can cost more than the extra grain earns.' },
+    ]
+  });
+  DK.keys('<kbd>P</kbd> play/pause · <kbd>N</kbd> next day · <kbd>F</kbd> harvest · <kbd>C</kbd> compare');
+}
+document.addEventListener('keydown', e => {
+  const t = e.target; if (e.ctrlKey || e.metaKey || e.altKey || (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !/range|checkbox/.test(t.type)))) return;
+  if (document.querySelector('.sl-tour, .modal.show') || demoOn()) return;
+  const k = e.key.toLowerCase(), b = { p: '#fPlay', n: '#fStep', f: '#fFinish', c: '#cmpBtn' }[k];
+  if (b) { e.preventDefault(); $(b).click(); }
+});
+// remember the season plan between visits
+setInterval(() => { if (!demoOn() && !(DK && DK._scen && DK._scen.active())) try { localStorage.setItem('sl-farm-plan', JSON.stringify(planOf())); } catch (e) {} }, 1500);
+try { const o = JSON.parse(localStorage.getItem('sl-farm-plan') || 'null'); if (o && CROPS[o.crop] && o.site && JSON.stringify(o) !== JSON.stringify(planOf())) { applyPlan(Object.assign({}, BASE, o)); $('#wxInfo').textContent = `weather #${cfg.seed} · your last plan`; } } catch (e) {}
+/* ==/DEMOPASS== */
   // guided tour (registered after SimLab mounts the hero; each target is scrolled into view instantly so the tip lands in the right place)
   const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
   tourGo([
     { el: '#fStage', title: 'Your plot', text: 'The crop grows above ground while roots deepen into the soil. The gauge on the right is the root-zone water store, from field capacity (FC) down to wilting point (WP).' },
+    { el: '#dkPlay', title: 'Watch a demo', text: 'Short on time? Press <b>Watch demo</b> (or the D key) for a guided run-through of the key ideas with captions. Stop it at any time; your settings come back afterwards. <b>Scenarios</b> (S) sets real-world goals.' },
     { el: '#planPanel', title: 'Plan the season', text: 'Pick the crop, the location, the planting date and the kind of rainfall year. Planting late in the long rains is a classic way to lose a harvest.' },
     { el: '#irrPanel', title: 'Water the crop', text: 'Rain-fed, or irrigate by furrow, sprinkler or drip. Drip loses the least water; refilling at RAW avoids stress with the least pumping.' },
     { el: '#fStage', before: () => { const b = $('#fPlay'); if (!running && F && !F.st.day) b.click(); }, title: 'Plant and run', text: 'The season is now running. Pause, step one day at a time or jump to harvest with the buttons at the bottom right. Leaves yellow and droop when the crop is short of water.' },

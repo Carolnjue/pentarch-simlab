@@ -303,6 +303,189 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=13"></script>
 <script>
+/* Watch-demo runner and goal-based scenarios (page-local kit) */
+(function () {
+  if (window.DemoKit) return;
+  const css = `
+  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
+  .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .dk-bar .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto}
+  .dk-bar .dk-keys kbd{font-size:.72rem}
+  .dk-goal{flex-basis:100%;display:none;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;padding:10px 12px}
+  .dk-goal.show{display:flex}
+  .dk-goal.won{border-color:#34d399;background:color-mix(in srgb,#34d399 10%,var(--panel))}
+  .dk-goal .ic{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+  .dk-goal.won .ic{color:#34d399;background:color-mix(in srgb,#34d399 18%,transparent)}
+  .dk-goal .tx{flex:1;min-width:0;font-size:.86rem;line-height:1.45}
+  .dk-goal .tx b{display:block;font-size:.92rem}
+  .dk-goal .st{display:block;margin-top:3px;font:500 .78rem var(--mono);color:var(--accent)}
+  .dk-goal.won .st{color:#34d399}
+  .dk-goal .hint{display:none;margin-top:4px;color:var(--muted)}
+  .dk-goal .hint.show{display:block}
+  .dk-goal .acts{display:flex;gap:6px;flex-wrap:wrap;flex:none}
+  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.93);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap.show{display:block}
+  .dk-cap.fixed{position:fixed;bottom:12px}
+  .dk-cap .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;row-gap:4px}
+  .dk-cap .n{min-width:150px}
+  .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
+  .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
+  .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
+  .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem}
+  .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
+  @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  .dk-scen{margin:18px 0 6px;scroll-margin-top:calc(var(--hdr,64px) + 10px)}
+  .dk-scen h3 .ct{margin-left:auto;font:500 .74rem var(--mono);color:var(--dim)}
+  .dk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:8px}
+  .dk-card{display:flex;flex-direction:column;gap:6px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+  .dk-card.on{border-color:var(--accent)}
+  .dk-card.done{border-color:color-mix(in srgb,#34d399 55%,var(--line))}
+  .dk-card .top{display:flex;align-items:center;gap:8px}
+  .dk-card .top b{flex:1;font-size:.93rem;line-height:1.3}
+  .dk-card .where{font:500 .7rem var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  .dk-card p{margin:0;font-size:.84rem;color:var(--muted);line-height:1.45;flex:1}
+  .dk-card .ok{color:#34d399;display:none}
+  .dk-card.done .ok{display:inline-flex}
+  .dk-card .ok svg{width:17px;height:17px}
+  .dk-card .btn{align-self:flex-start}
+  @media (max-width:520px){.dk-cap .row{flex-wrap:wrap;row-gap:4px}.dk-cap .n{flex-basis:100%}.dk-bar .dk-keys{display:none}.dk-cap{bottom:8px}.dk-cap p{font-size:.86rem}.dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}}
+  .dk-cap.over{position:fixed;z-index:360;bottom:14px}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}`;
+  const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+  const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+  const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
+
+  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  function bar(before) {
+    let b = document.querySelector('.dk-bar'); if (b) return b;
+    b = document.createElement('div'); b.className = 'dk-bar';
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
+  }
+
+  const DemoKit = { bar };
+  /** add page shortcuts to the hint, e.g. '<kbd>1</kbd>–<kbd>5</kbd> modes' */
+  DemoKit.keys = html => { const k = document.querySelector('.dk-keys'); if (k) k.innerHTML = html + ' · ' + k.innerHTML; };
+  /** demo({before, stage, steps:[{cap, run(api), ms, hl}], save(), restore(snap), onStop?}) */
+  DemoKit.demo = function (o) {
+    const b = bar(o.before), btn = b.querySelector('#dkPlay');
+    const stage = $(o.stage); if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
+    const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
+    (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let run = null; // {abort, stepMode, nextRes}
+    const D = { running: () => !!run };
+    function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
+    function hl(sel) { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); if (sel) { const e = $(sel); if (e) e.classList.add('dk-hl'); } }
+    const ABORT = { abort: true };
+    function api(r) {
+      const chk = () => { if (r.abort) throw ABORT; };
+      const sleep = ms => new Promise((res, rej) => { const t0 = performance.now(); const tick = () => { if (r.abort) return rej(ABORT); if (performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tick); }; tick(); });
+      const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+      return {
+        sleep, chk,
+        set(sel, v) { chk(); const el = $(sel); if (!el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; fire(el, 'input'); fire(el, 'change'); },
+        async slide(sel, to, ms) { const el = $(sel); if (!el) return; const a = +el.value, n = Math.max(1, Math.round((ms || 1200) / 60)); const stp = +el.step || 0; for (let i = 1; i <= n; i++) { chk(); let v = a + (to - a) * i / n; if (stp) v = Math.round(v / stp) * stp; el.value = v; fire(el, 'input'); await sleep((ms || 1200) / n); } el.value = to; fire(el, 'input'); fire(el, 'change'); },
+        click(sel) { chk(); const el = $(sel); if (el) el.click(); },
+        async until(fn, ms) { const t0 = performance.now(); while (!fn()) { if (performance.now() - t0 > (ms || 10000)) return false; await sleep(120); } return true; },
+        hl
+      };
+    }
+    async function start() {
+      if (run) return stop(true);
+      if (DemoKit._scen && DemoKit._scen.active()) DemoKit._scen.quit(true);
+      let snap = null; try { snap = o.save ? o.save() : null; } catch (e) {}
+      const r = run = { abort: false, stepMode: reduce, snap };
+      btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); setMode();
+      if (o.onStart) try { o.onStart(); } catch (e) {}
+      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
+      if (stage.getBoundingClientRect().top < 0 || stage.getBoundingClientRect().bottom > innerHeight) stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' });
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const st = steps[i]; if (r.abort) throw ABORT;
+          cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          if (st.run) await st.run(A);
+          if (r.abort) throw ABORT;
+          pg.style.width = ((i + 1) / steps.length * 100) + '%';
+          const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
+          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+          r.nextRes = null;
+        }
+        end(true);
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+    }
+    function end(restore, msg) {
+      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
+      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
+      if (o.onStop) try { o.onStop(); } catch (e) {}
+      SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+    }
+    function stop(restore) { end(restore !== false, restore === false ? null : 'Demo stopped. Your settings are back as they were.'); }
+    D.stop = stop; D.start = start;
+    btn.onclick = start;
+    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
+    // the student takes over: any trusted interaction with the lab outside the caption ends the demo where it is
+    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .dk-bar')) end(false); }, true);
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (run && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); stop(true); }
+      else if (run && e.key === 'ArrowRight' && run.nextRes) { e.preventDefault(); run.nextRes(); }
+      else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); start(); }
+    }, true);
+    DemoKit._demo = D; return D;
+  };
+
+  /** scenarios({before, mount, key, list:[{id, title, where, goal, success, hint, setup(), check()->bool, status()->html}], onQuit}) */
+  DemoKit.scenarios = function (o) {
+    const b = bar(o.before), goal = b.querySelector('#dkGoal');
+    const sec = document.createElement('section'); sec.className = 'panel dk-scen'; sec.id = 'dkScen';
+    let done = {}; try { done = JSON.parse(localStorage.getItem(o.key) || '{}') || {}; } catch (e) { done = {}; }
+    const save = () => { try { localStorage.setItem(o.key, JSON.stringify(done)); } catch (e) {} };
+    const ct = () => `${o.list.filter(s => done[s.id]).length}/${o.list.length} achieved`;
+    sec.innerHTML = `<h3><i data-lucide="map-pinned"></i> Scenarios: real-world goals <span class="ct"></span></h3><p class="small muted" style="margin:0">Each scenario sets up the lab, states the goal and checks it live. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
+    const m = $(o.mount); if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
+    let act = null, timer = 0;
+    function paint() { sec.querySelector('.ct').textContent = ct(); sec.querySelectorAll('.dk-card').forEach(c => { c.classList.toggle('done', !!done[c.dataset.id]); c.classList.toggle('on', !!act && act.s.id === c.dataset.id); const bt = c.querySelector('[data-go]'); bt.innerHTML = act && act.s.id === c.dataset.id ? '<i data-lucide="rotate-ccw"></i> Restart' : done[c.dataset.id] ? '<i data-lucide="repeat"></i> Play again' : '<i data-lucide="play"></i> Start'; }); icons(sec); }
+    function banner() {
+      if (!act) { goal.classList.remove('show', 'won'); goal.innerHTML = ''; return; }
+      const s = act.s; goal.classList.add('show'); goal.classList.toggle('won', act.won);
+      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the scenario up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
+      icons(goal); tick();
+    }
+    function tick() {
+      if (!act) return; const s = act.s; let st = '';
+      try { st = s.status ? s.status() : ''; } catch (e) {}
+      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
+    }
+    function startS(id) {
+      const s = o.list.find(x => x.id === id); if (!s) return;
+      if (DemoKit._demo && DemoKit._demo.running()) DemoKit._demo.stop(false);
+      if (act && act.s.quit) try { act.s.quit(); } catch (e) {}
+      act = { s, won: false, t0: performance.now() }; try { s.setup(); } catch (e) { console.warn(e); }
+      clearInterval(timer); timer = setInterval(tick, 300); paint(); banner();
+      const lab = o.scrollTo ? $(o.scrollTo) : b; if (lab) lab.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }
+    function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
+    sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
+    goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
+    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
+    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
+    paint();
+    const API = { active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
+    DemoKit._scen = API; return API;
+  };
+  window.DemoKit = DemoKit;
+})();
+</script>
+<script>
 (() => {
   'use strict';
   const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
@@ -917,7 +1100,7 @@
   const isScalar = A => Math.abs(A[0][1]) < 1e-9 && Math.abs(A[1][0]) < 1e-9 && Math.abs(A[0][0] - A[1][1]) < 1e-9;
   const done = new Set();
   $('#chalList').innerHTML = CH.map(c => `<div class="chal" id="ch-${c.id}"><span class="led"></span><div><b>${c.t}</b><span class="muted small">${c.d}</span></div></div>`).join('');
-  function checkChallenges() { for (const c of CH) { if (done.has(c.id)) continue; let ok = false; try { ok = c.test(); } catch (e) {} if (ok) { done.add(c.id); $('#ch-' + c.id + ' .led').classList.add('on'); SL.toast(`Challenge complete: <b>${c.t}</b> (${done.size}/${CH.length})`, 'ok'); } } }
+  function checkChallenges() { if (window.DemoKit && DemoKit._demo && DemoKit._demo.running()) return; for (const c of CH) { if (done.has(c.id)) continue; let ok = false; try { ok = c.test(); } catch (e) {} if (ok) { done.add(c.id); $('#ch-' + c.id + ' .led').classList.add('on'); SL.toast(`Challenge complete: <b>${c.t}</b> (${done.size}/${CH.length})`, 'ok'); } } }
   // a reflection loaded from a preset button does not count as "by dragging"
   $('#m2pre').addEventListener('click', () => { S.lastPreset2 = true; });
   cv.addEventListener('pointerdown', () => { S.lastPreset2 = false; });
@@ -958,10 +1141,108 @@
   // first load: start at the identity and morph into A so the student sees the plane bend
   function init() { S._init = true; S.t = 0; m2Changed(true); compTex(); setMode('m2'); loop.start(); setTimeout(() => { if (S.t === 0 && !S.anim) S.anim = 1; }, 700); }
   if (window.katex) init(); else { let n = 0; const t = setInterval(() => { if (window.katex || ++n > 30) { clearInterval(t); init(); } }, 100); }
+/* ==DEMOPASS== */
+  /* ===================== WATCH DEMO, SCENARIOS, SHORTCUTS ===================== */
+  const DK = window.DemoKit;
+  const demoOn = () => DK && DK._demo && DK._demo.running();
+  const near = (A, B, tol) => A.flat().every((v, i) => Math.abs(v - B.flat()[i]) <= (tol || 0.05));
+  const clickPre2 = name => { const i = PRE2.findIndex(p => p[0] === name); const b = $(`#m2pre [data-i="${i}"]`); if (b) b.click(); };
+  const setShape = v => { const b = $(`#shape2 [data-v="${v}"]`); if (b) b.click(); };
+  async function tweenM(A, to, ms) { const from = S.M.map(r => r.slice()), n = Math.max(1, Math.round(ms / 50)); S.t = 1; for (let k = 1; k <= n; k++) { const e = ease(k / n); S.M = from.map((r, i) => r.map((v, j) => v + (to[i][j] - v) * e)); m2Changed(true); await A.sleep(ms / n); } }
+  const snapState = () => ({ mode: S.mode, M: S.M.map(r => r.slice()), shape: S.shape, tgt: S.tgt, snap: $('#snap').checked, A: S.A.map(r => r.slice()), B: S.B.map(r => r.slice()), M3: S.M3.map(r => r.slice()), v: S.v.slice() });
+  function restoreState(o) {
+    setMode(o.mode); setTgt(o.tgt); setShape(o.shape); $('#snap').checked = o.snap; S.v = o.v;
+    S.M = o.M; S.t = 1; S.anim = 0; m2Changed(true);
+    S.A = o.A; S.B = o.B; refreshInputs($('#cAin'), (i, j) => S.A[i][j]); refreshInputs($('#cBin'), (i, j) => S.B[i][j]); S.ct = 2; S.animC = 0; compTex();
+    S.M3 = o.M3; refreshInputs($('#m3in'), (i, j) => S.M3[i][j]); S.t3 = 1; S.anim3 = 0; panelTex(); S.dirty = true;
+  }
+  if (DK) {
+    DK.demo({
+      before: '.modebar', stage: '#stage', save: snapState, restore: restoreState,
+      steps: [
+        { cap: 'A 2 × 2 matrix moves the <b>whole plane</b>. The green arrow î and the pink arrow ĵ are its two columns. Right now A = I (the identity), so nothing has moved.', hl: '#m2in',
+          run: async A => { setMode('m2'); setTgt(-1); setShape('house'); $('#snap').checked = false; S.v = [-1, 1.5]; setM2([[1, 0], [0, 1]], false); }, ms: 3600 },
+        { cap: '<b>Rotation.</b> Slide θ to 90°: î swings to (0, 1) and ĵ to (−1, 0). Lengths and areas are unchanged, so det A = 1.', hl: '#rotTh',
+          run: async A => { await A.slide('#rotTh', 90, 2200); }, ms: 2600 },
+        { cap: '<b>Shear.</b> Only ĵ leans over. Squares become parallelograms of the same area (det = 1), and just one direction (the x-axis) is left unturned.',
+          run: async A => { A.set('#rotTh', 0); clickPre2('Shear x'); }, ms: 3800 },
+        { cap: '<b>Eigenvectors.</b> For [[2, 1], [1, 2]] the purple dashed lines map onto themselves: one is stretched ×3, the other ×1. Area grows ×3 = det A = 3 × 1.', hl: '#resPanel',
+          run: async A => { clickPre2('Symmetric'); }, ms: 4400 },
+        { cap: '<b>det A = 0.</b> Projecting onto the x-axis flattens the whole plane onto a line. Information is lost, so this matrix has no inverse.',
+          run: async A => { clickPre2('Onto x-axis'); }, ms: 3800 },
+        { cap: '<b>Negative determinant.</b> Reflecting in y = x gives det = −1: the letter F now reads backwards. Orientation has flipped.',
+          run: async A => { setShape('F'); clickPre2('Reflect y = x'); }, ms: 3800 },
+        { cap: '<b>Match the shape.</b> The cyan outline is the target. The house only got wider, so ĵ stays put and î must land on (2, 0). Drag the tips until the outline turns green.', hl: '#tgtBox',
+          run: async A => { setShape('house'); setTgt(0); await A.sleep(900); await tweenM(A, [[1.9, 0], [0, 1]], 1800); }, ms: 3400 },
+        { cap: '<b>Order matters.</b> Rotating then shearing is not the same as shearing then rotating: AB ≠ BA. Both orders animate side by side.', hl: '#animC',
+          run: async A => { setTgt(-1); setMode('comp'); await A.sleep(300); A.click('#animC'); }, ms: 4600 },
+        { cap: '<b>Three dimensions.</b> A 3 × 3 matrix turns the unit cube into a slanted box; its determinant is the box’s volume. Try the presets, then pick a scenario below.',
+          run: async A => { setMode('m3'); await A.sleep(200); const b = $('#m3pre [data-i="4"]'); if (b) b.click(); }, ms: 4600 },
+      ]
+    });
+
+    const I2 = [[1, 0], [0, 1]];
+    let fares = null;
+    DK.scenarios({
+      before: '.modebar', mount: '.tabs', key: 'sl-matrices-scen',
+      intro: 'Your own settings are not lost: pick <b>Quit</b> and carry on.',
+      list: [
+        { id: 'logo', where: 'Signwriting · Nairobi', title: 'Enlarge a matatu logo', goal: 'A sticker of the house logo must be printed 2× as wide and 1.5× as tall, with no slant or turn.', success: 'A = [[2, 0], [0, 1.5]] (each entry within 0.05).', hint: 'Drag î to (2, 0) and ĵ to (0, 1.5), or type the four entries. The area factor should read 3.',
+          setup: () => { setMode('m2'); setTgt(-1); setShape('house'); setM2(I2, false); },
+          check: () => S.mode === 'm2' && S.t >= 1 && near(S.M, [[2, 0], [0, 1.5]]),
+          status: () => `det A = ${nf(det2(S.M))} (target 3) · A = [[${nf(S.M[0][0])}, ${nf(S.M[0][1])}], [${nf(S.M[1][0])}, ${nf(S.M[1][1])}]]` },
+        { id: 'mirror', where: 'Windscreen sticker', title: 'Make the F read from inside', goal: 'A sticker on the inside of a windscreen is seen from behind. Mirror the letter F left to right so it reads correctly through the glass.', success: 'A reflection in the vertical (y) axis: A = [[−1, 0], [0, 1]].', hint: 'Only î changes: it must point the other way, to (−1, 0). The determinant becomes −1.',
+          setup: () => { setMode('m2'); setTgt(-1); setShape('F'); setM2(I2, false); },
+          check: () => S.mode === 'm2' && S.t >= 1 && near(S.M, [[-1, 0], [0, 1]]),
+          status: () => `det A = ${nf(det2(S.M))} · ${det2(S.M) < 0 ? 'mirrored' : 'not mirrored yet'}` },
+        { id: 'survey', where: 'Land survey · Machakos', title: 'Line a plot plan up with the map', goal: 'A surveyor’s sketch is drawn too small and turned the wrong way. Turn it 45° clockwise and enlarge it by √2 so it sits on the cyan outline from the title-deed map.', success: 'The house lands on Match-the-shape target 4 (error under 0.06).', hint: 'Turning −45° and scaling by √2 sends î to (1, −1) and ĵ to (1, 1). Snapping to 0.5 is already on.',
+          setup: () => { setMode('m2'); setShape('house'); setTgt(3); },
+          check: () => S.mode === 'm2' && S.tgt === 3 && S.t >= 1 && !drag && tgtErr() < 0.06,
+          status: () => S.tgt === 3 ? `Off by ${nf(tgtErr())}` : 'Choose target 4 under Match the shape' },
+        { id: 'crate', where: 'Port of Mombasa', title: 'Size a cargo crate', goal: 'Stretch the unit cube into a crate 3 units long, 2 wide and 1 high, with square corners (no shear).', success: 'A diagonal 3 × 3 matrix with entries 3, 2 and 1 in any order: volume 6.', hint: 'Only the three diagonal entries should be non-zero. det A is the volume.',
+          setup: () => { setMode('m3'); S.M3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]; refreshInputs($('#m3in'), (i, j) => S.M3[i][j]); S.t3 = 1; panelTex(); S.dirty = true; },
+          check: () => { if (S.mode !== 'm3') return false; const M = S.M3; const off = [M[0][1], M[0][2], M[1][0], M[1][2], M[2][0], M[2][1]].every(x => Math.abs(x) < 0.01); const d = [M[0][0], M[1][1], M[2][2]].map(Math.abs).sort(); return off && Math.abs(d[0] - 1) < 0.02 && Math.abs(d[1] - 2) < 0.02 && Math.abs(d[2] - 3) < 0.02; },
+          status: () => `Volume (det) = ${nf(det3(S.M3))}` },
+        { id: 'arm', where: 'Assembly line · Thika', title: 'Program a pick-and-place arm', goal: 'A two-link robot arm must pick a part from the pink target at (−1.2, 2.2). Chain its rotation and translation matrices by setting the joint angles.', success: 'Gripper within 0.03 units of the target.', hint: 'Drag on the stage to let inverse kinematics solve the angles, then fine-tune θ₁ and θ₂.',
+          setup: () => { setMode('homo'); const b = $('#hsub [data-v="arm"]'); if (b) b.click(); },
+          check: () => S.mode === 'homo' && S.hsub === 'arm' && S.armState && S.armState.dT < 0.03,
+          status: () => S.armState ? `Distance to target: ${nf(S.armState.dT)}` : '' },
+        { id: 'fares', where: 'Commuting · Nairobi', title: 'Boda boda or matatu?', goal: 'Two boda boda rides and one matatu ride cost KES 250; one boda boda and three matatu rides cost KES 300. Solve the system by row reduction to find each fare.', success: 'Step through to the final reduced form.', hint: 'Press Next step until the last row operation; the right-hand column then shows the two fares.',
+          setup: () => { setMode('sys'); loadSys(2, 0); S.Ab = [[2, 1, 250], [1, 3, 300]]; refreshInputs($('#sysIn'), (r, c) => S.Ab[r][c]); $('#sysPre').value = 'custom'; runSys(); fares = JSON.stringify(S.Ab); },
+          check: () => S.mode === 'sys' && S.sysN === 2 && JSON.stringify(S.Ab) === fares && S.sys && S.k === S.sys.steps.length - 1,
+          status: () => S.sys ? `Step ${S.k + 1} of ${S.sys.steps.length}` : '',
+          wonText: 'Boda boda KES 90, matatu KES 70. Row operations never change the solution, only how easy it is to read.' },
+      ]
+    });
+    DK.keys('<kbd>1</kbd>–<kbd>5</kbd> modes · <kbd>A</kbd> animate · <kbd>Z</kbd> undo');
+  }
+
+  /* undo for 2D edits, remembered mode and matrix */
+  const undo = []; let curM = JSON.stringify(S.M), quietT = 0;
+  const ub = document.createElement('button'); ub.className = 'btn sm'; ub.id = 'undo2'; ub.title = 'Undo the last change to A (Z)'; ub.innerHTML = '<i data-lucide="undo"></i> Undo'; ub.disabled = true;
+  $('#inv2').after(ub); SL.refreshIcons(ub.parentElement);
+  function doUndo() { if (!undo.length) return; const m = JSON.parse(undo.pop()); curM = JSON.stringify(m); setM2(m, false); ub.disabled = !undo.length; }
+  ub.onclick = doUndo;
+  setInterval(() => {
+    const now = JSON.stringify(S.M);
+    if (now !== curM && !drag && !S.anim && !demoOn()) { if (++quietT >= 2) { undo.push(curM); if (undo.length > 40) undo.shift(); curM = now; quietT = 0; ub.disabled = false; } } else quietT = 0;
+    if (!demoOn()) try { localStorage.setItem('sl-matrices-last', JSON.stringify({ mode: S.mode, M: S.M })); } catch (e) {}
+  }, 300);
+  try { const o = JSON.parse(localStorage.getItem('sl-matrices-last') || 'null'); if (o && Array.isArray(o.M) && o.M.flat().every(isFinite)) { setTimeout(() => { if (o.mode && o.mode !== 'm2') setMode(o.mode); if (JSON.stringify(o.M) !== JSON.stringify(S.M)) { setM2(o.M, true); curM = JSON.stringify(S.M); } }, 1300); } } catch (e) {}
+  document.addEventListener('keydown', e => {
+    const t = e.target; if (e.ctrlKey || e.metaKey || e.altKey || (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !/range|checkbox/.test(t.type)))) return;
+    if (document.querySelector('.sl-tour, .modal.show')) return;
+    const k = e.key.toLowerCase(), modes = ['m2', 'comp', 'm3', 'homo', 'sys'];
+    if (/^[1-5]$/.test(k)) { setMode(modes[+k - 1]); e.preventDefault(); }
+    else if (k === 'a') { const b = { m2: '#anim2', comp: '#animC', m3: '#anim3' }[S.mode]; if (b) { $(b).click(); e.preventDefault(); } }
+    else if (k === 'z' && S.mode === 'm2') { doUndo(); e.preventDefault(); }
+  });
+/* ==/DEMOPASS== */
   // guided tour (registered after SimLab mounts the hero; each target is scrolled into view instantly so the tip lands in the right place)
   const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
   tourGo([
     { el: '#stage', before: () => setMode('m2'), title: 'A matrix moves the plane', text: 'Drag the green î and pink ĵ handles: they are the columns of A. The grid, the unit square and the yellow house all follow. The view zooms to keep everything in frame.' },
+    { el: '#dkPlay', title: 'Watch a demo', text: 'Short on time? Press <b>Watch demo</b> (or the D key) for a guided run-through of the key ideas with captions. Stop it at any time; your settings come back afterwards. <b>Scenarios</b> (S) sets real-world goals.' },
     { el: '#m2in', title: 'Type the numbers', text: 'Or edit the four entries directly. Column 1 is where î lands, column 2 is where ĵ lands.' },
     { el: '#m2pre', title: 'Classic transformations', text: 'Presets are grouped by family: rotations, scales, shears, reflections and projections. Projections squash the plane onto a line, so det = 0.' },
     { el: '#tgtBox', title: 'Match the shape', text: 'Pick a target and find the matrix that moves the house onto the cyan outline. Each match ticks off a challenge.' },

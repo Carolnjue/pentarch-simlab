@@ -310,6 +310,189 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=13"></script>
 <script>
+/* Watch-demo runner and goal-based scenarios (page-local kit) */
+(function () {
+  if (window.DemoKit) return;
+  const css = `
+  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
+  .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .dk-bar .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto}
+  .dk-bar .dk-keys kbd{font-size:.72rem}
+  .dk-goal{flex-basis:100%;display:none;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;padding:10px 12px}
+  .dk-goal.show{display:flex}
+  .dk-goal.won{border-color:#34d399;background:color-mix(in srgb,#34d399 10%,var(--panel))}
+  .dk-goal .ic{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+  .dk-goal.won .ic{color:#34d399;background:color-mix(in srgb,#34d399 18%,transparent)}
+  .dk-goal .tx{flex:1;min-width:0;font-size:.86rem;line-height:1.45}
+  .dk-goal .tx b{display:block;font-size:.92rem}
+  .dk-goal .st{display:block;margin-top:3px;font:500 .78rem var(--mono);color:var(--accent)}
+  .dk-goal.won .st{color:#34d399}
+  .dk-goal .hint{display:none;margin-top:4px;color:var(--muted)}
+  .dk-goal .hint.show{display:block}
+  .dk-goal .acts{display:flex;gap:6px;flex-wrap:wrap;flex:none}
+  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.93);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap.show{display:block}
+  .dk-cap.fixed{position:fixed;bottom:12px}
+  .dk-cap .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;row-gap:4px}
+  .dk-cap .n{min-width:150px}
+  .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
+  .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
+  .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
+  .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem}
+  .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
+  @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  .dk-scen{margin:18px 0 6px;scroll-margin-top:calc(var(--hdr,64px) + 10px)}
+  .dk-scen h3 .ct{margin-left:auto;font:500 .74rem var(--mono);color:var(--dim)}
+  .dk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:8px}
+  .dk-card{display:flex;flex-direction:column;gap:6px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+  .dk-card.on{border-color:var(--accent)}
+  .dk-card.done{border-color:color-mix(in srgb,#34d399 55%,var(--line))}
+  .dk-card .top{display:flex;align-items:center;gap:8px}
+  .dk-card .top b{flex:1;font-size:.93rem;line-height:1.3}
+  .dk-card .where{font:500 .7rem var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  .dk-card p{margin:0;font-size:.84rem;color:var(--muted);line-height:1.45;flex:1}
+  .dk-card .ok{color:#34d399;display:none}
+  .dk-card.done .ok{display:inline-flex}
+  .dk-card .ok svg{width:17px;height:17px}
+  .dk-card .btn{align-self:flex-start}
+  @media (max-width:520px){.dk-cap .row{flex-wrap:wrap;row-gap:4px}.dk-cap .n{flex-basis:100%}.dk-bar .dk-keys{display:none}.dk-cap{bottom:8px}.dk-cap p{font-size:.86rem}.dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}}
+  .dk-cap.over{position:fixed;z-index:360;bottom:14px}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}`;
+  const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+  const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+  const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
+
+  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  function bar(before) {
+    let b = document.querySelector('.dk-bar'); if (b) return b;
+    b = document.createElement('div'); b.className = 'dk-bar';
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
+  }
+
+  const DemoKit = { bar };
+  /** add page shortcuts to the hint, e.g. '<kbd>1</kbd>–<kbd>5</kbd> modes' */
+  DemoKit.keys = html => { const k = document.querySelector('.dk-keys'); if (k) k.innerHTML = html + ' · ' + k.innerHTML; };
+  /** demo({before, stage, steps:[{cap, run(api), ms, hl}], save(), restore(snap), onStop?}) */
+  DemoKit.demo = function (o) {
+    const b = bar(o.before), btn = b.querySelector('#dkPlay');
+    const stage = $(o.stage); if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
+    const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
+    (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let run = null; // {abort, stepMode, nextRes}
+    const D = { running: () => !!run };
+    function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
+    function hl(sel) { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); if (sel) { const e = $(sel); if (e) e.classList.add('dk-hl'); } }
+    const ABORT = { abort: true };
+    function api(r) {
+      const chk = () => { if (r.abort) throw ABORT; };
+      const sleep = ms => new Promise((res, rej) => { const t0 = performance.now(); const tick = () => { if (r.abort) return rej(ABORT); if (performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tick); }; tick(); });
+      const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+      return {
+        sleep, chk,
+        set(sel, v) { chk(); const el = $(sel); if (!el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; fire(el, 'input'); fire(el, 'change'); },
+        async slide(sel, to, ms) { const el = $(sel); if (!el) return; const a = +el.value, n = Math.max(1, Math.round((ms || 1200) / 60)); const stp = +el.step || 0; for (let i = 1; i <= n; i++) { chk(); let v = a + (to - a) * i / n; if (stp) v = Math.round(v / stp) * stp; el.value = v; fire(el, 'input'); await sleep((ms || 1200) / n); } el.value = to; fire(el, 'input'); fire(el, 'change'); },
+        click(sel) { chk(); const el = $(sel); if (el) el.click(); },
+        async until(fn, ms) { const t0 = performance.now(); while (!fn()) { if (performance.now() - t0 > (ms || 10000)) return false; await sleep(120); } return true; },
+        hl
+      };
+    }
+    async function start() {
+      if (run) return stop(true);
+      if (DemoKit._scen && DemoKit._scen.active()) DemoKit._scen.quit(true);
+      let snap = null; try { snap = o.save ? o.save() : null; } catch (e) {}
+      const r = run = { abort: false, stepMode: reduce, snap };
+      btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); setMode();
+      if (o.onStart) try { o.onStart(); } catch (e) {}
+      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
+      if (stage.getBoundingClientRect().top < 0 || stage.getBoundingClientRect().bottom > innerHeight) stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' });
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const st = steps[i]; if (r.abort) throw ABORT;
+          cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          if (st.run) await st.run(A);
+          if (r.abort) throw ABORT;
+          pg.style.width = ((i + 1) / steps.length * 100) + '%';
+          const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
+          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+          r.nextRes = null;
+        }
+        end(true);
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+    }
+    function end(restore, msg) {
+      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
+      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
+      if (o.onStop) try { o.onStop(); } catch (e) {}
+      SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+    }
+    function stop(restore) { end(restore !== false, restore === false ? null : 'Demo stopped. Your settings are back as they were.'); }
+    D.stop = stop; D.start = start;
+    btn.onclick = start;
+    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
+    // the student takes over: any trusted interaction with the lab outside the caption ends the demo where it is
+    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .dk-bar')) end(false); }, true);
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (run && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); stop(true); }
+      else if (run && e.key === 'ArrowRight' && run.nextRes) { e.preventDefault(); run.nextRes(); }
+      else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); start(); }
+    }, true);
+    DemoKit._demo = D; return D;
+  };
+
+  /** scenarios({before, mount, key, list:[{id, title, where, goal, success, hint, setup(), check()->bool, status()->html}], onQuit}) */
+  DemoKit.scenarios = function (o) {
+    const b = bar(o.before), goal = b.querySelector('#dkGoal');
+    const sec = document.createElement('section'); sec.className = 'panel dk-scen'; sec.id = 'dkScen';
+    let done = {}; try { done = JSON.parse(localStorage.getItem(o.key) || '{}') || {}; } catch (e) { done = {}; }
+    const save = () => { try { localStorage.setItem(o.key, JSON.stringify(done)); } catch (e) {} };
+    const ct = () => `${o.list.filter(s => done[s.id]).length}/${o.list.length} achieved`;
+    sec.innerHTML = `<h3><i data-lucide="map-pinned"></i> Scenarios: real-world goals <span class="ct"></span></h3><p class="small muted" style="margin:0">Each scenario sets up the lab, states the goal and checks it live. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
+    const m = $(o.mount); if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
+    let act = null, timer = 0;
+    function paint() { sec.querySelector('.ct').textContent = ct(); sec.querySelectorAll('.dk-card').forEach(c => { c.classList.toggle('done', !!done[c.dataset.id]); c.classList.toggle('on', !!act && act.s.id === c.dataset.id); const bt = c.querySelector('[data-go]'); bt.innerHTML = act && act.s.id === c.dataset.id ? '<i data-lucide="rotate-ccw"></i> Restart' : done[c.dataset.id] ? '<i data-lucide="repeat"></i> Play again' : '<i data-lucide="play"></i> Start'; }); icons(sec); }
+    function banner() {
+      if (!act) { goal.classList.remove('show', 'won'); goal.innerHTML = ''; return; }
+      const s = act.s; goal.classList.add('show'); goal.classList.toggle('won', act.won);
+      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the scenario up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
+      icons(goal); tick();
+    }
+    function tick() {
+      if (!act) return; const s = act.s; let st = '';
+      try { st = s.status ? s.status() : ''; } catch (e) {}
+      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
+    }
+    function startS(id) {
+      const s = o.list.find(x => x.id === id); if (!s) return;
+      if (DemoKit._demo && DemoKit._demo.running()) DemoKit._demo.stop(false);
+      if (act && act.s.quit) try { act.s.quit(); } catch (e) {}
+      act = { s, won: false, t0: performance.now() }; try { s.setup(); } catch (e) { console.warn(e); }
+      clearInterval(timer); timer = setInterval(tick, 300); paint(); banner();
+      const lab = o.scrollTo ? $(o.scrollTo) : b; if (lab) lab.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }
+    function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
+    sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
+    goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
+    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
+    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
+    paint();
+    const API = { active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
+    DemoKit._scen = API; return API;
+  };
+  window.DemoKit = DemoKit;
+})();
+</script>
+<script>
 (() => {
   'use strict';
   const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
@@ -1553,6 +1736,7 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
     if (!done.has('half') && !nudged.has('half') && norm(S.src) === 'sin(x)' && d.x0 > 0 && d.x0 < 2 && Math.abs(d.slope - 0.5) < 0.08 && Math.abs(d.slope - 0.5) >= 0.01) { nudged.add('half'); SL.toast(`Close: slope ${SL.fmt(d.slope, 3)}. You need 0.5 ± 0.01.`, 'warn'); }
   }
   function checkChallenges() {
+    if (window.DemoKit && DemoKit._demo && DemoKit._demo.running()) return;
     try { nudgeChallenges(); } catch (e) {}
     for (const c of CH) {
       if (done.has(c.id)) continue;
@@ -1601,10 +1785,98 @@ atom   := number | x | pi | e | func "(" expr ")" | "(" expr ")"</div>
   }
   // wait for KaTeX (deferred) so the symbolic panel renders properly
   if (window.katex) init(); else { let tries = 0; const t = setInterval(() => { if (window.katex || ++tries > 30) { clearInterval(t); init(); } }, 100); }
+/* ==DEMOPASS== */
+  /* ===================== WATCH DEMO, SCENARIOS, SHORTCUTS ===================== */
+  const DK = window.DemoKit;
+  const demoOn = () => DK && DK._demo && DK._demo.running();
+  const SLIDERS = ['x0', 'hlog', 'nRect', 'ia', 'ib', 'ta', 'tn', 'lc', 'leps', 'ldel', 'lzoom', 'cV', 'cR', 'cK'];
+  const setR = (id, v) => { const el = $('#' + id); if (!el) return; el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+  const setMethod = v => { const b = $(`#method [data-v="${v}"]`); if (b) b.click(); };
+  const setOpt = v => { const b = $(`#optSub [data-v="${v}"]`); if (b) b.click(); };
+  function stopAnims() { S.animH = S.animN = S.animT = S.animZ = 0; S.animR = null; }
+  const snapState = () => ({ mode: S.mode, src: S.src, view: { ...S.view }, method: S.method, opt: S.opt, vals: Object.fromEntries(SLIDERS.map(id => [id, $('#' + id).value])) });
+  function restoreState(o) {
+    stopAnims(); setOpt(o.opt); setFunction(o.src, [o.view.x0, o.view.x1, o.view.y0, o.view.y1]);
+    setMode(o.mode); setMethod(o.method);
+    syncSliderRanges(); SLIDERS.forEach(id => setR(id, o.vals[id])); S.dirty = true;
+  }
+  // load a function with a fixed view, then set slider values (slider ranges follow the view)
+  function loadFn(src, view, mode, vals) { stopAnims(); if (mode === 'optim') setOpt('fn'); setFunction(src, view); setMode(mode); syncSliderRanges(); Object.entries(vals || {}).forEach(([k, v]) => setR(k, v)); }
+  if (DK) {
+    DK.demo({
+      before: '.modebar', stage: '#stage', save: snapState, restore: restoreState,
+      steps: [
+        { cap: 'The orange <b>secant</b> joins two points a distance h apart; its slope is an average rate of change. Watch h shrink towards 0: the secant turns into the yellow <b>tangent</b>, whose slope is the derivative f′(x₀).', hl: '#animH',
+          run: async A => { loadFn('x^3 - 3x', PRESETS[0][1], 'deriv', { x0: 1.6, hlog: 0.3 }); await A.sleep(500); A.click('#animH'); }, ms: 4600 },
+        { cap: 'Slide x₀ to 1. The tangent goes flat (f′(1) = 0) and the lower graph of f′ crosses zero there: a <b>local minimum</b> of x³ − 3x.', hl: '#x0',
+          run: async A => { await A.slide('#x0', 1, 2000); }, ms: 3000 },
+        { cap: '<b>Integral.</b> The area under the curve is approximated by strips. Doubling the number of midpoint strips cuts the error about four times (error ∝ 1/n²).', hl: '#animN',
+          run: async A => { setMode('integ'); setMethod('mid'); setR('ia', -1.5); setR('ib', 2); setR('nRect', 1); await A.sleep(400); A.click('#animN'); }, ms: 6200 },
+        { cap: '<b>Simpson’s rule</b> fits parabolas to pairs of strips. For a cubic like this it is exact (error 0) with any even n.', hl: '#method',
+          run: async A => { S.animN = 0; setR('nRect', 4); setMethod('simp'); }, ms: 3600 },
+        { cap: '<b>Limits.</b> sin x / x is undefined at 0, yet its values close in on 1. For a tolerance ε the lab finds the largest δ that keeps the graph inside the band, then zooms in.', hl: '#findDelta',
+          run: async A => { setMode('limit'); await A.sleep(300); limSel.value = 0; loadLimit(0); A.click('#findDelta'); await A.sleep(1200); A.click('#animZoom'); }, ms: 4400 },
+        { cap: '<b>Taylor series.</b> Adding terms one by one, the polynomial hugs sin x over a wider and wider range around the centre a = 0.', hl: '#animT',
+          run: async A => { setMode('taylor'); taySel.value = 0; loadTaylor(0); await A.sleep(300); A.click('#animT'); }, ms: 6200 },
+        { cap: '<b>Optimisation.</b> For a 330 ml can, the metal area is smallest where dA/dr = 0: radius 3.7 cm, height equal to the diameter. Now try a scenario below.', hl: '#canOpt',
+          run: async A => { S.animT = 0; setOpt('can'); setR('cV', 330); setR('cK', 1); setR('cR', 6.5); await A.sleep(700); A.click('#canOpt'); }, ms: 4800 },
+      ]
+    });
+
+    const canOk = () => S.mode === 'optim' && S.opt === 'can' && S.cState && S.cState.over < 0.5 && S.manualR;
+    DK.scenarios({
+      before: '.modebar', mount: '.tabs', key: 'sl-calculus-scen',
+      intro: 'Each one loads its own function; your own work comes back with <b>Quit</b> and the previous function in the box.',
+      list: [
+        { id: 'boda', where: 'Road safety · Nairobi', title: 'Read a boda boda’s speedometer', goal: 'Pulling away from a stage, a boda boda covers s(t) = 1.5t² metres in t seconds. When does it reach 12 m/s (about 43 km/h)?', success: 'Place x₀ where the slope (the speed) is 12 ± 0.1 m/s.', hint: 'The speed is the derivative s′(t) = 3t. Drag the yellow point and read f′(x₀) in the HUD.',
+          setup: () => loadFn('1.5x^2', [-0.5, 7, -4, 60], 'deriv', { x0: 1, hlog: -1 }),
+          check: () => S.mode === 'deriv' && norm(S.src) === '1.5x^2' && S.dState && Math.abs(S.dState.slope - 12) < 0.1,
+          status: () => S.dState ? `t = ${fmt(S.dState.x0, 2)} s · speed ${fmt(S.dState.slope, 2)} m/s` : '' },
+        { id: 'mandazi', where: 'Small business · Kisumu', title: 'Price mandazi for the best profit', goal: 'A vendor’s daily profit (in KES hundreds) at a price of x shillings per mandazi is P(x) = −0.5x² + 12x − 30. Which price earns the most?', success: 'Find the price where the tangent is flat (|P′(x₀)| < 0.05).', hint: 'At a maximum the slope is zero. Read the lower graph: where does P′ cross the axis?',
+          setup: () => loadFn('-0.5x^2 + 12x - 30', [0, 24, -40, 50], 'deriv', { x0: 5, hlog: -1 }),
+          check: () => S.mode === 'deriv' && norm(S.src) === '-0.5x^2+12x-30' && S.dState && Math.abs(S.dState.slope) < 0.05,
+          status: () => S.dState ? `price ${fmt(S.dState.x0, 2)} KES · P′ = ${fmt(S.dState.slope, 3)} · profit KES ${fmt(S.f(S.dState.x0) * 100, 0)}` : '',
+          wonText: 'KES 12 a piece earns about KES 4,200 a day. Above that price fewer customers buy; below it each sale earns too little.' },
+        { id: 'tank', where: 'Water · Machakos', title: 'Measure a tank’s fill', goal: 'Water flows into a farm tank at q(t) = 6t − t² m³/h for 6 hours. Estimate the total volume with the <b>trapezoid rule</b>, using no more than 20 strips.', success: 'Trapezoid, a = 0, b = 6, error below 0.1 m³ with n ≤ 20.', hint: 'The exact answer is 36 m³. The trapezoid error here is 36/n², so how small can n be?',
+          setup: () => { loadFn('6x - x^2', [-0.5, 6.5, -2, 11], 'integ', { ia: 0, ib: 6, nRect: 3 }); setMethod('left'); },
+          check: () => S.mode === 'integ' && norm(S.src) === '6x-x^2' && S.iState && S.iState.meth === 'trap' && Math.abs(S.a) < 0.02 && Math.abs(S.b - 6) < 0.02 && S.iState.n <= 20 && Math.abs(S.iState.err) < 0.1,
+          status: () => S.iState ? `${S.iState.meth} · n = ${S.iState.n} · estimate ${fmt(S.iState.approx, 3)} m³ · error ${fmt(Math.abs(S.iState.err), 3)}` : '' },
+        { id: 'solar', where: 'Solar farm · Garissa', title: 'A cosine for a solar tracker', goal: 'A tracker’s microcontroller cannot store a cosine table, so it uses a Taylor polynomial about 0. It must be accurate to 0.001 for every sun angle up to 90° (x = π/2).', success: 'cos x about a = 0, error at π/2 below 0.001, order n ≤ 7.', hint: 'Only even powers appear in cos x. Raise n one step at a time and watch the error at the right-hand edge.',
+          setup: () => { setMode('taylor'); taySel.value = 1; loadTaylor(1); setR('tn', 2); },
+          check: () => S.mode === 'taylor' && norm(S.src) === 'cos(x)' && Math.abs(S.ta) < 1e-6 && S.tay && S.tn <= 7 && Math.abs(evalTaylor(S.tay, 0, Math.PI / 2, S.tn)) < 1e-3,
+          status: () => S.tay && norm(S.src) === 'cos(x)' ? `n = ${S.tn} · error at π/2 = ${fmt(Math.abs(evalTaylor(S.tay, 0, Math.PI / 2, S.tn)), 5)}` : '' },
+        { id: 'can', where: 'Juice factory · Thika', title: 'Design a 500 ml can', goal: 'A juice canner switches to 500 ml cans. The ends need thicker metal and cost 1.5 times as much per cm² as the side. Find the cheapest radius by dragging, not with the optimum button.', success: 'V = 500 ml, k = 1.5, cost within 0.5% of the minimum.', hint: 'Cost C(r) = 2πk r² + 2V/r. Set dC/dr = 0: r³ = V/(2πk).',
+          setup: () => { setOpt('can'); setR('cV', 500); setR('cK', 1.5); setR('cR', 6); S.manualR = false; },
+          check: () => canOk() && S.V === 500 && Math.abs(S.k - 1.5) < 1e-9,
+          status: () => S.mode === 'optim' && S.opt === 'can' && S.cState ? `r = ${fmt(S.r, 2)} cm · ${fmt(S.cState.over, 2)}% above the cheapest` : '',
+          wonText: 'r ≈ 3.76 cm and h ≈ 11.3 cm: dearer ends make the best can taller and thinner (h = 2k·r).' },
+      ]
+    });
+    DK.keys('<kbd>1</kbd>–<kbd>5</kbd> modes · <kbd>A</kbd> animate');
+  }
+
+  /* shortcuts and remembered work */
+  document.addEventListener('keydown', e => {
+    const t = e.target; if (e.ctrlKey || e.metaKey || e.altKey || (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !/range|checkbox/.test(t.type)))) return;
+    if (document.querySelector('.sl-tour, .modal.show')) return;
+    const k = e.key.toLowerCase(), modes = ['deriv', 'integ', 'limit', 'taylor', 'optim'];
+    if (/^[1-5]$/.test(k)) { setMode(modes[+k - 1]); e.preventDefault(); }
+    else if (k === 'a') { const b = { deriv: '#animH', integ: '#animN', limit: '#animZoom', taylor: '#animT', optim: S.opt === 'can' ? '#canOpt' : null }[S.mode]; if (b) { $(b).click(); e.preventDefault(); } }
+  });
+  setInterval(() => { if (!demoOn() && !S.err) try { localStorage.setItem('sl-calculus-last', JSON.stringify({ mode: S.mode, src: S.src, view: S.view })); } catch (e) {} }, 1000);
+  try {
+    const o = JSON.parse(localStorage.getItem('sl-calculus-last') || 'null');
+    if (o && typeof o.src === 'string' && o.view) setTimeout(() => {
+      if (o.src !== S.src) setFunction(o.src, [o.view.x0, o.view.x1, o.view.y0, o.view.y1]);
+      if (o.mode && o.mode !== S.mode && o.mode !== 'limit' && o.mode !== 'taylor') setMode(o.mode);
+    }, 1200);
+  } catch (e) {}
+/* ==/DEMOPASS== */
   // guided tour (registered after SimLab mounts the hero; each target is scrolled into view instantly so the tip lands in the right place)
   const tourGo = steps => { const go = () => SL.tour(steps.map(s => Object.assign({}, s, { before: () => { if (s.before) s.before(); const e = document.querySelector(s.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }))); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); };
   tourGo([
     { el: '#stage', before: () => document.querySelector('#modes [data-m=deriv]').click(), title: 'The graph', text: 'Drag the yellow point along the curve. The orange dashed secant and the yellow tangent show average versus instantaneous slope; the lower plot is f′(x).' },
+    { el: '#dkPlay', title: 'Watch a demo', text: 'Short on time? Press <b>Watch demo</b> (or the D key) for a guided run-through of the key ideas with captions. Stop it at any time; your settings come back afterwards. <b>Scenarios</b> (S) sets real-world goals.' },
     { el: '#fnPanel', title: 'Any function', text: 'Type your own f(x), such as <b>sin(x)/x</b> or <b>x^2 e^(-x)</b>, or pick a preset. The symbolic derivative updates instantly.' },
     { el: '#derivPanel', title: 'Shrink h', text: 'Press <b>Animate h → 0</b> and watch the secant rotate into the tangent. That limit is the derivative.' },
     { el: '#resPanel', title: 'What the numbers mean', text: 'The caption explains the current result in words; the tiles compare the secant slope with the exact derivative.' },
