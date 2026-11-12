@@ -87,6 +87,36 @@
   .phon b{font-family:var(--mono);color:var(--accent);margin-right:6px}
   @media (max-width:980px){#scope{height:560px}.below{grid-template-columns:1fr}.ovl{padding:18px 16px}#scope:has(> .ovl:not(.hide)){height:640px}#scope:has(> .ovl.peek){height:560px}}
   @media (max-width:520px){#scope{height:440px;min-height:0}#scope:has(> .ovl:not(.hide)){height:745px}#scope:has(> .ovl.peek){height:440px}}
+  /* watch demo + scenarios */
+  .demo-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:9;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.95);border:1px solid color-mix(in srgb,var(--accent) 60%,var(--line2));border-radius:12px;padding:9px 12px 11px;box-shadow:0 14px 44px rgba(0,0,0,.65);display:none}
+  .demo-cap.on{display:block;animation:dcIn .3s ease-out}
+  @keyframes dcIn{from{opacity:0;transform:translate(-50%,8px)}}
+  .demo-cap .dc-h{display:flex;align-items:center;gap:8px;font:600 .64rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+  .demo-cap .dc-h>svg{width:14px;height:14px;flex:none}
+  .demo-cap .dc-bar{flex:1;min-width:30px;height:3px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden}
+  .demo-cap .dc-bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s}
+  .demo-cap .btn{padding:4px 10px;font-size:.72rem;letter-spacing:0;text-transform:none}
+  .demo-cap.wait [data-dc=next]{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 30%,transparent)}
+  .demo-cap p{margin:6px 0 0;font-size:.88rem;line-height:1.45;color:#e6ecf7}
+  .demo-btn{width:100%;justify-content:center}
+  .demo-btn.on{background:var(--bad,#ef4444);border-color:transparent;color:#fff}
+  .scn-list{display:grid;gap:6px}
+  .scn{all:unset;box-sizing:border-box;cursor:pointer;display:block;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:.76rem;color:var(--muted);line-height:1.35}
+  .scn b{display:block;font-size:.83rem;color:#e6ecf7;font-weight:600}
+  .scn:hover,.scn:focus-visible{border-color:color-mix(in srgb,var(--accent) 70%,var(--line2))}
+  .scn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .scn.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--bg2))}
+  .scn.done b::after{content:' · done';color:var(--ok);font:600 .66rem var(--mono)}
+  .scn-goal{margin-top:9px;border:1px solid color-mix(in srgb,var(--warn) 45%,var(--line2));background:rgba(245,158,11,.06);border-radius:10px;padding:8px 10px}
+  .scn-goal.won{border-color:rgba(34,197,94,.5);background:rgba(34,197,94,.08)}
+  .scn-goal .k{display:flex;align-items:center;gap:7px;font:600 .64rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:#fde68a}
+  .scn-goal.won .k{color:#86efac}
+  .scn-goal p{margin:5px 0 0;font-size:.82rem}
+  .scn-more{width:100%;justify-content:center}
+  .keys{font-size:.72rem;color:var(--dim);margin:8px 0 0;line-height:1.7}
+  .keys kbd{font:600 .66rem var(--mono);padding:1px 5px;border:1px solid var(--line2);border-bottom-width:2px;border-radius:4px;color:#cdd6e8;background:var(--bg2)}
+  @media (max-width:980px){.demo-cap{position:fixed;bottom:10px}}
+  @media (max-width:520px){.demo-cap{padding:8px 10px 9px}.demo-cap p{font-size:.82rem}}
 </style>
 </head>
 <body data-page="air-traffic">
@@ -119,6 +149,12 @@
         <div class="panel-title">Time</div>
         <div class="seg" id="accSeg"><button data-v="0">Pause</button><button data-v="1" class="on">1×</button><button data-v="2">2×</button><button data-v="4">4×</button></div>
         <div class="btn-row" style="margin-top:12px"><button class="btn primary" id="btnStart"><i data-lucide="play"></i> Start</button><button class="btn" id="btnEnd"><i data-lucide="flag"></i> End session</button></div>
+        <div class="btn-row" style="margin-top:8px"><button class="btn demo-btn" id="demoBtn"><i data-lucide="play-circle"></i> Watch demo</button></div>
+        <p class="keys">Keys: <kbd>N</kbd> next aircraft · <kbd>/</kbd> command line · <kbd>1</kbd> <kbd>2</kbd> <kbd>4</kbd> time · <kbd>Space</kbd> pause · <kbd>Esc</kbd> deselect</p>
+      </div>
+      <div class="panel" id="scnPanel">
+        <h3><i data-lucide="target"></i> Scenarios</h3>
+        <div id="scn"></div>
       </div>
       <div class="panel" id="selPanel">
         <h3><i data-lucide="plane"></i> Selected aircraft</h3>
@@ -670,6 +706,7 @@
     separation();
     // history
     G.ac.forEach(a => { if (a.done || a.mode === 'ground') return; if (!a.lastH || G.t - a.lastH >= 4) { a.lastH = G.t; a.hist.unshift([a.x, a.y]); if (a.hist.length > 6) a.hist.pop(); } });
+    G.ac.forEach(a => { if (a.done && !a.finLogged) { a.finLogged = true; (G.fin || (G.fin = [])).push(a); } });
     G.ac = G.ac.filter(a => !(a.done && G.t - (a.landT || 0) > 0 && (a.done === 'exited' || a.done === 'lost' || a.done === 'landed')));
     if (G.t >= SESSION) endSession();
   }
@@ -830,6 +867,7 @@
 
   /* ======================= TRAINEE COACH (first arrival, scripted) ======================= */
   let coach = null, coachCur = null;
+  let demo = null, scn = null;
   const pad3 = h => String(Math.round(h) % 360 || 360).padStart(3, '0');
   function coachStep() {
     if (!coach) return null; const a = G.ac.find(x => x.id === coach.id) || (coach.ok ? coach.last : null); if (!a) return null;
@@ -973,13 +1011,13 @@
       <p class="small"><b>First time?</b> Choose <b>Trainee</b> in the Session panel. To land one arrival: select it, type <code>D80 S170</code>, then turn it so it will cross the green localiser at 30° or less (final course is ${String(RW().c).padStart(3, '0')}°), press <b>Cleared ILS</b>, and press <b>Cleared to land</b> before it is 1 NM from the runway.</p>
       <p class="small muted">Click an aircraft to select it, then use the buttons or type commands (e.g. <code>L240 D80 S170</code>). The radio transcript shows each instruction in ICAO phraseology with the pilot's readback. Use 2× or 4× time when it is quiet.</p>
       </details>
-      <div class="btn-row"><button class="btn primary" id="ovlGo"><i data-lucide="play"></i> Open the position</button><button class="btn" id="ovlPeek"><i data-lucide="radar"></i> Look at the radar first</button></div></div>`;
+      <div class="btn-row"><button class="btn primary" id="ovlGo"><i data-lucide="play"></i> Open the position</button><button class="btn" id="ovlDemo"><i data-lucide="play-circle"></i> Watch an expert first (1 min)</button><button class="btn ghost" id="ovlPeek"><i data-lucide="radar"></i> Look at the radar first</button></div></div>`;
     SL.refreshIcons(ovl); $('#ovlGo').onclick = start;
     $('#ovlPeek').onclick = () => { userPeek = true; peekScope(true); };
   }
   function endSession() {
     if (ended) return; ended = true; running = false; sel = null; renderSel();
-    const r = report(); checkCh(r, true);
+    const r = report(); G.lastReport = r; checkCh(r, true); if (scn) scn.check();
     const g = gradeOf(r.overall);
     ovl.classList.remove('hide');
     ovl.innerHTML = `<div class="role"><span class="badge"><i data-lucide="clipboard-check"></i> Session debrief</span>
@@ -1016,7 +1054,7 @@
   ];
   const done = new Set();
   function renderCh() { $('#chList').innerHTML = CH.map(c => `<li>${done.has(c.id) ? '<b style="color:var(--ok)">Done:</b> ' : ''}${c.t}</li>`).join(''); }
-  function checkCh(r, end) { CH.forEach(c => { if (done.has(c.id)) return; const ok = end ? (c.end ? c.end(r) : c.ok()) : (c.ok && c.ok()); if (ok) { done.add(c.id); SL.toast('Challenge complete: ' + c.t, 'ok', 5000); } }); renderCh(); }
+  function checkCh(r, end) { if (demo && demo.on) return; CH.forEach(c => { if (done.has(c.id)) return; const ok = end ? (c.end ? c.end(r) : c.ok()) : (c.ok && c.ok()); if (ok) { done.add(c.id); SL.toast('Challenge complete: ' + c.t, 'ok', 5000); } }); renderCh(); }
 
   /* ======================= LOOP ======================= */
   let ui = 0, chT = 0, lastSel = null;
@@ -1043,9 +1081,158 @@
     { q: 'What does an amber dashed line between two aircraft on the scope mean?', options: ['They are in formation', 'Predicted loss of separation within 90 s if nothing changes', 'One has been handed off', 'Radar failure'], answer: 1, why: 'Short Term Conflict Alert extrapolates both tracks and vertical profiles; act now with a heading or level change.' },
   ]);
   renderCh();
+  try { const d0 = localStorage.getItem('simlab-atc-diff'); if (d0 !== null && [0, 1, 2].includes(+d0)) { diff = +d0; document.querySelectorAll('#diffSeg button').forEach(x => x.classList.toggle('on', +x.dataset.v === diff)); } } catch (e) {}
   newGame(); renderSel(); renderStrips(); stats(); briefing();
   loop.start();
-  window.__atc = { get G() { return G; }, get sel() { return sel; }, set sel(a) { sel = a; }, cmd, parseCLI, physics, spawn, endSession, report, start, setAcc, locGeom, RW, gsAlt, ifName, fixXY };
+  /* ======================= WATCH DEMO + SCENARIOS (engine) ======================= */
+  /* Demo: a scripted expert run. Each step: { t: caption html, a: action, d: min ms on screen, until: condition, max: ms cap }.
+     Auto-plays; with prefers-reduced-motion it pauses after each step and waits for Next. Stop (or Esc) at any time. */
+  function makeDemo(o) {
+    const cap = document.createElement('div'); cap.className = 'demo-cap'; cap.setAttribute('role', 'status'); cap.setAttribute('aria-live', 'polite');
+    cap.innerHTML = '<div class="dc-h"><i data-lucide="clapperboard"></i><span class="dc-n"></span><span class="dc-bar"><i></i></span><button type="button" class="btn sm" data-dc="next" title="Next step (→)">Next</button><button type="button" class="btn sm" data-dc="stop" title="Stop the demo (Esc)">Stop</button></div><p></p>';
+    o.stage.appendChild(cap); SL.refreshIcons(cap);
+    const reduce = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
+    let run = null;
+    const ok = f => { try { return !!f(); } catch (e) { return true; } };
+    const tick = (fn) => new Promise(res => { const id = setInterval(() => { if (!run || run.stop || fn()) { clearInterval(id); res(); } }, 60); });
+    const btns = () => (o.buttons || []).map(s => document.querySelector(s)).filter(Boolean);
+    function label(on) { btns().forEach(b => { b.innerHTML = on ? '<i data-lucide="square"></i> Stop demo' : '<i data-lucide="play-circle"></i> Watch demo'; b.classList.toggle('on', on); SL.refreshIcons(b); }); }
+    async function play() {
+      if (run) { stop(); return; }
+      run = { stop: false, skip: false };
+      o.stage.classList.add('demo-on'); cap.classList.add('on'); label(true);
+      cap.querySelector('[data-dc=next]').textContent = reduce ? 'Next' : 'Skip';
+      const r = run;
+      try {
+        await o.start();
+        const steps = o.steps();
+        for (let i = 0; i < steps.length && !r.stop; i++) {
+          const s = steps[i];
+          cap.querySelector('.dc-n').textContent = `Expert demo · ${i + 1}/${steps.length}`;
+          cap.querySelector('.dc-bar i').style.width = ((i + 1) / steps.length * 100) + '%';
+          cap.querySelector('p').innerHTML = typeof s.t === 'function' ? s.t() : s.t;
+          r.skip = false;
+          if (s.a) { try { s.a(); } catch (e) { console.warn(e); } }
+          const t0 = performance.now(), d = reduce ? 0 : (s.d ?? 3500), max = s.max ?? 25000;
+          await tick(() => { const el = performance.now() - t0; return el >= max || (ok(s.until || (() => true)) && (el >= d || r.skip)); });
+          if (reduce && !r.stop && i < steps.length - 1) { o.pause && o.pause(true); r.skip = false; cap.classList.add('wait'); await tick(() => r.skip); cap.classList.remove('wait'); o.pause && o.pause(false); }
+        }
+      } catch (e) { console.warn(e); }
+      finally { run = null; cap.classList.remove('on', 'wait'); o.stage.classList.remove('demo-on'); label(false); try { o.end(r.stop); } catch (e) { console.warn(e); } }
+    }
+    function stop() { if (run) run.stop = true; }
+    cap.addEventListener('click', e => { const b = e.target.closest('[data-dc]'); if (!b || !run) return; if (b.dataset.dc === 'stop') stop(); else run.skip = true; });
+    document.addEventListener('keydown', e => { if (!run) return; if (e.key === 'Escape') { e.preventDefault(); stop(); } else if (e.key === 'ArrowRight') { e.preventDefault(); run.skip = true; } }, true);
+    (o.buttons || []).forEach(s => document.addEventListener('click', e => { if (e.target.closest(s)) play(); }));
+    return { play, stop, get on() { return !!run; } };
+  }
+  /* Scenarios: goal-based set-ups. Each: { id, t: title, g: goal text, how: success condition text, setup(), ok() }. */
+  function makeScenarios(o) {
+    const KEY = 'simlab-scn-' + (document.body.dataset.page || '');
+    let done = {}; try { done = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
+    let cur = null, won = false;
+    const el = document.querySelector(o.el);
+    let open = false, lastCompact = null;
+    function render() {
+      const compact = !open && (cur || (o.compact && o.compact()));
+      el.innerHTML = (compact ? `<button type="button" class="btn sm ghost scn-more" data-scn-x="open"><i data-lucide="list"></i> ${cur ? 'Other scenarios' : 'Choose a scenario'} (${o.list.length})</button>` : `<div class="scn-list">${o.list.map(s => `<button type="button" class="scn ${cur === s ? 'on' : ''} ${done[s.id] ? 'done' : ''}" data-scn="${s.id}"><b>${s.t}</b><span>${s.sub}</span></button>`).join('')}</div>`) +
+        (cur ? `<div class="scn-goal ${won ? 'won' : ''}"><div class="k"><span class="led ${won ? 'on' : 'warn'}"></span>${won ? 'Goal achieved' : 'Goal'}</div><p>${cur.g}</p><p class="small muted" style="margin:4px 0 0"><b>Success:</b> ${cur.how}</p><div class="btn-row" style="margin-top:6px"><button type="button" class="btn sm" data-scn-x="restart"><i data-lucide="rotate-ccw"></i> Restart</button><button type="button" class="btn sm ghost" data-scn-x="leave"><i data-lucide="x"></i> Free play</button></div></div>` : '');
+      SL.refreshIcons(el);
+    }
+    function pick(s) { cur = s; won = false; open = false; render(); try { s.setup(); } catch (e) { console.warn(e); } SL.toast(`<b>Scenario:</b> ${s.t}. ${s.g}`, '', 5200); }
+    el.addEventListener('click', e => {
+      const b = e.target.closest('[data-scn]'); if (b) { if (o.busy && o.busy()) return; pick(o.list.find(s => s.id === b.dataset.scn)); return; }
+      const x = e.target.closest('[data-scn-x]'); if (!x) return;
+      if (x.dataset.scnX === 'open') { open = true; render(); } else if (x.dataset.scnX === 'restart' && cur) pick(cur); else { cur = null; won = false; render(); o.leave && o.leave(); }
+    });
+    function check() { const cp = !!(o.compact && o.compact()); if (cp !== lastCompact) { lastCompact = cp; if (!cp) open = false; render(); } if (!cur || won || document.hidden || (o.busy && o.busy())) return; let r = false; try { r = cur.ok(); } catch (e) {} if (r) { won = true; done[cur.id] = 1; try { localStorage.setItem(KEY, JSON.stringify(done)); } catch (e) {} render(); SL.toast(`<b>Scenario complete:</b> ${cur.t}. ${cur.win || 'Well handled.'}`, 'ok', 6000); } }
+    setInterval(check, 1000);
+    render();
+    return { check, get cur() { return cur; }, clear() { cur = null; won = false; open = false; render(); } };
+  }
+
+  /* ---- shared set-up helpers for the demo and the scenarios ---- */
+  function freshSession(d, accV) {
+    diff = d; document.querySelectorAll('#diffSeg button').forEach(x => x.classList.toggle('on', +x.dataset.v === d));
+    running = false; ended = false; coach = null; newGame(); sel = null;
+    ovl.classList.add('hide'); peekScope(false); running = true; G.next = 1e9; setAcc(accV ?? 1);
+    $('#scope').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function placeArr(fx, along, cross, o = {}) {   // put an arrival at a point relative to the runway threshold (NM)
+    spawn('arr', fx); const a = G.ac[G.ac.length - 1], r = RW();
+    a.x = r.thr[0] - r.u[0] * along + r.n[0] * cross; a.y = r.thr[1] - r.u[1] * along + r.n[1] * cross;
+    Object.assign(a, { alt: o.alt || 11000, tAlt: o.alt || 11000, ias: o.ias || 240, tIas: o.ias || 240, mode: 'hdg', hdg: r.c, tHdg: r.c, turn: null, limit: false });
+    a.nominal = along / 200 * 3600 + 120;
+    if (o.loc) { a.mode = 'loc'; a.cleared.ils = true; a.dAlong = along; a.estT = G.t; }
+    return a;
+  }
+  function placeDep(fx, exit) { spawn('dep', fx); const a = G.ac[G.ac.length - 1]; if (exit) a.exit = exit; return a; }
+
+  /* ---- expert demo: one arrival vectored onto the ILS while a departure is released ahead of it ---- */
+  let demoSaved = null, demoArr = null, demoDep = null, demoAcc = 1;
+  demo = makeDemo({
+    stage: $('#scope'), buttons: ['#demoBtn', '#ovlDemo'],
+    start() {
+      demoSaved = { diff, acc }; scn.clear(); setView('scope');
+      freshSession(1, 2);
+      demoArr = placeArr({ icao: 'KQA', type: 'B738', num: '101', entry: 'NIBAS', alt: 11000 }, 18, -4.5);
+      demoDep = placeDep({ icao: 'UAE', type: 'B77W', num: '720' }, 'NOREB');
+      sel = demoArr; range = 30; renderSel(); renderStrips();
+    },
+    pause(on) { if (on) { demoAcc = acc; setAcc(0); } else setAcc(demoAcc); },
+    steps: () => [
+      { t: 'Approach radar, runway 06, wind 060/12. Two flights to work: <b>Kenya 101</b> inbound 18 NM south-west at 11,000 ft, and <b>Emirates 720</b> (a heavy B777) ready at the holding point.', d: 4800 },
+      { t: '<b>Plan the descent first.</b> “Kenya 101, descend to altitude 8,000 ft, reduce speed 190 knots.” 8,000 ft puts it below the glide path so it can capture it from below.', a: () => { sel = demoArr; cmd(demoArr, { alt: 8000, spd: 190 }); }, d: 5200 },
+      { t: '<b>Vector to the localiser.</b> A 30° intercept: “turn right heading 090, cleared ILS approach runway 06.” Any bigger angle risks overshooting the centreline.', a: () => { cmd(demoArr, { hdg: 90, dir: 'right', ils: true }); }, d: 5600 },
+      { t: '<b>Use the gap.</b> The arrival is about 17 NM out, five minutes from touchdown, so the runway is free: “Emirates 720, cleared for take-off, climb flight level 150.” Time now runs ×12.', a: () => { sel = demoDep; cmd(demoDep, { to: true, alt: 15000 }); setAcc(12); }, d: 5000 },
+      { t: 'Emirates 720 rolls down runway 06. A heavy B777 needs about a minute and 170 kt before it rotates.', until: () => demoDep.airT != null, d: 2500, max: 25000 },
+      { t: 'Airborne. Send it straight to its exit fix: “Emirates 720, proceed direct NOREB.” Departures climb away to the north while arrivals stay south-west: no conflict.', a: () => cmd(demoDep, { dct: 'NOREB' }), d: 4200 },
+      { t: 'Back to Kenya 101 on its heading: its prediction line meets the green final course at 30°. Once established on the localiser it flies the approach itself.', a: () => { sel = demoArr; renderSel(); }, until: () => demoArr.mode === 'loc' || !!demoArr.done, d: 3000, max: 30000 },
+      { t: '<b>Established.</b> At the final approach fix (8.4 NM) the glide path comes down to meet it: it starts a 3° descent, about 318 ft per nautical mile.', until: () => demoDep.alt > 10500 || demoDep.done, d: 4200, max: 25000 },
+      { t: '<b>Hand off.</b> Emirates 720 is climbing through FL105, clear of all traffic: “contact Nairobi Control 125.3, good day.” The tick in its label shows it has left your frequency.', a: () => cmd(demoDep, { ho: true }), until: () => demoArr.done || (demoArr.mode === 'loc' && demoArr.dAlong < 7), d: 4000, max: 30000 },
+      { t: '<b>Landing clearance at about 6 NM.</b> “Kenya 101, wind 060 degrees 12 knots, runway 06, cleared to land.” Without it, the crew must go around at 1 NM.', a: () => { cmd(demoArr, { land: true }); setAcc(16); }, until: () => !!demoArr.done || demoArr.mode === 'rollout', d: 4200, max: 40000 },
+      { t: '<b>Kenya 101 is down</b>, and Emirates 720 is on its way to Dubai: two movements, no conflict, no delay. Your turn: try a scenario on the right.', a: () => setAcc(1), d: 4800 },
+    ],
+    end() {
+      if (demoSaved) { diff = demoSaved.diff; document.querySelectorAll('#diffSeg button').forEach(x => x.classList.toggle('on', +x.dataset.v === diff)); }
+      range = 50; reset(); setAcc(demoSaved ? demoSaved.acc || 1 : 1);
+      SL.toast('Demo finished. Pick a scenario, or press Start for a full session.', '', 3500);
+    },
+  });
+
+  /* ---- scenarios ---- */
+  const allAc = () => G.ac.concat(G.fin || []);
+  const exitedOK = cs => allAc().some(a => a.cs === cs && a.done === 'exited' && a.ho && a.alt >= 14900 && Math.hypot(a.x - fixXY(a.exit)[0], a.y - fixXY(a.exit)[1]) <= 8);
+  const landed = cs => allAc().some(a => a.cs === cs && a.done === 'landed');
+  const SCN = [
+    { id: 'first', t: 'First arrival of the morning', sub: 'Guided · one Kenya Airways B737', g: 'A quiet start at Nairobi. The guide in the Selected aircraft panel walks you through descending, slowing and vectoring Kenya 214 onto the ILS.', how: 'Kenya 214 lands with no go-around.',
+      setup() { scn._reset(0); start(); }, ok: () => G.landed >= 1 && !G.ga, win: 'That is the whole arrival flow.' },
+    { id: 'dubai', t: 'Emirates to Dubai via NOREB', sub: 'Departure · climb, route, hand off', g: 'Emirates 720, a heavy B777, is ready at the holding point for Dubai. Get it airborne, climbing to FL150 or above, out via NOREB to the north, handed off to Nairobi Control.', how: 'It leaves the sector at FL150+, within 8 NM of NOREB, after a handoff.',
+      setup() { freshSession(1); placeDep({ icao: 'UAE', type: 'B77W', num: '720' }, 'NOREB'); renderStrips(); }, ok: () => exitedOK('UAE720'), win: 'Take-off, climb, route and handoff, all by the book.' },
+    { id: 'wake', t: 'Heavy ahead: wake spacing on final', sub: 'Two arrivals · B777 then E190', g: 'An Emirates B777 (heavy) and a Kenya Airways E190 (medium) arrive together from the south-west. Sequence them onto the ILS with at least 5 NM behind the heavy.', how: 'Both land with no wake-spacing infringement, no loss of separation and no go-around.',
+      setup() { freshSession(1); spawn('arr', { icao: 'UAE', type: 'B77W', num: '721', entry: 'MASUL', alt: 15000 }); spawn('arr', { icao: 'KQA', type: 'E190', num: '312', entry: 'NIBAS', alt: 16000 }); renderStrips(); }, ok: () => landed('UAE721') && landed('KQA312') && !G.wake && !G.los && !G.ga, win: 'Wake vortices behind a heavy can roll a medium jet: spacing is a safety rule, not a courtesy.' },
+    { id: 'gap', t: 'Departure in the gap', sub: 'Arrival on final · Safarilink waiting', g: 'Kenya 455 is established on the ILS 12 NM out. Safarilink 230 is ready for departure to the south via ARKUD. Get the Dash 8 away before the arrival lands, and land the arrival.', how: 'Safarilink airborne before Kenya 455 lands; Kenya 455 lands without a go-around; no loss of separation.',
+      setup() { freshSession(1); placeArr({ icao: 'KQA', type: 'B738', num: '455', entry: 'NIBAS', alt: 8000 }, 12, 0, { alt: 8000, ias: 180, loc: true }); placeDep({ icao: 'SFL', type: 'DH8D', num: '230' }, 'ARKUD'); renderStrips(); },
+      ok: () => { const d = allAc().find(a => a.cs === 'SFL230'), a = allAc().find(x => x.cs === 'KQA455'); return d && a && d.airT != null && a.landT != null && d.airT < a.landT && !G.ga && !G.los; }, win: 'One runway, two movements, no delay: that is how capacity is made.' },
+    { id: 'rush', t: 'Friday evening rush hour', sub: 'Full session · heavy traffic', g: 'Rush hour: arrivals and departures every minute or so, gusty wind. Keep everyone separated and the traffic moving.', how: 'End the session with a Safety grade of A (85+) and at least six movements.',
+      setup() { scn._reset(2); start(); }, ok: () => G.lastReport && G.lastReport.parts[0][1] >= 85 && G.landed + G.departed >= 6, win: 'Safe and busy: the controller’s whole job.' },
+  ];
+  scn = makeScenarios({ el: '#scn', list: SCN, busy: () => demo.on, compact: () => running || demo.on, leave() { reset(); } });
+  scn._reset = d => { diff = d; document.querySelectorAll('#diffSeg button').forEach(x => x.classList.toggle('on', +x.dataset.v === d)); running = false; ended = false; coach = null; newGame(); renderSel(); renderStrips(); stats(); $('#scope').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+
+  /* ---- keyboard shortcuts and remembered settings ---- */
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey || e.metaKey || e.altKey || demo.on) return;
+    if (e.target.closest && e.target.closest('input,textarea,select,[contenteditable]')) return;
+    if (!running) return;
+    const k = e.key;
+    if (k === 'n' || k === 'N') { const list = G.ac.filter(a => !a.done).sort((a, b) => (a.arr - b.arr) || a.spawnT - b.spawnT); if (!list.length) return; const i = list.indexOf(sel); sel = list[(i + 1) % list.length]; renderSel(); renderStrips(); }
+    else if (k === '1' || k === '2' || k === '4') setAcc(+k);
+    else if (k === '/') { e.preventDefault(); $('#cli').focus(); }
+    else if (k === 'Escape') { sel = null; renderSel(); renderStrips(); }
+  });
+  document.querySelectorAll('#diffSeg button').forEach(b => b.addEventListener('click', () => { try { localStorage.setItem('simlab-atc-diff', String(diff)); } catch (e) {} }));
+  window.__atc = { get G() { return G; }, get sel() { return sel; }, set sel(a) { sel = a; }, cmd, parseCLI, physics, spawn, endSession, report, start, setAcc, locGeom, RW, gsAlt, ifName, fixXY, get demo() { return demo; }, get scn() { return scn; } };
   /* look at the radar before opening the position (also used by the guided tour) */
   let userPeek = false;
   function peekScope(on) { if (running || ended) on = false; if (ovl.classList.contains('peek') === on) return; ovl.classList.toggle('peek', on); $('#scope').classList.toggle('peeking', on); }
@@ -1053,6 +1240,8 @@
   const startTour = () => {
     SL.tour([
       { el: '#diffSeg', title: 'Choose your session', text: 'Trainee, standard or rush hour: more traffic means less time between decisions. Then open the position with Start.', before: () => peekScope(false) },
+      { el: '#demoBtn', title: 'Watch an expert', text: 'Watch demo plays about a minute of an expert controller: a departure released in the gap, an arrival vectored onto the ILS at 30° and cleared to land, with captions for every call. Stop it at any time.', before: () => peekScope(false) },
+      { el: '#scnPanel', title: 'Scenarios', text: 'Real situations with a goal and a success check: your first guided arrival, a heavy departure to Dubai, wake spacing on final, a departure in the gap and rush hour.', before: () => peekScope(false) },
       { el: '#ovl', title: 'Your role', text: 'You are the approach radar controller. The briefing explains arrivals, departures, separation and terrain. Open the position from here, or look at the radar first.', before: () => peekScope(false) },
       { el: '#scope', title: 'The radar scope', text: 'Aircraft labels show callsign, level and speed. Tap one to select it. Dashed amber lines warn of a conflict within 90 s; red means separation is lost.', before: () => peekScope(true) },
       { el: '.zoom', title: 'Zoom the scope', text: 'Zoom in for the final approach, out to see arrivals entering the sector.', before: () => peekScope(true) },

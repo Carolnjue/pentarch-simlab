@@ -90,6 +90,36 @@
   .below{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:18px;margin-bottom:10px}
   @media (max-width:980px){.below{grid-template-columns:1fr}#mapStage{height:520px}.ovl{padding:18px 16px}#mapStage:has(> .ovl:not(.hide)){height:620px}#mapStage:has(> .ovl.peek){height:520px}}
   @media (max-width:520px){#mapStage{height:420px;min-height:0}#mapStage:has(> .ovl:not(.hide)){height:600px}#mapStage:has(> .ovl.peek){height:420px}.qgrid{grid-template-columns:1fr}}
+  /* watch demo + scenarios */
+  .demo-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:9;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.95);border:1px solid color-mix(in srgb,var(--accent) 60%,var(--line2));border-radius:12px;padding:9px 12px 11px;box-shadow:0 14px 44px rgba(0,0,0,.65);display:none}
+  .demo-cap.on{display:block;animation:dcIn .3s ease-out}
+  @keyframes dcIn{from{opacity:0;transform:translate(-50%,8px)}}
+  .demo-cap .dc-h{display:flex;align-items:center;gap:8px;font:600 .64rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+  .demo-cap .dc-h>svg{width:14px;height:14px;flex:none}
+  .demo-cap .dc-bar{flex:1;min-width:30px;height:3px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden}
+  .demo-cap .dc-bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s}
+  .demo-cap .btn{padding:4px 10px;font-size:.72rem;letter-spacing:0;text-transform:none}
+  .demo-cap.wait [data-dc=next]{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 30%,transparent)}
+  .demo-cap p{margin:6px 0 0;font-size:.88rem;line-height:1.45;color:#e6ecf7}
+  .demo-btn{width:100%;justify-content:center}
+  .demo-btn.on{background:var(--bad,#ef4444);border-color:transparent;color:#fff}
+  .scn-list{display:grid;gap:6px}
+  .scn{all:unset;box-sizing:border-box;cursor:pointer;display:block;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:.76rem;color:var(--muted);line-height:1.35}
+  .scn b{display:block;font-size:.83rem;color:#e6ecf7;font-weight:600}
+  .scn:hover,.scn:focus-visible{border-color:color-mix(in srgb,var(--accent) 70%,var(--line2))}
+  .scn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .scn.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--bg2))}
+  .scn.done b::after{content:' · done';color:var(--ok);font:600 .66rem var(--mono)}
+  .scn-goal{margin-top:9px;border:1px solid color-mix(in srgb,var(--warn) 45%,var(--line2));background:rgba(245,158,11,.06);border-radius:10px;padding:8px 10px}
+  .scn-goal.won{border-color:rgba(34,197,94,.5);background:rgba(34,197,94,.08)}
+  .scn-goal .k{display:flex;align-items:center;gap:7px;font:600 .64rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:#fde68a}
+  .scn-goal.won .k{color:#86efac}
+  .scn-goal p{margin:5px 0 0;font-size:.82rem}
+  .scn-more{width:100%;justify-content:center}
+  .keys{font-size:.72rem;color:var(--dim);margin:8px 0 0;line-height:1.7}
+  .keys kbd{font:600 .66rem var(--mono);padding:1px 5px;border:1px solid var(--line2);border-bottom-width:2px;border-radius:4px;color:#cdd6e8;background:var(--bg2)}
+  @media (max-width:980px){.demo-cap{position:fixed;bottom:10px}}
+  @media (max-width:520px){.demo-cap{padding:8px 10px 9px}.demo-cap p{font-size:.82rem}}
 </style>
 </head>
 <body data-page="dispatch">
@@ -122,6 +152,12 @@
           <button class="btn" id="btnPause"><i data-lucide="pause"></i> Pause</button>
           <button class="btn" id="btnEnd"><i data-lucide="flag"></i> End shift</button>
         </div>
+        <div class="btn-row" style="margin-top:8px"><button class="btn demo-btn" id="demoBtn"><i data-lucide="play-circle"></i> Watch demo</button></div>
+        <p class="keys">Keys: <kbd>A</kbd> answer · <kbd>1</kbd>–<kbd>4</kbd> priority · <kbd>R</kbd> reassure · <kbd>E</kbd> end call · <kbd>P</kbd> pause</p>
+      </div>
+      <div class="panel" id="scnPanel">
+        <h3><i data-lucide="target"></i> Scenarios</h3>
+        <div id="scn"></div>
       </div>
       <div class="panel">
         <h3><i data-lucide="phone-incoming"></i> Call queue</h3>
@@ -413,13 +449,14 @@
     const ws = T.map(t => t.w[diff]); let r = rnd() * ws.reduce((a, b) => a + b, 0);
     for (let k = 0; k < T.length; k++) { r -= ws[k]; if (r <= 0) return T[k]; } return T[0];
   }
-  function newCall() {
-    const tp = pickTemplate();
+  function newCall(spec) {
+    const tp = spec ? T.find(t => t.id === spec.tp) : pickTemplate();
     const facNodes = new Set(FAC.map(f => node(f.i, f.j)));
-    let i, j, n; do { i = 1 + Math.floor(rnd() * (NX - 2)); j = Math.floor(rnd() * NY); n = node(i, j); } while (facNodes.has(n) || S.incidents.some(x => x.node === n));
-    const panic = Math.min(2, Math.floor(rnd() * (diff === 2 ? 3 : 2.6)));
+    let i, j, n; if (spec) { i = spec.i; j = spec.j; n = node(i, j); } else do { i = 1 + Math.floor(rnd() * (NX - 2)); j = Math.floor(rnd() * NY); n = node(i, j); } while (facNodes.has(n) || S.incidents.some(x => x.node === n));
+    const panic = spec ? spec.panic : Math.min(2, Math.floor(rnd() * (diff === 2 ? 3 : 2.6)));
     const c = { id: S.idSeq++, tp, node: n, i, j, panic, panic0: panic, ring: S.rt, ringSim: S.t, answered: null, asked: new Set(), tx: [], prio: null, units: [], firstDispatch: null, firstArrive: null, cprStart: null, paiSaid: new Set(), state: 'ring', addrKnown: false, reassured: 0, weapon: false, ended: false, outcome: null, dispatchNotes: [], addrFirst: null, abandoned: false };
-    if (tp.weaponVar && rnd() < .45) { c.weapon = true; c.prioEff = 1; } else c.prioEff = tp.prio;
+    if (spec && spec.weapon != null ? spec.weapon : tp.weaponVar && rnd() < .45) { c.weapon = true; c.prioEff = 1; } else c.prioEff = tp.prio;
+    if (spec) { c.scn = !!spec.scn; c.demo = !!spec.demo; }
     S.calls.push(c);
     try { const ac = SL.audio(); if (ac && ac.state === 'running') ringTone(ac); } catch (e) {}
     renderQueue();
@@ -449,7 +486,7 @@
     let ans;
     if (k === 'address') {
       if (c.panic >= 2) { ans = `I don't know! ${distOf(c.i, c.j).n}… near ${landmarkNear(c) || 'the main road'}! Just come!`; }
-      else { ans = `It's the corner of ${AVE[c.i]} and ${RD[c.j]}, in ${distOf(c.i, c.j).n}.`; c.addrKnown = true; c.tx.push(['c', ans]); c.tx.push(['s', 'Address verified · incident plotted on map']); renderCall(); return; }
+      else { ans = `It's the corner of ${AVE[c.i]} and ${RD[c.j]}, in ${distOf(c.i, c.j).n}.`; c.addrKnown = true; c.tx.push(['c', ans]); c.tx.push(['s', 'Address verified · incident plotted on map']); renderQueue(); renderCall(); return; }
     } else if (k === 'callback') ans = `It's 07${String(10 + (c.id * 37) % 89)} ${String(100 + (c.id * 211) % 899)} ${String(100 + (c.id * 97) % 899)}.`;
     else if (k === 'weapons' && c.weapon) ans = 'I saw him through the gap… he has a panga!';
     else if (k === 'hazards' && c.tp.id === 'burglary' && c.weapon) ans = 'I think he has a panga, I saw it shine.';
@@ -488,6 +525,7 @@
     u.path = r.path; u.seg = 0; u.prog = 0; u.inc = c.id; u.timer = u.state === 'avail' ? 60 : 0; u.state = 'enroute';
     c.units.push(uid);
     if (c.firstDispatch === null) c.firstDispatch = S.rt;
+    if (c.coveredAt == null && c.tp.need.every(slot => c.units.some(id => slot.includes(S.units.find(x => x.id === id).type)))) c.coveredAt = S.rt;
     c.tx.push(['s', `${u.id} (${TYPES[u.type].n}) dispatched · ETA ${mmss(r.t + u.timer)}`]);
     if (c.tx.filter(x => x[0] === 'd' && /Help is on the way/.test(x[1])).length === 0) c.tx.push(['d', 'Help is on the way. Stay on the line.']);
     if (!S.incidents.includes(c)) S.incidents.push(c);
@@ -526,13 +564,15 @@
     S.active = null; renderQueue(); renderCall();
   }
   let confirmNoDispatch = false;
+  let demo = null, scn = null;
 
   /* ======================= SIMULATION ======================= */
   function nearestHospital(n) { let best = null, bt = Infinity; FAC.filter(f => f.k === 'H').forEach(f => { const t = route(n, node(f.i, f.j)).t; if (t < bt) { bt = t; best = f; } }); return best; }
   function step(dtReal) {
     const dt = dtReal * tc; S.t += dt; S.rt += dtReal;
     // arrivals
-    if (S.t >= S.nextCall && S.t < SHIFT - 120) { newCall(); S.nextCall = S.t + DIFF[diff].gap * (0.45 + rnd() * 1.1); }
+    if (S.script) S.script.forEach(x => { if (!x.done && S.t >= x.at) { x.done = true; newCall(x); } });
+    if (!S.noRandom && S.t >= S.nextCall && S.t < SHIFT - 120) { newCall(); S.nextCall = S.t + DIFF[diff].gap * (0.45 + rnd() * 1.1); }
     // queue escalation (real seconds)
     S.calls.forEach(c => {
       if (c.state === 'ring') {
@@ -948,13 +988,13 @@
       </ul>
       <p class="small muted">Map time runs ×${tc} (change it in the Shift panel). Answer and dispatch times are measured in real seconds; response times in map minutes. <b>First time?</b> Choose <b>Quiet night</b> in the Shift panel, then follow the question buttons in the Active call panel from top to bottom.</p>
       </details>
-      <div class="btn-row"><button class="btn primary" id="ovlGo"><i data-lucide="play"></i> Start the shift</button><button class="btn" id="ovlPeek"><i data-lucide="map"></i> Look at the map first</button></div></div>`;
+      <div class="btn-row"><button class="btn primary" id="ovlGo"><i data-lucide="play"></i> Start the shift</button><button class="btn" id="ovlDemo"><i data-lucide="play-circle"></i> Watch an expert first (50 s)</button><button class="btn ghost" id="ovlPeek"><i data-lucide="map"></i> Look at the map first</button></div></div>`;
     SL.refreshIcons(ovl); $('#ovlGo').onclick = start;
     $('#ovlPeek').onclick = () => { userPeek = true; peekMap(true); };
   }
   function endShift() {
     if (ended) return; ended = true; running = false;
-    const r = scoreShift(); checkCh(r);
+    const r = scoreShift(); S.lastReport = r; checkCh(r); if (scn) scn.check();
     ovl.classList.remove('hide');
     const g = gradeOf(r.overall);
     ovl.innerHTML = `<div class="role"><span class="badge"><i data-lucide="clipboard-check"></i> Shift summary</span>
@@ -986,7 +1026,7 @@
   ];
   const done = new Set();
   function renderCh() { $('#chList').innerHTML = CH.map(c => `<li>${done.has(c.id) ? '<b style="color:var(--ok)">Done:</b> ' : ''}${c.t}</li>`).join(''); }
-  function checkCh(r) { CH.forEach(c => { if (done.has(c.id)) return; const ok = r ? (c.end ? c.end(r) : c.live && c.live()) : (c.live && c.live()); if (ok) { done.add(c.id); SL.toast('Challenge complete: ' + c.t, 'ok', 5000); } }); renderCh(); }
+  function checkCh(r) { if (demo && demo.on) return; CH.forEach(c => { if (done.has(c.id)) return; const ok = r ? (c.end ? c.end(r) : c.live && c.live()) : (c.live && c.live()); if (ok) { done.add(c.id); SL.toast('Challenge complete: ' + c.t, 'ok', 5000); } }); renderCh(); }
 
   /* ======================= LOOP ======================= */
   let ui = 0, chT = 0;
@@ -1011,9 +1051,157 @@
     { q: 'Why might sending the nearest ALS ambulance to a stable P3 fracture be a poor choice?', options: ['ALS crews cannot treat fractures', 'It leaves that area without ALS cover for the next life-threatening call', 'It is illegal', 'BLS units are always faster'], answer: 1, why: 'Dispatchers manage coverage, not just the call in front of them. A BLS unit is sufficient for a stable fracture.' },
   ]);
   renderCh();
+  try { const pr = JSON.parse(localStorage.getItem('simlab-dispatch-prefs') || 'null'); if (pr) { diff = SL.clamp(+pr.diff || 0, 0, 2); document.querySelectorAll('#diffSeg button').forEach(x => x.classList.toggle('on', +x.dataset.v === diff)); if ([5, 10, 15, 20].includes(+pr.tc)) { tc = +pr.tc; $('#tc').value = tc; $('#tc').dispatchEvent(new Event('input')); } } } catch (e) {}
   newShift(); renderQueue(); renderCall(); renderUnits(); stats(); briefing();
   loop.start();
-  window.__dp = { get S() { return S; }, answer, ask, setPrio, dispatch, sayPai, tap, endCall, reassure, newCall, endShift, scoreShift, step, tickTimers, route, start, get tc() { return tc; } };
+  /* ======================= WATCH DEMO + SCENARIOS (engine) ======================= */
+  /* Demo: a scripted expert run. Each step: { t: caption html, a: action, d: min ms on screen, until: condition, max: ms cap }.
+     Auto-plays; with prefers-reduced-motion it pauses after each step and waits for Next. Stop (or Esc) at any time. */
+  function makeDemo(o) {
+    const cap = document.createElement('div'); cap.className = 'demo-cap'; cap.setAttribute('role', 'status'); cap.setAttribute('aria-live', 'polite');
+    cap.innerHTML = '<div class="dc-h"><i data-lucide="clapperboard"></i><span class="dc-n"></span><span class="dc-bar"><i></i></span><button type="button" class="btn sm" data-dc="next" title="Next step (→)">Next</button><button type="button" class="btn sm" data-dc="stop" title="Stop the demo (Esc)">Stop</button></div><p></p>';
+    o.stage.appendChild(cap); SL.refreshIcons(cap);
+    const reduce = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
+    let run = null;
+    const ok = f => { try { return !!f(); } catch (e) { return true; } };
+    const tick = (fn) => new Promise(res => { const id = setInterval(() => { if (!run || run.stop || fn()) { clearInterval(id); res(); } }, 60); });
+    const btns = () => (o.buttons || []).map(s => document.querySelector(s)).filter(Boolean);
+    function label(on) { btns().forEach(b => { b.innerHTML = on ? '<i data-lucide="square"></i> Stop demo' : '<i data-lucide="play-circle"></i> Watch demo'; b.classList.toggle('on', on); SL.refreshIcons(b); }); }
+    async function play() {
+      if (run) { stop(); return; }
+      run = { stop: false, skip: false };
+      o.stage.classList.add('demo-on'); cap.classList.add('on'); label(true);
+      cap.querySelector('[data-dc=next]').textContent = reduce ? 'Next' : 'Skip';
+      const r = run;
+      try {
+        await o.start();
+        const steps = o.steps();
+        for (let i = 0; i < steps.length && !r.stop; i++) {
+          const s = steps[i];
+          cap.querySelector('.dc-n').textContent = `Expert demo · ${i + 1}/${steps.length}`;
+          cap.querySelector('.dc-bar i').style.width = ((i + 1) / steps.length * 100) + '%';
+          cap.querySelector('p').innerHTML = typeof s.t === 'function' ? s.t() : s.t;
+          r.skip = false;
+          if (s.a) { try { s.a(); } catch (e) { console.warn(e); } }
+          const t0 = performance.now(), d = reduce ? 0 : (s.d ?? 3500), max = s.max ?? 25000;
+          await tick(() => { const el = performance.now() - t0; return el >= max || (ok(s.until || (() => true)) && (el >= d || r.skip)); });
+          if (reduce && !r.stop && i < steps.length - 1) { o.pause && o.pause(true); r.skip = false; cap.classList.add('wait'); await tick(() => r.skip); cap.classList.remove('wait'); o.pause && o.pause(false); }
+        }
+      } catch (e) { console.warn(e); }
+      finally { run = null; cap.classList.remove('on', 'wait'); o.stage.classList.remove('demo-on'); label(false); try { o.end(r.stop); } catch (e) { console.warn(e); } }
+    }
+    function stop() { if (run) run.stop = true; }
+    cap.addEventListener('click', e => { const b = e.target.closest('[data-dc]'); if (!b || !run) return; if (b.dataset.dc === 'stop') stop(); else run.skip = true; });
+    document.addEventListener('keydown', e => { if (!run) return; if (e.key === 'Escape') { e.preventDefault(); stop(); } else if (e.key === 'ArrowRight') { e.preventDefault(); run.skip = true; } }, true);
+    (o.buttons || []).forEach(s => document.addEventListener('click', e => { if (e.target.closest(s)) play(); }));
+    return { play, stop, get on() { return !!run; } };
+  }
+  /* Scenarios: goal-based set-ups. Each: { id, t: title, g: goal text, how: success condition text, setup(), ok() }. */
+  function makeScenarios(o) {
+    const KEY = 'simlab-scn-' + (document.body.dataset.page || '');
+    let done = {}; try { done = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
+    let cur = null, won = false;
+    const el = document.querySelector(o.el);
+    let open = false, lastCompact = null;
+    function render() {
+      const compact = !open && (cur || (o.compact && o.compact()));
+      el.innerHTML = (compact ? `<button type="button" class="btn sm ghost scn-more" data-scn-x="open"><i data-lucide="list"></i> ${cur ? 'Other scenarios' : 'Choose a scenario'} (${o.list.length})</button>` : `<div class="scn-list">${o.list.map(s => `<button type="button" class="scn ${cur === s ? 'on' : ''} ${done[s.id] ? 'done' : ''}" data-scn="${s.id}"><b>${s.t}</b><span>${s.sub}</span></button>`).join('')}</div>`) +
+        (cur ? `<div class="scn-goal ${won ? 'won' : ''}"><div class="k"><span class="led ${won ? 'on' : 'warn'}"></span>${won ? 'Goal achieved' : 'Goal'}</div><p>${cur.g}</p><p class="small muted" style="margin:4px 0 0"><b>Success:</b> ${cur.how}</p><div class="btn-row" style="margin-top:6px"><button type="button" class="btn sm" data-scn-x="restart"><i data-lucide="rotate-ccw"></i> Restart</button><button type="button" class="btn sm ghost" data-scn-x="leave"><i data-lucide="x"></i> Free play</button></div></div>` : '');
+      SL.refreshIcons(el);
+    }
+    function pick(s) { cur = s; won = false; open = false; render(); try { s.setup(); } catch (e) { console.warn(e); } SL.toast(`<b>Scenario:</b> ${s.t}. ${s.g}`, '', 5200); }
+    el.addEventListener('click', e => {
+      const b = e.target.closest('[data-scn]'); if (b) { if (o.busy && o.busy()) return; pick(o.list.find(s => s.id === b.dataset.scn)); return; }
+      const x = e.target.closest('[data-scn-x]'); if (!x) return;
+      if (x.dataset.scnX === 'open') { open = true; render(); } else if (x.dataset.scnX === 'restart' && cur) pick(cur); else { cur = null; won = false; render(); o.leave && o.leave(); }
+    });
+    function check() { const cp = !!(o.compact && o.compact()); if (cp !== lastCompact) { lastCompact = cp; if (!cp) open = false; render(); } if (!cur || won || document.hidden || (o.busy && o.busy())) return; let r = false; try { r = cur.ok(); } catch (e) {} if (r) { won = true; done[cur.id] = 1; try { localStorage.setItem(KEY, JSON.stringify(done)); } catch (e) {} render(); SL.toast(`<b>Scenario complete:</b> ${cur.t}. ${cur.win || 'Well handled.'}`, 'ok', 6000); } }
+    setInterval(check, 1000);
+    render();
+    return { check, get cur() { return cur; }, clear() { cur = null; won = false; open = false; render(); } };
+  }
+
+  /* ---- expert demo: a cardiac arrest in Kilimani, handled by the book ---- */
+  let demoSaved = null, demoTaps = null, demoPick = null;
+  const isType = (c, t) => c.units.some(id => S.units.find(u => u.id === id).type === t);
+  const nearest = (c, types) => S.units.filter(u => types.includes(u.type) && (u.state === 'avail' || u.state === 'return')).sort((a, b) => etaFor(a, c.node) - etaFor(b, c.node))[0];
+  const demoCall = () => S.calls.find(c => c.demo);
+  demo = makeDemo({
+    stage: $('#mapStage'), buttons: ['#demoBtn', '#ovlDemo'],
+    start() {
+      demoSaved = { diff, tc }; scn.clear();
+      running = false; ended = false; paused = false; newShift(); S.noRandom = true; renderQueue(); renderCall(); renderUnits(); stats(); start();
+      $('#btnPause').innerHTML = '<i data-lucide="pause"></i> Pause'; SL.refreshIcons($('#btnPause'));
+      $('#mapStage').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    pause(on) { paused = on; },
+    steps: () => [
+      { t: 'A call is ringing. The expert answers it within a few seconds: callers left waiting redial in distress, and after 75 s they give up.', a: () => newCall({ tp: 'arrest', i: 2, j: 4, panic: 0, demo: true }), d: 3200 },
+      { t: '<b>Location first.</b> “What is the address of your emergency?” If the line drops now, a verified address still lets help be sent.', a: () => answer(demoCall().id), d: 3600 },
+      { t: 'The caller gives a street corner in Kilimani. Once verified, the incident pin drops on the map and every unit shows its ETA.', a: () => ask('address'), d: 3600 },
+      { t: 'Next the chief complaint: “Tell me exactly what happened.” A collapse unlocks two key questions: is he awake, is he breathing normally?', a: () => ask('what'), d: 3600 },
+      { t: '“Is he awake?” No response to shaking and shouting: he is <b>unresponsive</b>.', a: () => ask('conscious'), d: 3000 },
+      { t: '“A gasping, snoring sound every few seconds.” That is <b>agonal breathing</b>, not normal breathing. Unresponsive + not breathing normally = cardiac arrest.', a: () => ask('breathing'), d: 4200 },
+      { t: '<b>P1: immediately life-threatening.</b> No hesitation: under-triage here costs about 7–10% survival for every minute of delay.', a: () => setPrio(1), d: 3000 },
+      { t: () => { const c = demoCall(), a = nearest(c, ['ALS']), f = nearest(c, ['FIRE']); demoPick = { a, f: f && a && etaFor(f, c.node) < etaFor(a, c.node) ? f : null }; return `<b>Dispatch.</b> ${a.id} (ALS: paramedics, drugs, defibrillator) is the closest advanced crew, ETA ${mmss(etaFor(a, c.node))}.${demoPick.f ? ` ${demoPick.f.id}, a fire engine carrying a defibrillator, is even closer (${mmss(etaFor(demoPick.f, c.node))}): it goes too, as a first responder.` : ''}`; },
+        a: () => { dispatch(demoPick.a.id); if (demoPick.f) dispatch(demoPick.f.id); }, d: 5000 },
+      { t: '<b>Coach CPR now</b>, before the crew arrives: phone on speaker, patient flat on the floor, heel of the hand in the centre of the chest, push 5–6 cm.', a: () => { [0, 1, 2, 3].forEach((k, n) => setTimeout(() => { if (demo.on && S.active) sayPai(k); }, n * 700)); }, d: 4200 },
+      { t: '“Count out loud with me.” The dispatcher taps the metronome at <b>110 per minute</b>, inside the 100–120 target, so the caller keeps pace.', a: () => { clearInterval(demoTaps); let n = 0; demoTaps = setInterval(() => { if (!demo.on || ++n > 14) { clearInterval(demoTaps); return; } if (!paused) tap(); }, 545); }, until: () => demoCall().bpmOk, d: 6500, max: 12000 },
+      { t: 'Map time runs ×20 so you can watch the ambulance drive the road network under lights and sirens. Compressions continue until the crew takes over.', a: () => { tc = 20; }, until: () => { const c = demoCall(); return c && c.units.some(id => { const u = S.units.find(x => x.id === id); return u.type === 'ALS' && u.state === 'scene'; }); }, d: 3000, max: 30000 },
+      { t: 'The ALS crew is on scene and takes over with the defibrillator. CPR from the first minute keeps the brain supplied with oxygen until then.', a: () => { tc = 10; [4, 5, 6].forEach(k => sayPai(k)); }, d: 4200 },
+      { t: 'Only now does the call end, freeing the dispatcher for the next one. <b>Your turn:</b> pick a scenario below the shift controls, or start a shift.', a: () => endCall(), d: 4200 },
+    ],
+    end() {
+      clearInterval(demoTaps);
+      if (demoSaved) { diff = demoSaved.diff; tc = demoSaved.tc; }
+      reset(); SL.toast('Demo finished. Pick a scenario, or press Start for a full shift.', '', 3500);
+    },
+  });
+
+  /* ---- scenarios: real call types, each with a goal and a success check ---- */
+  const callOf = id => S.calls.find(c => c.tp.id === id && c.scn);
+  const SCN = [
+    { id: 'arrest', t: 'Cardiac arrest in Kilimani', sub: 'Collapse at home · CPR coaching', g: 'A woman calls: her husband has collapsed in the sitting room. Get an ALS ambulance moving within 60 s of answering and coach compression-only CPR at 100–120 a minute.', how: 'ALS dispatched ≤ 60 s after answering, and the metronome held at 100–120/min.', script: [{ at: 8, tp: 'arrest', i: 2, j: 4, panic: 1 }],
+      ok: () => { const c = callOf('arrest'); return c && c.firstDispatch != null && c.firstDispatch - c.answered <= 60 && isType(c, 'ALS') && c.bpmOk; }, win: 'Early CPR and a fast ALS crew are the two biggest levers on survival.' },
+    { id: 'matatu', t: 'Matatu crash on Uhuru Highway', sub: 'Entrapment and fuel leak · multi-agency', g: 'A matatu has hit a saloon car on Uhuru Highway in the CBD. The driver is trapped and petrol is leaking. Send everything the scene needs.', how: 'An ambulance, a rescue or fire unit and police all dispatched within 90 s of answering, with no unneeded units.', script: [{ at: 8, tp: 'rta', i: 3, j: 3, panic: 1 }],
+      ok: () => { const c = callOf('rta'); return c && c.coveredAt != null && c.coveredAt - c.answered <= 90 && resourceOk(c); }, win: 'Patient care, extrication and scene safety all on the way.' },
+    { id: 'fire', t: 'Flat fire in Eastleigh', sub: 'Hysterical caller · person inside', g: 'A neighbour is screaming that the flat next door is on fire with an elderly woman inside. She cannot give an address yet.', how: 'Caller calmed, address verified, fire engine and ambulance sent, and at least two fire-safety instructions given.', script: [{ at: 8, tp: 'housefire', i: 7, j: 4, panic: 2 }],
+      ok: () => { const c = callOf('housefire'); return c && c.reassured && c.addrKnown && isType(c, 'FIRE') && (isType(c, 'ALS') || isType(c, 'BLS')) && c.paiSaid.size >= 2; }, win: 'Calm first, then the address: the classic order for a panicking caller.' },
+    { id: 'burglar', t: 'Whispered call in Karen', sub: 'Intruder in the house · weapon check', g: 'A woman whispers that someone has broken into her house. Find out if there is a weapon and triage accordingly.', how: 'Weapons question asked, priority P1 once a panga is seen, police dispatched and personal-safety advice given.', script: [{ at: 8, tp: 'burglary', i: 1, j: 6, panic: 1, weapon: true }],
+      ok: () => { const c = callOf('burglary'); return c && c.asked.has('weapons') && c.prio === 1 && isType(c, 'POLICE') && c.paiSaid.size >= 2; }, win: 'A weapon with an occupant at home is an immediate threat to life.' },
+    { id: 'rains', t: 'Long rains: two calls at once', sub: 'Flood rescue + diabetic emergency', g: 'Heavy rain: a driver is stranded on his car roof in the river, and minutes later a diabetic man collapses in South B.', how: 'Both calls triaged correctly (P1 and P2), each with the right units, and no call abandoned.', script: [{ at: 8, tp: 'flood', i: 8, j: 2, panic: 1 }, { at: 40, tp: 'diabetic', i: 7, j: 6, panic: 0 }],
+      ok: () => { const a = callOf('flood'), b = callOf('diabetic'); return a && b && [a, b].every(c => c.prio === c.prioEff && c.units.length && resourceOk(c)) && !S.calls.some(c => c.abandoned); }, win: 'Rescue for the water, the right ambulance for the diabetic, nobody left waiting.' },
+    { id: 'kasarani', t: 'Match night at Kasarani', sub: 'Major event · full shift', g: 'A full Major event shift with crowds across the city: calls come fast and units run short.', how: 'Finish the shift (End shift or wait for 60:00) with an overall grade of B (70) or better.', diff: 2,
+      ok: () => S.lastReport && S.lastReport.overall >= 70, win: 'Grade B or better on the busiest shift.' },
+  ];
+  scn = makeScenarios({
+    el: '#scn', list: SCN, busy: () => demo.on, compact: () => running || demo.on,
+    leave() { reset(); },
+  });
+  SCN.forEach(s => s.setup = () => {
+    diff = s.diff ?? 0; document.querySelectorAll('#diffSeg button').forEach(x => x.classList.toggle('on', +x.dataset.v === diff));
+    running = false; ended = false; paused = false; newShift(); renderQueue(); renderCall(); renderUnits(); stats();
+    if (s.script) { S.noRandom = true; S.script = s.script.map(x => Object.assign({ scn: true }, x)); }
+    start(); $('#btnPause').innerHTML = '<i data-lucide="pause"></i> Pause'; SL.refreshIcons($('#btnPause'));
+    $('#mapStage').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  /* ---- keyboard shortcuts and remembered settings ---- */
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey || e.metaKey || e.altKey || demo.on) return;
+    if (e.target.closest && e.target.closest('input,textarea,select,[contenteditable]')) return;
+    const k = e.key.toLowerCase();
+    if (k === 'p') { $('#btnPause').click(); return; }
+    if (!running || paused) return;
+    if (k === 'a') { const c = S.calls.filter(x => x.state === 'ring').sort((x, y) => x.ring - y.ring)[0]; if (c) answer(c.id); else SL.toast('No call is ringing.', '', 1500); }
+    else if (['1', '2', '3', '4'].includes(k) && S.active) { const m = protoMissing(S.active); if (m.length) SL.toast('Protocol first: ask ' + m.map(q => QL[q]).join(', ') + '.', 'warn'); else setPrio(+k); }
+    else if (k === 'r' && S.active) reassure();
+    else if (k === 'e' && S.active) endCall();
+  });
+  function savePrefs() { try { localStorage.setItem('simlab-dispatch-prefs', JSON.stringify({ diff, tc })); } catch (e) {} }
+  document.querySelectorAll('#diffSeg button').forEach(b => b.addEventListener('click', savePrefs));
+  $('#tc').addEventListener('change', savePrefs);
+  window.__dp = { get S() { return S; }, answer, ask, setPrio, dispatch, sayPai, tap, endCall, reassure, newCall, endShift, scoreShift, step, tickTimers, route, start, get tc() { return tc; }, get demo() { return demo; }, get scn() { return scn; } };
   /* look at the map before starting (also used by the guided tour) */
   let userPeek = false;
   function peekMap(on) { if (running || ended) on = false; if (ovl.classList.contains('peek') === on) return; ovl.classList.toggle('peek', on); $('#mapStage').classList.toggle('peeking', on); }
@@ -1021,6 +1209,8 @@
   const startTour = () => {
     SL.tour([
       { el: '#diffSeg', title: 'Choose your shift', text: 'Quiet night, weekday or a major event: busier shifts bring more calls, harder callers and fewer free units. Then press Start.', before: () => peekMap(false) },
+      { el: '#demoBtn', title: 'Watch an expert', text: 'Not sure where to begin? Watch demo plays a 50-second expert call: address first, triage, dispatch and CPR coaching, with captions explaining each decision. Stop it at any time.', before: () => peekMap(false) },
+      { el: '#scnPanel', title: 'Scenarios', text: 'Real calls with a goal: a cardiac arrest in Kilimani, a matatu crash, a fire with a panicking caller. Each tells you when you have succeeded.', before: () => peekMap(false) },
       { el: '#ovl', title: 'Your role', text: 'You are the duty dispatcher. The briefing sums up the job: answer, ask, triage, dispatch and coach. Start the shift from here, or look at the map first.', before: () => peekMap(false) },
       { el: '#mapStage', title: 'The city map', text: 'Every unit moves along the roads in real time. Incidents appear as pins coloured by priority (red P1 to green P4); tap a unit to send it to the open call.', before: () => peekMap(true) },
       { el: '#queue', title: 'Call queue', text: 'Ringing calls wait here. Answer fast: callers who wait become more distressed and give up after 75 s.', before: () => peekMap(true) },
