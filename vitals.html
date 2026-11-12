@@ -411,6 +411,266 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/simlab.js?v=13"></script>
+<!-- ==DEMOKIT== -->
+<script>
+/* Watch-demo runner and goal-based scenarios (page-local kit) */
+(function () {
+  if (window.DemoKit) return;
+  const css = `
+  .dk-bar{scroll-margin-top:calc(var(--hdr,64px) + 10px);display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 10px}
+  .dk-bar .btn.dk-play{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#a855f7));border-color:transparent;color:#06101f;box-shadow:0 0 18px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .dk-bar .btn.dk-play:hover{filter:brightness(1.08)}
+  .dk-bar .btn.dk-play.run{background:var(--panel2);color:var(--text);box-shadow:none;border-color:var(--line2)}
+  .dk-bar .dk-keys{font-size:.76rem;color:var(--dim);margin-left:auto}
+  .dk-bar .dk-keys kbd{font-size:.72rem}
+  .dk-goal{flex-basis:100%;display:none;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:12px;padding:10px 12px}
+  .dk-goal.show{display:flex}
+  .dk-goal.won{border-color:#34d399;background:color-mix(in srgb,#34d399 10%,var(--panel))}
+  .dk-goal .ic{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+  .dk-goal.won .ic{color:#34d399;background:color-mix(in srgb,#34d399 18%,transparent)}
+  .dk-goal .tx{flex:1;min-width:0;font-size:.86rem;line-height:1.45}
+  .dk-goal .tx b{display:block;font-size:.92rem}
+  .dk-goal .st{display:block;margin-top:3px;font:500 .78rem var(--mono);color:var(--accent)}
+  .dk-goal.won .st{color:#34d399}
+  .dk-goal .hint{display:none;margin-top:4px;color:var(--muted)}
+  .dk-goal .hint.show{display:block}
+  .dk-goal .acts{display:flex;gap:6px;flex-wrap:wrap;flex:none}
+  .dk-cap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;width:min(640px,calc(100% - 20px));background:rgba(5,9,19,.93);border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line2));border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.55);padding:10px 12px 9px;display:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .dk-cap.show{display:block}
+  .dk-cap.fixed{position:fixed;bottom:12px}
+  .dk-cap .row{display:flex;align-items:center;gap:8px}
+  .dk-cap .n{font:600 .66rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);flex:1}
+  .dk-cap p{margin:5px 0 8px;font-size:.92rem;line-height:1.45;color:var(--text)}
+  .dk-cap .pg{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:2px}
+  .dk-cap .pg i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s linear}
+  .dk-cap .btn.sm{padding:5px 10px;font-size:.78rem;flex:none;width:auto;min-width:0}
+  .dk-hl{outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:8px;animation:dkPulse 1.2s ease-in-out infinite}
+  @keyframes dkPulse{50%{outline-color:color-mix(in srgb,var(--accent) 30%,transparent)}}
+  .dk-scen{margin:18px 0 6px;scroll-margin-top:calc(var(--hdr,64px) + 10px)}
+  .dk-scen h3 .ct{margin-left:auto;font:500 .74rem var(--mono);color:var(--dim)}
+  .dk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:8px}
+  .dk-card{display:flex;flex-direction:column;gap:6px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+  .dk-card.on{border-color:var(--accent)}
+  .dk-card.done{border-color:color-mix(in srgb,#34d399 55%,var(--line))}
+  .dk-card .top{display:flex;align-items:center;gap:8px}
+  .dk-card .top b{flex:1;font-size:.93rem;line-height:1.3}
+  .dk-card .where{font:500 .7rem var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  .dk-card p{margin:0;font-size:.84rem;color:var(--muted);line-height:1.45;flex:1}
+  .dk-card .ok{color:#34d399;display:none}
+  .dk-card.done .ok{display:inline-flex}
+  .dk-card .ok svg{width:17px;height:17px}
+  .dk-card .btn{align-self:flex-start}
+  @media (max-width:520px){.dk-bar .dk-keys{display:none}.dk-cap{bottom:8px}.dk-cap p{font-size:.86rem}.dk-goal{flex-wrap:wrap}.dk-goal .acts{width:100%}}
+  @media (prefers-reduced-motion:reduce){.dk-hl{animation:none}.dk-cap .pg i{transition:none}}`;
+  const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+  const $ = q => typeof q === 'string' ? document.querySelector(q) : q;
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+  const icons = el => { try { SL.refreshIcons(el); } catch (e) { try { lucide.createIcons(); } catch (er) {} } };
+
+  /* bar above the lab: Watch demo + Scenarios link + goal banner */
+  function bar(before) {
+    let b = document.querySelector('.dk-bar'); if (b) return b;
+    b = document.createElement('div'); b.className = 'dk-bar';
+    b.innerHTML = `<button class="btn sm dk-play" id="dkPlay" title="Watch an expert run-through (D)"><i data-lucide="play-circle"></i> <span>Watch demo</span></button><button class="btn sm" id="dkScenBtn" title="Real-world scenarios (S)"><i data-lucide="map-pinned"></i> Scenarios</button><span class="dk-keys"><kbd>D</kbd> demo · <kbd>S</kbd> scenarios · <kbd>Esc</kbd> stop</span><div class="dk-goal" id="dkGoal" role="status" aria-live="polite"></div>`;
+    const ref = $(before); ref.parentNode.insertBefore(b, ref); icons(b); return b;
+  }
+
+  const DemoKit = { bar };
+  /** add page shortcuts to the hint, e.g. '<kbd>1</kbd>–<kbd>5</kbd> modes' */
+  DemoKit.keys = html => { const k = document.querySelector('.dk-keys'); if (k) k.innerHTML = html + ' · ' + k.innerHTML; };
+  /** demo({before, stage, steps:[{cap, run(api), ms, hl}], save(), restore(snap), onStop?}) */
+  DemoKit.demo = function (o) {
+    const b = bar(o.before), btn = b.querySelector('#dkPlay');
+    const stage = $(o.stage); if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
+    const cap = document.createElement('div'); cap.className = 'dk-cap'; cap.setAttribute('role', 'region'); cap.setAttribute('aria-label', 'Demo caption');
+    cap.innerHTML = `<div class="row"><span class="n"></span><button class="btn sm ghost" data-a="mode" title="Switch between auto-play and step-through"></button><button class="btn sm" data-a="next" title="Next step (right arrow)"><i data-lucide="skip-forward"></i> Next</button><button class="btn sm" data-a="stop" title="Stop the demo (Esc)"><i data-lucide="square"></i> Stop</button></div><p aria-live="polite"></p><div class="pg"><i></i></div>`;
+    (o.capHost ? $(o.capHost) : stage).appendChild(cap); if (o.capFixed) cap.classList.add('fixed'); icons(cap);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let run = null; // {abort, stepMode, nextRes}
+    const D = { running: () => !!run };
+    function setMode() { const m = cap.querySelector('[data-a=mode]'); m.textContent = run && run.stepMode ? 'Auto-play' : 'Step through'; }
+    function hl(sel) { document.querySelectorAll('.dk-hl').forEach(x => x.classList.remove('dk-hl')); if (sel) { const e = $(sel); if (e) e.classList.add('dk-hl'); } }
+    const ABORT = { abort: true };
+    function api(r) {
+      const chk = () => { if (r.abort) throw ABORT; };
+      const sleep = ms => new Promise((res, rej) => { const t0 = performance.now(); const tick = () => { if (r.abort) return rej(ABORT); if (performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tick); }; tick(); });
+      const fire = (el, ev) => el.dispatchEvent(new Event(ev, { bubbles: true }));
+      return {
+        sleep, chk,
+        set(sel, v) { chk(); const el = $(sel); if (!el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; fire(el, 'input'); fire(el, 'change'); },
+        async slide(sel, to, ms) { const el = $(sel); if (!el) return; const a = +el.value, n = Math.max(1, Math.round((ms || 1200) / 60)); const stp = +el.step || 0; for (let i = 1; i <= n; i++) { chk(); let v = a + (to - a) * i / n; if (stp) v = Math.round(v / stp) * stp; el.value = v; fire(el, 'input'); await sleep((ms || 1200) / n); } el.value = to; fire(el, 'input'); fire(el, 'change'); },
+        click(sel) { chk(); const el = $(sel); if (el) el.click(); },
+        async until(fn, ms) { const t0 = performance.now(); while (!fn()) { if (performance.now() - t0 > (ms || 10000)) return false; await sleep(120); } return true; },
+        hl
+      };
+    }
+    async function start() {
+      if (run) return stop(true);
+      if (DemoKit._scen && DemoKit._scen.active()) DemoKit._scen.quit(true);
+      let snap = null; try { snap = o.save ? o.save() : null; } catch (e) {}
+      const r = run = { abort: false, stepMode: reduce, snap };
+      btn.classList.add('run'); btn.querySelector('span').textContent = 'Stop demo'; cap.classList.add('show'); setMode();
+      if (o.onStart) try { o.onStart(); } catch (e) {}
+      const A = api(r), steps = o.steps, pg = cap.querySelector('.pg i');
+      if (stage.getBoundingClientRect().top < 0 || stage.getBoundingClientRect().bottom > innerHeight) stage.scrollIntoView({ block: o.scrollBlock || 'center', behavior: reduce ? 'auto' : 'smooth' });
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const st = steps[i]; if (r.abort) throw ABORT;
+          cap.querySelector('.n').textContent = `Demo · step ${i + 1} of ${steps.length}`;
+          cap.querySelector('p').innerHTML = st.cap; hl(st.hl); pg.style.width = (i / steps.length * 100) + '%';
+          if (st.run) await st.run(A);
+          if (r.abort) throw ABORT;
+          pg.style.width = ((i + 1) / steps.length * 100) + '%';
+          const ms = st.ms == null ? 3200 : st.ms, t0 = performance.now();
+          await new Promise((res, rej) => { r.nextRes = res; r.nextRej = rej; const tk = () => { if (r.abort) return rej(ABORT); if (!r.stepMode && performance.now() - t0 >= ms) return res(); r.raf = requestAnimationFrame(tk); }; tk(); });
+          r.nextRes = null;
+        }
+        end(true);
+      } catch (e) { if (e !== ABORT) { console.warn(e); end(true); } }
+    }
+    function end(restore, msg) {
+      const r = run; if (!r) return; r.abort = true; cancelAnimationFrame(r.raf); if (r.nextRej) r.nextRej(ABORT); run = null; hl(null);
+      cap.classList.remove('show'); btn.classList.remove('run'); btn.querySelector('span').textContent = 'Watch demo';
+      if (restore && r.snap != null && o.restore) { try { o.restore(r.snap); } catch (e) { console.warn(e); } }
+      if (o.onStop) try { o.onStop(); } catch (e) {}
+      SL.toast(msg || (restore ? 'Demo finished. Your settings are back as they were.' : 'Demo stopped. You have the controls.'), 'ok', 3000);
+    }
+    function stop(restore) { end(restore !== false, restore === false ? null : 'Demo stopped. Your settings are back as they were.'); }
+    D.stop = stop; D.start = start;
+    btn.onclick = start;
+    cap.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a || !run) return; const k = a.dataset.a; if (k === 'stop') stop(true); else if (k === 'next') { if (run.nextRes) run.nextRes(); } else if (k === 'mode') { run.stepMode = !run.stepMode; setMode(); if (!run.stepMode && run.nextRes) run.nextRes(); } });
+    // the student takes over: any trusted interaction with the lab outside the caption ends the demo where it is
+    document.addEventListener('pointerdown', e => { if (!run || !e.isTrusted || cap.contains(e.target) || btn.contains(e.target)) return; if (e.target.closest(o.takeover || '.lab, .dk-bar')) end(false); }, true);
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (run && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); stop(true); }
+      else if (run && e.key === 'ArrowRight' && run.nextRes) { e.preventDefault(); run.nextRes(); }
+      else if (!run && (e.key === 'd' || e.key === 'D') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); start(); }
+    }, true);
+    DemoKit._demo = D; return D;
+  };
+
+  /** scenarios({before, mount, key, list:[{id, title, where, goal, success, hint, setup(), check()->bool, status()->html}], onQuit}) */
+  DemoKit.scenarios = function (o) {
+    const b = bar(o.before), goal = b.querySelector('#dkGoal');
+    const sec = document.createElement('section'); sec.className = 'panel dk-scen'; sec.id = 'dkScen';
+    let done = {}; try { done = JSON.parse(localStorage.getItem(o.key) || '{}') || {}; } catch (e) { done = {}; }
+    const save = () => { try { localStorage.setItem(o.key, JSON.stringify(done)); } catch (e) {} };
+    const ct = () => `${o.list.filter(s => done[s.id]).length}/${o.list.length} achieved`;
+    sec.innerHTML = `<h3><i data-lucide="map-pinned"></i> Scenarios: real-world goals <span class="ct"></span></h3><p class="small muted" style="margin:0">Each scenario sets up the lab, states the goal and checks it live. ${o.intro || ''}</p><div class="dk-grid">${o.list.map(s => `<div class="dk-card" data-id="${s.id}"><div class="where">${s.where || ''}</div><div class="top"><b>${s.title}</b><span class="ok" title="Achieved"><i data-lucide="badge-check"></i></span></div><p>${s.goal}</p><button class="btn sm primary" data-go="${s.id}"><i data-lucide="play"></i> Start</button></div>`).join('')}</div>`;
+    const m = $(o.mount); if (o.mountAfter) m.parentNode.insertBefore(sec, m.nextSibling); else m.parentNode.insertBefore(sec, m); icons(sec);
+    let act = null, timer = 0;
+    function paint() { sec.querySelector('.ct').textContent = ct(); sec.querySelectorAll('.dk-card').forEach(c => { c.classList.toggle('done', !!done[c.dataset.id]); c.classList.toggle('on', !!act && act.s.id === c.dataset.id); const bt = c.querySelector('[data-go]'); bt.innerHTML = act && act.s.id === c.dataset.id ? '<i data-lucide="rotate-ccw"></i> Restart' : done[c.dataset.id] ? '<i data-lucide="repeat"></i> Play again' : '<i data-lucide="play"></i> Start'; }); icons(sec); }
+    function banner() {
+      if (!act) { goal.classList.remove('show', 'won'); goal.innerHTML = ''; return; }
+      const s = act.s; goal.classList.add('show'); goal.classList.toggle('won', act.won);
+      goal.innerHTML = `<span class="ic"><i data-lucide="${act.won ? 'trophy' : 'target'}"></i></span><div class="tx"><b>${s.title}</b>${s.goal} <span class="muted">Success: ${s.success}</span><span class="st"></span>${s.hint ? `<span class="hint">${s.hint}</span>` : ''}</div><div class="acts">${s.hint ? '<button class="btn sm" data-k="hint"><i data-lucide="lightbulb"></i> Hint</button>' : ''}<button class="btn sm" data-k="restart" title="Set the scenario up again"><i data-lucide="rotate-ccw"></i> Restart</button><button class="btn sm ghost" data-k="quit"><i data-lucide="x"></i> ${act.won ? 'Close' : 'Quit'}</button></div>`;
+      icons(goal); tick();
+    }
+    function tick() {
+      if (!act) return; const s = act.s; let st = '';
+      try { st = s.status ? s.status() : ''; } catch (e) {}
+      if (!act.won && performance.now() - act.t0 > 900) { let ok = false; try { ok = !!s.check(); } catch (e) {} if (ok) { act.won = true; done[s.id] = true; save(); paint(); banner(); SL.toast(`Scenario achieved: <b>${s.title}</b> (${ct()})`, 'ok', 5200); if (o.onWin) try { o.onWin(s); } catch (e) {} return; } }
+      const el = goal.querySelector('.st'); if (el) el.innerHTML = act.won ? (s.wonText || 'Goal achieved. Keep exploring, or try another scenario.') : st;
+    }
+    function startS(id) {
+      const s = o.list.find(x => x.id === id); if (!s) return;
+      if (DemoKit._demo && DemoKit._demo.running()) DemoKit._demo.stop(false);
+      if (act && act.s.quit) try { act.s.quit(); } catch (e) {}
+      act = { s, won: false, t0: performance.now() }; try { s.setup(); } catch (e) { console.warn(e); }
+      clearInterval(timer); timer = setInterval(tick, 300); paint(); banner();
+      const lab = o.scrollTo ? $(o.scrollTo) : b; if (lab) lab.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }
+    function quit(silent) { if (!act) return; const s = act.s; act = null; clearInterval(timer); if (s.quit) try { s.quit(); } catch (e) {} paint(); banner(); if (o.onQuit) try { o.onQuit(); } catch (e) {} }
+    sec.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) startS(g.dataset.go); });
+    goal.addEventListener('click', e => { const k = e.target.closest('[data-k]'); if (!k) return; if (k.dataset.k === 'quit') quit(); else if (k.dataset.k === 'restart') startS(act.s.id); else if (k.dataset.k === 'hint') { const h = goal.querySelector('.hint'); if (h) h.classList.toggle('show'); } });
+    b.querySelector('#dkScenBtn').onclick = () => { sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); const f = sec.querySelector('[data-go]'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 400); };
+    document.addEventListener('keydown', e => { if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return; if ((e.key === 's' || e.key === 'S') && !document.querySelector('.sl-tour, .modal.show')) { e.preventDefault(); b.querySelector('#dkScenBtn').click(); } });
+    paint();
+    const API = { list: o.list, active: () => act && act.s.id, won: () => act && act.won, quit, start: startS, el: sec, tick };
+    DemoKit._scen = API; return API;
+  };
+  window.DemoKit = DemoKit;
+})();
+</script>
+<script>
+/* Cases & OSCE quick navigator + demo helpers (page-local) */
+(function () {
+  if (window.CaseNav) return;
+  const css = `
+  .cx-pop{margin:0 0 12px;padding:12px 12px 10px;border-color:color-mix(in srgb,var(--accent) 45%,var(--line2))}
+  .cx-pop[hidden]{display:none}
+  .cx-head{display:flex;align-items:flex-start;gap:10px;margin:0 2px 6px}
+  .cx-head>div{flex:1;min-width:0}
+  .cx-head h3{margin:0;font-size:1rem;display:flex;gap:8px;align-items:center}
+  .cx-head p{margin:2px 0 0;font-size:.82rem;color:var(--muted)}
+  .cx-grp{margin-top:10px}
+  .cx-grp h4{margin:0 0 6px;font:600 .7rem var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);display:flex;gap:6px;align-items:center}
+  .cx-grp h4 svg{width:14px;height:14px}
+  .cx-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:7px}
+  .cx-card{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:2px;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--bg2);transition:border-color .15s,background .15s;min-width:0}
+  .cx-card:hover,.cx-card:focus-visible{border-color:var(--accent);background:var(--panel2)}
+  .cx-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .cx-card b{font-size:.86rem;line-height:1.3}
+  .cx-card span{font-size:.76rem;color:var(--muted);line-height:1.35}
+  .cx-card .cx-tag{font:600 .64rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+  .cx-card.done .cx-tag::after{content:" · done";color:#34d399}
+  .dk-bar .btn.cx-on{border-color:var(--accent);color:var(--text)}
+  .dk-bar .dk-keys kbd{font:600 .66rem var(--mono);padding:0 5px;border:1px solid currentColor;border-radius:5px;opacity:.75}
+  @media (hover:none){.dk-bar .dk-keys{display:none}}
+  @media (max-width:520px){.cx-list{grid-template-columns:1fr}}`;
+  const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+  const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range' || t.type === 'checkbox')); };
+  const icons = el => { try { SL.refreshIcons(el); } catch (e) {} };
+  /** CaseNav({title, intro, groups:[{title, icon, items:[{tag, t, sub, done?, go}]}]}) — reuses the kit bar's second button */
+  window.CaseNav = function (o) {
+    const bar = document.querySelector('.dk-bar'), btn = bar.querySelector('#dkScenBtn');
+    btn.innerHTML = '<i data-lucide="stethoscope"></i> Cases &amp; OSCE'; btn.title = 'Clinical cases and OSCE stations (C)'; btn.setAttribute('aria-expanded', 'false'); btn.setAttribute('aria-controls', 'cxPop');
+    const pop = document.createElement('section'); pop.className = 'panel cx-pop'; pop.id = 'cxPop'; pop.hidden = true; pop.setAttribute('aria-label', 'Clinical cases and OSCE stations');
+    bar.parentNode.insertBefore(pop, bar.nextSibling);
+    let flat = [];
+    function render() {
+      flat = [];
+      pop.innerHTML = `<div class="cx-head"><div><h3><i data-lucide="stethoscope"></i> ${o.title || 'Clinical cases &amp; OSCE practice'}</h3><p>${o.intro || ''}</p></div><button class="btn sm ghost" data-cx="close" aria-label="Close"><i data-lucide="x"></i></button></div>` +
+        o.groups.map(g => `<div class="cx-grp"><h4><i data-lucide="${g.icon || 'list'}"></i> ${g.title}</h4><div class="cx-list">${(typeof g.items === 'function' ? g.items() : g.items).map(it => { flat.push(it); return `<button class="cx-card${it.done && it.done() ? ' done' : ''}" data-cx="${flat.length - 1}">${it.tag ? `<span class="cx-tag">${it.tag}</span>` : ''}<b>${it.t}</b>${it.sub ? `<span>${it.sub}</span>` : ''}</button>`; }).join('')}</div></div>`).join('');
+      icons(pop);
+    }
+    function open(v) {
+      const want = v == null ? pop.hidden : v; if (want) render(); pop.hidden = !want; btn.classList.toggle('cx-on', want); btn.setAttribute('aria-expanded', String(want));
+      if (want) { const r = pop.getBoundingClientRect(); if (r.top < 70 || r.top > innerHeight * 0.6) window.scrollTo({ top: scrollY + r.top - 140, behavior: 'smooth' }); const f = pop.querySelector('.cx-card'); if (f) setTimeout(() => f.focus({ preventScroll: true }), 60); }
+    }
+    btn.onclick = () => open();
+    pop.addEventListener('click', e => { const c = e.target.closest('[data-cx]'); if (!c) return; if (c.dataset.cx === 'close') { open(false); btn.focus(); return; } const it = flat[+c.dataset.cx]; open(false); if (window.DemoKit && DemoKit._demo && DemoKit._demo.running()) DemoKit._demo.stop(false); try { it.go(); } catch (er) { console.warn(er); } });
+    document.addEventListener('keydown', e => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('.sl-tour, .modal.show')) return;
+      if (e.key === 'c' || e.key === 'C') { e.preventDefault(); open(); }
+      else if (e.key === 'Escape' && !pop.hidden) { open(false); }
+    });
+    return { open, render };
+  };
+  /** shared helpers for page demos */
+  window.DemoHelp = {
+    reduce: () => matchMedia('(prefers-reduced-motion: reduce)').matches,
+    /** scroll an element into the part of the viewport not covered by the header or the fixed caption */
+    async view(A, sel, block) {
+      const el = typeof sel === 'string' ? document.querySelector(sel) : sel; if (!el) return;
+      const r = el.getBoundingClientRect(), capH = (document.querySelector('.dk-cap.show') || { offsetHeight: 0 }).offsetHeight + 24, top = 76, bot = innerHeight - capH;
+      if (r.top >= top && r.bottom <= bot) return;
+      let y;
+      if (block === 'start' || r.height > bot - top) y = scrollY + r.top - top - 6; else y = scrollY + r.top - top - ((bot - top) - r.height) / 2;
+      window.scrollTo({ top: Math.max(0, y), behavior: DemoHelp.reduce() ? 'auto' : 'smooth' });
+      if (A) await A.sleep(DemoHelp.reduce() ? 60 : 550);
+    },
+    /** replace the caption text of the running step */
+    cap(html) { const p = document.querySelector('.dk-cap p'); if (p) p.innerHTML = html; },
+    /** shortcuts hint in the bar */
+    keys(html) { const k = document.querySelector('.dk-bar .dk-keys'); if (k) k.innerHTML = html; },
+    store(key) { return { get(d) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : d; } catch (e) { return d; } }, set(v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) {} } }; },
+    typing,
+  };
+})();
+</script>
+<!-- ==/DEMOKIT== -->
 <script>
 (() => {
   const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
@@ -1100,12 +1360,13 @@
     if (r[0] < 0) H.bad = true;
     used[k] = true; b.classList.add('used'); score += r[0]; addLog(k, r[0], r[1]);
   });
-  function addLog(k, p, msg) { logArr.push({ t: simClock(), k, p, msg }); renderLog(); SL.toast(`<b>${ALABEL[k]}</b><br>${msg}`, p > 0 ? 'ok' : p < 0 ? 'bad' : '', 4200); }
+  function addLog(k, p, msg) { logArr.push({ t: simClock(), k, p, msg }); renderLog(); if (!(window.DemoKit && DemoKit._demo && DemoKit._demo.running())) SL.toast(`<b>${ALABEL[k]}</b><br>${msg}`, p > 0 ? 'ok' : p < 0 ? 'bad' : '', 4200); }
   function renderLog() { $('#log').innerHTML = logArr.length ? logArr.slice().reverse().map(l => `<div><span class="muted">${l.t}</span><span>${ALABEL[l.k]}</span><span class="p ${l.p > 0 ? 'pos' : l.p < 0 ? 'neg' : ''}">${l.p > 0 ? '+' : ''}${l.p}</span></div>`).join('') : '<div class="muted" style="display:block">No actions yet.</div>'; }
   function curObs() { return { rr: V.rr, spo2: V.spo2, scale: 1, o2: V.o2, sbp: V.sbp, hr: V.hr, avpu: V.avpu, temp: V.temp }; }
   function stopScenario(silent) { run = false; $('#endBtn').disabled = true; $('#start').innerHTML = '<i data-lucide="play"></i> Start scenario'; SL.refreshIcons($('#start')); }
   function finish(res) {
     if (!run) return; stopScenario();
+    if (window.DemoKit && DemoKit._demo && DemoKit._demo.running()) { DemoKit._demo.res = res; return; } // the demo is not marked or saved
     const k = $('#scen').value; let bonus = SC.bonus ? SC.bonus(H) : 0;
     const resPts = res === 'stable' ? 15 : res === 'arrest' ? -20 : 0; const total = score + bonus + resPts;
     const pct = clamp(Math.round(total / (SC.max + 15) * 100), 0, 100);
@@ -1505,12 +1766,108 @@
 
   showBrief(); setFree(true); loop.start();
   window.__vit = { news2, tews, CASES, SCEN, V, KIDS, SIGNS, get OS() { return OS; }, get eshift() { return eshift; }, get H() { return H; }, get run() { return run; }, get simT() { return simT; }, setSim(t) { simT = t; } };
+  /* ==DEMOPASS== */
+  /* ===== Watch demo, Cases & OSCE navigator, shortcuts, remembered settings ===== */
+  {
+    const DH = DemoHelp, ui = DH.store('sl-vitals-ui');
+    const modeBtn = m => $(`#mode button[data-m="${m}"]`);
+    const curMode = () => ($('#mode button.on') || modeBtn('mon')).dataset.m;
+    const spdBtn = v => $(`#spd button[data-v="${v}"]`);
+    const curSpd = () => (($('#spd button.on') || spdBtn(6)).dataset.v);
+    const lineOf = n => Object.keys(PNAMES).filter(k => n.s[k]).map(k => `${PNAMES[k]} <b>${n.s[k]}</b>`).join(' · ');
+    const obsTxt = () => `HR <b>${Math.round(V.hr)}</b>, BP <b>${Math.round(V.sbp)}/${Math.round(V.dbp)}</b>, RR <b>${Math.round(V.rr)}</b>, SpO₂ <b>${Math.round(V.spo2)}%</b> ${V.o2 ? 'on oxygen' : 'on air'}, T <b>${V.temp.toFixed(1)} °C</b>, ${{ A: 'alert', C: 'newly confused', V: 'responds to voice', P: 'responds to pain', U: 'unresponsive' }[V.avpu]}`;
+    async function act(A, k, pause) {
+      const b = $(`#acts [data-a="${k}"]`); if (!b) return;
+      await DH.view(A, b); A.hl(b); await A.sleep(450); b.click(); await A.sleep(pause || 650);
+    }
+    function loadCase(k) { if (curMode() !== 'mon') modeBtn('mon').click(); $('#scen').value = k; $('#scen').dispatchEvent(new Event('change')); }
+    let n0 = 0;
+    DemoKit.demo({
+      before: '.modebar', stage: '#monStage', capFixed: true,
+      save: () => ({ mode: curMode(), scen: $('#scen').value, spd: curSpd(), run, SC, H: H ? JSON.parse(JSON.stringify(H)) : null, simT, score, log: logArr.slice(), used: Object.assign({}, used), outcome }),
+      restore: o => {
+        stopScenario(true); speed = +o.spd; spdBtn(o.spd).click();
+        $('#scen').value = o.scen; showBrief(); setFree(o.scen === 'free');
+        if (o.run && o.SC) {
+          SC = o.SC; H = o.H; simT = o.simT; score = o.score; logArr = o.log; used = o.used; outcome = o.outcome; failHold = 0; run = true;
+          applyTargets(true); renderActs(SC.acts); Object.keys(used).forEach(k => { const b = $(`#acts [data-a="${k}"]`); if (b) b.classList.add('used'); });
+          $('#endBtn').disabled = false; $('#start').innerHTML = '<i data-lucide="rotate-ccw"></i> Restart'; SL.refreshIcons($('#start'));
+        } else { logArr = []; used = {}; }
+        renderLog(); resetTrend(); modeBtn(o.mode).click();
+      },
+      steps: [
+        { cap: '<b>One deteriorating patient, managed end to end.</b> Mama Achieng, 68, was admitted yesterday with a urinary tract infection. The nurse calls: she is newly confused, hot and breathing fast.', hl: '#scen', ms: 3800,
+          run: async A => { loadCase('sepsis'); spdBtn(1).click(); $('#start').click(); await DH.view(A, '#monStage'); } },
+        { cap: '<b>Read the whole monitor.</b>', hl: '#monStage', ms: 4600,
+          run: async A => { await A.sleep(500); DH.cap(`<b>Read the whole monitor, not one number.</b> ${obsTxt()}. Fast pulse and breathing, a falling BP and fever together are the pattern of sepsis.`); } },
+        { cap: '<b>Score it with NEWS2.</b>', hl: '#liveNews', ms: 7000,
+          run: async A => { await DH.view(A, '#liveNews'); const n = news2(curObs()); n0 = n.total; DH.cap(`<b>NEWS2</b> (Royal College of Physicians, 2017) scores seven observations from 0 to 3: ${lineOf(n)}. Total <b>${n.total}</b>. A score of 7 or more is the <b>high</b> band: an emergency response by a team with critical-care skills.`); } },
+        { cap: '<b>Act at once:</b> call for senior help, then oxygen to keep SpO₂ at 94–98%.', ms: 1200,
+          run: async A => { await act(A, 'help'); await act(A, 'o2'); } },
+        { cap: '<b>A NEWS2 trap.</b> Supplemental oxygen itself scores 2 points, so the total does not fall just because the SpO₂ number improves. The patient is still just as sick.', hl: '#liveNews', ms: 4600,
+          run: async A => { await DH.view(A, '#liveNews'); } },
+        { cap: '<b>Circulation:</b> IV access, then blood cultures and a lactate <i>before</i> antibiotics, then IV antibiotics within the first hour.', ms: 1400,
+          run: async A => { await act(A, 'iv', 500); await act(A, 'cultures', 500); await act(A, 'abx'); } },
+        { cap: '<b>Fluid bolus, then reassess.</b> The BP is still low, so a second bolus. More fluid after that needs senior review: overload is a real risk.', ms: 1400,
+          run: async A => { await act(A, 'fluids', 1000); await act(A, 'fluids'); } },
+        { cap: '<b>Watch the response.</b> Time now runs at about 60× (one simulated minute per second). The trend screen shows the pattern: pulse and breathing settle, BP and NEWS2 recover.', hl: '#trend', ms: 4800,
+          run: async A => {
+            await DH.view(A, '#trend'); speed = 60; await A.until(() => !run || simT > 14, 11000); speed = 1;
+            const n = news2(curObs());
+            DH.cap(`<b>After ${simClock()} of simulated time:</b> BP ${Math.round(V.sbp)}/${Math.round(V.dbp)}, ${V.avpu === 'A' ? 'alert again' : 'still not fully alert'}; NEWS2 ${n0} → <b>${n.total}</b>. She is responding, but ${n.total >= 7 ? 'a score of 7 or more still means continuous monitoring and critical-care input' : n.total >= 5 ? 'a score of 5 or more still needs urgent review and at least hourly observations' : 'keep at least hourly observations until she is clearly better'}. Reassess after every intervention.`);
+          } },
+        { cap: '<b>NEWS2 response bands to remember:</b> 0 routine (12-hourly) · 1–4 a registered nurse assesses (4–6-hourly) · any single parameter scoring 3: urgent ward review · 5–6 urgent review (hourly) · 7 or more: emergency response. Adults only: not in pregnancy (use a maternity chart) or under 16 (use ETAT+).', hl: '#liveNews', ms: 7600,
+          run: async A => { await DH.view(A, '#liveNews'); } },
+        { cap: '<b>Your turn.</b> Open <b>Cases &amp; OSCE</b> for the other Kenyan emergencies and three timed exam stations. Your own set-up is restored now.', hl: '#dkScenBtn', ms: 3000,
+          run: async A => { await DH.view(A, '.dk-bar'); } },
+      ],
+    });
+
+    /* Cases & OSCE: the existing scenarios and stations, one tap away */
+    const goto = sel => { const e = $(sel); if (e) window.scrollTo({ top: e.getBoundingClientRect().top + scrollY - 84, behavior: DH.reduce() ? 'auto' : 'smooth' }); };
+    const openTab = id => { const b = id ? $(id) : null; if (b) b.click(); };
+    CaseNav({
+      intro: 'Each patient case loads in the monitor: press Start scenario, treat with the Interventions panel, then End &amp; debrief. OSCE stations are timed and marked like the practical exam.',
+      groups: [
+        { title: 'Patient cases (monitor)', icon: 'user-round', items: () => Object.entries(SCEN).map(([k, s]) => { const b = store.get('best', {})[k]; return { tag: s.pop === 'child' ? 'Child' : s.pop === 'preg' ? 'Maternity' : 'Adult', t: s.name, sub: s.who + (b != null ? ` · best ${b}%` : ''), done: () => (store.get('best', {})[k] || 0) >= 80, go: () => { loadCase(k); goto('#monLab'); } }; }) },
+        { title: 'OSCE stations (timed)', icon: 'timer', items: () => Object.entries(OSTN).map(([k, s]) => ({ tag: s.mins + ' min', t: s.t, sub: s.d, done: () => (store.get('osce', {})[k] || 0) >= 70, go: () => { modeBtn('osce').click(); startStation(k); goto('#osceLab'); } })) },
+        { title: 'More practice', icon: 'dumbbell', items: [
+          { tag: 'Calculator', t: 'NEWS2 by hand', sub: 'Random patients: work out the total, then check.', go: () => { modeBtn('news').click(); goto('#newsLab'); } },
+          { tag: 'Triage', t: 'Adult triage shift (SATS)', sub: 'Eight patients: TEWS plus discriminators.', go: () => { modeBtn('tri').click(); goto('#triLab'); } },
+          { tag: 'Triage', t: 'Child triage clinic (ETAT+)', sub: 'Emergency, Priority or Queue.', go: () => { modeBtn('etat').click(); goto('#etatLab'); } },
+          { tag: 'Reading', t: 'Scenario debriefs', sub: 'Protocol steps and physiology for every case.', go: () => { const b = $$('.tablist button')[4]; if (b) { b.click(); goto('[data-tabs]'); } } },
+        ] },
+      ],
+    });
+
+    /* remembered settings: last trainer, patient and speed */
+    const saveUi = () => ui.set({ mode: curMode(), scen: $('#scen').value, spd: curSpd() });
+    { const u = ui.get(null);
+      if (u) { if (u.spd && spdBtn(u.spd)) spdBtn(u.spd).click(); if (u.scen && (u.scen === 'free' || SCEN[u.scen])) { $('#scen').value = u.scen; showBrief(); setFree(u.scen === 'free'); } if (u.mode && u.mode !== 'mon' && modeBtn(u.mode)) modeBtn(u.mode).click(); } }
+    $$('#mode button, #spd button').forEach(b => b.addEventListener('click', () => { if (!DemoKit._demo.running()) saveUi(); }));
+    $('#scen').addEventListener('change', () => { if (!DemoKit._demo.running()) saveUi(); });
+
+    /* keyboard shortcuts */
+    DH.keys('<kbd>D</kbd> demo · <kbd>C</kbd> cases &amp; OSCE · <kbd>1</kbd>–<kbd>5</kbd> trainers · <kbd>Space</kbd> start · <kbd>E</kbd> end &amp; debrief · <kbd>M</kbd> sound · <kbd>Esc</kbd> stop demo');
+    document.addEventListener('keydown', e => {
+      if (DH.typing(e) || e.ctrlKey || e.metaKey || e.altKey || e.repeat || document.querySelector('.sl-tour, .modal.show') || DemoKit._demo.running()) return;
+      const k = e.key.toLowerCase(), M = ['mon', 'news', 'tri', 'etat', 'osce'];
+      if (/^[1-5]$/.test(k)) { modeBtn(M[+k - 1]).click(); return; }
+      if (curMode() !== 'mon') return;
+      if (k === ' ' && !e.target.closest('button, a, select, summary, input')) { e.preventDefault(); if (!$('#start').disabled) $('#start').click(); else SL.toast('Choose a patient scenario first (or press <b>C</b>).', 'warn'); }
+      else if (k === 'e' && !$('#endBtn').disabled) $('#endBtn').click();
+      else if (k === 'm') $('#snd').click();
+    });
+  }
+  /* ==/DEMOPASS== */
   /* ---- guided tour ---- */
   {
     // jump (not smooth-scroll) to each target so the tip is placed against its final position
     const jump = st => st.map(x => Object.assign({}, x, { before() { if (x.before) x.before(); const e = document.querySelector(x.el); if (e) e.scrollIntoView({ block: 'center', behavior: 'instant' }); } }));
     const startTour = () => SL.tour(jump([
       { el: '#monStage', title: 'A bedside monitor', text: 'ECG, pleth, arterial pressure and breathing traces with the numbers clinicians watch. Alarms sound when a value crosses its limit.', before: () => { const b = document.querySelector('#mode [data-m="mon"]'); if (b && !b.classList.contains('on')) b.click(); } },
+      { el: '#dkPlay', title: 'Watch demo', text: 'A one-minute run-through: an expert recognises a septic patient, scores NEWS2, treats her and watches her recover. Stop it at any time; your settings come back afterwards.' },
+      { el: '#dkScenBtn', title: 'Cases and OSCE', text: 'Every patient case and timed OSCE station on this page, one tap away. Keyboard: <kbd>C</kbd>.' },
       { el: '#scen', title: 'Choose a patient', text: 'Free play lets you set every vital sign. The scenarios include Kenyan emergencies: severe malaria, postpartum haemorrhage, eclampsia, dehydration, DKA, sepsis and boda boda trauma.' },
       { el: '#start', title: 'Start the scenario', text: 'The clock runs and the patient changes. Pick actions from the list; good care stabilises them, delay makes them worse.' },
       { el: '.ctl:has(#mSpO2)', title: 'Set the vital signs', text: 'In free play, drag any slider and watch the waveforms, alarms and early-warning score respond.' },
