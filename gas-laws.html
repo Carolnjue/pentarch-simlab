@@ -13,7 +13,11 @@
 <style>
   .stage.box{height:580px}
   @media (max-width:980px){.stage.box{height:520px}}
-  @media (max-width:520px){.stage.box{height:440px}}
+  @media (max-width:520px){.stage.box{height:600px}}
+  .phandle{position:absolute;touch-action:none;cursor:ns-resize;z-index:2;border-radius:10px}
+  .phandle[hidden]{display:none}
+  .hud .lk{display:none;color:#facc15;margin-left:2px}.hud .lk svg{width:12px;height:12px;vertical-align:-1px}
+  .hud .readout.locked{border-color:#facc1588}.hud .readout.locked .lk{display:inline}
   .row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;margin-bottom:6px}
   @media (max-width:980px){.row2{grid-template-columns:minmax(0,1fr)}}
   .row2>.panel{min-width:0}
@@ -57,10 +61,11 @@
     <div class="stage box" id="stage">
       <canvas id="cv" role="img" aria-label="Piston-cylinder filled with moving gas particles"></canvas>
       <div class="hud">
-        <span class="readout">P <b id="hP">—</b> kPa</span>
-        <span class="readout">V <b id="hV">—</b> L</span>
-        <span class="readout">T <b id="hT">—</b> K</span>
+        <span class="readout" id="roP">P <b id="hP">—</b> kPa<span class="lk" title="Held constant in this experiment"><i data-lucide="lock"></i></span></span>
+        <span class="readout" id="roV">V <b id="hV">—</b> L<span class="lk" title="Held constant in this experiment"><i data-lucide="lock"></i></span></span>
+        <span class="readout" id="roT">T <b id="hT">—</b> K<span class="lk" title="Held constant in this experiment"><i data-lucide="lock"></i></span></span>
       </div>
+      <div class="phandle" id="pHandle" aria-label="Drag to move the piston" title="Drag to move the piston"></div>
       <div class="vecleg" id="vecLeg" hidden><span><i class="ar"></i> velocity (every 3rd particle)</span><span><i class="ring"></i> wall impact: momentum 2mv</span></div>
       <div class="stage-toolbar">
         <button class="btn sm" id="vecBtn" aria-pressed="false" title="Show velocity arrows and wall impacts"><i data-lucide="move-up-right"></i><span class="tx"> Vectors</span></button>
@@ -410,16 +415,22 @@
 
   /* ===== drawing ===== */
   const cv = $('#cv'), st = SL.canvas(cv);
-  let G = 1, X0 = 0, Yf = 0; // screen scale and floor position
+  let G = 1, X0 = 0, Yf = 0, MR = null; // screen scale, floor position, live-graph rectangle
+  const mtrail = [];
   const sprites = COL.map(c => { const o = document.createElement('canvas'); o.width = o.height = 32; const x = o.getContext('2d'); const g = x.createRadialGradient(12, 12, 1, 16, 16, 15); g.addColorStop(0, '#fff'); g.addColorStop(.25, c); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.beginPath(); x.arc(16, 16, 15, 0, Math.PI * 2); x.fill(); return o; });
   function layout() {
     const w = st.w, h = st.h, mob = w < 520;
-    const side = mob ? 64 : 200;
-    G = Math.min((w - side) / (isEff() ? S.eff.W : BW), (h - (mob ? 175 : 150)) / (isEff() ? S.eff.H : HMAX));
+    const side = mob ? 64 : 200, strip = mob && !isEff() ? 168 : 0;
+    G = Math.min((w - side) / (isEff() ? S.eff.W : BW), (h - (mob ? 175 : 150) - strip) / (isEff() ? S.eff.H : HMAX));
     G = Math.min(G, 1.25);
     const bw = boxW() * G;
     X0 = isEff() ? (w - bw) / 2 : (mob ? (w - bw) / 2 - 18 : (w - bw) / 2 - 30);
-    Yf = h - (mob ? 62 : 78);
+    Yf = h - (mob ? 62 : 78) - strip;
+    // live law graph: beside the cylinder on wide stages, under it on phones
+    MR = null;
+    if (!isEff() && !mob && w >= 760) { X0 = Math.min(X0, 112); const gx = X0 + bw + 110; if (w - 16 - (gx + 70) >= 180) MR = { x0: gx + 70, x1: w - 16, y0: 56, y1: Yf + 30 }; }
+    const hud = document.querySelector('#stage .hud'), wantR = !!(MR && !mob); if (hud.classList.contains('hud-r') !== wantR) hud.classList.toggle('hud-r', wantR);
+    if (!isEff() && mob) MR = { x0: 12, x1: w - 12, y0: Yf + 50, y1: h - 62 };
   }
   function rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
   function draw() {
@@ -504,15 +515,62 @@
         const nW = Math.round(S.Pt / 50e3); for (let i = 0; i < nW; i++) { ctx.fillStyle = i % 2 ? '#7c5cff' : '#6366f1'; rr(ctx, X0 + bw / 2 - 30, top - 34 - i * 12, 60, 11, 3); ctx.fill(); }
         ctx.fillStyle = '#c4b5fd'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText(`${(S.Pt / 1000).toFixed(0)} kPa load`, X0 + bw / 2 + 36, top - 26);
       } else {
-        ctx.fillStyle = S.mode === 'gay' ? '#ef4444' : '#a3e635'; rr(ctx, X0 + bw / 2 - 26, rodTop - 10, 52, 12, 5); ctx.fill();
+        const big = w < 520 || matchMedia('(pointer:coarse)').matches, hw = big ? 84 : 52, hh = big ? 24 : 12;
+        ctx.fillStyle = S.mode === 'gay' ? '#ef4444' : '#a3e635'; rr(ctx, X0 + bw / 2 - hw / 2, rodTop - hh + 2, hw, hh, big ? 9 : 5); ctx.fill();
+        if (S.mode !== 'gay') { ctx.fillStyle = '#132008'; ctx.font = `700 ${big ? 15 : 10}px JetBrains Mono, monospace`; ctx.textAlign = 'center'; ctx.fillText('⇕', X0 + bw / 2, rodTop - hh / 2 + (big ? 7 : 5)); }
+        else padlock(ctx, X0 + bw / 2, rodTop - hh / 2 + 2, big ? 9 : 6, '#fff');
         ctx.fillStyle = '#93a1bd'; ctx.font = '600 10px JetBrains Mono, monospace'; ctx.textAlign = 'center';
-        ctx.fillText(S.mode === 'gay' ? 'PISTON LOCKED' : 'DRAG PISTON', X0 + bw / 2, rodTop - 16);
+        ctx.fillText(S.mode === 'gay' ? 'PISTON LOCKED: V CONSTANT' : 'DRAG PISTON', X0 + bw / 2, rodTop - hh - 6);
       }
       // volume scale
       ctx.textAlign = 'left'; ctx.fillStyle = '#5f6d8a'; ctx.font = '9px JetBrains Mono, monospace';
       for (let L = 10; L <= 50; L += 10) { const y = Yf - HofV(L) * G; ctx.fillRect(X0 + bw + 1, y, 6, 1); if (w > 520) ctx.fillText(L + ' L', X0 + bw + 10, y + 3); }
     }
     drawInstruments(ctx, w, h, bw, top);
+    drawMini(ctx, w);
+    placeHandle(bw, top);
+  }
+  function padlock(ctx, x, y, s, col) {
+    ctx.save(); ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = Math.max(1.5, s * .28);
+    ctx.beginPath(); ctx.arc(x, y - s * .25, s * .48, Math.PI, 0); ctx.stroke();
+    rr(ctx, x - s * .72, y - s * .25, s * 1.44, s * 1.1, s * .2); ctx.fill();
+    ctx.fillStyle = '#0a1222'; ctx.beginPath(); ctx.arc(x, y + s * .25, s * .16, 0, 7); ctx.fill(); ctx.restore();
+  }
+  // transparent touch target over the piston handle, rod and piston (so phones can drag it without scrolling the page)
+  const pH = $('#pHandle');
+  function placeHandle(bw, top) {
+    const on = !isEff() && (S.mode === 'free' || S.mode === 'boyle');
+    if (pH.hidden === on) pH.hidden = !on; if (!on) return;
+    const rodTop = Yf - HMAX * G - 40, l = Math.round(X0 + bw / 2 - 56), t = Math.round(rodTop - 34), hgt = Math.round(top + 6 - t);
+    if (pH._k !== l + ',' + t + ',' + hgt) { pH._k = l + ',' + t + ',' + hgt; pH.style.left = l + 'px'; pH.style.top = t + 'px'; pH.style.width = '112px'; pH.style.height = Math.max(40, hgt) + 'px'; }
+  }
+  // live law graph next to the cylinder
+  function drawMini(ctx, w) {
+    if (!MR) return;
+    const { x0, x1, y0, y1 } = MR, m = S.mode, T = S.TkinS || S.Tb, n = nTot(), Pk = Pmeas() / 1000, VL = Vreal() * 1000;
+    ctx.save(); ctx.fillStyle = 'rgba(5,9,19,.85)'; ctx.strokeStyle = 'rgba(255,255,255,.10)'; ctx.lineWidth = 1; rr(ctx, x0, y0, x1 - x0, y1 - y0, 8); ctx.fill(); ctx.stroke();
+    let xr, yr, xl, yl, title, ptX, ptY, ideal;
+    if (m === 'charles') { title = 'V against T (P locked)'; xr = [0, 1100]; yr = [0, 50]; xl = 'T / K'; yl = 'V / L'; ptX = p => p.T; ptY = p => p.V; ideal = x => n * R * x / S.Pt * 1000; }
+    else if (m === 'gay') { title = 'P against T (V locked)'; const pm = Math.max(120, n * R * 1100 / Vreal() / 1000 * 1.05); xr = [0, 1100]; yr = [0, pm]; xl = 'T / K'; yl = 'P / kPa'; ptX = p => p.T; ptY = p => p.P; ideal = x => n * R * x / Vreal() / 1000; }
+    else { const Tl = m === 'boyle' ? S.Tb : T; title = m === 'boyle' ? 'P against V (T locked)' : 'P against V (live)'; const pm = Math.min(900, Math.max(160, ...mtrail.map(p => p.P), Pk) * 1.15); xr = [0, 50]; yr = [0, pm]; xl = 'V / L'; yl = 'P / kPa'; ptX = p => p.V; ptY = p => p.P; ideal = x => x < 3 ? NaN : n * R * Tl / (x / 1000) / 1000; }
+    const pl = x0 + 38, pr = x1 - 10, pt = y0 + 40, pb = y1 - 26;
+    yr[1] = Math.ceil(yr[1] / (yr[1] > 200 ? 100 : 25)) * (yr[1] > 200 ? 100 : 25);
+    const X = v => pl + (v - xr[0]) / (xr[1] - xr[0]) * (pr - pl), Y = v => pb - (v - yr[0]) / (yr[1] - yr[0]) * (pb - pt);
+    ctx.font = '600 10px JetBrains Mono, monospace'; ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'left'; ctx.fillText(title.toUpperCase(), x0 + 10, y0 + 16);
+    ctx.font = '10px JetBrains Mono, monospace';
+    [0, .5, 1].forEach(f => { const v = yr[0] + f * (yr[1] - yr[0]), y = Y(v); ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(pr, y); ctx.stroke(); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'right'; ctx.fillText(v.toFixed(0), pl - 4, y + 3); });
+    [0, .5, 1].forEach(f => { const v = xr[0] + f * (xr[1] - xr[0]); ctx.fillStyle = '#5f6d8a'; ctx.textAlign = f === 0 ? 'left' : f === 1 ? 'right' : 'center'; ctx.fillText(v.toFixed(0), X(v), pb + 12); });
+    ctx.fillStyle = '#93a1bd'; ctx.textAlign = 'right'; ctx.fillText(xl, pr, y1 - 4); ctx.textAlign = 'left'; ctx.fillText(yl, x0 + 10, y0 + 28 - 2);
+    ctx.save(); ctx.beginPath(); ctx.rect(pl, pt, pr - pl, pb - pt); ctx.clip();
+    ctx.strokeStyle = 'rgba(147,161,189,.75)'; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5; ctx.beginPath(); let st0 = false;
+    for (let i = 0; i <= 120; i++) { const x = xr[0] + (xr[1] - xr[0]) * i / 120, y = ideal(x); if (!isFinite(y)) continue; st0 ? ctx.lineTo(X(x), Y(Math.min(y, yr[1] * 1.5))) : ctx.moveTo(X(x), Y(Math.min(y, yr[1] * 1.5))); st0 = true; }
+    ctx.stroke(); ctx.setLineDash([]);
+    mtrail.forEach((p, i) => { ctx.fillStyle = `rgba(163,230,53,${.15 + .6 * i / mtrail.length})`; ctx.beginPath(); ctx.arc(X(ptX(p)), Y(ptY(p)), 2, 0, 7); ctx.fill(); });
+    S.recs.forEach(p => { ctx.fillStyle = '#a3e635'; ctx.beginPath(); ctx.arc(X(ptX(p)), Y(ptY(p)), 4, 0, 7); ctx.fill(); });
+    const now = { V: VL, P: Pk, T }; ctx.fillStyle = '#fff'; ctx.shadowColor = '#fff'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(X(ptX(now)), Y(ptY(now)), 4.5, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.restore();
+    ctx.fillStyle = '#5f6d8a'; ctx.textAlign = 'right'; ctx.font = '9px JetBrains Mono, monospace'; ctx.fillText('dashed: ideal nRT', pr, pt - 4);
+    ctx.restore();
   }
   function drawInstruments(ctx, w, h, bw, top) {
     const mob = w < 520, Treal = S.TkinS || S.Tb, Pk = Pmeas() / 1000;
@@ -523,7 +581,8 @@
     const frac = SL.clamp(Treal / 1100, 0, 1), ly = ty1 - 10 - frac * (ty1 - ty0 - 20);
     ctx.fillStyle = '#ef4444'; ctx.fillRect(tx - 3, ly, 6, ty1 - ly); ctx.beginPath(); ctx.arc(tx, ty1, 10, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#e6ecf7'; ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textAlign = mob ? 'left' : 'center';
-    ctx.fillText(`${Treal.toFixed(0)} K`, mob ? tx - 10 : tx, ty0 - 20); if (!mob) { ctx.fillStyle = '#93a1bd'; ctx.font = '10px JetBrains Mono, monospace'; ctx.fillText(`${(Treal - 273.15).toFixed(0)} °C`, tx, ty0 - 7); }
+    ctx.fillText(`${Treal.toFixed(0)} K`, mob ? tx - 10 : tx, ty0 - 20);
+    if (S.mode === 'boyle') padlock(ctx, tx + (mob ? 30 : 26), ty0 + 12, mob ? 6 : 7, '#facc15'); if (!mob) { ctx.fillStyle = '#93a1bd'; ctx.font = '10px JetBrains Mono, monospace'; ctx.fillText(`${(Treal - 273.15).toFixed(0)} °C`, tx, ty0 - 7); }
     // pressure gauge (right)
     const gx = mob ? w - 34 : Math.min(w - 70, X0 + bw + 110), gy = mob ? top - 24 : Yf - 260, gr = mob ? 26 : 52;
     const pipeY = Yf - 30 * G;
@@ -533,6 +592,7 @@
     const pmax = 500, a0 = Math.PI * .75, a1 = Math.PI * 2.25, ang = p => a0 + SL.clamp(p / pmax, 0, 1) * (a1 - a0);
     ctx.lineWidth = 1.2; ctx.strokeStyle = '#93a1bd'; ctx.fillStyle = '#93a1bd'; ctx.font = `${mob ? 7 : 9}px JetBrains Mono, monospace`; ctx.textAlign = 'center';
     for (let p = 0; p <= pmax; p += 50) { const a = ang(p), L = p % 100 === 0 ? 8 : 4; ctx.beginPath(); ctx.moveTo(gx + Math.cos(a) * (gr - 3), gy + Math.sin(a) * (gr - 3)); ctx.lineTo(gx + Math.cos(a) * (gr - 3 - L * (mob ? .6 : 1)), gy + Math.sin(a) * (gr - 3 - L * (mob ? .6 : 1))); ctx.stroke(); if (p % 100 === 0 && !mob) ctx.fillText(p, gx + Math.cos(a) * (gr - 20), gy + Math.sin(a) * (gr - 20) + 3); }
+    if (S.mode === 'charles') padlock(ctx, gx + gr * .72, gy - gr * .82, mob ? 6 : 8, '#facc15');
     const an = ang(Pk); ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx + Math.cos(an) * (gr - 10), gy + Math.sin(an) * (gr - 10)); ctx.stroke();
     ctx.fillStyle = '#e6ecf7'; ctx.beginPath(); ctx.arc(gx, gy, 3, 0, Math.PI * 2); ctx.fill();
     if (!mob) { ctx.fillStyle = '#e6ecf7'; ctx.font = '600 12px JetBrains Mono, monospace'; ctx.fillText(`${Pk.toFixed(1)} kPa`, gx, gy + gr + 18); ctx.fillStyle = '#5f6d8a'; ctx.font = '9px JetBrains Mono, monospace'; ctx.fillText('kPa', gx, gy + 22); }
@@ -710,6 +770,7 @@
     S.mode = m; S.recs = []; S.trail = [];
     document.querySelectorAll('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.v === m));
     $('#modeInfo').innerHTML = INFO[m];
+    $('#roT').classList.toggle('locked', m === 'boyle'); $('#roP').classList.toggle('locked', m === 'charles'); $('#roV').classList.toggle('locked', m === 'gay'); mtrail.length = 0;
     $('#cV').style.display = (m === 'free' || m === 'boyle') ? '' : 'none';
     $('#cP').style.display = m === 'charles' ? '' : 'none';
     $('#invBtn').style.display = m === 'boyle' ? '' : 'none';
@@ -760,6 +821,9 @@
     const p = SL.ptr(e, cv), top = Yf - S.H * G; cv.style.cursor = (!isEff() && (S.mode === 'free' || S.mode === 'boyle') && p.x > X0 && p.x < X0 + BW * G && p.y < top + 18 && p.y > top - 200) ? 'ns-resize' : 'default';
   });
   cv.addEventListener('pointerup', () => S.dragging = false); cv.addEventListener('pointercancel', () => S.dragging = false);
+  pH.addEventListener('pointerdown', e => { if (isEff() || !(S.mode === 'free' || S.mode === 'boyle')) return; S.dragging = true; pH.setPointerCapture(e.pointerId); S.Ht = ptrH(e); e.preventDefault(); });
+  pH.addEventListener('pointermove', e => { if (!S.dragging) return; S.Ht = ptrH(e); const L = accV(BW, S.Ht, DEP) * KAPPA * 1000; $('#V').value = L; $('#V').dispatchEvent(new Event('input')); });
+  ['pointerup', 'pointercancel'].forEach(k => pH.addEventListener(k, () => S.dragging = false));
   cv.style.touchAction = 'pan-y';
 
   /* ===== challenges ===== */
@@ -801,13 +865,14 @@
 
   /* ===== loop ===== */
   renderChall(); setMode('free'); boot = false; resetSim();
-  let acc = 0, accT = 0;
+  let acc = 0, accT = 0, accM = 0;
   const L = SL.loop(dt => {
     if (!S.paused) {
       const k = isEff() ? 4 : 1; for (let i = 0; i < k; i++) { physics(dt); S.t += dt; }
       S.valve = Math.max(0, S.valve - dt);
       accT += dt;
       if (accT > 0.4 && !isEff() && S.t > 1.5) { accT = 0; S.trail.push({ V: Vreal() * 1000, P: Pmeas() / 1000, T: S.TkinS || S.Tb }); if (S.trail.length > 300) S.trail.shift(); lawDirty = true; }
+      accM += dt; if (accM > 0.1 && !isEff() && S.t > 0.8) { accM = 0; mtrail.push({ V: Vreal() * 1000, P: Pmeas() / 1000, T: S.TkinS || S.Tb }); if (mtrail.length > 240) mtrail.shift(); }
       if (S.adia && S.mode === 'free' && (S.TkinS || 0) - S.Tb > 150) complete('adia');
     }
     draw();
@@ -819,7 +884,7 @@
   if ('IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(e => { labVis = e.isIntersecting; if (labVis && !document.hidden) L.start(); else L.stop(); }), { rootMargin: '300px' }).observe(document.querySelector('.lab'));
   window.SimGas = { S, Pmeas, Pideal, Pvdw, Tkin, nTot, Vreal, physics, setMode };
   const startTour = () => SL.tour([
-    { el: '#cv', title: 'The gas cylinder', text: 'Hundreds of particles bounce around a cylinder. Drag the piston handle up or down to change the volume and watch the pressure gauge respond.' },
+    { el: '#cv', title: 'The gas cylinder', text: 'Hundreds of particles bounce around a cylinder. Drag the green piston handle up or down to change the volume: the pressure gauge responds and the live graph beside the cylinder traces your path against the ideal curve. Padlocks mark the variable each experiment holds constant.' },
     { el: '#modeSeg', title: 'Choose an experiment', text: 'Free lets you change anything. Boyle, Charles and Gay-Lussac each hold one variable fixed so you can test one law; Effusion lets gas escape through a pinhole.' },
     { el: '#cT', title: 'Heat or cool the gas', text: 'Raise the temperature and the particles speed up: they hit the walls harder and more often, so pressure rises at fixed volume.' },
     { el: '#vecBtn', title: 'Show what makes pressure', text: 'Turn on velocity arrows and wall-impact flashes. Pressure is simply the total momentum delivered by these impacts per second per unit area.' },

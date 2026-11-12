@@ -17,6 +17,21 @@
   .row2{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:18px;margin-bottom:6px}
   @media (max-width:980px){.row2{grid-template-columns:minmax(0,1fr)}}
   .row2>.panel{min-width:0}
+  /* desktop: the pH curve sits beside the apparatus inside the stage */
+  .stchart{position:absolute;top:12px;right:12px;bottom:62px;width:min(360px,42%);display:none;flex-direction:column;background:rgba(5,9,19,.88);border:1px solid var(--line2);border-radius:12px;padding:10px 12px;z-index:2;overflow:auto}
+  .stchart.on{display:flex}
+  .stchart h3{margin:0 0 8px;font-size:.9rem}
+  .stchart .chartbox{flex:1;height:auto;min-height:220px}
+  .stchart .opts{font-size:.76rem}.stchart .opts .toggle{font-size:.76rem;padding:2px 0}
+  .stchart .legend{font-size:.72rem;gap:4px 10px}
+  .row2.docked{grid-template-columns:minmax(0,1fr)}
+  .row2.docked>#curvePanel{display:none}
+  .initcard{margin-top:10px;padding:9px 11px;border-radius:10px;border:1px solid #facc1566;background:rgba(250,204,21,.07);font-size:.82rem;line-height:1.5;color:var(--muted)}
+  .initcard b{color:var(--text)}.initcard .num{font:600 .95rem var(--mono);color:#facc15}
+  .initcard.ok{border-color:rgba(34,197,94,.5);background:rgba(34,197,94,.07)}
+  .initcard .btn{margin-top:6px}
+  .seg button.nudge{animation:nudge 1.1s ease-in-out 4;box-shadow:0 0 0 2px var(--accent)}
+  @keyframes nudge{50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--accent) 30%,transparent)}}
   .chartbox{position:relative;height:330px;background:#050913;border:1px solid var(--line);border-radius:10px;overflow:hidden}
   .chartbox canvas{display:block;width:100%;height:100%;cursor:crosshair}
   .ctip{position:absolute;pointer-events:none;font:500 .74rem var(--mono);background:rgba(5,9,19,.92);border:1px solid var(--line2);padding:4px 8px;border-radius:7px;display:none;white-space:nowrap;z-index:2}
@@ -80,6 +95,7 @@
         <span class="readout">Added <b id="hV">0.00</b> mL</span>
         <span class="readout" id="hIndWrap">Indicator <b id="hInd">—</b></span>
       </div>
+      <div class="stchart" id="stChart" aria-label="Titration curve beside the apparatus"></div>
       <div class="stage-toolbar">
         <button class="btn sm" id="tLabels" aria-pressed="true" title="Show apparatus labels"><i data-lucide="tag"></i><span class="tx"> Labels</span></button>
         <button class="btn sm" id="tStir" aria-pressed="true" title="Magnetic stirrer"><i data-lucide="refresh-cw"></i><span class="tx"> Stirrer</span></button>
@@ -121,8 +137,9 @@
         <h3><i data-lucide="droplets"></i> Burette</h3>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
           <span class="small muted">Hold mode</span>
-          <div class="seg" id="modeSeg"><button data-v="drop" class="on">Dropwise</button><button data-v="fast">Fast</button></div>
+          <div class="seg" id="modeSeg"><button data-v="drop">Dropwise</button><button data-v="fast" class="on">Fast</button></div>
         </div>
+        <div class="initcard" id="initCard"></div>
         <div class="btn-row" style="margin-top:10px">
           <button class="btn primary hold" id="holdBtn"><i data-lucide="hand"></i> Hold to add</button>
           <button class="btn" id="oneDrop"><i data-lucide="droplet"></i> 1 drop</button>
@@ -134,7 +151,7 @@
           <button class="btn sm" id="newFlask"><i data-lucide="flask-conical"></i> New flask</button>
           <button class="btn sm" id="refill"><i data-lucide="fuel"></i> Refill burette</button>
         </div>
-        <p class="mini" style="margin:8px 0 0"><b>Start here:</b> press and hold <b>Hold to add</b> (or the stopcock in the picture) and watch the flask colour. Slow to single drops as the colour starts to linger, stop at the first permanent change, then press <b>Record end point</b> under the curve. One drop = 0.05 mL.</p>
+        <p class="mini" style="margin:8px 0 0"><b>Start here:</b> record the initial reading, then press and hold <b>Hold to add</b> (Fast mode, about 0.9 mL/s) and watch the flask colour. When the colour starts to linger, switch to <b>Dropwise</b> or tap <b>1 drop</b>, stop at the first permanent change, then press <b>Record end point</b> in the Results notebook. One drop = 0.05 mL.</p>
       </div>
 
       <div class="panel" id="livePanel">
@@ -151,8 +168,8 @@
     </aside>
   </section>
 
-  <section class="row2">
-    <div class="panel">
+  <section class="row2" id="row2">
+    <div class="panel" id="curvePanel">
       <h3><i data-lucide="chart-spline"></i> Titration curve</h3>
       <div class="chartbox"><canvas id="cc" role="img" aria-label="Titration curve: pH against volume of titrant added"></canvas><div class="ctip" id="ctip"></div></div>
       <div class="opts" style="margin-top:8px">
@@ -379,7 +396,7 @@
   const S = {
     pair: 'wa-sb', flask: 'acid', Ca: 0.1, Ct: 0.1, Va: 25, ind: 'phph', mystery: false, trueCa: 0.1,
     Vadd: 0, bur: 0, runStart: 0, runVol: 0, refilledMidRun: false, pending: 0,
-    opening: 0, holding: false, mode: 'drop', holdAcc: 0, stir: true, labels: true,
+    opening: 0, holding: false, mode: 'fast', holdAcc: 0, stir: true, labels: true,
     pHtrue: 7, pHshow: 7, pts: [], drops: [], ripples: [], plumes: [], t: 0, stirPhase: 0,
     runs: [], roughDone: false, chk: {},
   };
@@ -425,12 +442,23 @@
   function surfaceY(mL) { for (const [y, v] of volTable) if (v * kVol >= mL) return y; return NECK; }
 
   function layout() {
-    const w = st.w, h = st.h;
+    const w = st.w - (docked ? Math.min(360, st.w * .42) + 12 : 0), h = st.h;
     const top = 46, CW = 530;
     sc = Math.min(w / CW, (h - top) / BH);
     ox = (w - CW * sc) / 2 - 35 * sc; oy = top + ((h - top) - BH * sc) / 2;
   }
   const fz = n => n * Math.max(1, 0.8 / sc);
+  // dock the curve panel beside the apparatus on wide screens
+  let docked = false;
+  const curvePanel = document.getElementById('curvePanel'), stChart = document.getElementById('stChart'), mqDock = matchMedia('(min-width: 1100px)');
+  function dock() {
+    const want = mqDock.matches; if (want === docked) return; docked = want;
+    const from = want ? curvePanel : stChart, to = want ? stChart : curvePanel;
+    while (from.firstChild) to.appendChild(from.firstChild);
+    stChart.classList.toggle('on', want); document.getElementById('row2').classList.toggle('docked', want);
+    try { chartDirty = true; } catch (e) {}
+  }
+  (mqDock.addEventListener ? mqDock.addEventListener('change', dock) : mqDock.addListener(dock)); dock();
 
   function drawBackground(ctx, w, h) {
     const g = ctx.createLinearGradient(0, 0, 0, h);
@@ -699,6 +727,9 @@
   function land() {
     S.Vadd += DROP;
     S.pHtrue = flaskPH(S.Vadd);
+    if (!S.initRec) recInit(true);
+    // near the end point in Fast mode: suggest switching to Dropwise (once per flask)
+    if (S.mode === 'fast' && !S.nudged && !S.mystery) { const e1 = eqInfo().eq[0]; if (e1 && S.Vadd >= e1.V - 2.5 && S.Vadd < e1.V) { S.nudged = true; const b = document.querySelector('#modeSeg button[data-v=drop]'); b.classList.add('nudge'); setTimeout(() => b.classList.remove('nudge'), 4600); SL.toast('Close to the end point: switch to <b>Dropwise</b> (or tap <b>1 drop</b>) so you do not overshoot.', 'warn', 5000); } }
     if (!S.mystery) { const e1 = eqInfo().eq[0]; if (e1 && e1.V > 0) { S.reach = S.reach || {}; S.reach[S.pair] = Math.max(S.reach[S.pair] || 0, S.Vadd / e1.V); } } // how far each pair has actually been titrated
     S.pts.push([S.Vadd, S.pHtrue]);
     S.ripples.push({ age: 0 });
@@ -950,7 +981,18 @@
   });
 
   /* ================= Controls ================= */
+  // explicit "record the initial burette reading" step
+  function renderInit() {
+    const el = $('#initCard'), r = (Math.round(S.runStart * 20) / 20).toFixed(2);
+    if (S.refilledMidRun) { el.className = 'initcard'; el.innerHTML = 'Refilled during this run: the notebook uses the volume delivered instead of final − initial.'; return; }
+    if (S.initRec) { el.className = 'initcard ok'; el.innerHTML = `<b>✓ Initial reading ${r} mL recorded.</b> Titre = final reading − ${r} mL.`; return; }
+    el.className = 'initcard'; el.innerHTML = `<b>Step 1: read the burette first.</b> It reads <span class="num">${r} mL</span>, not 0.00: a burette is never filled exactly to the zero line, so you note where it starts and subtract it at the end.<br><button class="btn sm" id="initBtn"><i data-lucide="pencil-line"></i> Record initial reading</button>`;
+    SL.refreshIcons(el);
+  }
+  function recInit(auto) { if (S.initRec) return; S.initRec = true; renderInit(); if (auto) SL.toast(`Initial burette reading noted for you: ${(Math.round(S.runStart * 20) / 20).toFixed(2)} mL. Always read it before you start.`, 'warn', 4500); }
+  document.addEventListener('click', e => { if (e.target.closest('#initBtn')) recInit(false); });
   function newFlask(silent) {
+    S.initRec = false; S.nudged = false; setTimeout(renderInit);
     S.Vadd = 0; S.pts = []; S.drops = []; S.plumes = []; S.pending = 0; S.runVol = 0; S.runStart = S.bur; S.refilledMidRun = false;
     S.pHtrue = flaskPH(0); S.pHshow = S.pHtrue; chartDirty = true;
     if (!silent) SL.toast(`Fresh ${S.Va.toFixed(2)} mL aliquot pipetted into a clean flask. Initial burette reading: ${readBur().toFixed(2)} mL.`);
@@ -958,7 +1000,7 @@
   function refill() {
     const r = Math.round((0.1 + Math.random() * 1.4) * 20) / 20;
     if (S.runVol > 0) S.refilledMidRun = true;
-    S.bur = r; S.emptyWarned = false; if (!S.refilledMidRun) S.runStart = S.bur;
+    S.bur = r; S.emptyWarned = false; if (!S.refilledMidRun) { S.runStart = S.bur; S.initRec = false; } renderInit();
     SL.toast(`Burette refilled. New reading ${r.toFixed(2)} mL.`);
   }
   function resetAll(msg) {
@@ -1060,7 +1102,8 @@
   if ('IntersectionObserver' in window) new IntersectionObserver(es => es.forEach(e => { labVis = e.isIntersecting; if (labVis && !document.hidden) L.start(); else L.stop(); }), { rootMargin: '300px' }).observe(document.querySelector('.lab'));
   const startTour = () => SL.tour([
     { el: '#stage', title: 'The apparatus', text: 'Burette, conical flask on a stirrer and a pH meter. The magnifier shows the meniscus: always read the bottom of the curve at eye level. You can also press and hold the stopcock in the picture.' },
-    { el: '#holdBtn', title: 'Add titrant', text: 'Hold to run titrant in (dropwise or fast), or add a single 0.05 mL drop near the end point. Watch the indicator colour and the pH meter.' },
+    { el: '#initCard', title: 'Read the burette first', text: 'The burette never starts at exactly 0.00 mL. Record the initial reading: your titre is the final reading minus this.' },
+    { el: '#holdBtn', title: 'Add titrant', text: 'Hold to run titrant in. Fast mode adds about 0.9 mL/s; near the end point switch to Dropwise or tap 1 drop (0.05 mL). Watch the indicator colour and the pH meter.' },
     { el: '#pair', title: 'Choose the chemistry', text: 'Pick the acid–base pair, which one is in the flask, the concentrations, the aliquot and the indicator.' },
     { el: '#eqprog', title: 'Progress to equivalence', text: 'Above this bar: live pH, burette reading and [H₃O⁺]. The bar shows how far you are towards equivalence; dashed marks are half-equivalence, where pH = pKa.' },
     { el: '#cc', title: 'Titration curve', text: 'Your measured points build the pH curve live. Toggle the predicted curve, equivalence markers, the derivative and the indicator range.' },
