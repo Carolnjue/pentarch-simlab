@@ -509,6 +509,11 @@ function Atlas(cfg) {
       <feMerge><feMergeNode in="b"/><feMergeNode in="s"/></feMerge></filter>`;
   }).join('');
   svg.insertBefore(defs, svg.firstChild);
+  // the zoom tweens move a wrapper rather than the <svg> itself: a transform on the svg root makes the browser re-lay-out
+  // all SVG text every frame, a transform on an HTML parent does not
+  const zw = document.createElement('div'); zw.className = 'atl-zoom'; zw.style.cssText = 'display:block;width:100%;height:100%;transform-origin:50% 50%';
+  svg.parentNode.insertBefore(zw, svg); zw.appendChild(svg);
+  Object.assign(svg.style, { display: 'block', width: '100%', height: '100%', userSelect: 'none', webkitUserSelect: 'none' });
   // pause the decorative CSS animations (hotspot dashes etc.) while the atlas is off screen
   try { new IntersectionObserver(es => es.forEach(e => root.classList.toggle('atl-off', !e.isIntersecting)), { rootMargin: '100px' }).observe(root); } catch (e) {}
   const labelsG = document.createElementNS(NS, 'g'); labelsG.setAttribute('class', 'atl-labels'); svg.appendChild(labelsG);
@@ -536,12 +541,12 @@ function Atlas(cfg) {
       if (css) {
         const x0 = Math.min(from[0], to[0]), y0 = Math.min(from[1], to[1]);
         U = [x0, y0, Math.max(from[0] + from[2], to[0] + to[2]) - x0, Math.max(from[1] + from[3], to[1] + to[3]) - y0];
-        setVB(U); SU = fitS(U); svg.style.transformOrigin = '50% 50%';
+        setVB(U); SU = fitS(U);
       }
       const step = now => { const t = Math.min(1, (now - t0) / ms), e = ease(t), v = from.map((f, i) => f + (to[i] - f) * e);
         if (css && t < 1) { const k = fitS(v), dx = k * (U[0] + U[2] / 2 - v[0] - v[2] / 2), dy = k * (U[1] + U[3] / 2 - v[1] - v[3] / 2);
-          svg.style.transform = `translate(${dx.toFixed(2)}px,${dy.toFixed(2)}px) scale(${(k / SU).toFixed(5)})`; }
-        else { if (css) svg.style.transform = ''; setVB(t < 1 ? v : to.slice()); }
+          zw.style.transform = `translate(${dx.toFixed(2)}px,${dy.toFixed(2)}px) scale(${(k / SU).toFixed(5)})`; }
+        else { if (css) zw.style.transform = ''; setVB(t < 1 ? v : to.slice()); }
         onStep && onStep(t);
         if (t < 1) requestAnimationFrame(step); else res(); };
       requestAnimationFrame(step); }); }
@@ -1086,7 +1091,12 @@ window.DK = (() => {
 (function () {
   const on = () => { try { const hero = document.querySelector('.page-hero'), fx = hero && hero.querySelector('.hero-fx'); if (!fx || !('IntersectionObserver' in window)) return;
     new IntersectionObserver(es => es.forEach(e => { fx.style.display = e.intersectionRatio < 0.6 ? 'none' : ''; }), { threshold: [0, 0.6, 1] }).observe(hero); } catch (e) {} };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(on, 60)); else setTimeout(on, 60);
+  // lab canvases far below or above the screen are hidden (layout kept): an off-screen canvas otherwise still costs
+  // a resource upload on every frame the page commits, which slows the atlas zoom on phones
+  const offCv = () => { try { if (!('IntersectionObserver' in window)) return; const io = new IntersectionObserver(es => es.forEach(e => { e.target.style.visibility = e.isIntersecting ? '' : 'hidden'; }), { rootMargin: '400px 0px' });
+    document.querySelectorAll('main canvas, section canvas').forEach(c => { if (!c.closest('.page-hero')) io.observe(c); }); } catch (e) {} };
+  const both = () => { on(); offCv(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(both, 60)); else setTimeout(both, 60);
 })();
 
 </script>

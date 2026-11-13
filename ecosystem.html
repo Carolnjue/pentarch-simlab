@@ -823,6 +823,8 @@ function makeEco(seed, ov) {
     if (crossFence(a.x, nx)) { a.dir += Math.PI; return; }
     a.x = nx; a.y = ny;
   }
+  const BS = 6, BW = Math.ceil(W / BS), BH = Math.ceil(H / BS);
+  const hb = Array.from({ length: BW * BH }, () => []), pb = Array.from({ length: BW * BH }, () => []);
   function count() { const c = { zebra: 0, gazelle: 0, lion: 0, cheetah: 0, dog: 0 }; for (const a of animals) c[a.sp]++; return c; }
   function step() {
     const R = rainNow();
@@ -837,9 +839,8 @@ function makeEco(seed, ov) {
       g -= 0.002 * g * Math.max(0, 0.6 - R); // dry-season senescence
       grass[i] = g < 0 ? 0 : g > 1 ? 1 : g; gsum += grass[i];
     }
-    const preds = animals.filter(a => SP[a.sp].kind === 'pred');
-    const BS = 6, BW = Math.ceil(W / BS), BH = Math.ceil(H / BS);
-    const hb = Array.from({ length: BW * BH }, () => []), pb = Array.from({ length: BW * BH }, () => []);
+    // spatial buckets are reused from step to step (cleared, not reallocated)
+    for (let i = 0; i < hb.length; i++) { hb[i].length = 0; pb[i].length = 0; }
     const bk = (x, y) => Math.min(BH - 1, Math.max(0, (y / BS) | 0)) * BW + Math.min(BW - 1, Math.max(0, (x / BS) | 0));
     for (const a of animals) (SP[a.sp].kind === 'pred' ? pb : hb)[bk(a.x, a.y)].push(a);
     const near = (B, x, y, r, fn) => { const x0 = Math.max(0, ((x - r) / BS) | 0), x1 = Math.min(BW - 1, ((x + r) / BS) | 0), y0 = Math.max(0, ((y - r) / BS) | 0), y1 = Math.min(BH - 1, ((y + r) / BS) | 0); for (let by = y0; by <= y1; by++) for (let bx = x0; bx <= x1; bx++) for (const q of B[by * BW + bx]) fn(q); };
@@ -1028,22 +1029,24 @@ function ecoCaption(c) {
 
 function seasonName(doy) { return doy < 59 ? 'Short dry season' : doy < 152 ? 'Long rains' : doy < 273 ? 'Long dry season' : 'Short rains'; }
 
+const setTx = (sel, v) => { const el = $(sel); v = String(v); if (el.textContent !== v) el.textContent = v; };
+let lastChips = null;
 function updateStats() {
   const c = eco.count();
-  $('#cZ').textContent = c.zebra; $('#cG').textContent = c.gazelle; $('#cL').textContent = c.lion; $('#cC').textContent = c.cheetah; $('#cD').textContent = c.dog;
-  $('#cGr').textContent = Math.round(grassMean * 100);
-  $('#cK').textContent = killDays.length;
-  const pr = c.lion + c.cheetah + c.dog; $('#cR').textContent = pr ? SL.fmt((c.zebra + c.gazelle) / pr, 1) + ' : 1' : '–';
+  setTx('#cZ', c.zebra); setTx('#cG', c.gazelle); setTx('#cL', c.lion); setTx('#cC', c.cheetah); setTx('#cD', c.dog);
+  setTx('#cGr', Math.round(grassMean * 100));
+  setTx('#cK', killDays.length);
+  const pr = c.lion + c.cheetah + c.dog; setTx('#cR', pr ? SL.fmt((c.zebra + c.gazelle) / pr, 1) + ' : 1' : '–');
   ecoCaption(c);
-  $('#hYear').textContent = Math.floor(eco.day / 365) + 1; $('#hDay').textContent = eco.day % 365;
-  $('#hSeason').textContent = seasonName(eco.day % 365) + (eco.day < eco.P.droughtUntil ? ' · drought' : '');
-  $('#hRain').textContent = Math.round(eco.rainNow() / 1.1 * 100);
+  setTx('#hYear', Math.floor(eco.day / 365) + 1); setTx('#hDay', eco.day % 365);
+  setTx('#hSeason', seasonName(eco.day % 365) + (eco.day < eco.P.droughtUntil ? ' · drought' : ''));
+  setTx('#hRain', Math.round(eco.rainNow() / 1.1 * 100));
   const chips = [];
   if (eco.day < eco.P.droughtUntil) chips.push(`<span class="evchip">Drought · ${eco.P.droughtUntil - eco.day} d left</span>`);
   const inf = eco.animals.filter(a => a.inf > 0).length; if (inf) chips.push(`<span class="evchip" style="border-color:#f87171;color:#fca5a5">Distemper · ${inf} infected</span>`);
   if (eco.P.fence) chips.push('<span class="evchip blue">Fence</span>');
   if (!eco.P.open) chips.push('<span class="evchip blue">Closed reserve</span>');
-  $('#evChips').innerHTML = chips.join('');
+  const ch = chips.join(''); if (ch !== lastChips) { lastChips = ch; $('#evChips').innerHTML = ch; }
   if (selected) showInspect(selected);
 }
 
@@ -1080,12 +1083,25 @@ function drawTree(ctx, x, y, s) {
   ctx.fillStyle = gr; ctx.beginPath(); ctx.ellipse(x, y - 12.5 * s, 13 * s, 3.6 * s, 0, 0, 7); ctx.fill();
   ctx.fillStyle = 'rgba(160,200,90,.35)'; ctx.beginPath(); ctx.ellipse(x - 2 * s, y - 14 * s, 8 * s, 1.6 * s, 0, 0, 7); ctx.fill();
 }
+// trees never move: each is drawn once into a sprite (keyed by size) and blitted
+function drawTreeFast(ctx, x, y, s) {
+  const key = 'tree:' + s.toFixed(2);
+  let c = spriteCache.get(key);
+  if (!c) {
+    const dpr = savSt.dpr || 1, L = Math.ceil(16 * s) + 2, T = Math.ceil(19 * s) + 2, B = Math.ceil(7 * s) + 2, Rr = Math.ceil(19 * s) + 2;
+    c = document.createElement('canvas'); c.width = Math.ceil((L + Rr) * dpr); c.height = Math.ceil((T + B) * dpr); c.ox = L; c.oy = T; c.cw = L + Rr; c.ch = T + B;
+    const x2 = c.getContext('2d'); x2.setTransform(dpr, 0, 0, dpr, 0, 0); drawTree(x2, L, T, s);
+    spriteCache.set(key, c);
+  }
+  if ((savSt.dpr || 1) === 1) ctx.drawImage(c, Math.round(x) - c.ox, Math.round(y) - c.oy); else ctx.drawImage(c, x - c.ox, y - c.oy, c.cw, c.ch);
+}
 // sprite cache: each animal pose is drawn once into an offscreen canvas, then blitted (much cheaper with hundreds of animals)
-const spriteCache = new Map();
+const spriteCache = new Map(), SPI = { zebra: 0, gazelle: 1, lion: 2, cheetah: 3, dog: 4 };
 function drawAnimalFast(ctx, a, x, y, s, t) {
-  const f = Math.cos(a.dir) >= 0 ? 1 : -1, mv = Math.hypot(a.x - a.px, a.y - a.py) > 0.3;
+  const f = Math.cos(a.dir) >= 0 ? 1 : -1, ddx = a.x - a.px, ddy = a.y - a.py, mv = ddx * ddx + ddy * ddy > 0.09;
   const ph = mv ? Math.round(Math.sin(t * 14 + a.id) * 2) / 2 : 0;
-  const key = a.sp + (a.sp === 'lion' && a.male ? 'm' : '') + f + ':' + ph + ':' + s.toFixed(1);
+  // numeric key (species, mane, facing, leg phase, size to 0.1 px): cheaper than building a string per animal per frame
+  const key = ((((Math.round(s * 10) * 5 + SPI[a.sp]) * 2 + (a.sp === 'lion' && a.male ? 1 : 0)) * 2 + (f > 0 ? 1 : 0)) * 5) + (ph * 2 + 2);
   let c = spriteCache.get(key);
   if (!c) {
     if (spriteCache.size > 300) spriteCache.clear();
@@ -1094,7 +1110,7 @@ function drawAnimalFast(ctx, a, x, y, s, t) {
     drawAnimal(x2, { sp: a.sp, male: a.male, dir: f > 0 ? 0 : Math.PI, x: 0, y: 0, px: 0, py: 0, id: 0, ph }, R, R, s, 0);
     spriteCache.set(key, c);
   }
-  ctx.drawImage(c, x - c.R, y - c.R, 2 * c.R, 2 * c.R);
+  if ((savSt.dpr || 1) === 1) ctx.drawImage(c, Math.round(x - c.R), Math.round(y - c.R)); else ctx.drawImage(c, x - c.R, y - c.R, 2 * c.R, 2 * c.R);
 }
 function drawAnimal(ctx, a, x, y, s, t) {
   const f = Math.cos(a.dir) >= 0 ? 1 : -1;
@@ -1160,6 +1176,7 @@ var bgC = null, bgKey = '', savDirty = true, lastHistN = -1, lastSavT = 0;
 function drawSav(frac, t) {
   const { ctx, w, h } = savSt, W = eco.W, H = eco.H, sx = w / W, sy = h / H, dpr = savSt.dpr || 1;
   const R = eco.rainNow(), wet = clamp(R / 0.9, 0, 1);
+  const wx = 0.73 * w, wy = 0.3 * h, wr = Math.min(w, h) * 0.06 * (0.6 + 0.4 * wet) * (eco.day < eco.P.droughtUntil ? 0.55 : 1);
   const key = w + 'x' + h + '@' + dpr + ':' + eco.day + ':' + Math.round(wet * 40) + ':' + eco.grass.length;
   const sizeKey = w + 'x' + h + '@' + dpr, nowMs = performance.now();
   // at high speed the grass changes every frame: refresh the cached layer at most 4 times a second
@@ -1176,13 +1193,12 @@ function drawSav(frac, t) {
     b.drawImage(gImg, 0, 0, w, h);
     if (!texture || texture.width !== w) texture = makeTexture(w, h);
     b.drawImage(texture, 0, 0);
+    // waterhole (its size follows the rain, which is part of the cache key)
+    b.fillStyle = 'rgba(80,60,35,.6)'; b.beginPath(); b.ellipse(wx, wy, wr * 1.5, wr * 0.75, 0, 0, 7); b.fill();
+    const wg = b.createRadialGradient(wx - wr * 0.3, wy - wr * 0.2, 1, wx, wy, wr * 1.3); wg.addColorStop(0, '#5fb7d6'); wg.addColorStop(1, '#22607d');
+    b.fillStyle = wg; b.beginPath(); b.ellipse(wx, wy, wr * 1.3, wr * 0.6, 0, 0, 7); b.fill();
   }
   ctx.drawImage(bgC, 0, 0, w, h);
-  // waterhole
-  const wx = 0.73 * w, wy = 0.3 * h, wr = Math.min(w, h) * 0.06 * (0.6 + 0.4 * wet) * (eco.day < eco.P.droughtUntil ? 0.55 : 1);
-  ctx.fillStyle = 'rgba(80,60,35,.6)'; ctx.beginPath(); ctx.ellipse(wx, wy, wr * 1.5, wr * 0.75, 0, 0, 7); ctx.fill();
-  const wg = ctx.createRadialGradient(wx - wr * 0.3, wy - wr * 0.2, 1, wx, wy, wr * 1.3); wg.addColorStop(0, '#5fb7d6'); wg.addColorStop(1, '#22607d');
-  ctx.fillStyle = wg; ctx.beginPath(); ctx.ellipse(wx, wy, wr * 1.3, wr * 0.6, 0, 0, 7); ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(wx - wr * 0.2, wy - wr * 0.1, wr * 0.6 + Math.sin(t * 2) * 2, wr * 0.2, 0, 0, 7); ctx.stroke();
   // fence
   if (eco.P.fence) { const fx = w / 2; ctx.strokeStyle = 'rgba(60,40,20,.9)'; ctx.lineWidth = 1; for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.moveTo(fx - 1 + k, 0); ctx.lineTo(fx - 1 + k, h); ctx.stroke(); } ctx.fillStyle = '#5b4026'; for (let y = 4; y < h; y += 16) ctx.fillRect(fx - 2.5, y, 5, 6); }
@@ -1194,7 +1210,7 @@ function drawSav(frac, t) {
   items.sort((p, q) => p.y - q.y);
   const mul = { zebra: 1.02, gazelle: 0.76, lion: 1.14, cheetah: 0.96, dog: 0.84 };
   for (const it of items) {
-    if (it.tree) { drawTree(ctx, it.tree.x * sx, it.tree.y * sy, it.tree.s * clamp(Math.min(sx, sy) / 8, 0.55, 1.25)); continue; }
+    if (it.tree) { drawTreeFast(ctx, it.tree.x * sx, it.tree.y * sy, it.tree.s * clamp(Math.min(sx, sy) / 8, 0.55, 1.25)); continue; }
     const a = it.a, x = (a.px + (a.x - a.px) * frac) * sx, y = it.y * sy;
     let s = s0 * mul[a.sp] * (a.age < eco.SP[a.sp].mature ? 0.68 : 1);
     if (a.inf > 0) { ctx.strokeStyle = `rgba(248,113,113,${0.5 + 0.4 * Math.sin(t * 6)})`; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, s * 0.7, 0, 7); ctx.stroke(); }
@@ -1235,7 +1251,9 @@ function drawCharts() {
   ctx.restore();
 }
 
-let frameN = 0;
+let frameN = 0, chartsVis = true, chartsStale = false;
+// population charts sit below the savannah on phones: while they are off screen they are not redrawn
+if ('IntersectionObserver' in window) new IntersectionObserver(es => { chartsVis = es.some(e => e.isIntersecting) || [...$$('#popCv,#phaseCv')].some(c => { const r = c.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight; }); if (chartsVis && chartsStale && eco) { chartsStale = false; drawCharts(); } }).observe($('#popCv').parentElement), new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { chartsVis = true; if (chartsStale && eco) { chartsStale = false; drawCharts(); } } })).observe($('#phaseCv').parentElement);
 const savLoop = SL.loop((dt, t) => {
   if (running) {
     acc += dt * +$('#speed').value;
@@ -1247,7 +1265,7 @@ const savLoop = SL.loop((dt, t) => {
   // phones: the savannah repaints at up to 30 frames a second (hundreds of sprites), everything else stays at 60
   const lowEnd = matchMedia('(pointer:coarse)').matches || (navigator.hardwareConcurrency || 8) <= 4;
   if ((running || savDirty || selected) && (!lowEnd || savDirty || t - lastSavT >= 0.031)) { lastSavT = t; drawSav(running ? acc : 1, t); savDirty = false; }
-  if (++frameN % 4 === 0 && (hist.length !== lastHistN || frameN % 60 === 0)) { lastHistN = hist.length; updateStats(); drawCharts(); }
+  if (++frameN % (lowEnd ? 8 : 4) === 0 && (hist.length !== lastHistN || frameN % 60 === 0)) { lastHistN = hist.length; updateStats(); if (chartsVis) drawCharts(); else chartsStale = true; }
 });
 
 /* controls */
@@ -1349,9 +1367,40 @@ function addTraj(x0, y0, keepHead) {
   trajs.push(tj); lvView(); return tj;
 }
 function lvGeom() { const { w, h } = lvSt, pad = [18, 16, 34, 48]; return { pad, X: x => pad[3] + x / view.xmax * (w - pad[3] - pad[1]), Y: y => h - pad[2] - y / view.ymax * (h - pad[0] - pad[2]), iX: px => (px - pad[3]) / (w - pad[3] - pad[1]) * view.xmax, iY: py => (h - pad[2] - py) / (h - pad[0] - pad[2]) * view.ymax }; }
-function drawLV() {
-  const { ctx, w, h } = lvSt, G = lvGeom(), { X, Y } = G;
-  plot(lvSt, [], { xmin: 0, xmax: view.xmax, ymin: 0, ymax: view.ymax, pad: G.pad, xlabel: 'prey x', ylabel: 'predators y' });
+// the axes, vector field, nullclines and faint full trajectories only change with the parameters or the trajectory set:
+// they are drawn once into an offscreen layer; each animation frame blits it and draws the moving heads on top
+const lvBase = document.createElement('canvas'); let lvBaseKey = '', lvTsN = 0;
+function drawLV(moving) {
+  const { w, h } = lvSt, dpr = lvSt.dpr || 1, G = lvGeom(), { X, Y } = G;
+  const key = [w, h, dpr, view.xmax, view.ymax, JSON.stringify(lv), eqm ? eqm.x + ',' + eqm.y : '', trajs.map(tj => [tj.x0, tj.y0, tj.col, tj.pts.length, tj.pts[tj.pts.length - 1][1], tj.pts[tj.pts.length - 1][2]].join(',')).join(';')].join('|');
+  if (key !== lvBaseKey) { lvBaseKey = key; drawLVBase(); }
+  const ctx = lvSt.ctx;
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, lvSt.ctx.canvas.width, lvSt.ctx.canvas.height); ctx.drawImage(lvBase, 0, 0); ctx.restore();
+  ctx.save(); ctx.beginPath(); ctx.rect(G.pad[3], G.pad[0], w - G.pad[3] - G.pad[1], h - G.pad[0] - G.pad[2]); ctx.clip();
+  // trajectories: bright trail up to the moving head
+  trajs.forEach(tj => {
+    const pts = tj.pts, hd = tj.head;
+    ctx.strokeStyle = tj.col; ctx.lineJoin = 'round'; ctx.lineWidth = 2.4; ctx.beginPath(); for (let i = 0; i <= hd; i += 2) { const p = pts[i]; i ? ctx.lineTo(X(p[1]), Y(p[2])) : ctx.moveTo(X(p[1]), Y(p[2])); } ctx.stroke();
+    const p = pts[hd]; ctx.fillStyle = tj.col; ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.arc(X(p[1]), Y(p[2]), 10, 0, 7); ctx.fill(); ctx.globalAlpha = 1; ctx.beginPath(); ctx.arc(X(p[1]), Y(p[2]), 5, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(X(tj.x0), Y(tj.y0), 3.5, 0, 7); ctx.stroke();
+  });
+  // equilibria
+  const K = lv.m === 'classic' ? Infinity : lv.K;
+  const dot = (x, y, fill, lab) => { ctx.fillStyle = fill; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(X(x), Y(y), 6, 0, 7); ctx.fill(); ctx.stroke(); if (lab) { ctx.font = '600 11px Inter, sans-serif'; ctx.fillStyle = '#e6ecf7'; ctx.textAlign = 'left'; ctx.fillText(lab, X(x) + 9, Y(y) - 8); } };
+  if (eqm) dot(eqm.x, eqm.y, eqm.tr > 1e-6 ? '#0b1222' : '#2dd4bf', `(x*, y*) = (${SL.fmt(eqm.x, 1)}, ${SL.fmt(eqm.y, 1)})`);
+  if (K < Infinity && lv.Ex < lv.a) dot(K * (1 - lv.Ex / lv.a), 0, '#0b1222', 'prey only');
+  ctx.restore();
+  // time series of the latest trajectory: while a head is moving, refresh it every third frame
+  if (moving && (++lvTsN % 3)) return;
+  const tj = trajs[trajs.length - 1];
+  if (tj) { const sub = tj.pts.slice(0, tj.head + 1).filter((_, i) => i % 3 === 0); plot(lvTsSt, [{ data: sub.map(p => [p[0], p[1]]), color: '#4ade80', label: 'prey x' }, { data: sub.map(p => [p[0], p[2]]), color: '#fb923c', label: 'predators y' }], { xmin: 0, xmax: 80, ymin: 0, ymax: Math.max(10, ...sub.map(p => Math.max(p[1], p[2]))) * 1.1, xlabel: 'time', pad: [26, 12, 26, 44] }); }
+  else plot(lvTsSt, [], { xmin: 0, xmax: 80, ymin: 0, ymax: 100, xlabel: 'time' });
+}
+function drawLVBase() {
+  const { w, h } = lvSt, dpr = lvSt.dpr || 1, G = lvGeom(), { X, Y } = G;
+  if (lvBase.width !== lvSt.ctx.canvas.width || lvBase.height !== lvSt.ctx.canvas.height) { lvBase.width = lvSt.ctx.canvas.width; lvBase.height = lvSt.ctx.canvas.height; }
+  const ctx = lvBase.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  plot({ ctx, w, h }, [], { xmin: 0, xmax: view.xmax, ymin: 0, ymax: view.ymax, pad: G.pad, xlabel: 'prey x', ylabel: 'predators y' });
   ctx.save(); ctx.beginPath(); ctx.rect(G.pad[3], G.pad[0], w - G.pad[3] - G.pad[1], h - G.pad[0] - G.pad[2]); ctx.clip();
   // vector field
   const nx = Math.max(10, Math.round((w - 60) / 38)), ny = Math.max(7, Math.round((h - 50) / 38));
@@ -1370,29 +1419,15 @@ function drawLV() {
   const gg = lv.g + lv.Ey, den = lv.d - gg * lv.b * hh;
   ctx.strokeStyle = '#fb923c'; if (den > 0) { const xs = gg / den; ctx.beginPath(); ctx.moveTo(X(xs), Y(0)); ctx.lineTo(X(xs), Y(view.ymax)); ctx.stroke(); }
   ctx.beginPath(); ctx.moveTo(X(0), Y(0) - 1.5); ctx.lineTo(X(view.xmax), Y(0) - 1.5); ctx.stroke();
-  // trajectories
-  trajs.forEach((tj, k) => {
-    const pts = tj.pts, hd = tj.head;
-    ctx.strokeStyle = tj.col; ctx.globalAlpha = 0.28; ctx.lineWidth = 1.4; ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(X(p[1]), Y(p[2])) : ctx.moveTo(X(p[1]), Y(p[2]))); ctx.stroke();
-    ctx.globalAlpha = 1; ctx.lineWidth = 2.4; ctx.beginPath(); for (let i = 0; i <= hd; i += 2) { const p = pts[i]; i ? ctx.lineTo(X(p[1]), Y(p[2])) : ctx.moveTo(X(p[1]), Y(p[2])); } ctx.stroke();
-    const p = pts[hd]; ctx.fillStyle = tj.col; ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.arc(X(p[1]), Y(p[2]), 10, 0, 7); ctx.fill(); ctx.globalAlpha = 1; ctx.beginPath(); ctx.arc(X(p[1]), Y(p[2]), 5, 0, 7); ctx.fill();
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(X(tj.x0), Y(tj.y0), 3.5, 0, 7); ctx.stroke();
-  });
-  // equilibria
-  const dot = (x, y, fill, lab) => { ctx.fillStyle = fill; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(X(x), Y(y), 6, 0, 7); ctx.fill(); ctx.stroke(); if (lab) { ctx.font = '600 11px Inter, sans-serif'; ctx.fillStyle = '#e6ecf7'; ctx.textAlign = 'left'; ctx.fillText(lab, X(x) + 9, Y(y) - 8); } };
-  if (eqm) dot(eqm.x, eqm.y, eqm.tr > 1e-6 ? '#0b1222' : '#2dd4bf', `(x*, y*) = (${SL.fmt(eqm.x, 1)}, ${SL.fmt(eqm.y, 1)})`);
-  if (K < Infinity && lv.Ex < lv.a) dot(K * (1 - lv.Ex / lv.a), 0, '#0b1222', 'prey only');
+  // faint full trajectories
+  trajs.forEach(tj => { const pts = tj.pts; ctx.strokeStyle = tj.col; ctx.globalAlpha = 0.28; ctx.lineWidth = 1.4; ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(X(p[1]), Y(p[2])) : ctx.moveTo(X(p[1]), Y(p[2]))); ctx.stroke(); ctx.globalAlpha = 1; });
   ctx.restore();
   // legend
   ctx.font = '11px Inter, sans-serif'; ctx.textAlign = 'left';
   const lg = [['#4ade80', 'prey nullcline ẋ = 0'], ['#fb923c', 'predator nullcline ẏ = 0']];
   let lx = w - 12; lg.reverse().forEach(([c, t]) => { const tw = ctx.measureText(t).width; lx -= tw + 22; ctx.fillStyle = c; ctx.fillRect(lx, 46, 12, 3); ctx.fillStyle = '#93a1bd'; ctx.fillText(t, lx + 16, 50); });
-  // time series of latest
-  const tj = trajs[trajs.length - 1];
-  if (tj) { const sub = tj.pts.slice(0, tj.head + 1).filter((_, i) => i % 3 === 0); plot(lvTsSt, [{ data: sub.map(p => [p[0], p[1]]), color: '#4ade80', label: 'prey x' }, { data: sub.map(p => [p[0], p[2]]), color: '#fb923c', label: 'predators y' }], { xmin: 0, xmax: 80, ymin: 0, ymax: Math.max(10, ...sub.map(p => Math.max(p[1], p[2]))) * 1.1, xlabel: 'time', pad: [26, 12, 26, 44] }); }
-  else plot(lvTsSt, [], { xmin: 0, xmax: 80, ymin: 0, ymax: 100, xlabel: 'time' });
 }
-const lvLoop = SL.loop(dt => { let moving = false; trajs.forEach(tj => { if (tj.head < tj.pts.length - 1) { tj.head = Math.min(tj.pts.length - 1, tj.head + Math.ceil(dt * 6 / 0.02)); moving = true; } }); if (moving || lvDirty) { drawLV(); lvDirty = false; } });
+const lvLoop = SL.loop(dt => { let moving = false; trajs.forEach(tj => { if (tj.head < tj.pts.length - 1) { tj.head = Math.min(tj.pts.length - 1, tj.head + Math.ceil(dt * 6 / 0.02)); moving = true; } }); if (moving || lvDirty) { drawLV(moving && !lvDirty); lvDirty = false; } });
 function lvEqTex() {
   const t = { classic: String.raw`\dot x=\alpha x-\beta xy,\quad \dot y=\delta xy-\gamma y`, logistic: String.raw`\dot x=\alpha x\left(1-\tfrac{x}{K}\right)-\beta xy,\quad \dot y=\delta xy-\gamma y`, holling: String.raw`\dot x=\alpha x\left(1-\tfrac{x}{K}\right)-\tfrac{\beta xy}{1+\beta hx},\quad \dot y=\tfrac{\delta xy}{1+\beta hx}-\gamma y` }[lv.m];
   const harv = (lv.Ex || lv.Ey) ? String.raw`\;(-E_x x,\;-E_y y)` : '';

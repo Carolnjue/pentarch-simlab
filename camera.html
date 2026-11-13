@@ -847,6 +847,9 @@ window.SLX = (() => {
 
   /* ================= frame render ================= */
   let simT = 0, lastInfo = {}, boxes = {};
+  const mkc = () => { const c = document.createElement('canvas'); c.ctx = c.getContext('2d'); return c; };
+  const bgCache = { key: '', lights: false, comp: mkc(), light: mkc() };
+  let fontsGen = 0; if (document.fonts) document.fonts.addEventListener('loadingdone', () => fontsGen++);
   function render(t) {
     setProj();
     const sd = SC(), Texp = T();
@@ -861,15 +864,25 @@ window.SLX = (() => {
     const cycPx = (Math.abs(V_CYC * PJ.F / zc(Z_CYC) + pv) + sh) * Texp;
     const subjPx = (Math.abs(0.012 * PJ.F / zc(0) + pv) + sh) * Texp;
     const sS = samplesFor(staticPx);
-    // background (sky + facade); its window/sign glow goes to the light layer, blurred the same way
+    // background (sky + facade, ground, lamp posts) does not move: render it once per setting change and reuse it
     const facDist = zc(Z_FAC);
-    drawLayer(c => { paintSky(c, sd); paintFacade(c, L, sd, t, lights); }, { dist: facDist, t, Texp, samples: sS });
-    drawLights(lights.splice(0), t, Texp);
-    drawLayer(c => (paintGround(c, 14, 25, sd), [0, py(0.2, 25), RW, py(0, 14)]), { dist: zc(19), t, Texp, samples: sS });
-    drawLayer(c => (paintGround(c, 7, 14, sd), [0, py(0.2, 14), RW, py(0, 7)]), { dist: zc(10.5), t, Texp, samples: sS });
-    drawLayer(c => (paintGround(c, -1, 7, sd), [0, py(0.2, 7), RW, RH]), { dist: zc(5), t, Texp, samples: sS });
-    drawLayer(c => (paintLampPosts(c, sd, lights), [0, py(8.3, Z_LAMP), RW, py(0, Z_LAMP)]), { dist: zc(Z_LAMP), t, Texp, samples: sS });
-    drawLights(lights.splice(0), t, Texp);
+    const bgKey = [st.scene, st.FLi, st.sensor, st.keep, st.Ni, st.Ti, st.bulb, st.fd, st.pan, st.tripod, st.is, RW, RH, fontsGen].join('|');
+    if (bgKey !== bgCache.key) {
+      // its window/sign glow goes to the light layer, blurred the same way
+      drawLayer(c => { paintSky(c, sd); paintFacade(c, L, sd, t, lights); }, { dist: facDist, t, Texp, samples: sS });
+      drawLights(lights.splice(0), t, Texp);
+      drawLayer(c => (paintGround(c, 14, 25, sd), [0, py(0.2, 25), RW, py(0, 14)]), { dist: zc(19), t, Texp, samples: sS });
+      drawLayer(c => (paintGround(c, 7, 14, sd), [0, py(0.2, 14), RW, py(0, 7)]), { dist: zc(10.5), t, Texp, samples: sS });
+      drawLayer(c => (paintGround(c, -1, 7, sd), [0, py(0.2, 7), RW, RH]), { dist: zc(5), t, Texp, samples: sS });
+      drawLayer(c => (paintLampPosts(c, sd, lights), [0, py(8.3, Z_LAMP), RW, py(0, Z_LAMP)]), { dist: zc(Z_LAMP), t, Texp, samples: sS });
+      drawLights(lights.splice(0), t, Texp);
+      const bc = bgCache.comp, bl = bgCache.light;
+      if (bc.width !== RW || bc.height !== RH) { bc.width = bl.width = RW; bc.height = bl.height = RH; }
+      bc.ctx.clearRect(0, 0, RW, RH); bc.ctx.drawImage(comp, 0, 0); bl.ctx.clearRect(0, 0, RW, RH); if (lightsUsed) bl.ctx.drawImage(light, 0, 0);
+      bgCache.key = bgKey; bgCache.lights = lightsUsed;
+    } else {
+      C.drawImage(bgCache.comp, 0, 0); lightsUsed = bgCache.lights; if (lightsUsed) L.drawImage(bgCache.light, 0, 0);
+    }
     const mX = moverX(t, V_MAT, Z_MAT);
     drawLayer(c => (boxes.mat = paintMatatu(c, mX, sd, lights)), { dist: zc(Z_MAT), t, Texp, samples: samplesFor(matPx), vel: V_MAT, z: Z_MAT });
     drawLights(lights.splice(0), t, Texp);
@@ -966,10 +979,13 @@ window.SLX = (() => {
     ctx.strokeStyle = 'rgba(255,255,255,.1)'; for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.moveTo(i * w / 4, 0); ctx.lineTo(i * w / 4, h); ctx.stroke(); }
     ctx.fillStyle = '#93a1bd'; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'left'; ctx.fillText('shadows', 4, 11); ctx.textAlign = 'right'; ctx.fillText(`highlights${hist.clip > 0.002 ? ' · clipped ' + (hist.clip * 100).toFixed(1) + '%' : ''}`, w - 4, 11);
   }
-  let needle = 0;
+  let needle = 0, meterKey = '';
   function drawMeter(dt) {
-    const { ctx, w, h } = meterC; ctx.clearRect(0, 0, w, h);
+    const { ctx, w, h } = meterC;
     const d = clamp(delta(), -3.6, 3.6); needle += (d - needle) * Math.min(1, dt * 8);
+    if (Math.abs(d - needle) < 0.002) needle = d;
+    const mk = needle.toFixed(3) + '|' + d + '|' + w + 'x' + h + '|' + fontsGen; if (mk === meterKey) return; meterKey = mk;
+    ctx.clearRect(0, 0, w, h);
     const cx = w / 2, cy = h + 30, R = h + 10, a0 = -0.62, a1 = 0.62;
     const ang = v => a0 + (v + 3) / 6 * (a1 - a0);
     ctx.lineWidth = 6; [[-3, -1, '#3b82f6'], [-1, 1, '#22c55e'], [1, 3, '#ef4444']].forEach(([s, e, c]) => { ctx.strokeStyle = c; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.arc(cx, cy, R - 14, ang(s) - Math.PI / 2, ang(e) - Math.PI / 2); ctx.stroke(); }); ctx.globalAlpha = 1;
@@ -979,8 +995,11 @@ window.SLX = (() => {
     ctx.fillStyle = '#e6ecf7'; ctx.font = '600 11px Inter, sans-serif'; ctx.textAlign = 'left'; ctx.fillText('Light meter (stops)', 8, 14);
     ctx.textAlign = 'right'; ctx.fillStyle = Math.abs(d) <= 0.34 ? '#4ade80' : '#fbbf24'; ctx.fillText(Math.abs(d) <= 0.17 ? 'correct' : d > 0 ? 'over ' + d.toFixed(1) : 'under ' + (-d).toFixed(1), w - 8, 14);
   }
+  let dofKey = '';
   function drawDof() {
-    const { ctx, w, h } = dofC; ctx.clearRect(0, 0, w, h);
+    const { ctx, w, h } = dofC;
+    const dk = [st.fd, st.Ni, st.FLi, st.sensor, st.keep, w, h, fontsGen].join('|'); if (dk === dofKey) return; dofKey = dk;
+    ctx.clearRect(0, 0, w, h);
     const d = dof(), lo = 0.5, hi = 120, X = m => 14 + Math.log(clamp(m, lo, hi) / lo) / Math.log(hi / lo) * (w - 40);
     const y = h * 0.58;
     ctx.strokeStyle = '#2a3a5c'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(14, y); ctx.lineTo(w - 26, y); ctx.stroke();
@@ -1014,13 +1033,15 @@ window.SLX = (() => {
   }
 
   /* ================= viewfinder strip ================= */
+  const setHTML = (el, v) => { if (el.__v !== v) { el.__v = v; el.innerHTML = v; } };
+  const setText = (el, v) => { if (el.textContent !== v) el.textContent = v; };
   function vf() {
     const d = delta(), dd = clamp(Math.round(d * 3) / 3, -3, 3);
     let sc = ''; for (let v = -3; v <= 3.001; v += 1 / 3) { const m = Math.abs(v - Math.round(v)) < 0.01; sc += Math.abs(v - dd) < 0.17 ? '▲' : (m ? (Math.round(v) === 0 ? '0' : '|') : '·'); }
     const shakeWarn = !st.tripod && T() > 1 / (f() * S().k) * (st.is ? 8 : 1);
-    $('#vf').innerHTML = `<span>${st.mode}</span><span>${fmtT(TS[st.Ti])}</span><span>F${N()}</span><span>ISO ${ISO()}</span><span class="scale">−${sc}+</span><span>${f()}mm</span>${shakeWarn ? '<span class="warn">SHAKE</span>' : ''}${Math.abs(d) > 3 ? `<span class="warn">${d > 0 ? 'OVER' : 'UNDER'}</span>` : ''}`;
-    $('#hDelta').textContent = (d > 0 ? '+' : '') + d.toFixed(1);
-    $('#hBlur').textContent = lastInfo.subjPx ? lastInfo.subjPx.toFixed(1) : '0';
+    setHTML($('#vf'), `<span>${st.mode}</span><span>${fmtT(TS[st.Ti])}</span><span>F${N()}</span><span>ISO ${ISO()}</span><span class="scale">−${sc}+</span><span>${f()}mm</span>${shakeWarn ? '<span class="warn">SHAKE</span>' : ''}${Math.abs(d) > 3 ? `<span class="warn">${d > 0 ? 'OVER' : 'UNDER'}</span>` : ''}`);
+    setText($('#hDelta'), (d > 0 ? '+' : '') + d.toFixed(1));
+    setText($('#hBlur'), lastInfo.subjPx ? lastInfo.subjPx.toFixed(1) : '0');
     updWhy(d, shakeWarn);
   }
   // live "why it looks like this" caption: links each setting to what it does to the picture
@@ -1130,15 +1151,16 @@ window.SLX = (() => {
   let acc_t = 0, frames = 0, slow = false, slowN = 0, fastN = 0;
   // adaptive live-view resolution: keep the frame rate usable on slower devices
   function adapt(ms) {
-    if (ms > 40) { slowN++; fastN = 0; } else if (ms < 16) { fastN++; slowN = 0; } else { slowN = fastN = 0; }
-    if (slowN > 4 && Q > 0.6) { Q = Math.round((Q - 0.2) * 10) / 10; slowN = 0; setupRes(); }
-    if (fastN > 40 && Q < 1) { Q = Math.round((Q + 0.2) * 10) / 10; fastN = 0; setupRes(); }
+    // a live-view frame must leave room for the rest of the page inside ~33 ms, so step down early
+    if (ms > 26) { slowN++; fastN = 0; } else if (ms < 11) { fastN++; slowN = 0; } else { slowN = fastN = 0; }
+    if (slowN > 4 && Q > 0.5) { Q = Math.round((Q - 0.1) * 10) / 10; slowN = 0; setupRes(); }
+    if (fastN > 40 && Q < 1) { Q = Math.round((Q + 0.1) * 10) / 10; fastN = 0; setupRes(); }
   }
   const loop = SL.loop((dt, t) => {
     simT += dt;
     acc_t += dt;
     const interval = slow ? 1 / 15 : 1 / 30;
-    if (acc_t >= interval) { acc_t = 0; const t0 = performance.now(); render(simT); const ms = performance.now() - t0; slow = ms > 45; frames++; window.__camMs = ms; adapt(ms); drawHist(); vf(); drawDof(); }
+    if (acc_t >= interval) { acc_t = 0; const t0 = performance.now(); render(simT); const ms = performance.now() - t0; slow = ms > 45; frames++; window.__camMs = ms; adapt(ms); if (frames & 1) drawHist(); vf(); drawDof(); }
     drawMeter(dt);
   });
   const io = new IntersectionObserver(es => es.forEach(e => e.isIntersecting && !document.hidden ? loop.start() : loop.stop()));
@@ -1225,6 +1247,13 @@ window.SLX = (() => {
 })();
 </script>
 <script>
+/* simlab.js keeps the decorative hero animation running while any sliver of the hero is on screen; once the hero is
+   mostly scrolled away its canvas is hidden, so the live view gets the frame budget on phones */
+(function () {
+  const on = () => { try { const hero = document.querySelector('.page-hero'), fx = hero && hero.querySelector('.hero-fx'); if (!fx || !('IntersectionObserver' in window)) return;
+    new IntersectionObserver(es => es.forEach(e => { fx.style.display = e.intersectionRatio < 0.6 ? 'none' : ''; }), { threshold: [0, 0.6, 1] }).observe(hero); } catch (e) {} };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(on, 60)); else setTimeout(on, 60);
+})();
 /* lab bar: Scenarios scrolls to the scenario list and focuses its first choice */
 document.querySelectorAll('.lab-bar [data-scen]').forEach(b => b.addEventListener('click', () => {
   const t = document.querySelector(b.dataset.scen); if (!t) return;

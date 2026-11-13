@@ -402,7 +402,7 @@
       <ul><li><b>Rods</b> (≈ 92 million): very sensitive (can respond to a single photon), one pigment (rhodopsin, peak ≈ 498 nm), dim-light (scotopic) vision, no colour, absent from the central fovea, peak density about 20° out.</li>
         <li><b>Cones</b> (≈ 4.6 million): daylight (photopic) vision, high acuity and colour; three types with pigment peaks near 420 nm (S), 534 nm (M) and 564 nm (L). Packed at up to ~200,000/mm² in the fovea, where the inner layers are pushed aside to form a pit.</li></ul>
       <p>About 1.2 million ganglion cell axons converge at the <b>optic disc</b>, where there are no photoreceptors: the <b>blind spot</b>, about 15° nasal to the fovea (so it appears 15° to the temporal side in the visual field). The brain fills it in, so you never notice it.</p>
-      <h3>The eye in Kenyan clinical practice</h3>
+      <h3>Clinical relevance</h3>
       <p><b>Measuring visual acuity.</b> Use a Snellen chart, or a Tumbling E chart for children and people who cannot read letters, at 6 m (or a 3 m chart) in good light. Test the right eye first with the left covered by an occluder or the palm (not fingers that can peep), then the left. Record the smallest line read as a fraction, e.g. 6/18. If the top (6/60) line cannot be read, move the patient closer: reading it at 3 m is 3/60. Below that, record counting fingers (CF) at a distance, hand movements (HM), perception of light (PL) or no perception of light (NPL). Lab 2's chart blurs exactly as an uncorrected eye would.</p>
       <p><b>Cataract</b> is clouding of the crystalline lens, mostly with age (also diabetes, steroids, trauma, UV light). Light scatters instead of focusing, so acuity falls even though the eye's length is normal; a pinhole does not help much. Surgery removes the lens and replaces its ≈ 20 D with a plastic intraocular lens (IOL). Without an IOL the eye is <b>aphakic</b> and very hyperopic, needing about +10 D spectacles.</p>
       <p><b>Trachoma</b> is repeated chlamydial conjunctivitis. Inflammation (TF: follicles on the upper tarsal conjunctiva in children) scars the lid (TS), which turns the lashes inward (trichiasis, TT); the lashes scratch and scar the cornea (CO), causing irreversible blindness. Elimination as a public health problem requires TF below 5 % in children aged 1–9 years and TT below 0.2 % in adults aged 15 years and over (WHO).</p>
@@ -489,6 +489,11 @@ function Atlas(cfg) {
       <feMerge><feMergeNode in="b"/><feMergeNode in="s"/></feMerge></filter>`;
   }).join('');
   svg.insertBefore(defs, svg.firstChild);
+  // the zoom tweens move a wrapper rather than the <svg> itself: a transform on the svg root makes the browser re-lay-out
+  // all SVG text every frame, a transform on an HTML parent does not
+  const zw = document.createElement('div'); zw.className = 'atl-zoom'; zw.style.cssText = 'display:block;width:100%;height:100%;transform-origin:50% 50%';
+  svg.parentNode.insertBefore(zw, svg); zw.appendChild(svg);
+  Object.assign(svg.style, { display: 'block', width: '100%', height: '100%', userSelect: 'none', webkitUserSelect: 'none' });
   // pause the decorative CSS animations (hotspot dashes etc.) while the atlas is off screen
   try { new IntersectionObserver(es => es.forEach(e => root.classList.toggle('atl-off', !e.isIntersecting)), { rootMargin: '100px' }).observe(root); } catch (e) {}
   const labelsG = document.createElementNS(NS, 'g'); labelsG.setAttribute('class', 'atl-labels'); svg.appendChild(labelsG);
@@ -504,10 +509,25 @@ function Atlas(cfg) {
     svg.querySelectorAll('feMorphology').forEach(m => m.setAttribute('radius', (2.2 * k).toFixed(2)));
     svg.querySelectorAll('feGaussianBlur').forEach(m => m.setAttribute('stdDeviation', (2.6 * k).toFixed(2))); }
   const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  // Zoom/pan between two viewBoxes. Changing the viewBox every frame re-lays-out and repaints the whole drawing (the
+  // main cost on phones), so the figure is drawn once with a viewBox that contains every intermediate view and the
+  // in-between frames are a CSS translate + scale of that drawing (with preserveAspectRatio "meet" this is exactly the
+  // same picture). The real viewBox is set again at the end, so labels and hit areas are unchanged.
+  const fitS = v => Math.min((svg.clientWidth || 1000) / v[2], (svg.clientHeight || 640) / v[3]);
   function tween(to, ms, onStep) {
     return new Promise(res => { const from = vb.slice(), t0 = performance.now();
-      const step = now => { const t = Math.min(1, (now - t0) / ms), e = ease(t);
-        setVB(from.map((f, i) => f + (to[i] - f) * e)); onStep && onStep(t);
+      const W = svg.clientWidth, H = svg.clientHeight, css = cfg.cssZoom !== false && W > 0 && H > 0;
+      let U = null, SU = 1;
+      if (css) {
+        const x0 = Math.min(from[0], to[0]), y0 = Math.min(from[1], to[1]);
+        U = [x0, y0, Math.max(from[0] + from[2], to[0] + to[2]) - x0, Math.max(from[1] + from[3], to[1] + to[3]) - y0];
+        setVB(U); SU = fitS(U);
+      }
+      const step = now => { const t = Math.min(1, (now - t0) / ms), e = ease(t), v = from.map((f, i) => f + (to[i] - f) * e);
+        if (css && t < 1) { const k = fitS(v), dx = k * (U[0] + U[2] / 2 - v[0] - v[2] / 2), dy = k * (U[1] + U[3] / 2 - v[1] - v[3] / 2);
+          zw.style.transform = `translate(${dx.toFixed(2)}px,${dy.toFixed(2)}px) scale(${(k / SU).toFixed(5)})`; }
+        else { if (css) zw.style.transform = ''; setVB(t < 1 ? v : to.slice()); }
+        onStep && onStep(t);
         if (t < 1) requestAnimationFrame(step); else res(); };
       requestAnimationFrame(step); }); }
   const grow = (b, k) => [b[0] + b[2] / 2 - b[2] * k / 2, b[1] + b[3] / 2 - b[3] * k / 2, b[2] * k, b[3] * k];
@@ -518,6 +538,8 @@ function Atlas(cfg) {
   async function go(to) {
     if (busy || to === cur || !V[to]) return; busy = true;
     labelsG.style.opacity = 0; hotG.style.opacity = 0; hideTip();
+    // labels and zoom rings are invisible while flying: take them out of rendering so their text is not re-laid-out every frame
+    labelsG.style.display = hotG.style.display = 'none';
     const from = cur, lf = layerOf(from), lt = layerOf(to);
     if (lf === lt) await tween(V[to].vb, 750);
     else {
@@ -537,7 +559,7 @@ function Atlas(cfg) {
       }
       showLayer(lt);
     }
-    cur = to; busy = false; render(); emit('view', cur);
+    cur = to; busy = false; labelsG.style.display = hotG.style.display = ''; render(); emit('view', cur);
     if (q) nextQ(true);
   }
 
@@ -1043,6 +1065,18 @@ window.DK = (() => {
     return D;
   }
   return { init, key, atlasKeys, remember, demo, goCases, get running() { return !!(D && D.running()); } };
+})();
+/* simlab.js keeps the decorative hero animation running while any sliver of the hero is on screen; once the hero is
+   mostly scrolled away its canvas is hidden, so the atlas (and its zoom tweens) get the frame budget on phones */
+(function () {
+  const on = () => { try { const hero = document.querySelector('.page-hero'), fx = hero && hero.querySelector('.hero-fx'); if (!fx || !('IntersectionObserver' in window)) return;
+    new IntersectionObserver(es => es.forEach(e => { fx.style.display = e.intersectionRatio < 0.6 ? 'none' : ''; }), { threshold: [0, 0.6, 1] }).observe(hero); } catch (e) {} };
+  // lab canvases far below or above the screen are hidden (layout kept): an off-screen canvas otherwise still costs
+  // a resource upload on every frame the page commits, which slows the atlas zoom on phones
+  const offCv = () => { try { if (!('IntersectionObserver' in window)) return; const io = new IntersectionObserver(es => es.forEach(e => { e.target.style.visibility = e.isIntersecting ? '' : 'hidden'; }), { rootMargin: '400px 0px' });
+    document.querySelectorAll('main canvas, section canvas').forEach(c => { if (!c.closest('.page-hero')) io.observe(c); }); } catch (e) {} };
+  const both = () => { on(); offCv(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(both, 60)); else setTimeout(both, 60);
 })();
 
 </script>
