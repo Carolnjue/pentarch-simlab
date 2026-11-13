@@ -545,7 +545,7 @@
         <tr><td>Conductive</td><td>Outer or middle ear</td><td>Wax, otitis media with effusion (glue ear), perforation, otosclerosis</td><td>Bone conduction normal; air–bone gap</td></tr>
         <tr><td>Sensorineural</td><td>Cochlea or auditory nerve</td><td>Noise exposure (4 kHz notch), presbycusis, ototoxic drugs, meningitis, acoustic neuroma</td><td>Air and bone thresholds both raised, no gap</td></tr>
         <tr><td>Mixed</td><td>Both</td><td>Chronic otitis media with cochlear damage</td><td>Both raised plus a gap</td></tr></table></div>
-      <h3>The ear in Kenyan clinical practice</h3>
+      <h3>Clinical relevance</h3>
       <p><b>Chronic suppurative otitis media (CSOM)</b> is a long-term infection of the middle ear with a perforated eardrum and discharge lasting more than 2 weeks, often after untreated acute otitis media. Common organisms are <i>Pseudomonas aeruginosa</i>, <i>Proteus</i> and staphylococci. The hole in the eardrum reduces the area ratio (Lab 2) and lets sound reach both windows at once, giving a conductive loss of roughly 20–40 dB; long-standing infection can damage the cochlea too (mixed loss). Treatment is <b>dry mopping</b> (wicking the canal with rolled tissue until dry, several times a day, taught to carers) plus topical ciprofloxacin drops for about 2 weeks, keeping water out of the ear. Danger signs are tender swelling behind the ear (mastoiditis), facial palsy, vertigo, severe headache, neck stiffness or drowsiness (meningitis or brain abscess): refer urgently.</p>
       <p><b>Ototoxicity.</b> Aminoglycosides enter the outer hair cells from the endolymph and trigger cell death, starting at the base of the cochlea, so the first loss is at the highest frequencies (above 8 kHz), then spreads down into the speech range. Tinnitus is an early warning. Because the damage is permanent, patients on injectable TB drugs or long gentamicin courses need audiometry at baseline and every month, and any change is reported so the regimen can be reviewed. Try the <b>Ototoxic</b> preset on the audiogram tab.</p>
       <div class="callout warn" style="margin-top:8px"><i data-lucide="info"></i><div><b>Practice has changed.</b> Injectable aminoglycosides (amikacin, kanamycin) are now rarely used for drug-resistant TB: WHO recommends all-oral regimens such as the 6-month BPaLM, and Kenya’s TB programme has moved to injection-free DR-TB regimens. Amikacin appears here as a teaching example of ototoxicity; the same monitoring applies to gentamicin courses (for example in newborns) and to any patient still on an aminoglycoside.</div></div>
@@ -666,10 +666,25 @@ function Atlas(cfg) {
     svg.querySelectorAll('feMorphology').forEach(m => m.setAttribute('radius', (2.2 * k).toFixed(2)));
     svg.querySelectorAll('feGaussianBlur').forEach(m => m.setAttribute('stdDeviation', (2.6 * k).toFixed(2))); }
   const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  // Zoom/pan between two viewBoxes. Changing the viewBox every frame re-lays-out and repaints the whole drawing (the
+  // main cost on phones), so the figure is drawn once with a viewBox that contains every intermediate view and the
+  // in-between frames are a CSS translate + scale of that drawing (with preserveAspectRatio "meet" this is exactly the
+  // same picture). The real viewBox is set again at the end, so labels and hit areas are unchanged.
+  const fitS = v => Math.min((svg.clientWidth || 1000) / v[2], (svg.clientHeight || 640) / v[3]);
   function tween(to, ms, onStep) {
     return new Promise(res => { const from = vb.slice(), t0 = performance.now();
-      const step = now => { const t = Math.min(1, (now - t0) / ms), e = ease(t);
-        setVB(from.map((f, i) => f + (to[i] - f) * e)); onStep && onStep(t);
+      const W = svg.clientWidth, H = svg.clientHeight, css = cfg.cssZoom !== false && W > 0 && H > 0;
+      let U = null, SU = 1;
+      if (css) {
+        const x0 = Math.min(from[0], to[0]), y0 = Math.min(from[1], to[1]);
+        U = [x0, y0, Math.max(from[0] + from[2], to[0] + to[2]) - x0, Math.max(from[1] + from[3], to[1] + to[3]) - y0];
+        setVB(U); SU = fitS(U); svg.style.transformOrigin = '50% 50%';
+      }
+      const step = now => { const t = Math.min(1, (now - t0) / ms), e = ease(t), v = from.map((f, i) => f + (to[i] - f) * e);
+        if (css && t < 1) { const k = fitS(v), dx = k * (U[0] + U[2] / 2 - v[0] - v[2] / 2), dy = k * (U[1] + U[3] / 2 - v[1] - v[3] / 2);
+          svg.style.transform = `translate(${dx.toFixed(2)}px,${dy.toFixed(2)}px) scale(${(k / SU).toFixed(5)})`; }
+        else { if (css) svg.style.transform = ''; setVB(t < 1 ? v : to.slice()); }
+        onStep && onStep(t);
         if (t < 1) requestAnimationFrame(step); else res(); };
       requestAnimationFrame(step); }); }
   const grow = (b, k) => [b[0] + b[2] / 2 - b[2] * k / 2, b[1] + b[3] / 2 - b[3] * k / 2, b[2] * k, b[3] * k];
@@ -680,6 +695,8 @@ function Atlas(cfg) {
   async function go(to) {
     if (busy || to === cur || !V[to]) return; busy = true;
     labelsG.style.opacity = 0; hotG.style.opacity = 0; hideTip();
+    // labels and zoom rings are invisible while flying: take them out of rendering so their text is not re-laid-out every frame
+    labelsG.style.display = hotG.style.display = 'none';
     const from = cur, lf = layerOf(from), lt = layerOf(to);
     if (lf === lt) await tween(V[to].vb, 750);
     else {
@@ -699,7 +716,7 @@ function Atlas(cfg) {
       }
       showLayer(lt);
     }
-    cur = to; busy = false; render(); emit('view', cur);
+    cur = to; busy = false; labelsG.style.display = hotG.style.display = ''; render(); emit('view', cur);
     if (q) nextQ(true);
   }
 
@@ -1205,6 +1222,13 @@ window.DK = (() => {
     return D;
   }
   return { init, key, atlasKeys, remember, demo, goCases, get running() { return !!(D && D.running()); } };
+})();
+/* simlab.js keeps the decorative hero animation running while any sliver of the hero is on screen; once the hero is
+   mostly scrolled away its canvas is hidden, so the atlas (and its zoom tweens) get the frame budget on phones */
+(function () {
+  const on = () => { try { const hero = document.querySelector('.page-hero'), fx = hero && hero.querySelector('.hero-fx'); if (!fx || !('IntersectionObserver' in window)) return;
+    new IntersectionObserver(es => es.forEach(e => { fx.style.display = e.intersectionRatio < 0.6 ? 'none' : ''; }), { threshold: [0, 0.6, 1] }).observe(hero); } catch (e) {} };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(on, 60)); else setTimeout(on, 60);
 })();
 
 </script>

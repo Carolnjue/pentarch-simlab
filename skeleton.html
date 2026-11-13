@@ -350,7 +350,7 @@
         <tr><td>Saddle</td><td>2</td><td>As condyloid, with more range; opposition</td><td>Thumb carpometacarpal joint</td></tr>
         <tr><td>Ball-and-socket</td><td>3</td><td>All of the above plus rotation</td><td>Shoulder (glenohumeral), hip</td></tr>
         <tr><td>Plane (gliding)</td><td>Non-axial</td><td>Small sliding movements</td><td>Intercarpal, intertarsal, vertebral facet joints</td></tr></table></div>
-      <h3>Bones and trauma in Kenyan practice</h3>
+      <h3>Clinical relevance: bones and trauma</h3>
       <p><b>Boda boda injuries.</b> Motorcycle crashes fill Kenyan casualty departments and orthopaedic wards. Riders and pillion passengers most often break the <b>tibia</b> (frequently open, because the bone lies just under the skin of the shin), the <b>femur</b>, the forearm and the clavicle, often with head injury. Wear a helmet, and remember the hidden bleeding: a closed femoral shaft fracture can lose 1–2 litres into the thigh, enough for haemorrhagic shock. A traction splint (e.g. Thomas splint) reduces pain and bleeding.</p>
       <p><b>Open fractures</b> are graded by Gustilo–Anderson. The bone is contaminated, so give IV antibiotics as soon as possible (within an hour), check tetanus status, photograph the wound, cover it with a saline-soaked dressing and splint the limb; debridement is done in theatre, not by closing the wound in casualty. Check and record the pulses, capillary refill and sensation below the injury before and after splinting.</p>
       <p><b>Compartment syndrome</b>: bleeding and swelling inside a closed fascial compartment (most often the leg after a tibial fracture, or the forearm) raise the pressure until it exceeds capillary perfusion, so muscle and nerve die within hours. Suspect it when pain is out of proportion to the injury, needs more and more analgesia, and is worse on passively stretching the toes. Split tight casts and bandages down to skin; if the perfusion gap $\Delta P = \text{DBP} - P_\text{compartment}$ is below 30 mmHg, urgent fasciotomy is needed.</p>
@@ -472,10 +472,25 @@ function Atlas(cfg) {
     svg.querySelectorAll('feMorphology').forEach(m => m.setAttribute('radius', (2.2 * k).toFixed(2)));
     svg.querySelectorAll('feGaussianBlur').forEach(m => m.setAttribute('stdDeviation', (2.6 * k).toFixed(2))); }
   const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  // Zoom/pan between two viewBoxes. Changing the viewBox every frame re-lays-out and repaints the whole drawing (the
+  // main cost on phones), so the figure is drawn once with a viewBox that contains every intermediate view and the
+  // in-between frames are a CSS translate + scale of that drawing (with preserveAspectRatio "meet" this is exactly the
+  // same picture). The real viewBox is set again at the end, so labels and hit areas are unchanged.
+  const fitS = v => Math.min((svg.clientWidth || 1000) / v[2], (svg.clientHeight || 640) / v[3]);
   function tween(to, ms, onStep) {
     return new Promise(res => { const from = vb.slice(), t0 = performance.now();
-      const step = now => { const t = Math.min(1, (now - t0) / ms), e = ease(t);
-        setVB(from.map((f, i) => f + (to[i] - f) * e)); onStep && onStep(t);
+      const W = svg.clientWidth, H = svg.clientHeight, css = cfg.cssZoom !== false && W > 0 && H > 0;
+      let U = null, SU = 1;
+      if (css) {
+        const x0 = Math.min(from[0], to[0]), y0 = Math.min(from[1], to[1]);
+        U = [x0, y0, Math.max(from[0] + from[2], to[0] + to[2]) - x0, Math.max(from[1] + from[3], to[1] + to[3]) - y0];
+        setVB(U); SU = fitS(U); svg.style.transformOrigin = '50% 50%';
+      }
+      const step = now => { const t = Math.min(1, (now - t0) / ms), e = ease(t), v = from.map((f, i) => f + (to[i] - f) * e);
+        if (css && t < 1) { const k = fitS(v), dx = k * (U[0] + U[2] / 2 - v[0] - v[2] / 2), dy = k * (U[1] + U[3] / 2 - v[1] - v[3] / 2);
+          svg.style.transform = `translate(${dx.toFixed(2)}px,${dy.toFixed(2)}px) scale(${(k / SU).toFixed(5)})`; }
+        else { if (css) svg.style.transform = ''; setVB(t < 1 ? v : to.slice()); }
+        onStep && onStep(t);
         if (t < 1) requestAnimationFrame(step); else res(); };
       requestAnimationFrame(step); }); }
   const grow = (b, k) => [b[0] + b[2] / 2 - b[2] * k / 2, b[1] + b[3] / 2 - b[3] * k / 2, b[2] * k, b[3] * k];
@@ -486,6 +501,8 @@ function Atlas(cfg) {
   async function go(to) {
     if (busy || to === cur || !V[to]) return; busy = true;
     labelsG.style.opacity = 0; hotG.style.opacity = 0; hideTip();
+    // labels and zoom rings are invisible while flying: take them out of rendering so their text is not re-laid-out every frame
+    labelsG.style.display = hotG.style.display = 'none';
     const from = cur, lf = layerOf(from), lt = layerOf(to);
     if (lf === lt) await tween(V[to].vb, 750);
     else {
@@ -505,7 +522,7 @@ function Atlas(cfg) {
       }
       showLayer(lt);
     }
-    cur = to; busy = false; render(); emit('view', cur);
+    cur = to; busy = false; labelsG.style.display = hotG.style.display = ''; render(); emit('view', cur);
     if (q) nextQ(true);
   }
 
@@ -1011,6 +1028,13 @@ window.DK = (() => {
     return D;
   }
   return { init, key, atlasKeys, remember, demo, goCases, get running() { return !!(D && D.running()); } };
+})();
+/* simlab.js keeps the decorative hero animation running while any sliver of the hero is on screen; once the hero is
+   mostly scrolled away its canvas is hidden, so the atlas (and its zoom tweens) get the frame budget on phones */
+(function () {
+  const on = () => { try { const hero = document.querySelector('.page-hero'), fx = hero && hero.querySelector('.hero-fx'); if (!fx || !('IntersectionObserver' in window)) return;
+    new IntersectionObserver(es => es.forEach(e => { fx.style.display = e.intersectionRatio < 0.6 ? 'none' : ''; }), { threshold: [0, 0.6, 1] }).observe(hero); } catch (e) {} };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(on, 60)); else setTimeout(on, 60);
 })();
 
 </script>

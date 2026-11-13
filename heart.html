@@ -432,7 +432,7 @@
         <tr><td>Third-degree AV block</td><td>P waves and QRS complexes independent; slow escape rhythm (narrow if junctional, wide if ventricular)</td><td>Low rate and output; atria sometimes contract against closed AV valves (cannon waves); needs pacing</td></tr>
         <tr><td>Ventricular fibrillation</td><td>Chaotic waves of varying size and shape; no P, QRS or T</td><td>Ventricles quiver without pumping: no pulse, CO = 0. Shockable</td></tr>
         <tr><td>Asystole</td><td>Flat line (check leads and gain), sometimes P waves only</td><td>No electrical or mechanical activity. Not shockable</td></tr></table></div>
-      <h3>The heart in Kenyan clinical practice</h3>
+      <h3>Clinical relevance</h3>
       <p><b>Rheumatic heart disease (RHD)</b> is the commonest acquired heart disease in people under 25 and the leading cardiac cause of complications in pregnancy (WHO). A group A streptococcal sore throat, untreated, can trigger rheumatic fever; repeated attacks scar the valves. Children and adolescents usually have mitral regurgitation (pansystolic murmur at the apex radiating to the axilla); adults more often develop <b>mitral stenosis</b>. A narrowed mitral valve needs a high left atrial pressure to fill the ventricle: the left atrium dilates (atrial fibrillation, clots and stroke) and the high pressure backs up into the lungs (breathlessness, haemoptysis, pulmonary hypertension). The murmur comes in diastole because that is when blood crosses the mitral valve; try the valves view in Lab 1 and watch the mitral valve open after S2. Treating sore throats with penicillin (primary prevention) and giving benzathine penicillin every 3–4 weeks after rheumatic fever (secondary prophylaxis) stop the disease progressing.</p>
       <p><b>Hypertension</b> is often silent: measure BP with the right cuff size, after 5 minutes' rest, arm supported at heart level, and confirm on at least two occasions. The Kenya guidelines suggest a calcium-channel blocker (e.g. amlodipine) or a thiazide-type diuretic first for most Black African adults without diabetes or kidney disease, with two drugs from the start in stage 2. Raised afterload thickens the left ventricle (left ventricular hypertrophy) and in time it fails.</p>
       <p><b>Cardiac arrest.</b> In the monitor, choose ventricular fibrillation or asystole: the pressure trace collapses and the stats show no pulse. In adults sudden arrest is often VF from a heart attack, and early defibrillation saves lives. In children (ETAT+) arrest is usually the end of hypoxia or shock, giving bradycardia then asystole: open the airway and ventilate first, then compressions at 15 : 2.</p>
@@ -524,10 +524,25 @@ function Atlas(cfg) {
     svg.querySelectorAll('feMorphology').forEach(m => m.setAttribute('radius', (2.2 * k).toFixed(2)));
     svg.querySelectorAll('feGaussianBlur').forEach(m => m.setAttribute('stdDeviation', (2.6 * k).toFixed(2))); }
   const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  // Zoom/pan between two viewBoxes. Changing the viewBox every frame re-lays-out and repaints the whole drawing (the
+  // main cost on phones), so the figure is drawn once with a viewBox that contains every intermediate view and the
+  // in-between frames are a CSS translate + scale of that drawing (with preserveAspectRatio "meet" this is exactly the
+  // same picture). The real viewBox is set again at the end, so labels and hit areas are unchanged.
+  const fitS = v => Math.min((svg.clientWidth || 1000) / v[2], (svg.clientHeight || 640) / v[3]);
   function tween(to, ms, onStep) {
     return new Promise(res => { const from = vb.slice(), t0 = performance.now();
-      const step = now => { const t = Math.min(1, (now - t0) / ms), e = ease(t);
-        setVB(from.map((f, i) => f + (to[i] - f) * e)); onStep && onStep(t);
+      const W = svg.clientWidth, H = svg.clientHeight, css = cfg.cssZoom !== false && W > 0 && H > 0;
+      let U = null, SU = 1;
+      if (css) {
+        const x0 = Math.min(from[0], to[0]), y0 = Math.min(from[1], to[1]);
+        U = [x0, y0, Math.max(from[0] + from[2], to[0] + to[2]) - x0, Math.max(from[1] + from[3], to[1] + to[3]) - y0];
+        setVB(U); SU = fitS(U); svg.style.transformOrigin = '50% 50%';
+      }
+      const step = now => { const t = Math.min(1, (now - t0) / ms), e = ease(t), v = from.map((f, i) => f + (to[i] - f) * e);
+        if (css && t < 1) { const k = fitS(v), dx = k * (U[0] + U[2] / 2 - v[0] - v[2] / 2), dy = k * (U[1] + U[3] / 2 - v[1] - v[3] / 2);
+          svg.style.transform = `translate(${dx.toFixed(2)}px,${dy.toFixed(2)}px) scale(${(k / SU).toFixed(5)})`; }
+        else { if (css) svg.style.transform = ''; setVB(t < 1 ? v : to.slice()); }
+        onStep && onStep(t);
         if (t < 1) requestAnimationFrame(step); else res(); };
       requestAnimationFrame(step); }); }
   const grow = (b, k) => [b[0] + b[2] / 2 - b[2] * k / 2, b[1] + b[3] / 2 - b[3] * k / 2, b[2] * k, b[3] * k];
@@ -538,6 +553,8 @@ function Atlas(cfg) {
   async function go(to) {
     if (busy || to === cur || !V[to]) return; busy = true;
     labelsG.style.opacity = 0; hotG.style.opacity = 0; hideTip();
+    // labels and zoom rings are invisible while flying: take them out of rendering so their text is not re-laid-out every frame
+    labelsG.style.display = hotG.style.display = 'none';
     const from = cur, lf = layerOf(from), lt = layerOf(to);
     if (lf === lt) await tween(V[to].vb, 750);
     else {
@@ -557,7 +574,7 @@ function Atlas(cfg) {
       }
       showLayer(lt);
     }
-    cur = to; busy = false; render(); emit('view', cur);
+    cur = to; busy = false; labelsG.style.display = hotG.style.display = ''; render(); emit('view', cur);
     if (q) nextQ(true);
   }
 
@@ -1063,6 +1080,13 @@ window.DK = (() => {
     return D;
   }
   return { init, key, atlasKeys, remember, demo, goCases, get running() { return !!(D && D.running()); } };
+})();
+/* simlab.js keeps the decorative hero animation running while any sliver of the hero is on screen; once the hero is
+   mostly scrolled away its canvas is hidden, so the atlas (and its zoom tweens) get the frame budget on phones */
+(function () {
+  const on = () => { try { const hero = document.querySelector('.page-hero'), fx = hero && hero.querySelector('.hero-fx'); if (!fx || !('IntersectionObserver' in window)) return;
+    new IntersectionObserver(es => es.forEach(e => { fx.style.display = e.intersectionRatio < 0.6 ? 'none' : ''; }), { threshold: [0, 0.6, 1] }).observe(hero); } catch (e) {} };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(on, 60)); else setTimeout(on, 60);
 })();
 
 </script>
