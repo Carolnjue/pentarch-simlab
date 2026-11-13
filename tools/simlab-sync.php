@@ -5,7 +5,7 @@
  * simlab subdomain folder. Runs from a DirectAdmin cron job; it is stored outside public_html.
  */
 $repo   = 'Carolnjue/pentarch-simlab';
-$target = dirname(__DIR__) . '/public_html/simlab';   // /home/<user>/domains/pentarchcommunications.com/public_html/simlab
+$target = __DIR__ . '/public_html/simlab';   // /home/<user>/domains/pentarchcommunications.com/public_html/simlab (script lives in domains/pentarchcommunications.com)
 $state  = __DIR__ . '/simlab-sync.sha';
 $log    = __DIR__ . '/simlab-sync.log';
 
