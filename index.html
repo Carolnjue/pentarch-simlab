@@ -50,6 +50,14 @@
   .sec-head{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;margin-bottom:24px}
   .sec-head p{color:var(--muted);max-width:620px;margin:0}
   .eyebrow{font:600 .74rem var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--brand2);margin-bottom:10px}
+  .card.f-hide{display:none!important}
+  @media (max-width:600px){.filters{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-right:-16px;padding-right:16px}.filters::-webkit-scrollbar{display:none}.filters button{flex:none}}
+  .find-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .find-row label{display:flex;align-items:center;gap:8px;border:1px solid var(--line2);border-radius:12px;padding:0 12px;background:var(--panel);min-height:46px}
+  .find-row label svg{width:18px;height:18px;color:var(--muted);flex:none}
+  .find-in{flex:2 1 280px}.find-course{flex:1 1 220px}
+  .find-row input,.find-row select{all:unset;flex:1;min-width:0;font-size:.95rem;color:var(--text);padding:10px 0}
+  .find-row select option{background:var(--bg);color:var(--text)}
   .filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:22px}
   .filters button{all:unset;cursor:pointer;padding:7px 13px;border-radius:99px;border:1px solid var(--line2);font-size:.84rem;color:var(--muted);display:flex;align-items:center;gap:6px}
   .filters button svg{width:14px;height:14px}
@@ -213,7 +221,12 @@
       <div><div class="eyebrow">The lab catalogue</div><h2>Pick a discipline. Start experimenting.</h2></div>
       <p>Every lab has a live simulation, a theory section with the real equations, worked examples, hands-on challenges and a quiz.</p>
     </div>
+    <div class="find-row">
+      <label class="find-in"><i data-lucide="search"></i><input id="catQ" type="search" placeholder="Find a lab: drip rate, torque, meiosis, ohms law…" aria-label="Find a lab"></label>
+      <label class="find-course"><i data-lucide="graduation-cap"></i><select id="course" aria-label="Filter by course"><option value="">Any course</option></select></label>
+    </div>
     <div class="filters" id="filters"></div>
+    <p class="muted small" id="catEmpty" hidden>No lab matches that. Try a broader word, or clear the filters.</p>
     <div id="catalogue"></div>
   </section>
 
@@ -274,9 +287,49 @@
     const f = b.dataset.f;
     cat.querySelectorAll('.dept-block').forEach(el => el.style.display = (f === 'all' || el.id === f) ? '' : 'none');
   });
+  /* ----- find by course or keyword ----- */
+  const COURSES = {
+    'KMTC / Nursing (KRCHN, KRN)': ['vitals','pharmacology','epidemic','heart','neuron','skeleton','cell','ear','eye','gene-mixer'],
+    'Clinical Medicine & MBChB': ['vitals','pharmacology','heart','neuron','ear','eye','skeleton','cell','chromosomes','dna-lab','gene-mixer','epidemic'],
+    'Pharmacy': ['pharmacology','cell','neuron','titration','molecule-builder','reaction-kinetics','dna-lab'],
+    'Medical Laboratory Sciences': ['dna-lab','gene-mixer','chromosomes','cell','titration','epidemic'],
+    'Public & Community Health': ['epidemic','vitals','farm','climate','pharmacology'],
+    'Mechanical Engineering': ['gears','engine','beams','robot-arm','oscillations','gas-laws','wind-tunnel','calculus','matrices'],
+    'Civil & Structural Engineering': ['beams','truss-bridge','earthquake','calculus','matrices','oscillations'],
+    'Electrical & Electronic (incl. TVET)': ['circuits','power-grid','logic-gates','fourier','plant-operator','calculus'],
+    'Aeronautical & Aviation': ['wind-tunnel','plane-builder','helicopter','air-traffic','orbits','projectile'],
+    'Mechatronics & Robotics': ['robot-arm','gears','logic-gates','circuits','matrices','plant-operator'],
+    'Computer Science & IT': ['algorithms','logic-gates','networking','matrices','fourier','calculus'],
+    'Physics & Chemistry (BSc / BEd)': ['projectile','oscillations','orbits','waves-optics','gas-laws','reaction-kinetics','titration','periodic-table','molecule-builder','circuits'],
+    'Mathematics & Statistics': ['calculus','matrices','fourier','algorithms','epidemic','market'],
+    'Journalism, PR & Media': ['newsroom','tv-studio','radio-studio','camera','lighting','mixer'],
+    'Film, Music & Sound Production': ['mixer','piano','camera','lighting','tv-studio','radio-studio','fourier'],
+    'Agriculture & Food Science': ['farm','ecosystem','climate','gene-mixer','titration'],
+    'Environmental Science & Geology': ['climate','ecosystem','earthquake','farm','power-grid'],
+    'Economics, Business & Finance': ['market','business-finance','calculus','algorithms'],
+    'Emergency services & Operations': ['dispatch','plant-operator','power-grid','air-traffic','vitals']
+  };
+  const csel = document.getElementById('course'), q = document.getElementById('catQ'), empty = document.getElementById('catEmpty');
+  csel.insertAdjacentHTML('beforeend', Object.keys(COURSES).map(c => `<option>${c}</option>`).join(''));
+  let deptF = 'all';
+  function applyFind() {
+    const words = q.value.trim().toLowerCase().split(/\s+/).filter(Boolean), set = COURSES[csel.value];
+    let shown = 0;
+    cat.querySelectorAll('.dept-block').forEach(block => {
+      let n = 0;
+      block.querySelectorAll('.card').forEach(card => {
+        const id = card.getAttribute('href').replace('.html', ''), text = card.textContent.toLowerCase() + ' ' + id.replace(/-/g, ' ');
+        const ok = (!set || set.includes(id)) && words.every(w => new RegExp('(^|[^a-z0-9])' + w.replace(/[^a-z0-9]/g, '')).test(text) || SL.matches?.(id, w));
+        card.classList.toggle('f-hide', !ok); if (ok) n++;
+      });
+      const vis = n > 0 && (deptF === 'all' || block.id === deptF);
+      block.style.display = vis ? '' : 'none'; if (vis) shown += n;
+    });
+    empty.hidden = shown > 0;
+  }
+  q.addEventListener('input', applyFind); csel.addEventListener('change', applyFind);
+  filters.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { deptF = b.dataset.f; applyFind(); } });
   refreshIcons();
-
-
 
   /* ----- health track: save for offline ----- */
   const HEALTH = ['vitals', 'pharmacology', 'epidemic', 'heart', 'neuron', 'ear', 'eye', 'skeleton', 'cell', 'gene-mixer', 'dna-lab', 'chromosomes'];
