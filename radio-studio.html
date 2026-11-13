@@ -1122,11 +1122,12 @@ function fireCart(id, by) {
   if (CARTP.id === id) { stopCart(); return; }
   stopCart(); const c = CART.find(x => x.id === id);
   CARTP.id = id; CARTP.t0 = S.t; CARTP.dur = c.item.dur;
+  if (c.item.legal) { LEGAL.startedAt = S.clock; LEGAL.pred = S.clock + c.item.dur - NEWS_AT; } // the legal ID from the cart wall counts as well
   if (AU.ok) CARTP.tr = new Track(Object.assign({}, c.item), chById('cart').inp);
   renderCart(); onCart(id, by);
 }
 function stopCart() { if (CARTP.tr) CARTP.tr.stop(); CARTP.tr = null; CARTP.id = null; renderCart(); }
-function cartStep() { if (CARTP.id && isFinite(CARTP.dur) && S.t - CARTP.t0 > CARTP.dur + .3) stopCart(); }
+function cartStep() { if (CARTP.id && isFinite(CARTP.dur) && S.t - CARTP.t0 > CARTP.dur + .3) { if (CARTP.id === 'legal') LEGAL.endedAt = S.clock - (S.t - CARTP.t0 - CARTP.dur); stopCart(); } }
 /* scenario events */
 const EV = { brk: null, crash: null };
 function scenEvent(ev) {
@@ -1303,14 +1304,16 @@ function onEntryEnd(e, how) {
   if (e.type === 'news' && S.scen === 'ids') { const t0 = S.t; opp('Station ID within 30 s after the news', 5, 30, () => PO.log.some(x => x.type === 'jingle' && x.startedAt >= e.fixed + e.dur - 1 && x.status !== 'wait') || (CARTP.id === 'id1' || CARTP.id === 'legal')); }
 }
 function onNewsJoin(e) {
-  const crash = PO.pl.some(p => p.e && plRemain(p) > 1.5 && open(p.ch));
+  // a legal ID in its last 3 s when the news joins counts as landed (the backtime readout is green within 3 s), not as a crash
+  const crash = PO.pl.some(p => p.e && plRemain(p) > (p.e.legal ? 3 : 1.5) && open(p.ch));
+  if (PO.pl.some(p => p.e && p.e.legal && plRemain(p) <= 3) || CARTP.id === 'legal' && CARTP.t0 + CARTP.dur - S.t <= 3) LEGAL.endedAt = S.clock;
   for (const p of PO.pl) if (p.e) endEntry(p, 'cut');
   if (PO.link) { PO.link.status = 'done'; PO.link = null; }
   if (crash) penal(6, 'Crashed the news: still playing at 07:00:00');
   const ok = LEGAL.endedAt && Math.abs(LEGAL.endedAt - NEWS_AT) <= 6;
   if (S.scenHasLegal && !me('tech')) award(ok ? 6 : LEGAL.endedAt ? 3 : 0, 6, ok ? 'Legal ID landed on the junction' : LEGAL.endedAt ? `Legal ID played, ${Math.round(NEWS_AT - LEGAL.endedAt)} s early` : 'No legal ID before the news');
   const gapBefore = DA.sil; if (me('prod')) { const pd = LEGAL.pred; const tight = pd !== undefined && pd !== null && Math.abs(pd) <= 3; const near = pd !== undefined && pd !== null && Math.abs(pd) <= 10; award(crash ? 0 : tight ? 10 : near ? 6 : 2, 10, crash ? 'Crashed the news junction' : pd == null ? 'No legal ID to time the junction' : `Log timed to the junction (${pd > 0 ? 'over' : 'under'} by ${Math.abs(pd).toFixed(0)} s)`); }
-  if (!crash && gapBefore < 1.5 && (me('pres') || me('prod')) && (!S.scenHasLegal || LEGAL.endedAt)) chal('junction');
+  if (!crash && gapBefore < 1.5 && (me('pres') || me('prod')) && (!S.scenHasLegal || ok)) chal('junction');
   if (aiOn() && micLive()) releaseMic();
   hint("We're into the news. Nice.", '');
   const ads = PO.log.filter(x => x.type === 'ad'); if (ads.length && (me('pres') || me('prod')) && S.scenHasBreak) { const full = ads.every(a => a.status === 'done' && !a.clipped && (a.played || 0) >= a.dur - 1); award(full ? 4 : 0, 4, full ? 'Every ad played in full' : 'Not every ad played in full'); if (full && S.scen === 'ids') chal('compliance'); }
@@ -1413,7 +1416,7 @@ function hintsStep() {
   const c = S.clock, at = (h, m, s) => S.lastClock < hms(h, m, s) && c >= hms(h, m, s);
   if (S.scenHasBreak && !BRK.started && at(6, 56, 30)) hint('Ads at :57. You are on in 30 seconds: start the break when this item ends.');
   for (const [h, m, s] of [[6, 57, 40], [6, 58, 40]]) if (at(h, m, s)) { const bt = backtime(); if (bt && Math.abs(bt.diff) > 6) hint(bt.diff > 0 ? `We are ${Math.round(bt.diff)} s over for the news. Fade the song early or drop something.` : `We are ${Math.round(-bt.diff)} s under. Talk a bit longer or add a short item.`); }
-  if (S.scenHasLegal && at(6, 59, 35) && !LEGAL.startedAt) hint('Legal ID next, then the news on the hour!');
+  if (S.scenHasLegal && at(6, 59, 35) && !LEGAL.startedAt) { const lg = PO.log.find(e => e.legal && e.status === 'wait'), d = Math.round(lg ? lg.dur : 8); hint(`Legal ID next, then the news on the hour. It runs ${d} s: start it when the clock shows NEWS IN 0:${String(d).padStart(2, '0')}.`); }
   if (at(6, 59, 25)) { const bt = backtime(); if (bt && bt.diff < -6) hint(`We are ${Math.round(-bt.diff)} s under for the news. Fire the talk bed and talk up to the junction.`); }
   for (const l of PH.lines) if (l.state === 'holding' && S.t - l.tHold > 45 && !l.nag) { l.nag = true; hint(`${l.c.name} is still holding on line ${l.n}.`); }
   S.lastClock = c;
@@ -1753,8 +1756,8 @@ function realMicStep() { if (!RM.an) return; RM.an.getFloatTimeDomainData(RM.buf
 
 /* challenges */
 const CHAL = [
-  ['junction', 'Join the news cleanly: play the legal ID (station name and frequency, required by the licence) from the cart wall, then the network news on the hour with less than 1.5 s of silence and no crash.'],
-  ['posts', 'Hit the post three times in one show (Presenter): hold Space to talk over a song intro and let go in the last two seconds before the vocals start (the INTRO countdown on the player shows the time left).'],
+  ['junction', 'Join the news cleanly: play the 8 s legal ID (station name and frequency, required by the licence) from the log or the cart wall so it ends as the network news joins on the hour (within 6 s), with less than 1.5 s of silence and no crash. Start it when the clock shows NEWS IN 0:08.'],
+  ['posts', 'Hit the post three times in one show (Presenter): hold Space to talk over a song intro and let go in the last two seconds before the vocals start (the POST countdown on the player shows the time left).'],
   ['dump', 'Dump a profanity before it reaches air.'],
   ['rescue', 'Get sound back on air within 3 s of a playout crash.'],
   ['flash', 'Get a newsflash read on air within 30 s of the alert (Presenter).'],

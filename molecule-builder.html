@@ -1082,9 +1082,12 @@ window.SLPerf = window.SLPerf || (() => {
 
   /* ===================== POINTER ===================== */
   const pts = new Map(); let dragMoved = 0, pinch0 = 0, scale0 = 0;
+  // on touch screens a fingertip covers several overlapping atoms, so take the atom whose centre is nearest the tap
+  // (relative to its size) with a slightly larger target, rather than whichever happens to be in front
+  const coarsePtr = matchMedia('(pointer:coarse)');
   function pick(x, y) {
-    let best = null, bz = -1e9;
-    atoms.forEach(a => { const p = proj(a.p), r = radius(a.el) * scale * p.f + 3; if ((p.x - x) ** 2 + (p.y - y) ** 2 < r * r && p.z > bz) { bz = p.z; best = a; } });
+    let best = null, bz = -1e9; const coarse = coarsePtr.matches;
+    atoms.forEach(a => { const p = proj(a.p), r = radius(a.el) * scale * p.f + (coarse ? 8 : 3), d2 = (p.x - x) ** 2 + (p.y - y) ** 2; if (d2 >= r * r) return; const k = coarse ? -Math.sqrt(d2) / r : p.z; if (k > bz) { bz = k; best = a; } });
     if (best) return { atom: best };
     let bb = null, bd = 7;
     bonds.forEach(b => { const p = proj(b.a.p), q = proj(b.b.p); const dx = q.x - p.x, dy = q.y - p.y, L2 = dx * dx + dy * dy || 1; const t = SL.clamp(((x - p.x) * dx + (y - p.y) * dy) / L2, 0, 1); const d = Math.hypot(p.x + t * dx - x, p.y + t * dy - y); if (d < bd) { bd = d; bb = b; } });
