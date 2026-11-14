@@ -1,7 +1,7 @@
 /* Pentarch SimLab service worker: works offline after a page has been visited once, and can save every lab
    for offline use on request (for students on limited data). */
-const VERSION = 'simlab-v13';
-const CORE = ['./', 'index.html', 'assets/css/simlab.css?v=25', 'assets/js/simlab.js?v=25',
+const VERSION = 'simlab-v14';
+const CORE = ['./', 'index.html', 'assets/css/simlab.css?v=26', 'assets/js/simlab.js?v=26',
   'https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js',
   'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css',
   'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js',
