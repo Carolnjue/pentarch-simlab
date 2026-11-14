@@ -303,7 +303,6 @@
   function tour(steps) {
     _tour = steps.filter(Boolean);
     wireTourBtn();
-    { const tb = document.getElementById('slTheme'); if (tb) { applyTheme(themeNow()); tb.addEventListener('click', () => applyTheme(themeNow() === 'light' ? 'dark' : 'light', true)); } }
     const key = 'sl-tour-seen-' + (document.body.dataset.page || '');
     let seen = false; try { seen = !!localStorage.getItem(key); } catch (e) {}
 
@@ -403,6 +402,7 @@
     const h = document.getElementById('sl-header'); if (h) h.outerHTML = header();
     const mainEl = document.querySelector('main'); if (mainEl) { if (!mainEl.id) mainEl.id = 'main'; const sk = document.createElement('a'); sk.className = 'skip-link'; sk.href = '#' + mainEl.id; sk.textContent = 'Skip to content'; document.body.prepend(sk); }
     const hero = document.getElementById('sl-hero'); if (hero && m) hero.outerHTML = pageHero(m);
+    { const tb = document.getElementById('slTheme'); if (tb && !tb.dataset.wired) { tb.dataset.wired = '1'; applyTheme(themeNow()); tb.addEventListener('click', () => applyTheme(themeNow() === 'light' ? 'dark' : 'light', true)); } }
     wireTourBtn();
     const pb = document.getElementById('slPresentBtn'), labEl = document.querySelector('main .lab') || (document.querySelector('main .stage') || {}).parentElement;
     if (pb && labEl && document.fullscreenEnabled) {
