@@ -315,7 +315,7 @@
       <h3>1. Subnetting 192.168.10.77/26</h3>
       <div class="worked">
         <ol>
-          <li>Mask: 26 ones then 6 zeros = 11111111.11111111.11111111.11000000 = <b>255.255.255.192</b>.</li>
+          <li>A /26 prefix means the first 26 bits are the network part, leaving $32 - 26 = 6$ host bits. Mask: 26 ones then 6 zeros = 11111111.11111111.11111111.11000000 = <b>255.255.255.192</b>.</li>
           <li>The last octet 77 = 01001101. AND with 11000000 gives 01000000 = 64, so the network is <b>192.168.10.64</b>.</li>
           <li>Set the 6 host bits to 1: 01111111 = 127, so the broadcast address is <b>192.168.10.127</b>.</li>
           <li>Usable hosts: $2^{6} - 2 = 62$, from 192.168.10.65 to 192.168.10.126.</li>
@@ -327,13 +327,14 @@
       <div class="worked">
         <p>The client picks ISN 1000 and the server 5000 (as in the lab).</p>
         <ul>
-          <li>SYN: seq 1000. SYN-ACK: seq 5000, ack 1001 (the SYN used one number). ACK: seq 1001, ack 5001.</li>
+          <li>The acknowledgement number is the next byte expected: ack = seq + bytes received (a SYN counts as one byte). SYN: seq 1000. SYN-ACK: seq 5000, ack 1001 (the SYN used one number). ACK: seq 1001, ack 5001.</li>
           <li>Without TLS, the GET carries 96 bytes at seq 1001, so the server's ACK is 1097. The 200 OK carries 1200 bytes at seq 5001; the client acknowledges 6201.</li>
         </ul>
+        <p>Each side can check that nothing went missing just by comparing numbers: an ACK of 6201 tells the server that all 1200 bytes of its reply arrived.</p>
       </div>
       <h3>3. TTL along the path</h3>
       <div class="worked">
-        <p>The laptop sends with TTL 64. The campus router decrements it to 63; the Internet cloud (about 6 routers) brings it to 57 at the web server. Open the inspector on the GET request and step through its hops to watch the TTL field change while the IP addresses stay put, except at NAT.</p>
+        <p>The laptop sends with TTL 64. The campus router decrements it to 63; the Internet cloud (about 6 routers) brings it to 57 at the web server. Each router subtracts 1, so the web server sees $64 - 1 - 6 = 57$, so a server that knows the usual starting value of 64 can tell the packet crossed 7 routers. Open the inspector on the GET request and step through its hops to watch the TTL field change while the IP addresses stay put, except at NAT.</p>
       </div>
       <h3>4. Dijkstra on the default routing network</h3>
       <div class="worked">
@@ -341,7 +342,7 @@
       </div>
       <h3>5. Window and throughput</h3>
       <div class="worked">
-        <p>In the reliability lab the one-way delay is 1 s and the sender emits one segment every 0.25 s, so a segment's ACK returns after RTT = 2 s plus 0.25 s of transmission. With $W = 6$ the ideal rate is $W / (\text{RTT} + t_{tx}) = 6 / 2.25 \approx 2.67$ segments per second; at $W \ge 9$ the window covers the round trip and the sender is limited to $1/t_{tx} = 4$ segments per second. The “Ideal” statistic shows this bound for the current window.</p>
+        <p>In the reliability lab the one-way delay is 1 s and the sender emits one segment every 0.25 s, so a segment's ACK returns after RTT = 2 s plus 0.25 s of transmission. With $W = 6$ the ideal rate is $W / (\text{RTT} + t_{tx}) = 6 / 2.25 \approx 2.67$ segments per second; at $W \ge 9$ the window covers the round trip ($4 \times 2.25 = 9$ segments in flight) and the sender is limited to $1/t_{tx} = 4$ segments per second, so a window larger than 9 gains nothing. The “Ideal” statistic shows this bound for the current window.</p>
       </div>
     </div>
 
@@ -350,11 +351,11 @@
       <ul class="chal" id="chal"></ul>
       <h3>Guided experiments</h3>
       <ol class="steps">
-        <li>Run the request twice. The second time ARP and DNS are cached: how many fewer packets are sent, and how much sooner does the page arrive?</li>
-        <li>Inspect the same packet on the LAN and on the Internet side of the router. Which fields change (highlighted in amber) and why?</li>
-        <li>Add a second switch between the laptop and the router. Does the ARP request still reach the router? Does the TTL change?</li>
-        <li>In the reliability lab set loss to 25 % and compare Go-Back-N with Selective Repeat at W = 8. Count retransmissions.</li>
-        <li>Set loss to 0 % and increase W from 1 to 16. Where does goodput stop increasing, and why?</li>
+        <li>Run the request twice. The second time ARP and DNS are cached: how many fewer packets are sent, and how much sooner does the page arrive? Expect the ARP and DNS exchanges to disappear (at least four fewer packets: the ARP request and reply and the DNS query and response), so the TCP handshake starts straight away.</li>
+        <li>Inspect the same packet on the LAN and on the Internet side of the router. Which fields change (highlighted in amber) and why? Expect the MAC addresses and the TTL to change at the router, and the source IP address and port to change too where NAT rewrites them; the destination IP and the payload stay the same.</li>
+        <li>Add a second switch between the laptop and the router. Does the ARP request still reach the router? Does the TTL change? Expect yes and no: a switch floods broadcast frames to every port and never reads the IP header, so the TTL is unaffected.</li>
+        <li>In the reliability lab set loss to 25 % and compare Go-Back-N with Selective Repeat at W = 8. Count retransmissions. <i>Keep the loss, window and timeout fixed; change only the protocol.</i> Expect Go-Back-N to resend several times as many segments, because each loss forces it to resend everything sent after the lost segment.</li>
+        <li>Set loss to 0 % and increase W from 1 to 16. Where does goodput stop increasing, and why? <i>Record the goodput readout for each W once it has settled.</i> Expect it to rise by about 0.44 seg/s per extra segment of window and level off at 4 seg/s from about W = 9, where the window covers the round trip (worked example 5).</li>
       </ol>
     </div>
 
