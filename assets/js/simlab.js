@@ -372,7 +372,7 @@
   function a11yScroll() {
     document.querySelectorAll('main *').forEach(el => {
       if (el.hasAttribute('tabindex') || el.closest('canvas,svg,button,a')) return;
-      const cs = getComputedStyle(el); const ox = /auto|scroll/.test(cs.overflowX) && el.scrollWidth > el.clientWidth + 2, oy = /auto|scroll/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 2;
+      const cs = getComputedStyle(el); const ox = /auto|scroll/.test(cs.overflowX) && el.scrollWidth > el.clientWidth, oy = /auto|scroll/.test(cs.overflowY) && el.scrollHeight > el.clientHeight;
       if (!(ox || oy) || el.querySelector('a,button,input,select,textarea,[tabindex]')) return;
       el.tabIndex = 0; if (!el.getAttribute('role')) el.setAttribute('role', 'region'); if (!el.getAttribute('aria-label')) el.setAttribute('aria-label', el.matches('table,.tbl-wrap') || el.querySelector('table') ? 'Table (scrolls sideways)' : 'Scrollable content');
     });
