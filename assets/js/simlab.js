@@ -394,6 +394,8 @@
     });
   }
   let a11yT; const a11yLater = () => { clearTimeout(a11yT); a11yT = setTimeout(a11yScroll, 400); };
+  // printing: render maths in every reading panel first, so printed notes are complete
+  window.addEventListener('beforeprint', () => { document.querySelectorAll('.tabpanel.prose').forEach(p => { try { renderMath(p); } catch (e) {} }); });
   window.addEventListener('load', () => { a11yLater(); setTimeout(a11yScroll, 2500); }); window.addEventListener('resize', a11yLater); document.addEventListener('click', e => { if (e.target.closest('[role=tab],.tab,.tabs button')) a11yLater(); });
   function mount() {
     const page = document.body.dataset.page;
@@ -451,6 +453,7 @@
   function tabs(root) {
     const btns = root.querySelectorAll(':scope > .tablist > button');
     const panels = root.querySelectorAll(':scope > .tabpanel');
+    panels.forEach((pn, i) => { if (btns[i] && !pn.dataset.title) pn.dataset.title = btns[i].textContent.trim(); });
     btns.forEach((b, i) => b.addEventListener('click', () => {
       btns.forEach(x => x.classList.remove('on')); panels.forEach(x => x.classList.remove('on'));
       b.classList.add('on'); if (panels[i]) { panels[i].classList.add('on'); renderMath(panels[i]); }
