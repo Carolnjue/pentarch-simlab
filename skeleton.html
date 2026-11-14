@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<link rel="stylesheet" href="assets/css/simlab.css?v=26">
+<link rel="stylesheet" href="assets/css/simlab.css?v=27">
 <style>
   .eq{position:relative} .tblwrap{overflow-x:auto;max-width:100%}
   /* ---- Anatomy atlas ---- */
@@ -252,7 +252,7 @@
         <g data-layer="main" id="skMain"></g>
       </svg>
       <div class="atl-crumbs"></div><div class="atl-tip"></div><div class="atl-q"></div>
-      <div class="drill" id="drill" hidden><div class="dr-top"><b id="drTime">60 s</b><span id="drMsg">Drag each name onto its bone</span><button class="btn sm" id="drEnd">End</button></div><div class="dr-chips" id="drChips"></div></div>
+      <div class="drill" id="drill" hidden><div class="dr-top"><b id="drTime">60 s</b><span id="drMsg" aria-live="polite">Drag each name onto its bone</span><button class="btn sm" id="drEnd">End</button></div><div class="dr-chips" id="drChips"></div></div>
       <div class="atl-tools">
         <button class="btn sm" id="atlBack" aria-label="Zoom out"><i data-lucide="zoom-out"></i><span>Zoom out</span></button>
         <button class="btn sm" id="atlHome" aria-label="Whole body"><i data-lucide="maximize"></i><span>Whole body</span></button>
@@ -261,7 +261,7 @@
     <aside>
       <div class="panel">
         <h3><i data-lucide="layers"></i> Zoom level</h3>
-        <div class="atl-views" id="atlViews"></div>
+        <div class="atl-views" id="atlViews" data-pressed-group></div>
         <label class="toggle" style="margin-top:8px">Show muscle layer (right side) <input type="checkbox" id="tMus"></label>
         <label class="toggle">Show labels <input type="checkbox" id="tLabels" checked></label>
         <label class="toggle">Focus on selection <input type="checkbox" id="tFocus"></label>
@@ -447,7 +447,7 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script src="assets/js/simlab.js?v=26"></script>
+<script src="assets/js/simlab.js?v=27"></script>
 <script>
 /* ---- Anatomy Atlas engine: zoomable, labelled, quizzable SVG explorer ---- */
 function Atlas(cfg) {
@@ -688,12 +688,13 @@ function Atlas(cfg) {
       q.target = c[Math.floor(Math.random() * c.length)]; q.asked.push(q.target); q.miss = 0;
     }
     qbar.innerHTML = `<span class="atl-qk">Find</span><b>${S[q.target].name}</b><span class="atl-qs">${q.score} / ${q.i}</span><button class="btn sm" data-qskip>Skip</button><button class="btn sm" data-qend>End</button>`;
+    window.SL && SL.announce && SL.announce(`${q.ok ? 'Correct. ' : ''}Find the ${S[q.target].name}. Score ${q.score} of ${q.i}.`); q.ok = 0;
   }
   function flash(id, cls) { els(id).forEach(x => { x.classList.add(cls); setTimeout(() => x.classList.remove(cls), 900); }); }
   function answer(id) {
     if (!q || !q.target) return;
-    if (id === q.target) { flash(id, 'ok'); if (!q.miss) q.score++; q.i++; setTimeout(nextQ, 450); }
-    else { flash(id, 'no'); q.miss++; qbar.querySelector('.atl-qs').innerHTML = `That is the <b>${S[id].short || S[id].name}</b>`;
+    if (id === q.target) { flash(id, 'ok'); if (!q.miss) q.score++; q.i++; q.ok = 1; setTimeout(nextQ, 450); }
+    else { flash(id, 'no'); q.miss++; qbar.querySelector('.atl-qs').innerHTML = `That is the <b>${S[id].short || S[id].name}</b>`; window.SL && SL.announce && SL.announce(`Not quite: that is the ${S[id].short || S[id].name}.`);
       if (q.miss >= 2) { flash(q.target, 'ok'); q.i++; setTimeout(nextQ, 1100); } }
   }
   qbar.addEventListener('click', e => {
@@ -725,7 +726,7 @@ window.CK = (() => {
   /* Case studies: list = [{t, tag, stem, vit:[..], lab:{label, icon, fn}, qs:[{q, o:[..], a, why}], take}] */
   function cases(el, list, opt = {}) {
     el = q$(el); if (!el) return; el.classList.add('ck-cases');
-    el.innerHTML = `<div class="ck-tabs">${list.map((c, i) => `<button class="ck-ct" data-i="${i}"><span class="ck-dot"></span>${c.t}</button>`).join('')}</div><div class="ck-case"></div>`;
+    el.innerHTML = `<div class="ck-tabs" data-pressed-group>${list.map((c, i) => `<button class="ck-ct" data-i="${i}"><span class="ck-dot"></span>${c.t}</button>`).join('')}</div><div class="ck-case"></div>`;
     const box = el.querySelector('.ck-case'), tabsEl = el.querySelector('.ck-tabs');
     function show(i) {
       const c = list[i]; let k = 0, score = 0;
@@ -1403,9 +1404,9 @@ window.DK = (() => {
   const jg = $('#jgrid');
   JT.forEach(j => {
     const c = document.createElement('div'); c.className = 'jcard'; c.dataset.k = j.k;
-    c.innerHTML = `<svg viewBox="0 -16 230 202" class="jsvg"><defs></defs><g class="ov">${j.ov}</g>${j.svg}<text x="6" y="-3" fill="#e6ecf7" font-size="11" font-weight="700" font-family="Inter, sans-serif">e.g. ${j.eg}</text><text class="st" x="6" y="181" fill="#cbd5e1" font-size="11" font-family="JetBrains Mono, monospace"></text><text class="dh" x="224" y="181" text-anchor="end" fill="#34d399" font-size="10" font-family="JetBrains Mono, monospace">drag the bone</text></svg><h4>${j.n} <span>${j.ax}</span></h4><p>${j.d}</p><p><b style="color:var(--text)">Examples:</b> ${j.ex}</p><input type="range" min="0" max="6.283" step="0.01" value="0" aria-label="Move ${j.n} joint">`;
+    c.innerHTML = `<svg viewBox="0 -16 230 202" class="jsvg" role="img" aria-label="Animated ${j.n.toLowerCase()} joint, for example the ${j.eg.replace(/ \(.*\)$/, '').toLowerCase()}"><defs></defs><g class="ov">${j.ov}</g>${j.svg}<text x="6" y="-3" fill="#e6ecf7" font-size="11" font-weight="700" font-family="Inter, sans-serif">e.g. ${j.eg}</text><text class="st" x="6" y="181" fill="#cbd5e1" font-size="11" font-family="JetBrains Mono, monospace"></text><text class="dh" x="224" y="181" text-anchor="end" fill="#34d399" font-size="10" font-family="JetBrains Mono, monospace">drag the bone</text></svg><h4>${j.n} <span>${j.ax}</span></h4><p>${j.d}</p><p><b style="color:var(--text)">Examples:</b> ${j.ex}</p><input type="range" min="0" max="6.283" step="0.01" value="0" aria-label="Move ${j.n} joint">`;
     jg.appendChild(c); j.g = c.querySelector('svg'); j.t = Math.random() * 6; j.manual = 0;
-    const r = c.querySelector('input'); r.addEventListener('input', () => { j.t = +r.value; j.manual = 3; });
+    const r = c.querySelector('input'); r.addEventListener('input', () => { j.t = +r.value; j.manual = 3; r.setAttribute('aria-valuetext', j.f(j.g, j.t)); });
     // drag the moving bone directly
     const sv = j.g, toSvg = e => { const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(sv.getScreenCTM().inverse()); return [pt.x, pt.y]; };
     sv.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse' && !(e.target.closest && e.target.closest('.mv'))) return; j.dragging = true; sv.setPointerCapture(e.pointerId); j.p0 = toSvg(e); j.d0 = 12 * Math.sin(j.t); j.manual = 1e9; sv.querySelector('.dh').style.opacity = 0; e.preventDefault(); });

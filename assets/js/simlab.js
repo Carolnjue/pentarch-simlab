@@ -193,6 +193,7 @@
   function palette() {
     const el = document.createElement('div');
     el.className = 'palette'; el.id = 'slPalette';
+    el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'Search labs');
     el.innerHTML = `<div class="box"><input placeholder="Search ${MODULES.length} labs: gears, DNA, mixer, orbit…" aria-label="Search labs"><ul></ul></div>`;
     document.body.appendChild(el);
     const input = el.querySelector('input'), ul = el.querySelector('ul');
@@ -215,8 +216,10 @@
       if (e.key === 'Escape') hide();
     });
     el.addEventListener('click', e => { if (e.target === el) hide(); });
-    const show = () => { el.classList.add('show'); input.value = ''; render(); setTimeout(() => input.focus(), 30); };
-    const hide = () => el.classList.remove('show');
+    el.addEventListener('keydown', e => { if (e.key === 'Escape') hide(); else trapTab(e, el); });
+    let back = null;
+    const show = () => { if (!el.classList.contains('show')) back = document.activeElement; el.classList.add('show'); input.value = ''; render(); setTimeout(() => input.focus(), 30); };
+    const hide = () => { if (!el.classList.contains('show')) return; el.classList.remove('show'); if (back && back.isConnected && back !== document.body && back.focus) back.focus({ preventScroll: true }); back = null; };
     document.addEventListener('keydown', e => {
       const t = e.target.tagName;
       if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(t) && !e.target.isContentEditable) { e.preventDefault(); show(); }
@@ -361,12 +364,14 @@
     };
     const onScroll = () => { if (ov.isConnected) { const s = _tour[i], el = s.el && document.querySelector(s.el); if (el) { const r = el.getBoundingClientRect(), pad = 8; hole.style.left = r.left - pad + 'px'; hole.style.top = r.top - pad + 'px'; } } };
     window.addEventListener('scroll', onScroll, { passive: true }); window.addEventListener('resize', show);
-    const end = () => { ov.remove(); window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', show); document.removeEventListener('keydown', key); };
-    const key = e => { if (e.key === 'Escape') end(); if (e.key === 'ArrowRight') nav(1); if (e.key === 'ArrowLeft') nav(-1); };
+    const back = document.activeElement;
+    const end = () => { ov.remove(); window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', show); document.removeEventListener('keydown', key); if (back && back.isConnected && back !== document.body && back.focus) back.focus({ preventScroll: true }); };
+    const key = e => { if (e.key === 'Escape') end(); if (e.key === 'ArrowRight') nav(1); if (e.key === 'ArrowLeft') nav(-1); trapTab(e, tip); };
     const nav = d => { i += d; if (i < 0) i = 0; if (i >= _tour.length) { end(); toast('Tour complete. Now try the challenges tab.', 'ok'); return; } show(); };
     document.addEventListener('keydown', key);
     ov.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a) { if (e.target === ov) end(); return; } if (a.dataset.a === 'skip') end(); if (a.dataset.a === 'back') nav(-1); if (a.dataset.a === 'next') nav(1); });
     show();
+    setTimeout(() => { const n = tip.querySelector('[data-a=next]'); if (n && ov.isConnected) n.focus({ preventScroll: true }); }, 0);
   }
 
   /* ---------------- Offline support (service worker) ---------------- */
@@ -410,10 +415,10 @@
       el.tabIndex = 0; if (!el.getAttribute('role')) el.setAttribute('role', 'region'); if (!el.getAttribute('aria-label')) el.setAttribute('aria-label', el.matches('table,.tbl-wrap') || el.querySelector('table') ? 'Table (scrolls sideways)' : 'Scrollable content');
     });
   }
-  let a11yT; const a11yLater = () => { clearTimeout(a11yT); a11yT = setTimeout(a11yScroll, 400); };
+  let a11yT; const a11yLater = () => { clearTimeout(a11yT); a11yT = setTimeout(() => { a11yScroll(); a11yEnhance(); }, 400); };
   // printing: render maths in every reading panel first, so printed notes are complete
   window.addEventListener('beforeprint', () => { document.querySelectorAll('.tabpanel.prose').forEach(p => { try { renderMath(p); } catch (e) {} }); });
-  window.addEventListener('load', () => { a11yLater(); setTimeout(a11yScroll, 2500); }); window.addEventListener('resize', a11yLater); document.addEventListener('click', e => { if (e.target.closest('[role=tab],.tab,.tabs button')) a11yLater(); });
+  window.addEventListener('load', () => { a11yLater(); setTimeout(a11yScroll, 2500); a11yEnhance(); setTimeout(a11yEnhance, 1500); }); window.addEventListener('resize', a11yLater); document.addEventListener('click', e => { if (e.target.closest('[role=tab],.tab,.tabs button')) a11yLater(); });
   function mount() {
     const page = document.body.dataset.page;
     const m = byId[page];
@@ -455,7 +460,10 @@
     document.querySelectorAll('.reveal').forEach(el => io ? io.observe(el) : el.classList.add('in'));
     // range fill
     document.querySelectorAll('input[type=range]').forEach(rangeFill);
-    document.addEventListener('input', e => { if (e.target.type === 'range') rangeFill(e.target); });
+    document.addEventListener('input', e => { if (e.target.type === 'range') { rangeFill(e.target); sliderText(e.target); } });
+    liveRegion(); a11yEnhance();
+    document.querySelectorAll('.sl-nav>.item>button').forEach(b => b.setAttribute('aria-expanded', 'false'));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') { const o = document.querySelector('.sl-nav>.item.open'); if (o) { o.classList.remove('open'); const b = o.querySelector(':scope>button'); if (b) b.setAttribute('aria-expanded', 'false'); } } });
     refreshIcons();
     renderMath();
     setTimeout(decorateProgress, 60);
@@ -477,6 +485,52 @@
       root.dispatchEvent(new CustomEvent('tab', { detail: i }));
     }));
     if (!root.querySelector('.tablist > button.on') && btns[0]) { btns[0].classList.add('on'); panels[0] && panels[0].classList.add('on'); }
+    // ARIA tabs: arrow keys / Home / End move between tabs; only the selected tab is in the Tab order.
+    const list = root.querySelector(':scope > .tablist'); if (!list || list.getAttribute('role')) return;
+    list.setAttribute('role', 'tablist');
+    const uid = 'slt' + Math.random().toString(36).slice(2, 7);
+    btns.forEach((b, i) => {
+      b.setAttribute('role', 'tab'); if (!b.id) b.id = uid + '-t' + i;
+      const pn = panels[i]; if (pn) { if (!pn.id) pn.id = uid + '-p' + i; pn.setAttribute('role', 'tabpanel'); pn.setAttribute('aria-labelledby', b.id); b.setAttribute('aria-controls', pn.id); }
+    });
+    const sync = () => { const any = [...btns].some(b => b.classList.contains('on')); btns.forEach((b, i) => { const on = b.classList.contains('on') || (!any && i === 0); b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; }); };
+    sync(); new MutationObserver(sync).observe(list, { attributes: true, attributeFilter: ['class'], subtree: true });
+    list.addEventListener('keydown', e => {
+      const v = [...btns].filter(b => b.getClientRects().length), i = v.indexOf(document.activeElement); if (i < 0) return;
+      const j = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? (i + 1) % v.length : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? (i - 1 + v.length) % v.length : e.key === 'Home' ? 0 : e.key === 'End' ? v.length - 1 : -1;
+      if (j < 0) return; e.preventDefault(); v[j].focus(); v[j].click();
+    });
+  }
+
+  /* ---------------- Accessibility enhancements applied to every page ---------------- */
+  // Range sliders: expose the visible readout (with its units) as aria-valuetext, kept in sync.
+  // Pages can point a slider at its readout with data-readout="#id", or mark a 0–1 level with data-vt-pct.
+  function sliderText(r) {
+    if (r.type !== 'range') return;
+    if (r.hasAttribute('data-vt-pct')) { const t = Math.round(+r.value * 100) + ' %'; if (r.getAttribute('aria-valuetext') !== t) r.setAttribute('aria-valuetext', t); return; }
+    if (r.dataset.slvt || r.hasAttribute('aria-valuetext')) return;
+    let o = null; const rs = r.getAttribute('data-readout');
+    if (rs) o = document.querySelector(rs);
+    else { const c = r.closest('.ctl'); if (!c || c.querySelectorAll('input[type=range]').length !== 1) return; o = c.querySelector('output'); }
+    if (!o) return;
+    r.dataset.slvt = '1';
+    const set = () => { const t = o.textContent.replace(/\s+/g, ' ').trim(); if (t) r.setAttribute('aria-valuetext', t); else r.removeAttribute('aria-valuetext'); };
+    set(); new MutationObserver(set).observe(o, { childList: true, characterData: true, subtree: true });
+  }
+  // Segmented buttons (.seg) that show their choice with the "on" class: expose it as aria-pressed.
+  // Other groups opt in with data-pressed-group on the container; single toggles with data-pressed.
+  function segPressed(g) {
+    if (g.dataset.slseg || g.getAttribute('role') === 'tablist' || g.getAttribute('role') === 'radiogroup') return;
+    const opt = g.hasAttribute('data-pressed-group') || g.tagName === 'BUTTON';
+    const bs = () => (g.tagName === 'BUTTON' ? [g] : [...g.querySelectorAll(':scope > button')]).filter(b => !b.hasAttribute('role') && !b.hasAttribute('aria-checked') && !b.hasAttribute('aria-selected'));
+    if (!opt && (!bs().some(b => b.classList.contains('on')) || bs().some(b => b.hasAttribute('aria-pressed') && !b.dataset.slp))) return;
+    g.dataset.slseg = '1';
+    const sync = () => bs().forEach(b => { const v = String(b.classList.contains('on')); b.dataset.slp = '1'; if (b.getAttribute('aria-pressed') !== v) b.setAttribute('aria-pressed', v); });
+    sync(); new MutationObserver(sync).observe(g, { attributes: true, attributeFilter: ['class'], subtree: g.tagName !== 'BUTTON', childList: g.tagName !== 'BUTTON' });
+  }
+  function a11yEnhance() {
+    document.querySelectorAll('input[type=range]').forEach(sliderText);
+    document.querySelectorAll('.seg, [data-pressed-group], button[data-pressed]').forEach(segPressed);
   }
 
   /** Render LaTeX with KaTeX auto-render ($...$ inline, $$...$$ display, \( \) and \[ \]). */
@@ -505,7 +559,7 @@
     if (!el) return null;
     const out = el.closest('.ctl') && el.closest('.ctl').querySelector('output');
     const upd = () => { const v = el.type === 'checkbox' ? el.checked : (el.type === 'range' || el.type === 'number' ? parseFloat(el.value) : el.value); if (out) out.textContent = fmt ? fmt(v) : v; cb && cb(v, el); };
-    el.addEventListener('input', upd); el.addEventListener('change', upd); upd();
+    el.addEventListener('input', upd); el.addEventListener('change', upd); upd(); sliderText(el);
     return el;
   }
 
@@ -550,18 +604,53 @@
     return n.toLocaleString('en', { maximumFractionDigits: d, minimumFractionDigits: 0 }).replace(/^-/, '\u2212');
   }
 
+  /* Screen-reader announcements: one visually hidden polite live region shared by toasts, quizzes and pages. */
+  let _live = null, _liveT = 0;
+  function liveRegion() {
+    if (_live && _live.isConnected) return _live;
+    _live = document.createElement('div'); _live.id = 'slLive'; _live.className = 'sr-only';
+    _live.setAttribute('role', 'status'); _live.setAttribute('aria-live', 'polite'); _live.setAttribute('aria-atomic', 'true');
+    document.body.appendChild(_live); return _live;
+  }
+  /** Announce plain text (HTML is stripped) to screen readers without showing anything. */
+  function announce(msg) {
+    const r = liveRegion(), d = document.createElement('div'); d.innerHTML = String(msg == null ? '' : msg);
+    d.querySelectorAll('.katex-mathml,.sr-only,button,.katex-html[aria-hidden]').forEach(x => x.remove());
+    const txt = d.textContent.replace(/\s+/g, ' ').trim(); if (!txt) return;
+    clearTimeout(_liveT); r.textContent = '';
+    _liveT = setTimeout(() => { r.textContent = txt; }, 60);
+  }
+
   function toast(msg, type, ms) {
     let box = document.querySelector('.toasts');
     if (!box) { box = document.createElement('div'); box.className = 'toasts'; document.body.appendChild(box); }
     const t = document.createElement('div'); t.className = 'toast ' + (type || ''); t.innerHTML = msg + '<button class="toast-x" aria-label="Dismiss">\u00D7</button>'; t.querySelector('.toast-x').onclick = () => t.remove();
     box.appendChild(t); setTimeout(() => { t.style.opacity = 0; t.style.transition = '.3s'; setTimeout(() => t.remove(), 300); }, ms || 3800);
+    announce(msg);
+  }
+
+  /** Keep Tab / Shift+Tab inside `box` (for modal dialogs). */
+  const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  function trapTab(e, box) {
+    if (e.key !== 'Tab') return;
+    const f = [...box.querySelectorAll(FOCUSABLE)].filter(x => x.getClientRects().length);
+    if (!f.length) { e.preventDefault(); return; }
+    const first = f[0], last = f[f.length - 1], a = document.activeElement;
+    if (e.shiftKey && (a === first || !box.contains(a))) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && (a === last || !box.contains(a))) { e.preventDefault(); first.focus(); }
   }
 
   function modal(html, opts) {
     const m = document.createElement('div'); m.className = 'modal show';
-    m.innerHTML = `<div class="box">${html}<div class="btn-row" style="margin-top:16px;justify-content:flex-end"><button class="btn primary" data-close>${(opts && opts.ok) || 'Close'}</button></div></div>`;
+    m.innerHTML = `<div class="box" role="dialog" aria-modal="true" tabindex="-1">${html}<div class="btn-row" style="margin-top:16px;justify-content:flex-end"><button class="btn primary" data-close>${(opts && opts.ok) || 'Close'}</button></div></div>`;
     document.body.appendChild(m); refreshIcons(m); renderMath(m);
-    const close = () => { m.remove(); opts && opts.onClose && opts.onClose(); };
+    const box = m.querySelector('.box'), hd = box.querySelector('h1,h2,h3,h4');
+    if (hd) { if (!hd.id) hd.id = 'slMod' + Math.random().toString(36).slice(2, 8); box.setAttribute('aria-labelledby', hd.id); } else box.setAttribute('aria-label', 'Dialog');
+    const back = document.activeElement;
+    const key = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } else trapTab(e, box); };
+    const close = () => { if (!m.isConnected) return; m.remove(); document.removeEventListener('keydown', key, true); if (back && back.isConnected && back.focus) back.focus({ preventScroll: true }); opts && opts.onClose && opts.onClose(); };
+    document.addEventListener('keydown', key, true);
+    setTimeout(() => { if (m.isConnected && !box.contains(document.activeElement)) box.focus({ preventScroll: true }); }, 0);
     m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-close]')) close(); });
     return { el: m, close };
   }
@@ -590,6 +679,7 @@
     const order = fixed || q.keepOrder ? q.options.map((_, j) => j) : shuffle(q.options.map((_, j) => j));
     return { q: q.q, why: q.why, options: order.map(j => q.options[j]), answer: order.indexOf(q.answer) };
   }
+  function qFeedback(q, j) { const r = j === q.answer; return (r ? 'Correct. ' : `Not quite. The answer is ${'ABCDEFG'[q.answer]}: ${texSpeech(q.options[q.answer])}. `) + texSpeech(q.why || ''); }
   const optHTML = (o, j) => `<button class="opt" data-j="${j}"><span class="ol">${'ABCDEFG'[j]}</span><span class="ot">${o}${/\$/.test(String(o)) ? `<span class="sr-only">${texSpeech(o)}</span>` : ''}</span></button>`;
   function quiz(container, questions) {
     const el = typeof container === 'string' ? document.querySelector(container) : container;
@@ -608,6 +698,7 @@
         if (j === q.answer) score++; else b.classList.add('wrong');
         if (answered === qs.length && page) markQuiz(page, score, qs.length);
         el.querySelector('.score').textContent = `Score: ${score} / ${answered}${answered === qs.length && score === qs.length ? ' · Perfect score!' : ''}`;
+        announce(qFeedback(q, j) + ' ' + el.querySelector('.score').textContent);
       });
       renderMath(el); return;
     }
@@ -627,7 +718,7 @@
       const sc = picks.filter((p, i) => p === set[i].answer).length;
       return `<div class="qz-head"><div class="qz-meta"><b>Set ${setNo || 1} of ${nSets}</b> · Question ${Math.min(idx + 1, set.length)} of ${set.length}${exam ? ` · <span class="qz-time">${fmtT(tLeft)}</span>` : ` · Score ${sc}/${picks.length}`}</div>
         <div class="qz-bar"><i style="width:${(picks.length / set.length) * 100}%"></i></div>
-        <div class="qz-modes"><button class="chip ${exam ? '' : 'on'}" data-m="practice">Practice</button><button class="chip ${exam ? 'on' : ''}" data-m="exam">Exam mode (timed)</button><span class="qz-bank">${questions.length} questions in this bank</span></div></div>`;
+        <div class="qz-modes"><button class="chip ${exam ? '' : 'on'}" data-m="practice" aria-pressed="${!exam}">Practice</button><button class="chip ${exam ? 'on' : ''}" data-m="exam" aria-pressed="${exam}">Exam mode (timed)</button><span class="qz-bank">${questions.length} questions in this bank</span></div></div>`;
     }
     function show() {
       const q = set[idx], done = picks[idx] !== undefined;
@@ -645,9 +736,17 @@
         <div class="btn-row"><button class="btn primary" data-qa="nextset">Next set</button>${wrong.length ? '<button class="btn" data-qa="retry">Retry the ones I missed</button>' : ''}<button class="btn" data-qa="restart">Start over (new shuffle)</button></div></div>
         <div class="qz-review">${set.map((q, i) => { const ok = picks[i] === q.answer; return `<div class="q done"><p>${ok ? '✓' : '✗'} ${q.q}</p><div class="opts">${q.options.map((o, j) => `<div class="opt ${j === q.answer ? 'right' : (j === picks[i] ? 'wrong' : '')}"><span class="ol">${'ABCDEFG'[j]}</span><span class="ot">${o}</span></div>`).join('')}</div><div class="why">${q.why || ''}</div></div>`; }).join('')}</div>`;
       el._wrong = wrong.map(o => o.q.src); renderMath(el);
+      announce(`Set finished. You scored ${sc} out of ${set.length}, ${pct} percent.`);
+    }
+    // the quiz re-renders on every answer: put keyboard focus back where the student is working
+    let kb = false; el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') kb = true; }); el.addEventListener('pointerdown', () => { kb = false; });
+    function focusQ(afterPick) {
+      if (!kb) return;
+      const t = afterPick ? (el.querySelector('[data-qa=next]:not([disabled])') || el.querySelector('.q .opt')) : (el.querySelector('.qz-end .btn') || el.querySelector('.q button.opt') || el.querySelector('[data-qa=next]'));
+      if (t) t.focus({ preventScroll: true });
     }
     el.addEventListener('click', e => {
-      const m = e.target.closest('[data-m]'); if (m && el.contains(m)) { exam = m.dataset.m === 'exam'; newPool(); nextSet(); return; }
+      const m = e.target.closest('[data-m]'); if (m && el.contains(m)) { exam = m.dataset.m === 'exam'; newPool(); nextSet(); const c = el.querySelector(`[data-m=${m.dataset.m}]`); if (c && kb) c.focus({ preventScroll: true }); announce(exam ? 'Exam mode: answers are marked at the end, 60 seconds per question.' : 'Practice mode.'); return; }
       const a = e.target.closest('[data-qa]');
       if (a && el.contains(a)) {
         const act = a.dataset.qa;
@@ -656,13 +755,16 @@
         else if (act === 'nextset') nextSet();
         else if (act === 'retry') start(el._wrong || []);
         else if (act === 'restart') { newPool(); nextSet(); }
+        focusQ();
         if (act !== 'prev') el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         return;
       }
       const b = e.target.closest('button.opt'); if (!b || !el.contains(b)) return;
       if (picks[idx] !== undefined && !exam) return;
       picks[idx] = +b.dataset.j; show();
-      if (exam && idx < set.length - 1) setTimeout(() => { if (picks[idx] !== undefined) { idx++; show(); } }, 250);
+      if (exam) announce(`Answer ${'ABCDEFG'[picks[idx]]} recorded.`); else announce(qFeedback(set[idx], picks[idx]));
+      if (exam && idx < set.length - 1) setTimeout(() => { if (picks[idx] !== undefined) { idx++; show(); focusQ(); } }, 250);
+      else focusQ(true);
     });
     newPool(); nextSet();
   }
@@ -731,7 +833,7 @@
     });
   }
 
-  window.SL = { matches, saveOffline, tour, runTour, niceRange, DEPTS, MODULES, byId, deptById, icon, refreshIcons, bind, canvas, loop, fmt, toast, modal, quiz, audio, clamp, lerp, deg, rad, cssVar, ptr, arrow, chart, renderMath, tex, tabs };
+  window.SL = { announce, matches, saveOffline, tour, runTour, niceRange, DEPTS, MODULES, byId, deptById, icon, refreshIcons, bind, canvas, loop, fmt, toast, modal, quiz, audio, clamp, lerp, deg, rad, cssVar, ptr, arrow, chart, renderMath, tex, tabs };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
 })();
