@@ -6,6 +6,11 @@
   'use strict';
 
   /* ---------------- Small polyfills for older phone browsers ---------------- */
+  // iPhone/iPad Safari zooms the page when a small text field gets focus; maximum-scale=1 stops that
+  // (iOS still allows pinch zoom). Applied only on iOS, because Android would block pinch zoom.
+  if (/iP(hone|ad|od)/.test(navigator.platform) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+    const vm = document.querySelector('meta[name=viewport]'); if (vm && !/maximum-scale/.test(vm.content)) vm.content += ', maximum-scale=1';
+  }
   if (typeof window.structuredClone !== 'function') window.structuredClone = o => o === undefined ? o : JSON.parse(JSON.stringify(o));
   const C2D = window.CanvasRenderingContext2D && CanvasRenderingContext2D.prototype;
   if (C2D && !C2D.roundRect) C2D.roundRect = function (x, y, w, h, r) {
