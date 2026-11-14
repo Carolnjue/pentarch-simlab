@@ -100,6 +100,21 @@
   const LOGO = `<img src="${LOGO_SRC}" alt="Pentarch" width="36" height="36">`;
 
   /* ---------------- Header ---------------- */
+  // ---- theme (light / dark), remembered per device; first visit follows the device setting ----
+  function themeNow() { return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'; }
+  function applyTheme(t, save) {
+    document.documentElement.dataset.theme = t;
+    if (save) { try { localStorage.setItem('sl-theme', t); } catch (e) {} }
+    const b = document.getElementById('slTheme');
+    if (b) { b.innerHTML = icon(t === 'light' ? 'moon' : 'sun'); b.setAttribute('aria-label', t === 'light' ? 'Switch to dark mode' : 'Switch to light mode'); refreshIcons(); }
+    const mt = document.querySelector('meta[name=theme-color]'); if (mt) mt.content = t === 'light' ? '#f5f7fb' : '#070b16';
+    document.dispatchEvent(new CustomEvent('sl-theme', { detail: t }));
+  }
+  (function initTheme() {
+    let t = null; try { t = localStorage.getItem('sl-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    document.documentElement.dataset.theme = t;
+  })();
   function header() {
     const deptItems = DEPTS.map(d => {
       const mods = MODULES.filter(m => m.dept === d.id);
@@ -120,6 +135,7 @@
       <a class="sl-logo" href="index.html"><span class="mark">${LOGO}</span><span><b class="pw">PENTARCH</b> SimLab<small>Learn by doing</small></span></a>
       <nav class="sl-nav" aria-label="Departments"><div class="item m-search"><a href="#" id="slSearchM">${icon('search')} Search all labs</a></div>${main}${more}</nav>
       <button class="sl-search" id="slSearchBtn" aria-label="Search labs">${icon('search')}<span>Search</span><kbd>/</kbd></button>
+      <button class="sl-theme" id="slTheme" aria-label="Switch to light mode" title="Light or dark">${icon('sun')}</button>
       <button class="sl-burger" id="slBurger" aria-label="Menu">${icon('menu')}</button>
     </div></header>`;
   }
@@ -287,6 +303,7 @@
   function tour(steps) {
     _tour = steps.filter(Boolean);
     wireTourBtn();
+    { const tb = document.getElementById('slTheme'); if (tb) { applyTheme(themeNow()); tb.addEventListener('click', () => applyTheme(themeNow() === 'light' ? 'dark' : 'light', true)); } }
     const key = 'sl-tour-seen-' + (document.body.dataset.page || '');
     let seen = false; try { seen = !!localStorage.getItem(key); } catch (e) {}
 
