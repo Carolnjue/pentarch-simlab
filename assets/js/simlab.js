@@ -368,6 +368,17 @@
   }
 
   /* ---------------- Mount ---------------- */
+  // Keyboard access for wide equations, tables and other horizontally scrolling boxes
+  function a11yScroll() {
+    document.querySelectorAll('main *').forEach(el => {
+      if (el.hasAttribute('tabindex') || el.closest('canvas,svg,button,a')) return;
+      const cs = getComputedStyle(el); const ox = /auto|scroll/.test(cs.overflowX) && el.scrollWidth > el.clientWidth + 2, oy = /auto|scroll/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 2;
+      if (!(ox || oy) || el.querySelector('a,button,input,select,textarea,[tabindex]')) return;
+      el.tabIndex = 0; if (!el.getAttribute('role')) el.setAttribute('role', 'region'); if (!el.getAttribute('aria-label')) el.setAttribute('aria-label', el.matches('table,.tbl-wrap') || el.querySelector('table') ? 'Table (scrolls sideways)' : 'Scrollable content');
+    });
+  }
+  let a11yT; const a11yLater = () => { clearTimeout(a11yT); a11yT = setTimeout(a11yScroll, 400); };
+  window.addEventListener('load', () => { a11yLater(); setTimeout(a11yScroll, 2500); }); window.addEventListener('resize', a11yLater); document.addEventListener('click', e => { if (e.target.closest('[role=tab],.tab,.tabs button')) a11yLater(); });
   function mount() {
     const page = document.body.dataset.page;
     const m = byId[page];
