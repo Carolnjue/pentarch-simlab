@@ -5,6 +5,17 @@
 (function () {
   'use strict';
 
+  /* ---------------- Small polyfills for older phone browsers ---------------- */
+  if (typeof window.structuredClone !== 'function') window.structuredClone = o => o === undefined ? o : JSON.parse(JSON.stringify(o));
+  const C2D = window.CanvasRenderingContext2D && CanvasRenderingContext2D.prototype;
+  if (C2D && !C2D.roundRect) C2D.roundRect = function (x, y, w, h, r) {
+    let rr = Array.isArray(r) ? r[0] : (typeof r === 'object' && r ? r.x : r) || 0;
+    if (w < 0) { x += w; w = -w; } if (h < 0) { y += h; h = -h; }
+    rr = Math.max(0, Math.min(rr, w / 2, h / 2));
+    this.moveTo(x + rr, y); this.arcTo(x + w, y, x + w, y + h, rr); this.arcTo(x + w, y + h, x, y + h, rr);
+    this.arcTo(x, y + h, x, y, rr); this.arcTo(x, y, x + w, y, rr); this.closePath(); return this;
+  };
+
   /* ---------------- Registry ---------------- */
   const DEPTS = [
     { id: 'engineering', name: 'Engineering', icon: 'cog', blurb: 'Mechanical, civil, electrical and mechatronics labs: gears, robots, structures, engines and circuits.' },
