@@ -266,7 +266,8 @@
   function heroFx(sec) {
     const cv = sec.querySelector('.hero-fx'); if (!cv) return;
     const dept = sec.dataset.fx, st = canvas(cv), reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const acc = getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#7c5cff';
+    let acc = getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#7c5cff';
+    document.addEventListener('sl-theme', () => { acc = getComputedStyle(document.body).getPropertyValue('--accent').trim() || acc; });
     const rnd = (a, b) => a + Math.random() * (b - a);
     const pts = Array.from({ length: 40 }, () => ({ x: Math.random(), y: Math.random(), v: rnd(.2, 1), p: Math.random() * 6.28 }));
     const draw = t => {
